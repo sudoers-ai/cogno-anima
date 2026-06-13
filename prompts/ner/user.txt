@@ -1,0 +1,21 @@
+ORIGINAL:
+{original_input}
+
+NOUMENO:
+{noumeno_output}
+
+CONTEXT_TURN:
+{context_turn}
+
+PRIOR_GOAL:
+{prior_goal_line}
+
+ACTIVE_DOMAINS:
+{domain_context_line}
+
+TURN:
+{turn_context_line}
+
+Return ONLY one valid JSON object with all NER fields.
+No markdown.
+No explanation.

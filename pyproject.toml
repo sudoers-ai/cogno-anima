@@ -1,0 +1,32 @@
+[project]
+name = "cogno-core"
+version = "0.1.0"
+description = "Modular Cogno intelligence pipeline core"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0",
+    "langdetect>=1.0.9",
+    "httpx>=0.20.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["cogno_core*"]
+
+[tool.pytest.ini_options]
+# The whole suite runs on pytest-asyncio (a declared dev dependency).
+# asyncio_mode = "auto" means every `async def test_*` is awaited without a
+# per-test marker, keeping the suite consistent and independent of `anyio`
+# (which is only present transitively via httpx).
+asyncio_mode = "auto"
+testpaths = ["tests"]
