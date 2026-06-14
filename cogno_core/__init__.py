@@ -22,7 +22,7 @@ from cogno_core.llm import (
 from cogno_core.stages.base import BaseStage
 from cogno_core.stages.noumeno import Noumeno
 from cogno_core.stages.ner import IntentAnalyzer
-from cogno_core.stages.drift import DriftCalculator
+from cogno_core.stages.drift import DriftCalculator, DriftThresholds
 
 __all__ = [
     "StageMetrics",
@@ -41,6 +41,7 @@ __all__ = [
     "Noumeno",
     "IntentAnalyzer",
     "DriftCalculator",
+    "DriftThresholds",
     "CognoError",
     "StageParseError",
 ]

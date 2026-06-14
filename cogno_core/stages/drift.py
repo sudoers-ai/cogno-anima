@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from dataclasses import dataclass
+from typing import Mapping, Optional
 
 from cogno_core.types import DriftMetrics, IntentResult, NoumenoResult
 from cogno_core.utils import (
@@ -15,9 +16,11 @@ from cogno_core.utils import (
 logger = logging.getLogger("cogno_core.drift")
 
 
-# Cumulative weights across all 5 stages.
-# Must sum to 1.0.
-_CUMULATIVE_WEIGHTS: dict[str, float] = {
+# Default cumulative weights across all 5 stages. Weights are RELATIVE:
+# compute_cumulative renormalizes over the stages actually computed, so what
+# matters is their ratio (a host may plug a risk profile, e.g. a FINANCE profile
+# weighting execution heavily, without forking — see DriftCalculator.__init__).
+DEFAULT_CUMULATIVE_WEIGHTS: dict[str, float] = {
     "epistemological": 0.15,  # NOUMENO
     "ontological": 0.15,      # NER
     "situational": 0.20,      # ID
@@ -25,11 +28,22 @@ _CUMULATIVE_WEIGHTS: dict[str, float] = {
     "synthesis": 0.25,        # SUPEREGO
 }
 
-# Action thresholds.
-# These are recommendations for the caller/orchestrator.
-_THRESHOLD_WARN = 0.50
-_THRESHOLD_ASK_USER = 0.70
-_THRESHOLD_SELF_CORRECT = 0.85
+_STAGE_KEYS = frozenset(DEFAULT_CUMULATIVE_WEIGHTS)
+
+
+@dataclass(frozen=True)
+class DriftThresholds:
+    """Cumulative-drift action thresholds — recommendations for the caller.
+
+    The action is a signal only; this library never asks the user, retries, or
+    self-corrects on its own.
+    """
+    warn: float = 0.50
+    ask_user: float = 0.70
+    self_correct: float = 0.85
+
+
+DEFAULT_THRESHOLDS = DriftThresholds()
 
 
 class DriftCalculator:
@@ -57,6 +71,33 @@ class DriftCalculator:
 
     This class does not call LLMs, tools, databases, or external services.
     """
+
+    def __init__(
+        self,
+        weights: Optional[Mapping[str, float]] = None,
+        thresholds: Optional[DriftThresholds] = None,
+    ) -> None:
+        """
+        Args:
+            weights: Per-stage cumulative weights. Defaults to
+                DEFAULT_CUMULATIVE_WEIGHTS. Weights are relative (renormalized
+                over the computed stages), so a host may pass a risk profile.
+                Validated: all 5 stage keys present, non-negative, positive sum.
+            thresholds: Action thresholds. Defaults to DEFAULT_THRESHOLDS.
+        """
+        w = dict(weights) if weights is not None else dict(DEFAULT_CUMULATIVE_WEIGHTS)
+        missing = _STAGE_KEYS - w.keys()
+        if missing:
+            raise ValueError(f"weights missing stage(s): {sorted(missing)}")
+        extra = w.keys() - _STAGE_KEYS
+        if extra:
+            raise ValueError(f"weights has unknown stage(s): {sorted(extra)}")
+        if any(v < 0 for v in w.values()):
+            raise ValueError("weights must be non-negative")
+        if sum(w.values()) <= 0:
+            raise ValueError("weights must have a positive sum")
+        self._weights = w
+        self._thresholds = thresholds or DEFAULT_THRESHOLDS
 
     # ---------------------------------------------------------------------
     # Stage 1: Epistemological drift
@@ -291,21 +332,22 @@ class DriftCalculator:
             if value is not None
         }
 
-        total_weight = sum(_CUMULATIVE_WEIGHTS[stage] for stage in present)
+        total_weight = sum(self._weights[stage] for stage in present)
         if total_weight > 0:
             cumulative = sum(
-                _CUMULATIVE_WEIGHTS[stage] * value for stage, value in present.items()
+                self._weights[stage] * value for stage, value in present.items()
             ) / total_weight
         else:
             cumulative = 0.0
 
         drift.cumulative_drift = round(cumulative, 3)
 
-        if cumulative >= _THRESHOLD_SELF_CORRECT:
+        t = self._thresholds
+        if cumulative >= t.self_correct:
             drift.drift_action = "self_correct"
-        elif cumulative >= _THRESHOLD_ASK_USER:
+        elif cumulative >= t.ask_user:
             drift.drift_action = "ask_user"
-        elif cumulative >= _THRESHOLD_WARN:
+        elif cumulative >= t.warn:
             drift.drift_action = "warn"
         else:
             drift.drift_action = "none"
@@ -315,6 +357,28 @@ class DriftCalculator:
             drift.cumulative_drift, drift.drift_action, len(present),
             " ".join(f"{s}={v:.2f}" for s, v in present.items()),
         )
+
+    # ---------------------------------------------------------------------
+    # Goal-aware action policy
+    # ---------------------------------------------------------------------
+
+    def downgrade_for_intentional_shift(
+        self,
+        drift: DriftMetrics,
+        goal_status: str,
+    ) -> None:
+        """
+        Softens an ``ask_user`` action to ``warn`` on an intentional topic change.
+
+        When the user deliberately starts a new objective (goal_status NEW or
+        ABANDONED), a high cumulative drift is expected and should not interrupt
+        them with a clarification request. compute_cumulative stays goal-agnostic
+        (score → action); this policy is invoked explicitly by the caller that
+        owns the goal_status (the ID stage), so a host that does not track goals
+        is never forced to apply it.
+        """
+        if goal_status in ("NEW", "ABANDONED") and drift.drift_action == "ask_user":
+            drift.drift_action = "warn"
 
     # ---------------------------------------------------------------------
     # Private helpers
