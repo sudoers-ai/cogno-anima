@@ -27,6 +27,14 @@ VALID_TEMPORAL: set[str] = {"RECENT", "HISTORICAL", "TIMELESS", "MIXED"}
 
 VALID_TRIAD: set[str] = {"ID", "EGO", "SUPEREGO", "BALANCED"}
 
+# ID stage (Stage 3) vocabularies. The ID is heuristic (no LLM), so these are
+# not enumerated in any prompt — they are the closed contract the stage
+# sanitizes its own routing/continuity output against ("never trust" applies to
+# carry-over state and host-injected hints just as it does to LLM output).
+VALID_GOAL_STATUS: set[str] = {"NEW", "ONGOING", "COMPLETED", "ABANDONED"}
+
+VALID_COMPLEXITY: set[str] = {"LOW", "MEDIUM", "HIGH", "EXPERT"}
+
 VALID_MODALITY: set[str] = {"CERTAIN", "PROBABLE", "POSSIBLE", "UNCERTAIN", "MIXED"}
 
 VALID_SPEECH_ACTS: set[str] = {

@@ -6,6 +6,7 @@ from cogno_core.types import (
     StageMetrics,
     NoumenoResult,
     IntentResult,
+    IdResult,
     DriftMetrics,
     PipelineContext,
 )
@@ -27,6 +28,7 @@ __all__ = [
     "StageMetrics",
     "NoumenoResult",
     "IntentResult",
+    "IdResult",
     "DriftMetrics",
     "PipelineContext",
     "LLMBackend",

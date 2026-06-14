@@ -185,6 +185,45 @@ class DriftMetrics(BaseModel):
         return tags
 
 
+class IdResult(BaseModel):
+    """Resultado da camada ID (Stage 3) — roteamento estratégico e continuidade.
+
+    A camada ID é 100% heurística (sem chamada de LLM): só usa o Embedder para a
+    similaridade de objetivo (quando o GoalManager chega ao estágio semântico).
+    `metrics.tokens_in`/`tokens_out` são 0; o custo de embedding aparece em
+    `metrics.embedding_tokens`/`embedding_calls`.
+    """
+
+    # ── Roteamento ────────────────────────────────────────
+    triad_route: str                # ID | EGO | SUPEREGO | BALANCED
+
+    # ── Continuidade de objetivo (GoalManager) ───────────
+    active_goal: Optional[str] = None
+    goal_status: str = "NEW"        # NEW | ONGOING | COMPLETED | ABANDONED
+    goal_similarity: float = 1.0    # similaridade que alimentou compute_situational
+
+    # ── Intenções (IntentionTracker / BDI) ───────────────
+    active_intentions: list[str] = Field(default_factory=list)
+
+    # ── Atenção (AttentionFilter) ─────────────────────────
+    attention_focus: list[str] = Field(default_factory=list)
+
+    # ── Gate de segurança ─────────────────────────────────
+    blocked: bool = False           # True quando pii_risk=CRITICAL → pular EGO
+    block_reason: Optional[str] = None
+
+    # ── Sinais cross-turn ─────────────────────────────────
+    turn_number: int = 1
+    # Temporal efetivo após stickiness. Gravado AQUI (não muta o IntentResult):
+    # o NER é stateless e não deve ser reescrito por uma etapa posterior.
+    temporal_class: Optional[str] = None
+    emotional_override: Optional[str] = None
+    complexity: str = "LOW"         # LOW | MEDIUM | HIGH | EXPERT (advisory)
+
+    # ── Telemetria ───────────────────────────────────────
+    metrics: StageMetrics
+
+
 class PipelineContext(BaseModel):
     """Carrier object that flows through the entire pipeline carrying intermediate results."""
     user_input: str
@@ -193,6 +232,7 @@ class PipelineContext(BaseModel):
     # Results populated by stages
     noumeno: Optional[NoumenoResult] = None
     intent: Optional[IntentResult] = None
+    id_result: Optional[IdResult] = None
     drift: Optional[DriftMetrics] = None
     
     # Custom metadata for the host to pass/read business or infra context
@@ -213,8 +253,12 @@ class PipelineContext(BaseModel):
         return self.intent.metrics if self.intent else None
 
     @property
+    def id_metrics(self) -> Optional[StageMetrics]:
+        return self.id_result.metrics if self.id_result else None
+
+    @property
     def stage_metrics(self) -> list[StageMetrics]:
-        base = [self.noumeno_metrics, self.ner_metrics]
+        base = [self.noumeno_metrics, self.ner_metrics, self.id_metrics]
         return [m for m in base if m is not None] + self.retry_metrics
 
     @property
