@@ -82,9 +82,6 @@ def test_epistemological_drift():
     
     intent = make_intent_result()
     drift = calc.compute(noumeno, intent)
-    assert drift.intent_changed is False
-    assert drift.sentiment_changed is False
-    assert drift.temporal_changed is False
     assert drift.drift_score == 0.456
     assert drift.word_count_original == 3
     assert drift.word_count_noumeno == 6
@@ -125,7 +122,6 @@ def test_ontological_uncomputed_for_contentless_rewrite():
 def test_situational_drift():
     calc = DriftCalculator()
     drift = DriftMetrics(
-        intent_changed=False, sentiment_changed=False, temporal_changed=False,
         word_count_original=10, word_count_noumeno=10, compression_ratio=1.0,
         aristotelian_coverage=0, drift_score=0.0
     )
@@ -136,7 +132,6 @@ def test_situational_drift():
 def test_execution_drift():
     calc = DriftCalculator()
     drift = DriftMetrics(
-        intent_changed=False, sentiment_changed=False, temporal_changed=False,
         word_count_original=10, word_count_noumeno=10, compression_ratio=1.0,
         aristotelian_coverage=0, drift_score=0.0
     )
@@ -161,7 +156,6 @@ def test_execution_drift():
 def test_synthesis_drift():
     calc = DriftCalculator()
     drift = DriftMetrics(
-        intent_changed=False, sentiment_changed=False, temporal_changed=False,
         word_count_original=10, word_count_noumeno=10, compression_ratio=1.0,
         aristotelian_coverage=0, drift_score=0.0
     )
@@ -180,7 +174,6 @@ def test_synthesis_drift():
 def test_cumulative_drift_and_tags():
     calc = DriftCalculator()
     drift = DriftMetrics(
-        intent_changed=False, sentiment_changed=False, temporal_changed=False,
         word_count_original=10, word_count_noumeno=5, compression_ratio=0.5,
         aristotelian_coverage=0, drift_score=0.2,
         ontological_drift=0.3, situational_drift=0.1,
@@ -201,7 +194,6 @@ def test_cumulative_drift_and_tags():
 
 def _blank_drift(**overrides) -> DriftMetrics:
     base = dict(
-        intent_changed=False, sentiment_changed=False, temporal_changed=False,
         word_count_original=10, word_count_noumeno=10, compression_ratio=1.0,
         aristotelian_coverage=0, drift_score=0.0,
     )

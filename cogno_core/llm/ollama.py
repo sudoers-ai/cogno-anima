@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections import OrderedDict
 from typing import Optional
 
 import httpx
@@ -94,11 +95,15 @@ class OllamaEmbedder(Embedder):
         model: str = "nomic-embed-text",
         base_url: str = "http://localhost:11434",
         timeout: int = 120,
+        cache_size: int = 2048,
     ) -> None:
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        self._cache: dict[str, list[float]] = {}
+        # Bounded LRU cache (OrderedDict) — caps memory in long-running processes.
+        # Set cache_size=0 to disable caching entirely.
+        self._cache_size = cache_size
+        self._cache: "OrderedDict[str, list[float]]" = OrderedDict()
 
     async def embed(self, text: str) -> list[float]:
         if not text:
@@ -106,6 +111,7 @@ class OllamaEmbedder(Embedder):
 
         key = text.strip().lower()
         if key in self._cache:
+            self._cache.move_to_end(key)   # mark as recently used
             return self._cache[key]
 
         url = f"{self.base_url}/api/embeddings"
@@ -115,8 +121,11 @@ class OllamaEmbedder(Embedder):
         resp.raise_for_status()
         data = resp.json()
         embedding = data.get("embedding", [])
-        if embedding:
+        if embedding and self._cache_size > 0:
             self._cache[key] = embedding
+            self._cache.move_to_end(key)
+            while len(self._cache) > self._cache_size:
+                self._cache.popitem(last=False)   # evict least-recently-used
         return embedding
 
     async def similarity(self, a: str, b: str) -> float:

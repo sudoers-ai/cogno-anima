@@ -230,3 +230,35 @@ async def test_ollama_embedder_cache_is_case_insensitive(monkeypatch):
     v2 = await embedder.embed("hello")
     assert v1 == v2
     assert call_count == 1  # Only one network call because of cache
+
+
+@pytest.mark.asyncio
+async def test_ollama_embedder_cache_is_bounded_lru(monkeypatch):
+    """The cache evicts least-recently-used entries beyond cache_size."""
+    calls = 0
+
+    class MockResponse:
+        status_code = 200
+        def json(self):
+            return {"embedding": [1.0]}
+        def raise_for_status(self):
+            pass
+
+    async def mock_post(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return MockResponse()
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+
+    embedder = OllamaEmbedder(cache_size=2)
+    await embedder.embed("a")            # cache: a
+    await embedder.embed("b")            # cache: a, b
+    await embedder.embed("a")            # touch a → order: b, a  (no call)
+    await embedder.embed("c")            # evicts b → cache: a, c
+    assert len(embedder._cache) == 2
+    assert set(embedder._cache) == {"a", "c"}
+    assert calls == 3                    # a, b, c each fetched once
+
+    await embedder.embed("b")            # b was evicted → refetch
+    assert calls == 4

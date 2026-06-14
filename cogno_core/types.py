@@ -133,9 +133,6 @@ class IntentResult(BaseModel):
 class DriftMetrics(BaseModel):
     """Métricas de desvio semântico/epistemológico do pipeline."""
     # Stage 1: Epistemological drift (NOUMENO → NER)
-    intent_changed: bool
-    sentiment_changed: bool
-    temporal_changed: bool
     word_count_original: int
     word_count_noumeno: int
     compression_ratio: float

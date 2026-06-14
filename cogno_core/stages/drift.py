@@ -93,19 +93,12 @@ class DriftCalculator:
         aristotelian = getattr(intent, "aristotelian", {}) or {}
 
         return DriftMetrics(
-            # Kept for compatibility with the existing DriftMetrics contract.
-            # These are no longer computed here because Stage 1 is owned by NOUMENO.
-            intent_changed=False,
-            sentiment_changed=False,
-            temporal_changed=False,
-
             word_count_original=wc_original,
             word_count_noumeno=wc_noumeno,
             compression_ratio=round(compression_ratio, 3),
             aristotelian_coverage=len(aristotelian),
-
-            # In the existing contract, `drift_score` represents the
-            # epistemological drift used in cumulative drift.
+            # `drift_score` carries the epistemological drift (from NOUMENO),
+            # used as the Stage 1 component of cumulative drift.
             drift_score=round(epistemological_drift, 3),
         )
 
