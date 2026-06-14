@@ -16,7 +16,7 @@ state management — no LLM, no I/O.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Protocol
 
 # Intent classes that create new intentions.
 _INTENTION_INTENTS = {"ACTION_REQUEST", "CREATIVE_TASK", "INFORMATION_REQUEST"}
@@ -102,8 +102,8 @@ class IntentionTracker:
         self._intentions = []
 
 
-class _IntentLike:
-    """Structural hint for the subset of IntentResult that IntentionTracker reads."""
+class _IntentLike(Protocol):
+    """Structural type for the subset of IntentResult that IntentionTracker reads."""
     intent_class: str
     goal: Optional[str]
     entities_concepts: list[str]

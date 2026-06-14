@@ -23,6 +23,7 @@ from cogno_core.routing import GoalManager, AttentionFilter, IntentionTracker
 from cogno_core.stages.base import BaseStage
 from cogno_core.stages.noumeno import Noumeno
 from cogno_core.stages.ner import IntentAnalyzer
+from cogno_core.stages.id import IDStage
 from cogno_core.stages.drift import DriftCalculator, DriftThresholds
 
 __all__ = [
@@ -44,6 +45,7 @@ __all__ = [
     "BaseStage",
     "Noumeno",
     "IntentAnalyzer",
+    "IDStage",
     "DriftCalculator",
     "DriftThresholds",
     "CognoError",
