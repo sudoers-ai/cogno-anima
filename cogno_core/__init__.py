@@ -19,6 +19,7 @@ from cogno_core.llm import (
     CachingEmbedder,
     EmbeddingUsage,
 )
+from cogno_core.routing import GoalManager, AttentionFilter, IntentionTracker
 from cogno_core.stages.base import BaseStage
 from cogno_core.stages.noumeno import Noumeno
 from cogno_core.stages.ner import IntentAnalyzer
@@ -37,6 +38,9 @@ __all__ = [
     "OllamaEmbedder",
     "CachingEmbedder",
     "EmbeddingUsage",
+    "GoalManager",
+    "AttentionFilter",
+    "IntentionTracker",
     "BaseStage",
     "Noumeno",
     "IntentAnalyzer",
