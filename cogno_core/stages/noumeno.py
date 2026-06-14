@@ -10,6 +10,7 @@ from cogno_core.types import PipelineContext, NoumenoResult, StageMetrics
 from cogno_core.llm import LLMBackend, Embedder
 from cogno_core.utils import expand_slangs
 from cogno_core.prompts import load_prompt
+from cogno_core.errors import StageParseError
 
 logger = logging.getLogger("cogno_core.noumeno")
 
@@ -167,4 +168,7 @@ class Noumeno:
             if lines and lines[-1].startswith("```"):
                 lines = lines[:-1]
             cleaned = "\n".join(lines).strip()
-        return json.loads(cleaned)
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError as exc:
+            raise StageParseError(STAGE_NAME, raw, exc) from exc

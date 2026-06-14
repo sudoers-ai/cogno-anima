@@ -101,7 +101,7 @@ def extend_strings(target: list[str], values: Iterable[object] | object) -> None
         return
 
     try:
-        iterator = iter(values)  # type: ignore[arg-type]
+        iterator = iter(values)  # type: ignore[call-overload]
     except TypeError:
         value = str(values).strip()
         if value:

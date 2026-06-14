@@ -19,6 +19,7 @@ import pytest
 from pathlib import Path
 
 from cogno_core.types import PipelineContext, IntentResult
+from cogno_core.errors import StageParseError
 from cogno_core.stages.base import BaseStage
 from cogno_core.stages.noumeno import Noumeno
 from cogno_core.stages.ner import IntentAnalyzer, NER_KNOWLEDGE_DOMAINS
@@ -336,7 +337,7 @@ async def test_ner_invalid_json_propagates_no_fallback():
     from tests.unit.test_ner import make_noumeno_result
     ctx = PipelineContext(user_input="x")
     ctx.noumeno = make_noumeno_result()
-    with pytest.raises(json.JSONDecodeError):
+    with pytest.raises(StageParseError):
         await _ner_stage().process(ctx, StubBackend(response="not json"))
     assert ctx.intent is None
 

@@ -1,3 +1,4 @@
+from cogno_core.errors import StageParseError
 import pytest
 from pathlib import Path
 from cogno_core.types import PipelineContext
@@ -386,28 +387,25 @@ class TestNoumenoStage:
 
     async def test_json_parse_fails_on_invalid_json(self):
         """If LLM returns invalid JSON, raise json.JSONDecodeError."""
-        import json
         noumeno = make_noumeno()
         ctx = PipelineContext(user_input="original")
-        with pytest.raises(json.JSONDecodeError):
+        with pytest.raises(StageParseError):
             await noumeno.process(ctx, StubBackend(
                 response='This is not JSON at all, just a plain text rewrite.'
             ))
 
     async def test_empty_llm_response_fails_parse(self):
         """If LLM returns empty string, raise json.JSONDecodeError."""
-        import json
         noumeno = make_noumeno()
         ctx = PipelineContext(user_input="original")
-        with pytest.raises(json.JSONDecodeError):
+        with pytest.raises(StageParseError):
             await noumeno.process(ctx, StubBackend(response=""))
 
     async def test_whitespace_only_response_fails_parse(self):
         """If LLM returns whitespace only, raise json.JSONDecodeError."""
-        import json
         noumeno = make_noumeno()
         ctx = PipelineContext(user_input="original")
-        with pytest.raises(json.JSONDecodeError):
+        with pytest.raises(StageParseError):
             await noumeno.process(ctx, StubBackend(response="   "))
 
     async def test_json_missing_rewritten_field(self):

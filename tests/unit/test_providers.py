@@ -105,6 +105,30 @@ async def test_ollama_backend_options_payload(monkeypatch):
     assert payload["options"]["temperature"] == 0.7
     assert payload["options"]["num_ctx"] == 4096
     assert payload["options"]["num_predict"] == 2048
+    assert "format" not in payload   # not set by default
+
+
+@pytest.mark.asyncio
+async def test_ollama_backend_format_json(monkeypatch):
+    """format='json' is forwarded to constrain Ollama output to JSON."""
+    captured = []
+
+    class MockResponse:
+        status_code = 200
+        def json(self):
+            return {"response": "{}", "prompt_eval_count": 1, "eval_count": 1}
+        def raise_for_status(self):
+            pass
+
+    async def mock_post(client, url, *args, **kwargs):
+        captured.append(kwargs.get("json", {}))
+        return MockResponse()
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+
+    backend = OllamaBackend(model="test", format="json")
+    await backend.generate("sys", "usr")
+    assert captured[0]["format"] == "json"
 
 @pytest.mark.asyncio
 async def test_ollama_backend_is_available(monkeypatch):

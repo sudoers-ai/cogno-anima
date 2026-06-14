@@ -25,6 +25,7 @@ class OllamaBackend(LLMBackend):
         temperature: Optional[float] = None,
         num_ctx: Optional[int] = 8192,
         max_tokens: Optional[int] = 4096,
+        format: Optional[str] = None,
     ) -> None:
         self.model = model
         self.base_url = base_url.rstrip("/")
@@ -32,6 +33,10 @@ class OllamaBackend(LLMBackend):
         self.temperature = temperature
         self.num_ctx = num_ctx
         self.max_tokens = max_tokens
+        # Structured decoding: set to "json" so Ollama constrains output to valid
+        # JSON (or a JSON schema). The NOUMENO/NER stages consume JSON, so a
+        # JSON-producing backend sharply reduces parse failures.
+        self.format = format
         self._endpoint = f"{self.base_url}/api/generate"
 
     async def generate(self, system: str, prompt: str) -> tuple[str, int, int]:
@@ -41,6 +46,8 @@ class OllamaBackend(LLMBackend):
             "prompt": prompt,
             "stream": False,
         }
+        if self.format:
+            payload["format"] = self.format
         options: dict = {}
         if self.temperature is not None:
             options["temperature"] = self.temperature

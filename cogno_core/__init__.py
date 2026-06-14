@@ -9,6 +9,7 @@ from cogno_core.types import (
     DriftMetrics,
     PipelineContext,
 )
+from cogno_core.errors import CognoError, StageParseError
 from cogno_core.llm import LLMBackend, Embedder, OllamaBackend, OllamaEmbedder
 from cogno_core.stages.base import BaseStage
 from cogno_core.stages.noumeno import Noumeno
@@ -29,4 +30,6 @@ __all__ = [
     "Noumeno",
     "IntentAnalyzer",
     "DriftCalculator",
+    "CognoError",
+    "StageParseError",
 ]

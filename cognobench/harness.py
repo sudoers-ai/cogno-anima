@@ -81,8 +81,8 @@ def build_ollama(
     embed_model: str = "nomic-embed-text",
     base_url: str = "http://localhost:11434",
 ) -> tuple[LLMBackend, Embedder]:
-    """Real Ollama backend + embedder (temperature 0 for determinism)."""
-    backend = OllamaBackend(model=model, base_url=base_url, temperature=0.0)
+    """Real Ollama backend + embedder (temperature 0, JSON-constrained output)."""
+    backend = OllamaBackend(model=model, base_url=base_url, temperature=0.0, format="json")
     embedder = OllamaEmbedder(model=embed_model, base_url=base_url)
     return backend, embedder
 

@@ -1,3 +1,4 @@
+from cogno_core.errors import StageParseError
 import pytest
 import json
 from pathlib import Path
@@ -237,7 +238,7 @@ async def test_json_decode_error():
     """11. Propagação estrita de json.JSONDecodeError."""
     backend = StubBackend(response="invalid json response")
     analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
-    with pytest.raises(json.JSONDecodeError):
+    with pytest.raises(StageParseError):
         await analyzer.analyze(make_noumeno_result())
 
 

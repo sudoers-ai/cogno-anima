@@ -12,6 +12,7 @@ from cogno_core.llm import LLMBackend
 from cogno_core.prompts import load_prompt
 from cogno_core.security.pii import compute_pii_risk, normalize_pii_types
 from cogno_core.security.detector import PiiDetector, default_detector
+from cogno_core.errors import StageParseError
 
 # Closed vocabularies live in cogno_core.vocab (single source of truth) and are
 # re-exported here for backward compatibility. The prompt enumerates the same
@@ -202,7 +203,10 @@ class IntentAnalyzer:
                 lines = lines[:-1]
             cleaned = "\n".join(lines).strip()
 
-        data = json.loads(cleaned)
+        try:
+            data = json.loads(cleaned)
+        except json.JSONDecodeError as exc:
+            raise StageParseError(STAGE_NAME, raw, exc) from exc
 
         # intent_class
         intent_class = str(data.get("intent_class", "UNKNOWN")).upper()
