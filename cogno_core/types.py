@@ -8,13 +8,19 @@ class StageMetrics(BaseModel):
     """Telemetry captured during execution of one LLM call or stage."""
     stage: str
     elapsed_ms: float
-    tokens_in: int
-    tokens_out: int
+    tokens_in: int             # prompt tokens consumed by the LLM generate call
+    tokens_out: int            # completion tokens produced by the LLM generate call
+    # Embedding telemetry for stages that call an Embedder (e.g. NOUMENO's
+    # subject-continuity + drift similarity). Kept separate from the generate
+    # tokens so LLM vs embedding cost stay distinguishable, but folded into
+    # `tokens_total` so the stage's true token cost is a single number.
+    embedding_tokens: int = 0  # tokens consumed by embedding calls (0 if cached/unreported)
+    embedding_calls: int = 0   # number of embed() operations performed
     tokens_total: int = 0
     model: str
 
     def model_post_init(self, __context: Any) -> None:
-        self.tokens_total = self.tokens_in + self.tokens_out
+        self.tokens_total = self.tokens_in + self.tokens_out + self.embedding_tokens
 
 
 class NoumenoResult(BaseModel):
@@ -213,7 +219,18 @@ class PipelineContext(BaseModel):
 
     @property
     def total_tokens(self) -> int:
+        """Total tokens across all stages, including embedding tokens."""
         return sum(m.tokens_total for m in self.stage_metrics)
+
+    @property
+    def total_llm_tokens(self) -> int:
+        """LLM generate tokens only (prompt + completion), excluding embeddings."""
+        return sum(m.tokens_in + m.tokens_out for m in self.stage_metrics)
+
+    @property
+    def total_embedding_tokens(self) -> int:
+        """Tokens consumed by embedding calls across all stages."""
+        return sum(m.embedding_tokens for m in self.stage_metrics)
 
     @property
     def total_elapsed_ms(self) -> float:

@@ -90,9 +90,17 @@ class Noumeno:
         subject_similarity = 1.0
         change_subject = False
 
+        # Accumulate embedding cost (tokens + call count) across every similarity
+        # call this stage makes, so it surfaces in StageMetrics just like the LLM
+        # generate tokens do.
+        emb_tokens = 0
+        emb_calls = 0
+
         if last_rewritten:
             # Concurrent embed calls for input and history
-            subject_similarity = await self._embedder.similarity(normalized_input, last_rewritten)                             
+            subject_similarity, t, c = await self._similarity(normalized_input, last_rewritten)
+            emb_tokens += t
+            emb_calls += c
             change_subject = subject_similarity < self._subject_threshold
 
         # 4. Formulate Prompt
@@ -109,16 +117,6 @@ class Noumeno:
         # 5. Call LLM
         raw_response, tokens_in, tokens_out = await llm.generate(self._system, prompt)
 
-        elapsed_ms = (time.perf_counter() - t0) * 1000
-
-        metrics = StageMetrics(
-            stage=STAGE_NAME,
-            elapsed_ms=round(elapsed_ms, 2),
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
-            model=llm.model,
-        )
-
         # 6. Parse JSON Response
         data = self._parse_json(raw_response)
         rewritten = data.get("rewritten", "").strip() or user_input
@@ -129,8 +127,23 @@ class Noumeno:
         rewrite_warnings = list(data.get("rewrite_warnings", []))
 
         # 7. Drift Computation (Pós-LLM)
-        sim = await self._embedder.similarity(user_input, rewritten)
+        sim, t, c = await self._similarity(user_input, rewritten)
+        emb_tokens += t
+        emb_calls += c
         drift_score = round(1.0 - sim, 4)
+
+        # Telemetry: build metrics after all embedding work so embedding cost and
+        # elapsed time cover the whole stage.
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        metrics = StageMetrics(
+            stage=STAGE_NAME,
+            elapsed_ms=round(elapsed_ms, 2),
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            embedding_tokens=emb_tokens,
+            embedding_calls=emb_calls,
+            model=llm.model,
+        )
 
         # Reconciliation: if drift > 0.50, force changed = True & drift_tag = "DRIFT"
         if drift_score > 0.50:
@@ -159,7 +172,22 @@ class Noumeno:
 
         return ctx
 
-    def _parse_json(self, raw: str) -> dict:        
+    async def _similarity(self, a: str, b: str) -> tuple[float, int, int]:
+        """Cosine similarity plus embedding cost ``(similarity, tokens, calls)``.
+
+        Prefers a usage-aware embedder (``similarity_with_usage``, e.g.
+        CachingEmbedder/OllamaEmbedder); falls back to the plain ``similarity``
+        protocol method (0 tokens) so any Embedder implementation still works.
+        Each similarity is counted as 2 embed operations.
+        """
+        usage_fn = getattr(self._embedder, "similarity_with_usage", None)
+        if usage_fn is not None:
+            sim, tokens = await usage_fn(a, b)
+            return sim, tokens, 2
+        sim = await self._embedder.similarity(a, b)
+        return sim, 0, 2
+
+    def _parse_json(self, raw: str) -> dict:
         cleaned = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
         if cleaned.startswith("```"):
             lines = cleaned.splitlines()

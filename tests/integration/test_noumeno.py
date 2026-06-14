@@ -18,7 +18,7 @@ import httpx
 from pathlib import Path
 
 from cogno_core.stages.noumeno import Noumeno, NoumenoResult
-from cogno_core.llm import OllamaBackend, OllamaEmbedder
+from cogno_core.llm import OllamaBackend, OllamaEmbedder, CachingEmbedder
 from cogno_core.types import PipelineContext
 
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
@@ -37,7 +37,7 @@ async def is_ollama_available() -> bool:
 def _make_real_noumeno() -> tuple[Noumeno, OllamaBackend]:
     # Using temperature=0.0 to prevent hallucinations and make integration tests deterministic
     llm = OllamaBackend(model="llama3.1:8b", temperature=0.0)
-    embedder = OllamaEmbedder(model="nomic-embed-text:latest")
+    embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text:latest"))
     noumeno = Noumeno(embedder=embedder, prompts_dir=PROMPTS_DIR, slangs=SLANGS)
     return noumeno, llm
 
@@ -333,7 +333,7 @@ async def test_noumeno_mocked_ollama_integration(monkeypatch):
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
 
     llm = OllamaBackend(model="llama3")
-    embedder = OllamaEmbedder(model="nomic-embed-text")
+    embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text"))
     noumeno = Noumeno(embedder=embedder, prompts_dir=PROMPTS_DIR, slangs=SLANGS)
 
     ctx = PipelineContext(user_input="olá vc, como vai?")
@@ -432,7 +432,7 @@ async def test_noumeno_anaphoric_reference_resolution(case):
 
     # Using subject_threshold=0.40 to handle cross-lingual (PT input vs EN history) similarity
     llm = OllamaBackend(model="llama3.1:8b", temperature=0.0)
-    embedder = OllamaEmbedder(model="nomic-embed-text:latest")
+    embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text:latest"))
     noumeno = Noumeno(embedder=embedder, prompts_dir=PROMPTS_DIR, slangs=SLANGS, subject_threshold=0.40)
     spy_llm = SpyLLM(llm)
 
@@ -548,7 +548,7 @@ async def test_noumeno_drift_reconciliation(monkeypatch):
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
 
     llm = OllamaBackend(model="llama3")
-    embedder = OllamaEmbedder(model="nomic-embed-text")
+    embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text"))
     noumeno = Noumeno(embedder=embedder, prompts_dir=PROMPTS_DIR, slangs=SLANGS)
 
     ctx = PipelineContext(user_input="Qual o preço do bitcoin?")

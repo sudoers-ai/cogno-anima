@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from cogno_core.llm import LLMBackend, Embedder, OllamaBackend, OllamaEmbedder
+from cogno_core.llm import LLMBackend, Embedder, OllamaBackend, OllamaEmbedder, CachingEmbedder
 from cogno_core.stages.noumeno import Noumeno
 from cogno_core.stages.ner import IntentAnalyzer
 from cogno_core.stages.drift import DriftCalculator
@@ -83,7 +83,7 @@ def build_ollama(
 ) -> tuple[LLMBackend, Embedder]:
     """Real Ollama backend + embedder (temperature 0, JSON-constrained output)."""
     backend = OllamaBackend(model=model, base_url=base_url, temperature=0.0, format="json")
-    embedder = OllamaEmbedder(model=embed_model, base_url=base_url)
+    embedder = CachingEmbedder(OllamaEmbedder(model=embed_model, base_url=base_url))
     return backend, embedder
 
 

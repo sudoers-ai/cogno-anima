@@ -465,6 +465,53 @@ class TestNoumenoStage:
         assert ctx.total_elapsed_ms > 0.0
         assert len(ctx.stage_metrics) == 1
 
+    async def test_embedding_tokens_captured_in_metrics(self):
+        """Embedding token cost (from similarity calls) is recorded in StageMetrics."""
+
+        class UsageEmbedder(StubEmbedder):
+            async def similarity_with_usage(self, a: str, b: str) -> tuple[float, int]:
+                return 0.9, 6   # 6 tokens per similarity call
+
+        noumeno = make_noumeno(embedder=UsageEmbedder())
+        ctx = PipelineContext(user_input="first turn")
+        # No history → exactly one similarity call (drift) → 6 tokens, 2 embeds.
+        ctx = await noumeno.process(ctx, StubBackend(tokens_in=10, tokens_out=5))
+
+        m = ctx.noumeno.metrics
+        assert m.embedding_tokens == 6
+        assert m.embedding_calls == 2
+        # tokens_total folds embeddings in: 10 + 5 + 6
+        assert m.tokens_total == 21
+        assert ctx.total_tokens == 21
+        assert ctx.total_llm_tokens == 15
+        assert ctx.total_embedding_tokens == 6
+
+    async def test_embedding_tokens_accumulate_across_similarity_calls(self):
+        """With history, both the subject-check and drift similarities are billed."""
+
+        class UsageEmbedder(StubEmbedder):
+            async def similarity_with_usage(self, a: str, b: str) -> tuple[float, int]:
+                return 0.95, 4
+
+        noumeno = make_noumeno(embedder=UsageEmbedder())
+        ctx = PipelineContext(user_input="follow up")
+        ctx.metadata["last_rewritten"] = "previous english query"
+        ctx = await noumeno.process(ctx, StubBackend(tokens_in=10, tokens_out=5))
+
+        m = ctx.noumeno.metrics
+        assert m.embedding_tokens == 8   # two similarity calls × 4
+        assert m.embedding_calls == 4
+
+    async def test_embedding_tokens_zero_for_plain_embedder(self):
+        """A plain Embedder (no usage method) reports 0 embedding tokens, no crash."""
+        noumeno = make_noumeno()   # StubEmbedder has no similarity_with_usage
+        ctx = PipelineContext(user_input="hello there")
+        ctx = await noumeno.process(ctx, StubBackend(tokens_in=10, tokens_out=5))
+        m = ctx.noumeno.metrics
+        assert m.embedding_tokens == 0
+        assert m.embedding_calls == 2   # still counts the operations
+        assert m.tokens_total == 15
+
     # ── History Injection ───────────────────────────────────────
 
     async def test_history_injected_when_same_subject(self):

@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections import OrderedDict
 from typing import Optional
 
 import httpx
@@ -89,30 +88,36 @@ class OllamaBackend(LLMBackend):
 class OllamaEmbedder(Embedder):
     """
     Local embedding provider using Ollama's /api/embeddings endpoint.
+
+    This is a thin, stateless client. Caching is intentionally NOT done here —
+    wrap it in ``CachingEmbedder`` (cogno_core.llm.cache) to add a bounded LRU
+    cache and token accounting, so those concerns work for any backend, not
+    just Ollama::
+
+        embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text"))
     """
     def __init__(
         self,
         model: str = "nomic-embed-text",
         base_url: str = "http://localhost:11434",
         timeout: int = 120,
-        cache_size: int = 2048,
     ) -> None:
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        # Bounded LRU cache (OrderedDict) — caps memory in long-running processes.
-        # Set cache_size=0 to disable caching entirely.
-        self._cache_size = cache_size
-        self._cache: "OrderedDict[str, list[float]]" = OrderedDict()
 
     async def embed(self, text: str) -> list[float]:
-        if not text:
-            return []
+        vec, _ = await self.embed_with_usage(text)
+        return vec
 
-        key = text.strip().lower()
-        if key in self._cache:
-            self._cache.move_to_end(key)   # mark as recently used
-            return self._cache[key]
+    async def embed_with_usage(self, text: str) -> tuple[list[float], int]:
+        """Embed ``text`` and report ``(vector, prompt_tokens)``.
+
+        Ollama returns ``prompt_eval_count`` for embedding requests on recent
+        versions; older builds omit it, in which case tokens default to 0.
+        """
+        if not text:
+            return [], 0
 
         url = f"{self.base_url}/api/embeddings"
         payload = {"model": self.model, "prompt": text}
@@ -121,13 +126,15 @@ class OllamaEmbedder(Embedder):
         resp.raise_for_status()
         data = resp.json()
         embedding = data.get("embedding", [])
-        if embedding and self._cache_size > 0:
-            self._cache[key] = embedding
-            self._cache.move_to_end(key)
-            while len(self._cache) > self._cache_size:
-                self._cache.popitem(last=False)   # evict least-recently-used
-        return embedding
+        tokens = int(data.get("prompt_eval_count", 0) or 0)
+        return embedding, tokens
 
     async def similarity(self, a: str, b: str) -> float:
-        vec_a, vec_b = await asyncio.gather(self.embed(a), self.embed(b))
-        return cosine_similarity(vec_a, vec_b)
+        sim, _ = await self.similarity_with_usage(a, b)
+        return sim
+
+    async def similarity_with_usage(self, a: str, b: str) -> tuple[float, int]:
+        (vec_a, tok_a), (vec_b, tok_b) = await asyncio.gather(
+            self.embed_with_usage(a), self.embed_with_usage(b)
+        )
+        return cosine_similarity(vec_a, vec_b), tok_a + tok_b

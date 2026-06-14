@@ -72,7 +72,7 @@ The pipeline operates on a single mutable carrier object, `PipelineContext` (`co
 - `LLMBackend`: `async generate(system, prompt) -> (text, tokens_in, tokens_out)`, plus a `model` attribute
 - `Embedder`: `async embed(text) -> list[float]`, `async similarity(a, b) -> float`
 
-`cogno_core/llm/ollama.py` provides the only concrete implementations (`OllamaBackend`, `OllamaEmbedder`), talking to a local Ollama server over `httpx`. `OllamaEmbedder` caches embeddings by lowercased text. New backends (OpenAI, Bedrock, etc.) should implement the same protocol shape — stages depend only on the protocol, not on Ollama.
+`cogno_core/llm/ollama.py` provides concrete implementations (`OllamaBackend`, `OllamaEmbedder`), talking to a local Ollama server over `httpx`. `OllamaEmbedder` is a thin, stateless client; it also exposes `embed_with_usage`/`similarity_with_usage` returning `(vector, tokens)` (from Ollama's `prompt_eval_count`). Caching is **backend-agnostic**: `cogno_core/llm/cache.py: CachingEmbedder` wraps *any* `Embedder` to add a bounded LRU cache (by lowercased text) plus token/call accounting (`EmbeddingUsage`) — e.g. `CachingEmbedder(OllamaEmbedder(...))`. New backends (OpenAI, Bedrock, etc.) implement the same protocol shape and get caching for free by composition — stages depend only on the protocol, not on Ollama.
 
 ### Prompts
 
@@ -82,7 +82,7 @@ The `domains` closed list inside `prompts/ner/system.txt` is the source of truth
 
 ### Models (`cogno_core/types.py`)
 
-All cross-stage data is `pydantic.BaseModel`. Key types: `StageMetrics` (per-call telemetry; `tokens_total` auto-computed in `model_post_init`), `NoumenoResult`, `IntentResult` (with helper methods `aristo_tag`/`aristo_desc`/`aristo_parsed` for parsing `"TAG | description"`-style aristotelian fields), `DriftMetrics`, and `PipelineContext` (the carrier, with derived properties `total_tokens`, `total_elapsed_ms`, `stage_metrics`).
+All cross-stage data is `pydantic.BaseModel`. Key types: `StageMetrics` (per-call telemetry; carries LLM `tokens_in`/`tokens_out` **and** `embedding_tokens`/`embedding_calls`; `tokens_total` auto-computed in `model_post_init` as `tokens_in + tokens_out + embedding_tokens`), `NoumenoResult`, `IntentResult` (with helper methods `aristo_tag`/`aristo_desc`/`aristo_parsed` for parsing `"TAG | description"`-style aristotelian fields), `DriftMetrics`, and `PipelineContext` (the carrier, with derived properties `total_tokens` (incl. embeddings), `total_llm_tokens`, `total_embedding_tokens`, `total_elapsed_ms`, `stage_metrics`). NOUMENO records embedding cost from its similarity calls; NER records its LLM generate tokens.
 
 ### Testing conventions
 

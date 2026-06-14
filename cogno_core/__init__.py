@@ -10,7 +10,14 @@ from cogno_core.types import (
     PipelineContext,
 )
 from cogno_core.errors import CognoError, StageParseError
-from cogno_core.llm import LLMBackend, Embedder, OllamaBackend, OllamaEmbedder
+from cogno_core.llm import (
+    LLMBackend,
+    Embedder,
+    OllamaBackend,
+    OllamaEmbedder,
+    CachingEmbedder,
+    EmbeddingUsage,
+)
 from cogno_core.stages.base import BaseStage
 from cogno_core.stages.noumeno import Noumeno
 from cogno_core.stages.ner import IntentAnalyzer
@@ -26,6 +33,8 @@ __all__ = [
     "Embedder",
     "OllamaBackend",
     "OllamaEmbedder",
+    "CachingEmbedder",
+    "EmbeddingUsage",
     "BaseStage",
     "Noumeno",
     "IntentAnalyzer",
