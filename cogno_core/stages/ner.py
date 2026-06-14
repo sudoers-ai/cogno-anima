@@ -5,36 +5,26 @@ import time
 import json
 import logging
 from pathlib import Path
-from typing import Optional, Any
+from typing import Optional
 
 from cogno_core.types import PipelineContext, NoumenoResult, IntentResult, StageMetrics
 from cogno_core.llm import LLMBackend
 from cogno_core.prompts import load_prompt
 from cogno_core.security.pii import compute_pii_risk, normalize_pii_types
+from cogno_core.security.detector import PiiDetector, default_detector
+
+# Closed vocabularies live in cogno_core.vocab (single source of truth) and are
+# re-exported here for backward compatibility. The prompt enumerates the same
+# values; tests/unit/test_pipeline.py enforces prompt↔vocab alignment.
+from cogno_core.vocab import (  # noqa: F401
+    VALID_INTENTS, VALID_SENTIMENTS, VALID_TEMPORAL, VALID_TRIAD,
+    VALID_MODALITY, VALID_SPEECH_ACTS, VALID_PAROLE, VALID_MANDATORY,
+    VALID_ARISTOTELIAN, NER_KNOWLEDGE_DOMAINS,
+)
 
 logger = logging.getLogger("cogno_core.ner")
 
 STAGE_NAME = "ner"
-
-# ── Valid Vocabularies ────────────────────────────────────────────────
-VALID_INTENTS = {"INFORMATION_REQUEST", "ACTION_REQUEST", "CLARIFICATION", "CREATIVE_TASK", "SOCIAL", "UNKNOWN"}
-VALID_SENTIMENTS = {"POSITIVE", "NEGATIVE", "NEUTRAL", "CURIOUS", "FRUSTRATED", "URGENT", "PLAYFUL"}
-VALID_TEMPORAL = {"RECENT", "HISTORICAL", "TIMELESS", "MIXED"}
-VALID_TRIAD = {"ID", "EGO", "SUPEREGO", "BALANCED"}
-VALID_MODALITY = {"CERTAIN", "PROBABLE", "POSSIBLE", "UNCERTAIN", "MIXED"}
-VALID_SPEECH_ACTS = {"DIRECTIVE", "EXPRESSIVE", "COMMISSIVE", "CONSTATIVE", "INTERROGATIVE", "MIXED"}
-VALID_PAROLE = {"COLOQUIAL", "TECNICO", "ACADEMICO", "FORMAL", "GIRIA", "POETICO", "MIXED"}
-
-VALID_MANDATORY = {"SYSTEM", "ANALYSIS", "MATH", "CREATIVE", "LINGUISTIC", "UNKNOWN"}
-
-# Closed knowledge-domain list. This MUST stay byte-for-byte aligned with the
-# `domains` closed list declared in prompts/ner/system.txt. Any domain the LLM
-# returns outside this set is dropped; tests/unit/test_pipeline.py enforces the
-# alignment between this set and the prompt.
-NER_KNOWLEDGE_DOMAINS = {
-    "TECH", "SCIENCE", "HEALTH", "FINANCE", "LOGISTICS", "TRAVEL",
-    "HISTORY", "LAW", "PHILOSOPHY", "EDUCATION", "CULTURE", "NEWS", "GENERAL",
-}
 
 # Aliases mapping common LLM deviations onto the canonical closed list above.
 # Every target value MUST be a member of NER_KNOWLEDGE_DOMAINS.
@@ -104,8 +94,12 @@ class IntentAnalyzer:
         backend: Optional[LLMBackend] = None,
         prompts_dir: Optional[Path] = None,
         system_prompt_name: str = "system.txt",
+        pii_detector: Optional[PiiDetector] = None,
     ):
         self._backend = backend
+        # Deterministic PII backstop, unioned with the LLM's pii list. Defaults to
+        # Brazil + international; pass a custom PiiDetector to add country packs.
+        self._pii_detector = pii_detector or default_detector()
 
         # Load prompts
         self._system = load_prompt("ner", system_prompt_name, prompts_dir=prompts_dir)
@@ -190,9 +184,12 @@ class IntentAnalyzer:
         )
 
         # 4. Parse da resposta. O idioma é herdado do NOUMENO, nunca do LLM.
-        return self._parse(raw_response, metrics, language=noumeno.language)
+        #    PII é detectado no texto ORIGINAL (não no rewrite, que pode mascarar).
+        return self._parse(raw_response, metrics, language=noumeno.language,
+                           original=noumeno.original)
 
-    def _parse(self, raw: str, metrics: StageMetrics, language: Optional[str] = None) -> IntentResult:
+    def _parse(self, raw: str, metrics: StageMetrics, language: Optional[str] = None,
+               original: str = "") -> IntentResult:
         """
         Decodifica e sanitiza os campos do JSON gerado pelo LLM.
         """
@@ -303,9 +300,28 @@ class IntentAnalyzer:
         entities_objects     = _clean_list(ent.get("objects",     []))
         entities_concepts    = _clean_list(ent.get("concepts",    []))
 
+        # Entity grounding (conservative): drop a proper-name entity only when
+        # NONE of its words appear in the ORIGINAL text — this kills hallucinated
+        # people/places without false drops from reordering or expansion. Applied
+        # ONLY to people/location (proper nouns are language-invariant); objects
+        # and concepts are left intact because they may be translated or derived.
+        def _grounded(items: list[str], source: str) -> list[str]:
+            low = source.lower()
+            kept = []
+            for item in items:
+                tokens = [t for t in re.split(r"\W+", item.lower()) if len(t) >= 3]
+                if not tokens or any(t in low for t in tokens):
+                    kept.append(item)
+            return kept
+
+        if original:
+            entities_people = _grounded(entities_people, original)
+
         # location
         loc_raw = data.get("location")
         location = str(loc_raw).strip() if loc_raw else None
+        if original and location and not _grounded([location], original):
+            location = None
 
         # mandatory_tags
         mandatory = []
@@ -331,17 +347,21 @@ class IntentAnalyzer:
         abstract = abstract[:5]
 
         # aristotelian
-        VALID_ARISTO = {
-            "SUBSTANCE", "QUANTITY", "QUALITY", "RELATION", "PLACE",
-            "TIME", "POSITION", "STATE", "ACTION", "PASSION"
-        }
         aristo_raw = data.get("aristotelian") or {}
         aristotelian = {}
         if isinstance(aristo_raw, dict):
             for k, v in aristo_raw.items():
                 k_upper = str(k).upper()
-                if k_upper in VALID_ARISTO and isinstance(v, str) and v.strip():
-                    aristotelian[k_upper] = v.strip()[:120]
+                if k_upper in VALID_ARISTOTELIAN and isinstance(v, str) and v.strip():
+                    # Format is "TAG | description". The prompt caps the
+                    # description at 40 chars — cap it without truncating the tag.
+                    val = v.strip()
+                    if " | " in val:
+                        tag, desc = val.split(" | ", 1)
+                        val = f"{tag.strip()} | {desc.strip()[:40]}"
+                    else:
+                        val = val[:40]
+                    aristotelian[k_upper] = val
 
         # domains (aliased + filtered against the closed list; see module top)
         domains = _canonical_domains(data.get("domains", []))
@@ -439,6 +459,12 @@ class IntentAnalyzer:
         else:
             is_sequential = False
 
+        # Reconciliation: sequencing only makes sense for composite (multi-action)
+        # requests. A single action cannot be "sequential". Enforce the contract
+        # the prompt states but the LLM may violate.
+        if not is_composite:
+            is_sequential = False
+
         # comparatives
         comp_raw = data.get("comparatives", [])
         comparatives: list[str] = []
@@ -446,9 +472,11 @@ class IntentAnalyzer:
             comparatives = [str(x).strip()[:60] for x in comp_raw
                             if isinstance(x, str) and str(x).strip()][:4]
 
-        # pii & pii_risk
-        pii_raw = data.get("pii", [])
-        pii = normalize_pii_types(pii_raw)
+        # pii & pii_risk — union of the LLM's list with the deterministic detector
+        # (run on the ORIGINAL text). pii_risk is always recomputed in-core.
+        pii_llm = normalize_pii_types(data.get("pii", []))
+        pii_regex = self._pii_detector.detect(original) if original else []
+        pii = list(dict.fromkeys([*pii_llm, *pii_regex]))[:10]
         pii_risk = compute_pii_risk(pii)
 
         # raw fields

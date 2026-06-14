@@ -256,6 +256,38 @@ def test_code_mandatory_tags_match_prompt_exactly():
     assert "LOGIC" not in VALID_MANDATORY
 
 
+def test_all_vocab_values_are_taught_by_the_prompt():
+    """Single-source guard: every value in cogno_core.vocab must appear in the NER
+    prompt. Adding a value to vocab without teaching the LLM (or vice-versa) fails here."""
+    from cogno_core import vocab
+    text = (PROMPTS_DIR / "ner" / "system.txt").read_text(encoding="utf-8")
+    sets = {
+        "VALID_INTENTS": vocab.VALID_INTENTS,
+        "VALID_SENTIMENTS": vocab.VALID_SENTIMENTS,
+        "VALID_TEMPORAL": vocab.VALID_TEMPORAL,
+        "VALID_TRIAD": vocab.VALID_TRIAD,
+        "VALID_MODALITY": vocab.VALID_MODALITY,
+        "VALID_SPEECH_ACTS": vocab.VALID_SPEECH_ACTS,
+        "VALID_PAROLE": vocab.VALID_PAROLE,
+        "VALID_MANDATORY": vocab.VALID_MANDATORY,
+        "VALID_ARISTOTELIAN": vocab.VALID_ARISTOTELIAN,
+        "NER_KNOWLEDGE_DOMAINS": vocab.NER_KNOWLEDGE_DOMAINS,
+    }
+    missing = {name: sorted(v for v in values if v not in text)
+               for name, values in sets.items()}
+    missing = {k: v for k, v in missing.items() if v}
+    assert not missing, f"vocab values absent from the NER prompt: {missing}"
+
+
+def test_ner_vocab_is_sourced_from_vocab_module():
+    """The NER stage must re-export the SAME objects as cogno_core.vocab (single source)."""
+    from cogno_core import vocab
+    from cogno_core.stages import ner
+    assert ner.NER_KNOWLEDGE_DOMAINS is vocab.NER_KNOWLEDGE_DOMAINS
+    assert ner.VALID_INTENTS is vocab.VALID_INTENTS
+    assert ner.VALID_MANDATORY is vocab.VALID_MANDATORY
+
+
 # ────────────────────────────────────────────────────────────────────
 #  No tool / skill routing in NER
 # ────────────────────────────────────────────────────────────────────

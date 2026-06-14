@@ -142,17 +142,14 @@ class DriftMetrics(BaseModel):
     aristotelian_coverage: int
     drift_score: float
 
-    # Stage 2: Ontological drift
-    ontological_drift: float = 0.0
-
-    # Stage 3: Situational drift (goal similarity)
-    situational_drift: float = 0.0
-
-    # Stage 4: Execution drift (planned vs actual)
-    execution_drift: float = 0.0
-
-    # Stage 5: Synthesis drift (tool output vs final response)
-    synthesis_drift: float = 0.0
+    # Stages 2–5 drift. None = "stage not computed yet" (distinct from 0.0 =
+    # "computed, no drift"). compute_cumulative renormalizes over the stages
+    # actually populated, so cumulative is on a full [0,1] scale at any point in
+    # the pipeline build-out — not deflated by the stages that don't exist yet.
+    ontological_drift: Optional[float] = None   # Stage 2 (NER)
+    situational_drift: Optional[float] = None    # Stage 3 (ID)
+    execution_drift: Optional[float] = None      # Stage 4 (EGO)
+    synthesis_drift: Optional[float] = None       # Stage 5 (SUPEREGO)
 
     # Cumulative
     cumulative_drift: float = 0.0

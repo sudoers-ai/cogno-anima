@@ -133,8 +133,13 @@ class DriftCalculator:
         rewritten = getattr(noumeno, "rewritten", "") or ""
         rewritten_words = content_words(rewritten)
 
-        if not rewritten_words:
-            drift.ontological_drift = 0.0
+        # Degenerate case: a rewrite with almost no content words (greetings,
+        # "hi", short social turns) has nothing meaningful for NER to "cover",
+        # so ontological drift is not measurable. Leave it UNCOMPUTED (None) so
+        # compute_cumulative excludes it from the renormalized average instead of
+        # reporting a spurious 1.0 that would false-trigger a drift action.
+        if len(rewritten_words) < 2:
+            drift.ontological_drift = None
             return
 
         ner_text_parts: list[str] = []
@@ -271,32 +276,35 @@ class DriftCalculator:
         """
         Computes weighted cumulative drift and sets a recommendation action.
 
+        Cumulative is a weighted average **renormalized over the stages actually
+        computed** (a `None` drift component means that stage has not run). This
+        keeps cumulative on a full [0,1] scale — and the action thresholds
+        meaningful — whether 2, 3, 4 or 5 stages have populated their drift.
+        Epistemological (`drift_score`) is always present.
+
         The action is a signal for the caller/orchestrator. This class does not
         execute retries, ask the user, call tools, or self-correct by itself.
         """
-        epistemological = clamp01(
-            safe_float(getattr(drift, "drift_score", 0.0), default=0.0)
-        )
-        ontological = clamp01(
-            safe_float(getattr(drift, "ontological_drift", 0.0), default=0.0)
-        )
-        situational = clamp01(
-            safe_float(getattr(drift, "situational_drift", 0.0), default=0.0)
-        )
-        execution = clamp01(
-            safe_float(getattr(drift, "execution_drift", 0.0), default=0.0)
-        )
-        synthesis = clamp01(
-            safe_float(getattr(drift, "synthesis_drift", 0.0), default=0.0)
-        )
+        raw_components = {
+            "epistemological": drift.drift_score,        # always present
+            "ontological": drift.ontological_drift,
+            "situational": drift.situational_drift,
+            "execution": drift.execution_drift,
+            "synthesis": drift.synthesis_drift,
+        }
+        present = {
+            stage: clamp01(safe_float(value, default=0.0))
+            for stage, value in raw_components.items()
+            if value is not None
+        }
 
-        cumulative = (
-            _CUMULATIVE_WEIGHTS["epistemological"] * epistemological
-            + _CUMULATIVE_WEIGHTS["ontological"] * ontological
-            + _CUMULATIVE_WEIGHTS["situational"] * situational
-            + _CUMULATIVE_WEIGHTS["execution"] * execution
-            + _CUMULATIVE_WEIGHTS["synthesis"] * synthesis
-        )
+        total_weight = sum(_CUMULATIVE_WEIGHTS[stage] for stage in present)
+        if total_weight > 0:
+            cumulative = sum(
+                _CUMULATIVE_WEIGHTS[stage] * value for stage, value in present.items()
+            ) / total_weight
+        else:
+            cumulative = 0.0
 
         drift.cumulative_drift = round(cumulative, 3)
 
@@ -310,15 +318,9 @@ class DriftCalculator:
             drift.drift_action = "none"
 
         logger.info(
-            "drift cumulative=%.3f action=%s "
-            "[epist=%.3f onto=%.2f sit=%.2f exec=%.2f synth=%.2f]",
-            drift.cumulative_drift,
-            drift.drift_action,
-            epistemological,
-            ontological,
-            situational,
-            execution,
-            synthesis,
+            "drift cumulative=%.3f action=%s over %d stage(s) [%s]",
+            drift.cumulative_drift, drift.drift_action, len(present),
+            " ".join(f"{s}={v:.2f}" for s, v in present.items()),
         )
 
     # ---------------------------------------------------------------------

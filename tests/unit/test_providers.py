@@ -1,5 +1,4 @@
 import pytest
-import json
 import httpx
 from cogno_core.llm import OllamaBackend, OllamaEmbedder
 

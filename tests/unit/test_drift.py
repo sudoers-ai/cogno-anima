@@ -107,6 +107,21 @@ def test_ontological_drift():
     assert drift.ontological_drift == pytest.approx(0.25, abs=0.05)
 
 
+def test_ontological_uncomputed_for_contentless_rewrite():
+    """A greeting-like rewrite (<2 content words) leaves ontological drift uncomputed,
+    so it is excluded from the renormalized cumulative (no spurious drift action)."""
+    calc = DriftCalculator()
+    noumeno = make_noumeno_result("oi", "hi")     # 'hi' has no content words
+    noumeno.drift_score = 0.3
+    intent = make_intent_result(entities_concepts=["greeting"])
+    drift = calc.compute(noumeno, intent)
+    calc.compute_ontological(drift, noumeno, intent)
+    assert drift.ontological_drift is None
+    calc.compute_cumulative(drift)
+    assert drift.cumulative_drift == pytest.approx(0.3)   # epistemological only
+    assert drift.drift_action == "none"
+
+
 def test_situational_drift():
     calc = DriftCalculator()
     drift = DriftMetrics(
@@ -222,6 +237,36 @@ def test_cumulative_drift_clamps_each_component():
     assert drift.cumulative_drift == pytest.approx(0.55)
     assert 0.0 <= drift.cumulative_drift <= 1.0
     assert drift.drift_action == "warn"   # >= 0.50 threshold
+
+
+def test_cumulative_renormalizes_over_computed_stages():
+    """With only NOUMENO+NER populated, cumulative is the mean of epist+onto (full scale)."""
+    calc = DriftCalculator()
+    # epist via drift_score, onto via compute_ontological; situational/exec/synth = None
+    drift = _blank_drift(drift_score=0.6)
+    drift.ontological_drift = 1.0   # stage 2 present
+    # situational/execution/synthesis remain None (stages not computed)
+    calc.compute_cumulative(drift)
+    # renormalized: (0.15*0.6 + 0.15*1.0) / (0.15+0.15) = 0.8  → not deflated to 0.24
+    assert drift.cumulative_drift == pytest.approx(0.8)
+    assert drift.drift_action == "ask_user"   # 0.8 ≥ 0.70
+
+
+def test_cumulative_epistemological_only():
+    """Just after NOUMENO, cumulative equals the epistemological drift itself."""
+    calc = DriftCalculator()
+    drift = _blank_drift(drift_score=0.45)   # onto/sit/exec/synth all None
+    calc.compute_cumulative(drift)
+    assert drift.cumulative_drift == pytest.approx(0.45)
+
+
+def test_cumulative_full_pipeline_matches_static_weights():
+    """When all 5 stages are present, renormalization divides by 1.0 → original weighting."""
+    calc = DriftCalculator()
+    drift = _blank_drift(drift_score=0.2, ontological_drift=0.3, situational_drift=0.1,
+                         execution_drift=0.0, synthesis_drift=0.4)
+    calc.compute_cumulative(drift)
+    assert drift.cumulative_drift == pytest.approx(0.195)
 
 
 def test_cumulative_drift_all_max_is_capped_at_one():

@@ -195,6 +195,24 @@ class TestNoumenoStage:
         ctx = await noumeno.process(ctx, StubBackend())
         assert ctx.noumeno.language == "fr"
 
+    async def test_default_language_used_when_no_force(self, monkeypatch):
+        """default_language is used when the request has no force_language (langdetect NOT called)."""
+        def boom(text):
+            raise AssertionError("langdetect must not run when default_language is set")
+        monkeypatch.setattr("langdetect.detect", boom)
+
+        noumeno = Noumeno(embedder=StubEmbedder(), prompts_dir=PROMPTS_DIR, default_language="pt-BR")
+        ctx = PipelineContext(user_input="qualquer entrada")
+        ctx = await noumeno.process(ctx, StubBackend())
+        assert ctx.noumeno.language == "pt-BR"
+
+    async def test_force_language_overrides_default_language(self):
+        """Per-request force_language wins over the stage default_language (tenant precedence)."""
+        noumeno = Noumeno(embedder=StubEmbedder(), prompts_dir=PROMPTS_DIR, default_language="pt-BR")
+        ctx = PipelineContext(user_input="hello there", force_language="es")
+        ctx = await noumeno.process(ctx, StubBackend())
+        assert ctx.noumeno.language == "es"
+
     async def test_language_detection_failure_defaults_to_und(self, monkeypatch):
         """If langdetect raises, language defaults to 'und'."""
         import langdetect

@@ -3,14 +3,11 @@ import json
 from pathlib import Path
 from pydantic import ValidationError
 
-from cogno_core.types import PipelineContext, NoumenoResult, IntentResult
+from cogno_core.types import NoumenoResult, IntentResult
 from cogno_core.stages.ner import (
     IntentAnalyzer,
-    VALID_INTENTS,
-    VALID_SENTIMENTS,
     NER_KNOWLEDGE_DOMAINS,
 )
-from cogno_core.security.pii import normalize_pii_types, compute_pii_risk
 from tests.conftest import StubBackend
 
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
@@ -87,9 +84,10 @@ async def test_perfect_payload():
     """1. Extração estruturada com payload JSON perfeito."""
     backend = StubBackend(response=json.dumps(PERFECT_JSON))
     analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
-    noumeno = make_noumeno_result()
+    # Original mentions São Paulo so the (grounded) location survives.
+    noumeno = make_noumeno_result(original="Olá, quero lavar meu carro em São Paulo")
     result = await analyzer.analyze(noumeno)
-    
+
     assert result.intent_class == "ACTION_REQUEST"
     assert result.entities_pronouns == ["he"]
     assert result.entities_possessives == ["my"]
@@ -317,3 +315,76 @@ def test_validation_error():
     """17. Propagação de ValidationError se Pydantic falhar."""
     with pytest.raises(ValidationError):
         IntentResult(intent_class=123, sentiment=456)
+
+
+@pytest.mark.asyncio
+async def test_is_sequential_requires_composite():
+    """18. is_sequential=True com is_composite=False é reconciliado para False."""
+    payload = PERFECT_JSON.copy()
+    payload["is_composite"] = False
+    payload["is_sequential"] = True
+    backend = StubBackend(response=json.dumps(payload))
+    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
+    result = await analyzer.analyze(make_noumeno_result())
+    assert result.is_composite is False
+    assert result.is_sequential is False   # reconciled
+
+    # When composite, sequential is preserved.
+    payload["is_composite"] = True
+    payload["is_sequential"] = True
+    backend2 = StubBackend(response=json.dumps(payload))
+    analyzer2 = IntentAnalyzer(backend=backend2, prompts_dir=PROMPTS_DIR)
+    result2 = await analyzer2.analyze(make_noumeno_result())
+    assert result2.is_composite is True
+    assert result2.is_sequential is True
+
+
+@pytest.mark.asyncio
+async def test_aristotelian_description_capped_preserving_tag():
+    """19. A descrição aristotélica é limitada a 40 chars sem cortar a TAG."""
+    payload = PERFECT_JSON.copy()
+    payload["aristotelian"] = {"ACTION": "WASH_CAR | " + "d" * 100}
+    backend = StubBackend(response=json.dumps(payload))
+    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
+    result = await analyzer.analyze(make_noumeno_result())
+    assert result.aristotelian["ACTION"] == "WASH_CAR | " + "d" * 40
+    assert result.aristo_tag("ACTION") == "WASH_CAR"   # tag intact
+
+
+@pytest.mark.asyncio
+async def test_entity_grounding_drops_hallucinated_people():
+    """20. Nome de pessoa que não aparece no ORIGINAL é descartado (anti-alucinação)."""
+    payload = PERFECT_JSON.copy()
+    payload["entities"] = dict(PERFECT_JSON["entities"])
+    payload["entities"]["people"] = ["Copernicus", "Napoleon"]
+    backend = StubBackend(response=json.dumps(payload))
+    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
+    noumeno = make_noumeno_result(original="what did copernicus do in 1543")
+    result = await analyzer.analyze(noumeno)
+    assert "Copernicus" in result.entities_people
+    assert "Napoleon" not in result.entities_people
+
+
+@pytest.mark.asyncio
+async def test_entity_grounding_drops_hallucinated_location():
+    """21. Location que não aparece no ORIGINAL vira None."""
+    payload = PERFECT_JSON.copy()
+    payload["location"] = "Tokyo"
+    backend = StubBackend(response=json.dumps(payload))
+    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
+    result = await analyzer.analyze(make_noumeno_result(original="qual a previsão do tempo amanhã?"))
+    assert result.location is None
+
+
+@pytest.mark.asyncio
+async def test_entity_grounding_keeps_real_objects_and_concepts():
+    """22. Grounding NÃO toca objects/concepts (podem ser traduzidos/derivados)."""
+    payload = PERFECT_JSON.copy()
+    payload["entities"] = dict(PERFECT_JSON["entities"])
+    payload["entities"]["objects"] = ["car"]          # translated from 'carro'
+    payload["entities"]["concepts"] = ["car washing"]  # derived concept
+    backend = StubBackend(response=json.dumps(payload))
+    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
+    result = await analyzer.analyze(make_noumeno_result(original="quero lavar meu carro"))
+    assert result.entities_objects == ["car"]
+    assert result.entities_concepts == ["car washing"]

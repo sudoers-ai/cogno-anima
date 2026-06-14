@@ -4,7 +4,7 @@ import json
 import asyncio
 import logging
 from pathlib import Path
-from typing import Optional, Any
+from typing import Optional
 
 from cogno_core.types import PipelineContext, NoumenoResult, StageMetrics
 from cogno_core.llm import LLMBackend, Embedder
@@ -42,10 +42,16 @@ class Noumeno:
         prompts_dir: Optional[Path] = None,
         slangs: Optional[dict[str, str]] = None,
         subject_threshold: float = 0.65,
+        default_language: Optional[str] = None,
     ):
         self._embedder = embedder
         self._slangs = slangs or {}
         self._subject_threshold = subject_threshold
+        # Host/tenant default language (e.g. the SaaS tenant setting). When set,
+        # it is used whenever a request does not carry its own language, so the
+        # tenant language is the default path and langdetect is only a last
+        # resort. The library ships no business default (stays None).
+        self._default_language = default_language
 
         # Load prompts
         self._system = load_prompt("noumeno", "system.txt", prompts_dir=prompts_dir)
@@ -61,10 +67,14 @@ class Noumeno:
         # 1. Normalized Input (Slang expansion)
         normalized_input = expand_slangs(user_input, self._slangs)
 
-        # 2. Language Detection
+        # 2. Language resolution.
+        #    Precedence: per-request tenant language (ctx.force_language)
+        #    > stage default (host/tenant global config) > langdetect fallback.
         detected_lang = "und"
         if ctx.force_language:
             detected_lang = ctx.force_language
+        elif self._default_language:
+            detected_lang = self._default_language
         else:
             try:
                 from langdetect import detect
