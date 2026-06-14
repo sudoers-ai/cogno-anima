@@ -388,3 +388,100 @@ async def test_entity_grounding_keeps_real_objects_and_concepts():
     result = await analyzer.analyze(make_noumeno_result(original="quero lavar meu carro"))
     assert result.entities_objects == ["car"]
     assert result.entities_concepts == ["car washing"]
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  P1: coercion / sanitization branches (the "never trust the LLM" paths)
+# ════════════════════════════════════════════════════════════════════════
+
+async def _analyze(payload: dict, **noumeno_kw):
+    backend = StubBackend(response=json.dumps(payload))
+    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
+    return await analyzer.analyze(make_noumeno_result(**noumeno_kw))
+
+
+@pytest.mark.asyncio
+async def test_invalid_enums_fall_back_to_defaults():
+    """Out-of-vocabulary enum values are coerced to their safe defaults."""
+    payload = PERFECT_JSON.copy()
+    payload.update(sentiment="ECSTATIC", temporal_class="YESTERDAY", triad_signal="HYPER")
+    result = await _analyze(payload)
+    assert result.sentiment == "NEUTRAL"
+    assert result.temporal_class == "TIMELESS"
+    assert result.triad_signal == "BALANCED"
+
+
+@pytest.mark.asyncio
+async def test_optional_enums_invalid_become_none():
+    """modality/speech_act/parole outside the vocabulary become None (not coerced)."""
+    payload = PERFECT_JSON.copy()
+    payload.update(modality="VERYSURE", speech_act="SHOUTING", parole="ROBOTIC")
+    result = await _analyze(payload)
+    assert result.modality is None
+    assert result.speech_act is None
+    assert result.parole is None
+
+
+@pytest.mark.asyncio
+async def test_confidence_is_clamped_and_safe():
+    payload = PERFECT_JSON.copy()
+    payload["confidence"] = 5.0
+    assert (await _analyze(payload)).confidence == 1.0
+    payload["confidence"] = -2.0
+    assert (await _analyze(payload)).confidence == 0.0
+    payload["confidence"] = "not-a-number"
+    assert (await _analyze(payload)).confidence == 0.5   # safe default
+
+
+@pytest.mark.asyncio
+async def test_list_fields_are_capped():
+    payload = PERFECT_JSON.copy()
+    payload["verbs"] = [f"verb{i}" for i in range(9)]                 # cap 5
+    payload["mandatory_tags"] = ["SYSTEM", "ANALYSIS", "MATH", "CREATIVE"]  # cap 3
+    payload["negation"] = [f"neg{i}" for i in range(8)]              # cap 4
+    result = await _analyze(payload)
+    assert len(result.verbs) == 5
+    assert len(result.mandatory_tags) == 3
+    assert len(result.negation) == 4
+
+
+@pytest.mark.asyncio
+async def test_goal_is_truncated():
+    payload = PERFECT_JSON.copy()
+    payload["goal"] = "g" * 200
+    result = await _analyze(payload)
+    assert len(result.goal) == 80
+
+
+@pytest.mark.asyncio
+async def test_context_dependent_accepts_string_boolean():
+    payload = PERFECT_JSON.copy()
+    payload["context_dependent"] = "true"
+    assert (await _analyze(payload)).context_dependent is True
+    payload["context_dependent"] = "nope"
+    assert (await _analyze(payload)).context_dependent is False
+
+
+@pytest.mark.asyncio
+async def test_raw_intent_class_invalid_becomes_none():
+    payload = PERFECT_JSON.copy()
+    payload["raw_intent_class"] = "GIBBERISH"
+    assert (await _analyze(payload)).raw_intent_class is None
+
+
+@pytest.mark.asyncio
+async def test_intent_class_falls_back_to_raw_when_unknown():
+    """UNKNOWN intent_class is recovered from a valid raw_intent_class."""
+    payload = PERFECT_JSON.copy()
+    payload["intent_class"] = "UNKNOWN"
+    payload["mandatory_tags"] = ["LINGUISTIC"]   # no MATH/SYSTEM/CREATIVE/ANALYSIS coercion
+    payload["raw_intent_class"] = "SOCIAL"
+    assert (await _analyze(payload)).intent_class == "SOCIAL"
+
+
+@pytest.mark.asyncio
+async def test_empty_mandatory_tags_defaults_to_unknown_tag():
+    payload = PERFECT_JSON.copy()
+    payload["mandatory_tags"] = ["NONSENSE_TAG"]   # filtered out → none valid
+    result = await _analyze(payload)
+    assert result.mandatory_tags == ["NER.UNKNOWN"]
