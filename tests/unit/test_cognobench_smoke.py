@@ -56,6 +56,16 @@ def test_stub_id_multi_turn_runs_and_hard_invariants_hold():
     assert any(c.field.startswith("t2_") for c in idd.checks)
 
 
+def test_stub_ego_runs_and_hard_invariants_hold():
+    """EGO dimension runs in stub mode; valid-steps/valid-tools invariants hold."""
+    report = _run_stub(only=["ego"], limit=3)
+    ego = next(d for d in report.dimensions if d.name == "ego")
+    assert ego.errors == [], f"ego raised: {ego.errors}"
+    hard = [c for c in ego.checks if c.field in ("steps_present", "dispatched_tools_valid")]
+    assert hard, "expected EGO hard-invariant checks"
+    assert all(c.correct for c in hard)
+
+
 def test_report_to_dict_shape():
     report = _run_stub(only=["ner"], limit=1)
     d = report.to_dict()

@@ -14,6 +14,13 @@ from cognobench.ner_cases import NERCase
 from cognobench.drift_cases import DriftCase, VALID_ACTIONS
 from cognobench.noumeno_cases import NoumenoCase, VALID_DRIFT_TAGS
 from cognobench.id_cases import IdCase, VALID_GOAL_STATUS, VALID_ROUTES
+from cognobench.ego_cases import (
+    EgoCase, BenchDispatcher, EGO_SYSTEM, VALID_TOOLS,
+)
+
+from cogno_core.llm import LLMBackend
+from cogno_core.stages.ego import EgoStage
+from cogno_core.types import PipelineContext, NoumenoResult, IntentResult, StageMetrics
 
 
 def _lang_prefix(value: str) -> str:
@@ -208,6 +215,72 @@ async def run_id(
                     carry["active_domains"] = ctx.intent.domains
                 if ctx.noumeno:
                     history.append(ctx.noumeno.rewritten)
+        except Exception as exc:  # noqa: BLE001
+            dim.errors.append((case.id, repr(exc)))
+    return dim
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  EGO
+# ──────────────────────────────────────────────────────────────────────────
+
+def _ego_ctx(case: EgoCase) -> PipelineContext:
+    """Hand-built NOUMENO+NER context (decoupled from NER quality on purpose)."""
+    m = StageMetrics(stage="x", elapsed_ms=1.0, tokens_in=1, tokens_out=1, model="bench")
+    noumeno = NoumenoResult(
+        original=case.task, rewritten=case.task, context_turn="", language="en",
+        canonical_language="en", drift_score=0.0, drift_tag="PASS_THROUGH", changed=False,
+        confidence=1.0, change_subject=False, subject_similarity=1.0, context_used=False,
+        preserved_terms=[], rewrite_warnings=[], metrics=m,
+    )
+    intent = IntentResult(
+        intent_class=case.intent_class, sentiment="NEUTRAL", confidence=1.0,
+        temporal_class="TIMELESS", triad_signal="EGO", goal=case.task, domains=["FINANCE"],
+        metrics=m,
+    )
+    return PipelineContext(user_input=case.task, noumeno=noumeno, intent=intent)
+
+
+async def run_ego(
+    backend: LLMBackend, cases: list[EgoCase], calibrate: bool = False,
+    language: str | None = None,            # unused: tasks are canonical English
+) -> DimensionResult:
+    """Score the EGO executor: tool selection + loop hygiene.
+
+    ``backend`` must be a TEXT backend (no JSON-constrained format) so the
+    fallback path can emit ``<TOOL_CALL>`` tags.
+    """
+    dim = DimensionResult(name="ego")
+    stage = EgoStage()
+    for case in cases:
+        try:
+            ctx = _ego_ctx(case)
+            disp = BenchDispatcher()
+            ctx = await stage.process(ctx, backend, disp, system_prompt=EGO_SYSTEM)
+            res = ctx.ego_result
+            if res is None:
+                dim.errors.append((case.id, "ego_result is None"))
+                continue
+
+            names = [t.tool for t in res.tools_executed]
+            dispatched = [n for n, _ in disp.executed]
+
+            # Hard invariants.
+            dim.checks.append(CheckResult(case.id, "steps_present", ">=1",
+                                          str(len(res.steps)), len(res.steps) >= 1))
+            dim.checks.append(CheckResult(case.id, "dispatched_tools_valid", "subset",
+                                          str(dispatched),
+                                          all(n in VALID_TOOLS for n in dispatched)))
+
+            # Soft (model-dependent) tool selection.
+            if case.expect_tool:
+                ok = case.expect_tool in names
+                dim.checks.append(CheckResult(case.id, "tool_selected(soft)", case.expect_tool,
+                                              str(names), True if calibrate else ok))
+            if case.expect_no_tool:
+                ok = len(names) == 0
+                dim.checks.append(CheckResult(case.id, "no_tool(soft)", "[]",
+                                              str(names), True if calibrate else ok))
         except Exception as exc:  # noqa: BLE001
             dim.errors.append((case.id, repr(exc)))
     return dim

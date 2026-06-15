@@ -14,18 +14,19 @@ import json
 import sys
 
 from cognobench.harness import (
-    CognitivePipeline, build_ollama, build_stub, ollama_available,
+    CognitivePipeline, build_ollama, build_ollama_text, build_stub, ollama_available,
 )
-from cognobench.dimensions import run_noumeno, run_ner, run_id, run_drift
+from cognobench.dimensions import run_noumeno, run_ner, run_id, run_ego, run_drift
 from cognobench.types import BenchReport
 from cognobench.report import render
 from cognobench.ner_cases import NER_CASES
 from cognobench.drift_cases import DRIFT_CASES
 from cognobench.noumeno_cases import NOUMENO_CASES
 from cognobench.id_cases import ID_CASES
+from cognobench.ego_cases import EGO_CASES
 
-# Pipeline order: NOUMENO → NER → ID → Drift.
-ALL_DIMENSIONS = ("noumeno", "ner", "id", "drift")
+# Pipeline order: NOUMENO → NER → ID → EGO → Drift.
+ALL_DIMENSIONS = ("noumeno", "ner", "id", "ego", "drift")
 
 
 async def run_bench(
@@ -64,6 +65,12 @@ async def run_bench(
     if "id" in dims:
         report.dimensions.append(
             await run_id(pipe, cap(ID_CASES), calibrate=calibrate, language=language))
+    if "ego" in dims:
+        # EGO needs a TEXT backend (no JSON format) for the <TOOL_CALL> fallback path.
+        # In stub mode the JSON stub yields a no-tool result — enough for plumbing.
+        ego_backend = backend if stub else build_ollama_text(model, base_url)
+        report.dimensions.append(
+            await run_ego(ego_backend, cap(EGO_CASES), calibrate=calibrate, language=language))
     if "drift" in dims:
         report.dimensions.append(
             await run_drift(pipe, cap(DRIFT_CASES), calibrate=calibrate, language=language))
