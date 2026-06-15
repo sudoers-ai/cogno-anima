@@ -17,6 +17,7 @@ from typing import Optional
 from cogno_core.llm import LLMBackend, Embedder, OllamaBackend, OllamaEmbedder, CachingEmbedder
 from cogno_core.stages.noumeno import Noumeno
 from cogno_core.stages.ner import IntentAnalyzer
+from cogno_core.stages.id import IDStage
 from cogno_core.stages.drift import DriftCalculator
 from cogno_core.types import PipelineContext
 
@@ -39,6 +40,7 @@ class CognitivePipeline:
         self._embedder = embedder
         self._noumeno = Noumeno(embedder=embedder, prompts_dir=PROMPTS_DIR, slangs=SLANGS)
         self._ner = IntentAnalyzer(prompts_dir=PROMPTS_DIR)
+        self._id = IDStage()
         self._drift = DriftCalculator()
 
     async def run(
@@ -48,7 +50,7 @@ class CognitivePipeline:
         force_language: Optional[str] = None,
         stop_after: str = "drift",
     ) -> PipelineContext:
-        """Run the reference pipeline up to `stop_after` ('noumeno'|'ner'|'drift')."""
+        """Run the reference pipeline up to `stop_after` ('noumeno'|'ner'|'id'|'drift')."""
         ctx = PipelineContext(user_input=user_input, force_language=force_language)
 
         # Seed multi-turn memory from history (cheap: use raw last turn as the
@@ -63,6 +65,12 @@ class CognitivePipeline:
 
         ctx = await self._ner.process(ctx, self._backend)
         if stop_after == "ner":
+            return ctx
+
+        if stop_after == "id":
+            # The ID stage seeds drift (epistemological + ontological) if absent,
+            # then adds situational → cumulative → goal-aware downgrade.
+            ctx = await self._id.process(ctx, self._embedder)
             return ctx
 
         drift = self._drift.compute(ctx.noumeno, ctx.intent)
