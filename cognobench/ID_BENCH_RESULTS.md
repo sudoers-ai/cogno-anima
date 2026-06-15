@@ -19,7 +19,7 @@ is a stricter, more direct metric over more checks (104 vs the parent's 32).
 | `llama3.1:8b` | 94.2% | 98/104 | ~21 min | 4 soft continuation/farewell + **NER missed CRITICAL credential PII** (safety gate not triggered). |
 | `qwen2.5:7b-instruct` | 93.3% | 97/104 | ~14 min | Soft farewell→COMPLETED and continuation misses. |
 | `phi3:mini` | 77.9% | 81/104 | ~15 min | Small model; weakest NER goal extraction. |
-| `qwen3.5:4b` | ⚠ **ERROR** | 0/0 (14 errors) | ~1 min | NOUMENO returns empty output → `StageParseError`. Model incompatible with the harness `format="json"` (likely thinking-only output stripped to empty). Not an ID bug. |
+| `qwen3.5:4b` | ⚠ ERROR → **92.6%** | 25/27 (first 4 cases, post-fix) | ~1 min err → ~50s | **FIXED:** initially errored — NOUMENO `response` was empty because the reasoning model routed output to a separate `thinking` field. Resolved by sending `think=false` (now the default in `OllamaBackend`); re-run scored 92.6% on the first 4 cases (only the universal soft misses). |
 
 ## Comparison to the parent (`cogno/bench_results/`)
 

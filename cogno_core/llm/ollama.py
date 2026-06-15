@@ -26,6 +26,7 @@ class OllamaBackend(LLMBackend):
         num_ctx: Optional[int] = 8192,
         max_tokens: Optional[int] = 4096,
         format: Optional[str] = None,
+        think: bool = False,
     ) -> None:
         self.model = model
         self.base_url = base_url.rstrip("/")
@@ -37,6 +38,12 @@ class OllamaBackend(LLMBackend):
         # JSON (or a JSON schema). The NOUMENO/NER stages consume JSON, so a
         # JSON-producing backend sharply reduces parse failures.
         self.format = format
+        # Disable model "thinking" by default. Reasoning models (qwen3, deepseek,
+        # …) otherwise route their output to a separate `thinking` field and leave
+        # `response` EMPTY → the stages get "" and raise StageParseError. The
+        # cognitive stages want direct JSON, not chain-of-thought, so think=False
+        # is the right default; it is a harmless no-op on non-reasoning models.
+        self.think = think
         self._endpoint = f"{self.base_url}/api/generate"
 
     async def generate(self, system: str, prompt: str) -> tuple[str, int, int]:
@@ -48,6 +55,7 @@ class OllamaBackend(LLMBackend):
         }
         if self.format:
             payload["format"] = self.format
+        payload["think"] = self.think
         options: dict = {}
         if self.temperature is not None:
             options["temperature"] = self.temperature
@@ -66,7 +74,10 @@ class OllamaBackend(LLMBackend):
         response.raise_for_status()
         data = response.json()
 
-        text = data.get("response", "")
+        # Prefer `response`; fall back to `thinking` so a reasoning model that
+        # (despite think=False) still emitted only to the thinking channel is
+        # salvaged instead of yielding an empty string.
+        text = data.get("response") or data.get("thinking") or ""
         tokens_in = data.get("prompt_eval_count", 0)
         tokens_out = data.get("eval_count", 0)
 

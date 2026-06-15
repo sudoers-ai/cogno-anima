@@ -20,8 +20,8 @@ hold. `expect_route`/`expect_blocked` are exact checks where deterministic.
 CALIBRATION (2026-06, full 14 cases / 104 checks, nomic-embed-text, pt-BR forced).
 Multi-model sweep — see cognobench/ID_BENCH_RESULTS.md for the full table:
     mistral:latest 99.0% | qwen3:8b 98.1% | llama3.1:8b 94.2% |
-    qwen2.5:7b-instruct 93.3% | phi3:mini 77.9% | qwen3.5:4b ERROR (empty NOUMENO,
-    format=json incompatibility — not an ID bug).
+    qwen2.5:7b-instruct 93.3% | phi3:mini 77.9% | qwen3.5:4b 92.6% (after the
+    think=false fix; originally errored with empty NOUMENO output).
 The soft misses reflect end-to-end NER quality, NOT test bugs — what this
 dimension is meant to surface. Model-independent finding: `anaphoric_deep` t2
 ("deles, qual o mais usado?") fails on EVERY working model — NER does not set

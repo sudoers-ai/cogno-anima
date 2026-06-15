@@ -29,6 +29,74 @@ async def test_ollama_backend_generate_success(monkeypatch):
     assert tokens_out == 5
 
 @pytest.mark.asyncio
+async def test_ollama_backend_disables_thinking_by_default(monkeypatch):
+    """Reasoning models route output to a separate `thinking` field and leave
+    `response` empty; the backend must send think=false so JSON lands in
+    `response`."""
+    captured = {}
+
+    class MockResponse:
+        status_code = 200
+        def json(self):
+            return {"response": '{"ok": true}', "prompt_eval_count": 3, "eval_count": 4}
+        def raise_for_status(self):
+            pass
+
+    async def mock_post(self, url, json=None, **kwargs):
+        captured.update(json or {})
+        return MockResponse()
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+
+    backend = OllamaBackend(model="qwen3.5:4b", format="json")
+    text, _, _ = await backend.generate("sys", "usr")
+    assert captured.get("think") is False
+    assert text == '{"ok": true}'
+
+
+@pytest.mark.asyncio
+async def test_ollama_backend_think_can_be_enabled(monkeypatch):
+    captured = {}
+
+    class MockResponse:
+        status_code = 200
+        def json(self):
+            return {"response": "x", "prompt_eval_count": 1, "eval_count": 1}
+        def raise_for_status(self):
+            pass
+
+    async def mock_post(self, url, json=None, **kwargs):
+        captured.update(json or {})
+        return MockResponse()
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+    backend = OllamaBackend(model="qwen3:8b", think=True)
+    await backend.generate("sys", "usr")
+    assert captured.get("think") is True
+
+
+@pytest.mark.asyncio
+async def test_ollama_backend_falls_back_to_thinking_when_response_empty(monkeypatch):
+    """If `response` is empty but `thinking` holds the answer, salvage it."""
+    class MockResponse:
+        status_code = 200
+        def json(self):
+            return {"response": "", "thinking": '{"rewritten": "hi"}',
+                    "prompt_eval_count": 2, "eval_count": 6}
+        def raise_for_status(self):
+            pass
+
+    async def mock_post(*args, **kwargs):
+        return MockResponse()
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+    backend = OllamaBackend(model="qwen3.5:4b", format="json")
+    text, _, tokens_out = await backend.generate("sys", "usr")
+    assert text == '{"rewritten": "hi"}'
+    assert tokens_out == 6
+
+
+@pytest.mark.asyncio
 async def test_ollama_backend_connection_error(monkeypatch):
     """ConnectError must propagate to the caller."""
     async def mock_post(*args, **kwargs):
