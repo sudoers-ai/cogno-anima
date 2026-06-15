@@ -17,18 +17,19 @@ farewell→COMPLETED are reliable; ONGOING/ABANDONED (domain match / semantic
 similarity) are softer. Hard invariants (valid goal_status, valid route) always
 hold. `expect_route`/`expect_blocked` are exact checks where deterministic.
 
-CALIBRATION (2026-06, llama3.1:8b + nomic-embed-text, language forced pt-BR; first
-6 cases): id dimension scored 93.2% (41/44). The soft misses reflect the small
-model's NER quality end-to-end, NOT test bugs — exactly what this dimension is
-meant to surface:
-  - `market_continuation` t2 "e o ethereum?"   → ABANDONED (want ONGOING): NER
-    domains didn't intersect and cross-asset cosine stayed < 0.75.
-  - `anaphoric_deep` t2 "deles, qual o mais usado?" → ABANDONED (want ONGOING):
-    NER did not flag context_dependent, so the Stage 1.6 fast-path never fired.
-  - `full_lifecycle` t3 "perfeito, era isso que eu precisava" → ONGOING (want
-    COMPLETED): NER did not classify the soft farewell as SOCIAL.
-A stronger NER model should recover these; re-run `--calibrate --only id` to record
-actuals for a new model. Cases 7–14 are not yet calibrated against a live model.
+CALIBRATION (2026-06, full 14 cases / 104 checks, nomic-embed-text, pt-BR forced).
+Multi-model sweep — see cognobench/ID_BENCH_RESULTS.md for the full table:
+    mistral:latest 99.0% | qwen3:8b 98.1% | llama3.1:8b 94.2% |
+    qwen2.5:7b-instruct 93.3% | phi3:mini 77.9% | qwen3.5:4b ERROR (empty NOUMENO,
+    format=json incompatibility — not an ID bug).
+The soft misses reflect end-to-end NER quality, NOT test bugs — what this
+dimension is meant to surface. Model-independent finding: `anaphoric_deep` t2
+("deles, qual o mais usado?") fails on EVERY working model — NER does not set
+context_dependent, so the Stage 1.6 fast-path never fires (kept as a documented
+known gap; the NOUMENO change_subject prior is the proposed fix). Weaker NERs
+(llama3.1, qwen2.5) also miss soft farewell→COMPLETED (not classified SOCIAL) and
+some continuations; mistral/qwen3:8b recover them. Re-run `--calibrate --only id
+--model <M>` to record actuals for a new model.
 """
 
 from __future__ import annotations
