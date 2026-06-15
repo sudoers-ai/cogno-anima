@@ -34,7 +34,7 @@ python3 cognobench.py --stub --limit 3       # fast plumbing smoke (no model)
 python3 cognobench.py --calibrate --only drift id   # record drift/goal_status actuals
 ```
 
-Integration tests use real models (`llama3.1:8b`, `nomic-embed-text:latest`) via Ollama and are written to be deterministic (`temperature=0.0`).
+Integration tests use real models via Ollama and are written to be deterministic (`temperature=0.0`). Default NOUMENO/NER model is `mistral:latest` (top scorer on the ID bench; `qwen3:8b` is the recommended alternative — override NER via `COGNO_NER_MODEL`); embeddings use `nomic-embed-text:latest`.
 
 ### CognoBench (`cognobench/`)
 

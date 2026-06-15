@@ -14,9 +14,9 @@ is a stricter, more direct metric over more checks (104 vs the parent's 32).
 
 | Model | Score | Correct/Total | ~Wall time | Notes |
 |-------|-------|---------------|-----------|-------|
-| `mistral:latest` | **99.0%** | 103/104 | ~17 min | Best. Only the universal `anaphoric_deep` miss. |
-| `qwen3:8b` | **98.1%** | 102/104 | ~12 min | `anaphoric_deep` + `math_sequence` continuation. |
-| `llama3.1:8b` (default) | 94.2% | 98/104 | ~21 min | 4 soft continuation/farewell + **NER missed CRITICAL credential PII** (safety gate not triggered). |
+| `mistral:latest` **(default)** | **99.0%** | 103/104 | ~17 min | Best. Only the universal `anaphoric_deep` miss. |
+| `qwen3:8b` (recommended alt) | **98.1%** | 102/104 | ~12 min | `anaphoric_deep` + `math_sequence` continuation. |
+| `llama3.1:8b` | 94.2% | 98/104 | ~21 min | 4 soft continuation/farewell + **NER missed CRITICAL credential PII** (safety gate not triggered). |
 | `qwen2.5:7b-instruct` | 93.3% | 97/104 | ~14 min | Soft farewell→COMPLETED and continuation misses. |
 | `phi3:mini` | 77.9% | 81/104 | ~15 min | Small model; weakest NER goal extraction. |
 | `qwen3.5:4b` | ⚠ **ERROR** | 0/0 (14 errors) | ~1 min | NOUMENO returns empty output → `StageParseError`. Model incompatible with the harness `format="json"` (likely thinking-only output stripped to empty). Not an ID bug. |

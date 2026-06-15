@@ -1,8 +1,9 @@
 """
 NER integration suite — real LLM (Ollama), the critical-layer quality bar.
 
-Baseline model: env COGNO_NER_MODEL (default llama3.1:8b). Auto-skips if Ollama
-is unavailable. Language is forced to pt-BR (host/tenant-provided).
+Baseline model: env COGNO_NER_MODEL (default mistral:latest; qwen3:8b is the
+recommended alternative). Auto-skips if Ollama is unavailable. Language is forced
+to pt-BR (host/tenant-provided).
 
 Two tiers, by design:
   • STRICT tests assert what the baseline reliably produces (intent_class,
@@ -31,7 +32,7 @@ from cogno_core.stages.ner import (
 )
 from cogno_core.security.pii import PII_RISK_LEVELS
 
-MODEL = os.environ.get("COGNO_NER_MODEL", "llama3.1:8b")
+MODEL = os.environ.get("COGNO_NER_MODEL", "mistral:latest")
 LANGUAGE = "pt-BR"
 
 
@@ -156,7 +157,8 @@ def test_structural_validity(ner, text):
 #  NUANCED — model-dependent; exercised but not fatal on the baseline
 # ════════════════════════════════════════════════════════════════════════
 
-@pytest.mark.xfail(reason="model-dependent; baseline (llama3.1:8b) is unreliable here", strict=False)
+@pytest.mark.xfail(reason="model-dependent; smaller baselines are unreliable here "
+                          "(strict=False → xpass tolerated on stronger models)", strict=False)
 @pytest.mark.parametrize("text, field, expected", [
     # sentiment subtleties
     ("isso não funciona, já tentei 3 vezes e continua errado", "sentiment", "FRUSTRATED"),

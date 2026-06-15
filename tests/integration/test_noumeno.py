@@ -36,7 +36,7 @@ async def is_ollama_available() -> bool:
 
 def _make_real_noumeno() -> tuple[Noumeno, OllamaBackend]:
     # Using temperature=0.0 to prevent hallucinations and make integration tests deterministic
-    llm = OllamaBackend(model="llama3.1:8b", temperature=0.0)
+    llm = OllamaBackend(model="mistral:latest", temperature=0.0)
     embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text:latest"))
     noumeno = Noumeno(embedder=embedder, prompts_dir=PROMPTS_DIR, slangs=SLANGS)
     return noumeno, llm
@@ -431,7 +431,7 @@ async def test_noumeno_anaphoric_reference_resolution(case):
         pytest.skip("Local Ollama server (http://localhost:11434) is not running.")
 
     # Using subject_threshold=0.40 to handle cross-lingual (PT input vs EN history) similarity
-    llm = OllamaBackend(model="llama3.1:8b", temperature=0.0)
+    llm = OllamaBackend(model="mistral:latest", temperature=0.0)
     embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text:latest"))
     noumeno = Noumeno(embedder=embedder, prompts_dir=PROMPTS_DIR, slangs=SLANGS, subject_threshold=0.40)
     spy_llm = SpyLLM(llm)

@@ -76,8 +76,9 @@ def main(argv: list[str] | None = None) -> int:
         prog="cognobench",
         description="Cognitive benchmark for cogno-core (NOUMENO → NER → ID → Drift)",
     )
-    parser.add_argument("--model", "-m", default="llama3.1:8b",
-                        help="Ollama model for NOUMENO/NER (default: llama3.1:8b)")
+    parser.add_argument("--model", "-m", default="mistral:latest",
+                        help="Ollama model for NOUMENO/NER (default: mistral:latest; "
+                             "qwen3:8b is the recommended alternative)")
     parser.add_argument("--embed-model", default="nomic-embed-text",
                         help="Ollama embedding model (default: nomic-embed-text)")
     parser.add_argument("--base-url", default="http://localhost:11434",
