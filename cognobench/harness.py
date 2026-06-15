@@ -49,9 +49,19 @@ class CognitivePipeline:
         history: Optional[list[str]] = None,
         force_language: Optional[str] = None,
         stop_after: str = "drift",
+        metadata: Optional[dict] = None,
     ) -> PipelineContext:
-        """Run the reference pipeline up to `stop_after` ('noumeno'|'ner'|'id'|'drift')."""
+        """Run the reference pipeline up to `stop_after` ('noumeno'|'ner'|'id'|'drift').
+
+        `metadata` seeds `ctx.metadata` before the run — used by the multi-turn ID
+        dimension to carry `id_state` and NER carry-over (`last_goal`,
+        `active_domains`, `turn_number`) across turns. History seeding (the
+        subject-continuity anchor) is applied on top.
+        """
         ctx = PipelineContext(user_input=user_input, force_language=force_language)
+
+        if metadata:
+            ctx.metadata.update(metadata)
 
         # Seed multi-turn memory from history (cheap: use raw last turn as the
         # subject-continuity anchor; embeddings work on raw text).

@@ -26,18 +26,19 @@ python3 -m pytest tests/unit/test_noumeno.py::TestNoumenoStage::test_metrics_pop
 # auto-skip if Ollama is unavailable)
 python3 -m pytest tests/integration
 
-# Cognitive benchmark (CognoBench) — scores NOUMENO/NER/Drift quality
+# Cognitive benchmark (CognoBench) — scores NOUMENO/NER/ID/Drift quality
 python3 cognobench.py                    # full run vs local Ollama
 python3 cognobench.py --only ner --limit 3   # one dimension, few cases
+python3 cognobench.py --only id              # multi-turn goal continuity + routing
 python3 cognobench.py --stub --limit 3       # fast plumbing smoke (no model)
-python3 cognobench.py --calibrate --only drift   # record drift actuals
+python3 cognobench.py --calibrate --only drift id   # record drift/goal_status actuals
 ```
 
 Integration tests use real models (`llama3.1:8b`, `nomic-embed-text:latest`) via Ollama and are written to be deterministic (`temperature=0.0`).
 
 ### CognoBench (`cognobench/`)
 
-A self-contained, dependency-light cognitive benchmark for the implemented stages (NOUMENO → NER → Drift), kept **decoupled** from the library: the harness (`cognobench/harness.py`) drives the stages directly via dependency injection (any `LLMBackend` + `Embedder`), with no `PipelineRunner`/infra. Curated cases live in `cognobench/{ner,drift,noumeno}_cases.py` (ported from the parent Cogno SaaS bench). It is **not** shipped in the library wheel (`packages.find` includes only `cogno_core*`). A stub-mode smoke test (`tests/unit/test_cognobench_smoke.py`) guards the plumbing in CI without needing Ollama. Drift numeric bands are **soft/recalibratable** — the parent's bands were calibrated against a heuristic drift model, but cogno-core's drift is embedding-based and pure, so only the hard invariants (valid action, cumulative ∈ [0,1]) are enforced; use `--calibrate` to record actuals. ID/EGO/SUPEREGO dimensions will be added as those stages land.
+A self-contained, dependency-light cognitive benchmark for the implemented stages (NOUMENO → NER → ID → Drift), kept **decoupled** from the library: the harness (`cognobench/harness.py`) drives the stages directly via dependency injection (any `LLMBackend` + `Embedder`), with no `PipelineRunner`/infra. Curated cases live in `cognobench/{ner,drift,noumeno,id}_cases.py` (ported from the parent Cogno SaaS bench). It is **not** shipped in the library wheel (`packages.find` includes only `cogno_core*`). A stub-mode smoke test (`tests/unit/test_cognobench_smoke.py`) guards the plumbing in CI without needing Ollama. Drift numeric bands are **soft/recalibratable** — the parent's bands were calibrated against a heuristic drift model, but cogno-core's drift is embedding-based and pure, so only the hard invariants (valid action, cumulative ∈ [0,1]) are enforced; use `--calibrate` to record actuals. The **ID dimension is multi-turn** (`run_id` threads `id_state` + NER carry-over across a case's turns) and scores `goal_status` directly off `IdResult` (the parent inferred it indirectly from the EGO skill) — lifecycle `created/continued/changed/completed` ↔ `NEW/ONGOING/COMPLETED/ABANDONED`; `goal_status` is **soft** (NER+embedding dependent, `--calibrate`able), with hard invariants (valid goal_status/route) and deterministic `expect_route`/`expect_blocked` checks. EGO/SUPEREGO dimensions will be added as those stages land.
 
 ## Architecture
 
