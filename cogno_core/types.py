@@ -224,6 +224,87 @@ class IdResult(BaseModel):
     metrics: StageMetrics
 
 
+class ToolResult(BaseModel):
+    """What the host's ``ToolDispatcher.execute`` returns for one tool call.
+
+    The EGO consumes this and records it into the trace; it never inspects the
+    DB/MCP itself (execution is delegated — "EGO = brain, dispatcher = hands").
+
+    - ``ok=False`` is a *recoverable* failure (bad args, business rejection): the
+      EGO feeds ``error`` back into the loop so the model can self-correct. The
+      host catches arg/validation exceptions and surfaces them this way.
+    - A *fatal* failure (infra) is signalled by raising ``MCPDispatchError`` from
+      ``execute`` instead, never by this model.
+    - ``returns_raw_json``/``compensating_tool`` deliberately do NOT exist: the
+      EGO does not voice (the SUPEREGO does), and rollback/compensation is
+      host-internal. ``side_effect`` is kept only for the turn's DB record.
+    """
+    output: str                          # tool result (text or JSON string)
+    ok: bool = True                      # False = recoverable failure → fed back
+    error: Optional[str] = None
+    side_effect: bool = False            # host hint for the turn record (core does not act on it)
+
+
+class ToolExecution(BaseModel):
+    """One tool call + its result, as recorded in the EGO trace."""
+    tool: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    result: str = ""                     # = ToolResult.output ("" when the call was blocked)
+    ok: bool = True
+    error: Optional[str] = None
+    side_effect: bool = False
+
+
+class EgoStep(BaseModel):
+    """One iteration of the EGO agent loop = the source of truth for EgoResult."""
+    index: int
+    path: str                            # "native" | "fallback"
+    assistant_text: str = ""             # text the model emitted this step
+    tool_calls: list[ToolExecution] = Field(default_factory=list)
+    tokens_in: int = 0
+    tokens_out: int = 0
+
+
+class EgoResult(BaseModel):
+    """Output of the EGO stage (Stage 4) — the EXECUTOR contract.
+
+    The EGO executes the task (decides + runs tools, gathers data); it does NOT
+    write the user-facing reply — the SUPEREGO does that, voicing in the active
+    persona. So there is no ``response``/``response_source`` here: the EGO hands
+    forward the ``tools_executed`` data + a ``draft`` (the model's last text) as
+    raw material for the SUPEREGO.
+
+    ``steps`` is the single source of truth; ``tools_executed``/``draft``/
+    ``has_side_effects`` are derived. Counts (``len(steps)``, ``len(tools_executed)``,
+    ``attempt``) are first-class so the host can persist them to its DB.
+    """
+
+    steps: list[EgoStep] = Field(default_factory=list)
+
+    # Signals (not exceptions): the loop stopped early on a budget/convergence bound.
+    interrupted: bool = False
+    interrupt_reason: Optional[str] = None   # "max_steps" | "duplicate_calls"
+
+    attempt: int = 1                         # echoed from ctx.metadata["ego_correction"]
+    persona: Optional[str] = None            # opaque host label (trace/billing)
+
+    metrics: StageMetrics
+
+    @property
+    def tools_executed(self) -> list[ToolExecution]:
+        """Flatten of every tool call across steps (host/SUPEREGO/idempotency)."""
+        return [t for s in self.steps for t in s.tool_calls]
+
+    @property
+    def draft(self) -> str:
+        """The model's final text — the SUPEREGO's raw material, NOT the user reply."""
+        return self.steps[-1].assistant_text if self.steps else ""
+
+    @property
+    def has_side_effects(self) -> bool:
+        return any(t.side_effect for t in self.tools_executed)
+
+
 class PipelineContext(BaseModel):
     """Carrier object that flows through the entire pipeline carrying intermediate results."""
     user_input: str
@@ -233,6 +314,7 @@ class PipelineContext(BaseModel):
     noumeno: Optional[NoumenoResult] = None
     intent: Optional[IntentResult] = None
     id_result: Optional[IdResult] = None
+    ego_result: Optional[EgoResult] = None
     drift: Optional[DriftMetrics] = None
     
     # Custom metadata for the host to pass/read business or infra context
@@ -257,8 +339,12 @@ class PipelineContext(BaseModel):
         return self.id_result.metrics if self.id_result else None
 
     @property
+    def ego_metrics(self) -> Optional[StageMetrics]:
+        return self.ego_result.metrics if self.ego_result else None
+
+    @property
     def stage_metrics(self) -> list[StageMetrics]:
-        base = [self.noumeno_metrics, self.ner_metrics, self.id_metrics]
+        base = [self.noumeno_metrics, self.ner_metrics, self.id_metrics, self.ego_metrics]
         return [m for m in base if m is not None] + self.retry_metrics
 
     @property

@@ -29,3 +29,34 @@ class StageParseError(CognoError, ValueError):
         super().__init__(
             f"{stage}: could not parse LLM JSON response ({original}); got: {preview!r}"
         )
+
+
+class ToolExecutionError(CognoError):
+    """A tool failed during EGO execution in a way the loop cannot recover from.
+
+    Raised by the EGO when an *unexpected* exception escapes the host's
+    ``ToolDispatcher.execute`` — i.e. one the host did not classify as a
+    recoverable business/validation failure (those are returned as
+    ``ToolResult(ok=False, error=...)`` and fed back to the model instead).
+    The EGO never guesses recoverability: anything that escapes is wrapped here
+    and propagated so the host decides (retry, swap, abort). Carries the tool
+    name + arguments and chains the original exception as ``__cause__``.
+    """
+
+    def __init__(self, tool: str, arguments: dict, original: Exception) -> None:
+        self.tool = tool
+        self.arguments = arguments
+        self.original = original
+        super().__init__(f"tool {tool!r} failed: {original}")
+        self.__cause__ = original
+
+
+class MCPDispatchError(ToolExecutionError):
+    """The dispatcher could not dispatch the tool — infrastructure failure
+    (MCP server down, connection refused, auth rejected, timeout).
+
+    A *deliberate fatal* signal the host raises from ``execute``: retrying with
+    different arguments is pointless, so the EGO propagates it instead of
+    feeding it back (a model cannot fix a dead connection, and pushing it to
+    "complete the task" risks hallucinated success).
+    """
