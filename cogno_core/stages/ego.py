@@ -90,7 +90,7 @@ class EgoStage:
         max_steps = int(ctx.metadata.get("ego_max_steps", self.MAX_STEPS_DEFAULT))
         force_first = ctx.intent.intent_class == "ACTION_REQUEST"
 
-        system = self._build_system(ctx, system_prompt, use_native)
+        system = self._build_system(ctx, system_prompt, use_native, tools)
         task = ctx.noumeno.rewritten or ctx.user_input
 
         # Native keeps an OpenAI-format message list; fallback grows a text prompt.
@@ -202,9 +202,16 @@ class EgoStage:
 
     # ── prompt assembly ──────────────────────────────────────────────
 
-    def _build_system(self, ctx: PipelineContext, system_prompt: str, native: bool) -> str:
+    def _build_system(
+        self, ctx: PipelineContext, system_prompt: str, native: bool, tools: list[dict],
+    ) -> str:
         """[host persona-exec] + [task ctx] + [host injected text] +
-        [ACTIONS ALREADY EXECUTED] + [tool mechanics — fallback only]."""
+        [ACTIONS ALREADY EXECUTED] + [tool list + mechanics — fallback only].
+
+        On native FC the tool schemas travel via the API, so they are NOT
+        rendered into the prompt; on the fallback path the model can only see
+        tools that are written here, so they (and the <TOOL_CALL> format) are.
+        """
         parts: list[str] = [system_prompt.strip()]
 
         task_ctx = self._task_context(ctx)
@@ -220,9 +227,26 @@ class EgoStage:
             parts.append(actions)
 
         if not native:
+            rendered = self._render_tools(tools)
+            if rendered:
+                parts.append(rendered)
             parts.append(_TOOL_MECHANICS)
 
         return "\n\n".join(p for p in parts if p)
+
+    @staticmethod
+    def _render_tools(tools: list[dict]) -> str:
+        if not tools:
+            return ""
+        lines = ["# Available tools"]
+        for t in tools:
+            fn = t.get("function", {})
+            name = fn.get("name", "")
+            desc = fn.get("description", "") or ""
+            props = fn.get("parameters", {}).get("properties", {})
+            sig = ", ".join(props.keys())
+            lines.append(f"- {name}({sig}): {desc}")
+        return "\n".join(lines)
 
     def _task_context(self, ctx: PipelineContext) -> str:
         intent = ctx.intent

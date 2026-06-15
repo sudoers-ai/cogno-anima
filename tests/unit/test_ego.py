@@ -33,6 +33,7 @@ class ScriptedToolCallingBackend:
         self.calls = []
 
     async def generate(self, system, prompt):
+        self.calls.append({"system": system, "prompt": prompt})
         turn = self.turns.pop(0)
         text = turn.get("content", "") or ""
         for tc in turn.get("tool_calls", []):
@@ -159,6 +160,26 @@ async def test_fallback_path_when_native_disabled():
     assert [t.tool for t in res.tools_executed] == ["add_income"]
     assert res.draft == "Recorded."
     assert disp.executed == [("add_income", {"amount": 40})]
+
+
+@pytest.mark.asyncio
+async def test_fallback_prompt_lists_tools_and_mechanics():
+    backend = ScriptedToolCallingBackend([{"content": "done"}], native=False)
+    disp = StubDispatcher.with_tools("add_income", "get_summary")
+    await EgoStage().process(_ctx(), backend, disp, system_prompt=SYS)
+    system = backend.calls[0]["system"]
+    assert "# Available tools" in system
+    assert "add_income" in system and "get_summary" in system
+    assert "<TOOL_CALL>" in system           # mechanics block present on fallback
+
+
+@pytest.mark.asyncio
+async def test_native_prompt_omits_tool_mechanics():
+    backend = ScriptedToolCallingBackend([{"content": "done"}])   # native
+    disp = StubDispatcher.with_tools("add_income")
+    await EgoStage().process(_ctx(), backend, disp, system_prompt=SYS)
+    system = backend.calls[0]["messages"][0]["content"]
+    assert "<TOOL_CALL>" not in system       # API carries tool format on native FC
 
 
 @pytest.mark.asyncio
