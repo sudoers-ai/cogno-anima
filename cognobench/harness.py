@@ -14,9 +14,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from cogno_core.llm import LLMBackend, Embedder, OllamaBackend, OllamaEmbedder
+from cogno_core.llm import LLMBackend, Embedder, OllamaBackend, OllamaEmbedder, CachingEmbedder
 from cogno_core.stages.noumeno import Noumeno
 from cogno_core.stages.ner import IntentAnalyzer
+from cogno_core.stages.id import IDStage
 from cogno_core.stages.drift import DriftCalculator
 from cogno_core.types import PipelineContext
 
@@ -39,6 +40,7 @@ class CognitivePipeline:
         self._embedder = embedder
         self._noumeno = Noumeno(embedder=embedder, prompts_dir=PROMPTS_DIR, slangs=SLANGS)
         self._ner = IntentAnalyzer(prompts_dir=PROMPTS_DIR)
+        self._id = IDStage()
         self._drift = DriftCalculator()
 
     async def run(
@@ -47,9 +49,19 @@ class CognitivePipeline:
         history: Optional[list[str]] = None,
         force_language: Optional[str] = None,
         stop_after: str = "drift",
+        metadata: Optional[dict] = None,
     ) -> PipelineContext:
-        """Run the reference pipeline up to `stop_after` ('noumeno'|'ner'|'drift')."""
+        """Run the reference pipeline up to `stop_after` ('noumeno'|'ner'|'id'|'drift').
+
+        `metadata` seeds `ctx.metadata` before the run — used by the multi-turn ID
+        dimension to carry `id_state` and NER carry-over (`last_goal`,
+        `active_domains`, `turn_number`) across turns. History seeding (the
+        subject-continuity anchor) is applied on top.
+        """
         ctx = PipelineContext(user_input=user_input, force_language=force_language)
+
+        if metadata:
+            ctx.metadata.update(metadata)
 
         # Seed multi-turn memory from history (cheap: use raw last turn as the
         # subject-continuity anchor; embeddings work on raw text).
@@ -63,6 +75,12 @@ class CognitivePipeline:
 
         ctx = await self._ner.process(ctx, self._backend)
         if stop_after == "ner":
+            return ctx
+
+        if stop_after == "id":
+            # The ID stage seeds drift (epistemological + ontological) if absent,
+            # then adds situational → cumulative → goal-aware downgrade.
+            ctx = await self._id.process(ctx, self._embedder)
             return ctx
 
         drift = self._drift.compute(ctx.noumeno, ctx.intent)
@@ -81,9 +99,9 @@ def build_ollama(
     embed_model: str = "nomic-embed-text",
     base_url: str = "http://localhost:11434",
 ) -> tuple[LLMBackend, Embedder]:
-    """Real Ollama backend + embedder (temperature 0 for determinism)."""
-    backend = OllamaBackend(model=model, base_url=base_url, temperature=0.0)
-    embedder = OllamaEmbedder(model=embed_model, base_url=base_url)
+    """Real Ollama backend + embedder (temperature 0, JSON-constrained output)."""
+    backend = OllamaBackend(model=model, base_url=base_url, temperature=0.0, format="json")
+    embedder = CachingEmbedder(OllamaEmbedder(model=embed_model, base_url=base_url))
     return backend, embedder
 
 

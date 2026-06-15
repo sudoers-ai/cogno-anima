@@ -1,16 +1,14 @@
+from cogno_core.errors import StageParseError
 import pytest
 import json
 from pathlib import Path
 from pydantic import ValidationError
 
-from cogno_core.types import PipelineContext, NoumenoResult, IntentResult
+from cogno_core.types import NoumenoResult, IntentResult
 from cogno_core.stages.ner import (
     IntentAnalyzer,
-    VALID_INTENTS,
-    VALID_SENTIMENTS,
     NER_KNOWLEDGE_DOMAINS,
 )
-from cogno_core.security.pii import normalize_pii_types, compute_pii_risk
 from tests.conftest import StubBackend
 
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
@@ -87,9 +85,10 @@ async def test_perfect_payload():
     """1. Extração estruturada com payload JSON perfeito."""
     backend = StubBackend(response=json.dumps(PERFECT_JSON))
     analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
-    noumeno = make_noumeno_result()
+    # Original mentions São Paulo so the (grounded) location survives.
+    noumeno = make_noumeno_result(original="Olá, quero lavar meu carro em São Paulo")
     result = await analyzer.analyze(noumeno)
-    
+
     assert result.intent_class == "ACTION_REQUEST"
     assert result.entities_pronouns == ["he"]
     assert result.entities_possessives == ["my"]
@@ -239,7 +238,7 @@ async def test_json_decode_error():
     """11. Propagação estrita de json.JSONDecodeError."""
     backend = StubBackend(response="invalid json response")
     analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
-    with pytest.raises(json.JSONDecodeError):
+    with pytest.raises(StageParseError):
         await analyzer.analyze(make_noumeno_result())
 
 
@@ -317,3 +316,173 @@ def test_validation_error():
     """17. Propagação de ValidationError se Pydantic falhar."""
     with pytest.raises(ValidationError):
         IntentResult(intent_class=123, sentiment=456)
+
+
+@pytest.mark.asyncio
+async def test_is_sequential_requires_composite():
+    """18. is_sequential=True com is_composite=False é reconciliado para False."""
+    payload = PERFECT_JSON.copy()
+    payload["is_composite"] = False
+    payload["is_sequential"] = True
+    backend = StubBackend(response=json.dumps(payload))
+    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
+    result = await analyzer.analyze(make_noumeno_result())
+    assert result.is_composite is False
+    assert result.is_sequential is False   # reconciled
+
+    # When composite, sequential is preserved.
+    payload["is_composite"] = True
+    payload["is_sequential"] = True
+    backend2 = StubBackend(response=json.dumps(payload))
+    analyzer2 = IntentAnalyzer(backend=backend2, prompts_dir=PROMPTS_DIR)
+    result2 = await analyzer2.analyze(make_noumeno_result())
+    assert result2.is_composite is True
+    assert result2.is_sequential is True
+
+
+@pytest.mark.asyncio
+async def test_aristotelian_description_capped_preserving_tag():
+    """19. A descrição aristotélica é limitada a 40 chars sem cortar a TAG."""
+    payload = PERFECT_JSON.copy()
+    payload["aristotelian"] = {"ACTION": "WASH_CAR | " + "d" * 100}
+    backend = StubBackend(response=json.dumps(payload))
+    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
+    result = await analyzer.analyze(make_noumeno_result())
+    assert result.aristotelian["ACTION"] == "WASH_CAR | " + "d" * 40
+    assert result.aristo_tag("ACTION") == "WASH_CAR"   # tag intact
+
+
+@pytest.mark.asyncio
+async def test_entity_grounding_drops_hallucinated_people():
+    """20. Nome de pessoa que não aparece no ORIGINAL é descartado (anti-alucinação)."""
+    payload = PERFECT_JSON.copy()
+    payload["entities"] = dict(PERFECT_JSON["entities"])
+    payload["entities"]["people"] = ["Copernicus", "Napoleon"]
+    backend = StubBackend(response=json.dumps(payload))
+    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
+    noumeno = make_noumeno_result(original="what did copernicus do in 1543")
+    result = await analyzer.analyze(noumeno)
+    assert "Copernicus" in result.entities_people
+    assert "Napoleon" not in result.entities_people
+
+
+@pytest.mark.asyncio
+async def test_entity_grounding_drops_hallucinated_location():
+    """21. Location que não aparece no ORIGINAL vira None."""
+    payload = PERFECT_JSON.copy()
+    payload["location"] = "Tokyo"
+    backend = StubBackend(response=json.dumps(payload))
+    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
+    result = await analyzer.analyze(make_noumeno_result(original="qual a previsão do tempo amanhã?"))
+    assert result.location is None
+
+
+@pytest.mark.asyncio
+async def test_entity_grounding_keeps_real_objects_and_concepts():
+    """22. Grounding NÃO toca objects/concepts (podem ser traduzidos/derivados)."""
+    payload = PERFECT_JSON.copy()
+    payload["entities"] = dict(PERFECT_JSON["entities"])
+    payload["entities"]["objects"] = ["car"]          # translated from 'carro'
+    payload["entities"]["concepts"] = ["car washing"]  # derived concept
+    backend = StubBackend(response=json.dumps(payload))
+    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
+    result = await analyzer.analyze(make_noumeno_result(original="quero lavar meu carro"))
+    assert result.entities_objects == ["car"]
+    assert result.entities_concepts == ["car washing"]
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  P1: coercion / sanitization branches (the "never trust the LLM" paths)
+# ════════════════════════════════════════════════════════════════════════
+
+async def _analyze(payload: dict, **noumeno_kw):
+    backend = StubBackend(response=json.dumps(payload))
+    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
+    return await analyzer.analyze(make_noumeno_result(**noumeno_kw))
+
+
+@pytest.mark.asyncio
+async def test_invalid_enums_fall_back_to_defaults():
+    """Out-of-vocabulary enum values are coerced to their safe defaults."""
+    payload = PERFECT_JSON.copy()
+    payload.update(sentiment="ECSTATIC", temporal_class="YESTERDAY", triad_signal="HYPER")
+    result = await _analyze(payload)
+    assert result.sentiment == "NEUTRAL"
+    assert result.temporal_class == "TIMELESS"
+    assert result.triad_signal == "BALANCED"
+
+
+@pytest.mark.asyncio
+async def test_optional_enums_invalid_become_none():
+    """modality/speech_act/parole outside the vocabulary become None (not coerced)."""
+    payload = PERFECT_JSON.copy()
+    payload.update(modality="VERYSURE", speech_act="SHOUTING", parole="ROBOTIC")
+    result = await _analyze(payload)
+    assert result.modality is None
+    assert result.speech_act is None
+    assert result.parole is None
+
+
+@pytest.mark.asyncio
+async def test_confidence_is_clamped_and_safe():
+    payload = PERFECT_JSON.copy()
+    payload["confidence"] = 5.0
+    assert (await _analyze(payload)).confidence == 1.0
+    payload["confidence"] = -2.0
+    assert (await _analyze(payload)).confidence == 0.0
+    payload["confidence"] = "not-a-number"
+    assert (await _analyze(payload)).confidence == 0.5   # safe default
+
+
+@pytest.mark.asyncio
+async def test_list_fields_are_capped():
+    payload = PERFECT_JSON.copy()
+    payload["verbs"] = [f"verb{i}" for i in range(9)]                 # cap 5
+    payload["mandatory_tags"] = ["SYSTEM", "ANALYSIS", "MATH", "CREATIVE"]  # cap 3
+    payload["negation"] = [f"neg{i}" for i in range(8)]              # cap 4
+    result = await _analyze(payload)
+    assert len(result.verbs) == 5
+    assert len(result.mandatory_tags) == 3
+    assert len(result.negation) == 4
+
+
+@pytest.mark.asyncio
+async def test_goal_is_truncated():
+    payload = PERFECT_JSON.copy()
+    payload["goal"] = "g" * 200
+    result = await _analyze(payload)
+    assert len(result.goal) == 80
+
+
+@pytest.mark.asyncio
+async def test_context_dependent_accepts_string_boolean():
+    payload = PERFECT_JSON.copy()
+    payload["context_dependent"] = "true"
+    assert (await _analyze(payload)).context_dependent is True
+    payload["context_dependent"] = "nope"
+    assert (await _analyze(payload)).context_dependent is False
+
+
+@pytest.mark.asyncio
+async def test_raw_intent_class_invalid_becomes_none():
+    payload = PERFECT_JSON.copy()
+    payload["raw_intent_class"] = "GIBBERISH"
+    assert (await _analyze(payload)).raw_intent_class is None
+
+
+@pytest.mark.asyncio
+async def test_intent_class_falls_back_to_raw_when_unknown():
+    """UNKNOWN intent_class is recovered from a valid raw_intent_class."""
+    payload = PERFECT_JSON.copy()
+    payload["intent_class"] = "UNKNOWN"
+    payload["mandatory_tags"] = ["LINGUISTIC"]   # no MATH/SYSTEM/CREATIVE/ANALYSIS coercion
+    payload["raw_intent_class"] = "SOCIAL"
+    assert (await _analyze(payload)).intent_class == "SOCIAL"
+
+
+@pytest.mark.asyncio
+async def test_empty_mandatory_tags_defaults_to_unknown_tag():
+    payload = PERFECT_JSON.copy()
+    payload["mandatory_tags"] = ["NONSENSE_TAG"]   # filtered out → none valid
+    result = await _analyze(payload)
+    assert result.mandatory_tags == ["NER.UNKNOWN"]

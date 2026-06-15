@@ -14,6 +14,8 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23.0",
+    "ruff>=0.5",
+    "mypy>=1.8",
 ]
 
 [build-system]
@@ -30,3 +32,21 @@ include = ["cogno_core*"]
 # (which is only present transitively via httpx).
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+# Default ruleset (pyflakes + core pycodestyle). Kept lean on purpose — the
+# CI gate should catch real defects (unused imports, undefined names, syntax),
+# not enforce cosmetic style churn.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true   # langdetect/httpx ship partial or no stubs
+# Type-check the library only; the prompt-driven parsing has many dynamic
+# `data.get(...)` accesses, so we keep this pragmatic rather than strict.
+files = ["cogno_core"]
+warn_unused_ignores = true

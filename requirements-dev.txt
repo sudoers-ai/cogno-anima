@@ -1,0 +1,21 @@
+# Pinned dev/CI environment for reproducible runs (a lightweight lockfile).
+# Runtime deps are declared with ranges in pyproject.toml; this pins the exact
+# versions the test/lint/type-check suite is known-good against.
+#
+# Regenerate after a deliberate upgrade:  pip install -e ".[dev]" && pip freeze
+#
+# Install:  pip install -r requirements-dev.txt -e .
+
+# Runtime
+pydantic==2.11.7
+langdetect==1.0.9
+httpx==0.28.1
+
+# Test / lint / type-check
+pytest==9.0.2
+pytest-asyncio==1.3.0
+ruff==0.15.10
+mypy==1.20.0
+
+# Transitive (pinned for determinism)
+anyio==4.9.0

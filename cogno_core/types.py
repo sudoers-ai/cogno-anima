@@ -8,13 +8,19 @@ class StageMetrics(BaseModel):
     """Telemetry captured during execution of one LLM call or stage."""
     stage: str
     elapsed_ms: float
-    tokens_in: int
-    tokens_out: int
+    tokens_in: int             # prompt tokens consumed by the LLM generate call
+    tokens_out: int            # completion tokens produced by the LLM generate call
+    # Embedding telemetry for stages that call an Embedder (e.g. NOUMENO's
+    # subject-continuity + drift similarity). Kept separate from the generate
+    # tokens so LLM vs embedding cost stay distinguishable, but folded into
+    # `tokens_total` so the stage's true token cost is a single number.
+    embedding_tokens: int = 0  # tokens consumed by embedding calls (0 if cached/unreported)
+    embedding_calls: int = 0   # number of embed() operations performed
     tokens_total: int = 0
     model: str
 
     def model_post_init(self, __context: Any) -> None:
-        self.tokens_total = self.tokens_in + self.tokens_out
+        self.tokens_total = self.tokens_in + self.tokens_out + self.embedding_tokens
 
 
 class NoumenoResult(BaseModel):
@@ -133,26 +139,20 @@ class IntentResult(BaseModel):
 class DriftMetrics(BaseModel):
     """Métricas de desvio semântico/epistemológico do pipeline."""
     # Stage 1: Epistemological drift (NOUMENO → NER)
-    intent_changed: bool
-    sentiment_changed: bool
-    temporal_changed: bool
     word_count_original: int
     word_count_noumeno: int
     compression_ratio: float
     aristotelian_coverage: int
     drift_score: float
 
-    # Stage 2: Ontological drift
-    ontological_drift: float = 0.0
-
-    # Stage 3: Situational drift (goal similarity)
-    situational_drift: float = 0.0
-
-    # Stage 4: Execution drift (planned vs actual)
-    execution_drift: float = 0.0
-
-    # Stage 5: Synthesis drift (tool output vs final response)
-    synthesis_drift: float = 0.0
+    # Stages 2–5 drift. None = "stage not computed yet" (distinct from 0.0 =
+    # "computed, no drift"). compute_cumulative renormalizes over the stages
+    # actually populated, so cumulative is on a full [0,1] scale at any point in
+    # the pipeline build-out — not deflated by the stages that don't exist yet.
+    ontological_drift: Optional[float] = None   # Stage 2 (NER)
+    situational_drift: Optional[float] = None    # Stage 3 (ID)
+    execution_drift: Optional[float] = None      # Stage 4 (EGO)
+    synthesis_drift: Optional[float] = None       # Stage 5 (SUPEREGO)
 
     # Cumulative
     cumulative_drift: float = 0.0
@@ -185,6 +185,45 @@ class DriftMetrics(BaseModel):
         return tags
 
 
+class IdResult(BaseModel):
+    """Resultado da camada ID (Stage 3) — roteamento estratégico e continuidade.
+
+    A camada ID é 100% heurística (sem chamada de LLM): só usa o Embedder para a
+    similaridade de objetivo (quando o GoalManager chega ao estágio semântico).
+    `metrics.tokens_in`/`tokens_out` são 0; o custo de embedding aparece em
+    `metrics.embedding_tokens`/`embedding_calls`.
+    """
+
+    # ── Roteamento ────────────────────────────────────────
+    triad_route: str                # ID | EGO | SUPEREGO | BALANCED
+
+    # ── Continuidade de objetivo (GoalManager) ───────────
+    active_goal: Optional[str] = None
+    goal_status: str = "NEW"        # NEW | ONGOING | COMPLETED | ABANDONED
+    goal_similarity: float = 1.0    # similaridade que alimentou compute_situational
+
+    # ── Intenções (IntentionTracker / BDI) ───────────────
+    active_intentions: list[str] = Field(default_factory=list)
+
+    # ── Atenção (AttentionFilter) ─────────────────────────
+    attention_focus: list[str] = Field(default_factory=list)
+
+    # ── Gate de segurança ─────────────────────────────────
+    blocked: bool = False           # True quando pii_risk=CRITICAL → pular EGO
+    block_reason: Optional[str] = None
+
+    # ── Sinais cross-turn ─────────────────────────────────
+    turn_number: int = 1
+    # Temporal efetivo após stickiness. Gravado AQUI (não muta o IntentResult):
+    # o NER é stateless e não deve ser reescrito por uma etapa posterior.
+    temporal_class: Optional[str] = None
+    emotional_override: Optional[str] = None
+    complexity: str = "LOW"         # LOW | MEDIUM | HIGH | EXPERT (advisory)
+
+    # ── Telemetria ───────────────────────────────────────
+    metrics: StageMetrics
+
+
 class PipelineContext(BaseModel):
     """Carrier object that flows through the entire pipeline carrying intermediate results."""
     user_input: str
@@ -193,6 +232,7 @@ class PipelineContext(BaseModel):
     # Results populated by stages
     noumeno: Optional[NoumenoResult] = None
     intent: Optional[IntentResult] = None
+    id_result: Optional[IdResult] = None
     drift: Optional[DriftMetrics] = None
     
     # Custom metadata for the host to pass/read business or infra context
@@ -213,13 +253,28 @@ class PipelineContext(BaseModel):
         return self.intent.metrics if self.intent else None
 
     @property
+    def id_metrics(self) -> Optional[StageMetrics]:
+        return self.id_result.metrics if self.id_result else None
+
+    @property
     def stage_metrics(self) -> list[StageMetrics]:
-        base = [self.noumeno_metrics, self.ner_metrics]
+        base = [self.noumeno_metrics, self.ner_metrics, self.id_metrics]
         return [m for m in base if m is not None] + self.retry_metrics
 
     @property
     def total_tokens(self) -> int:
+        """Total tokens across all stages, including embedding tokens."""
         return sum(m.tokens_total for m in self.stage_metrics)
+
+    @property
+    def total_llm_tokens(self) -> int:
+        """LLM generate tokens only (prompt + completion), excluding embeddings."""
+        return sum(m.tokens_in + m.tokens_out for m in self.stage_metrics)
+
+    @property
+    def total_embedding_tokens(self) -> int:
+        """Tokens consumed by embedding calls across all stages."""
+        return sum(m.embedding_tokens for m in self.stage_metrics)
 
     @property
     def total_elapsed_ms(self) -> float:

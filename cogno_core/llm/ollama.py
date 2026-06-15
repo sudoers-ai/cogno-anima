@@ -25,6 +25,8 @@ class OllamaBackend(LLMBackend):
         temperature: Optional[float] = None,
         num_ctx: Optional[int] = 8192,
         max_tokens: Optional[int] = 4096,
+        format: Optional[str] = None,
+        think: bool = False,
     ) -> None:
         self.model = model
         self.base_url = base_url.rstrip("/")
@@ -32,6 +34,16 @@ class OllamaBackend(LLMBackend):
         self.temperature = temperature
         self.num_ctx = num_ctx
         self.max_tokens = max_tokens
+        # Structured decoding: set to "json" so Ollama constrains output to valid
+        # JSON (or a JSON schema). The NOUMENO/NER stages consume JSON, so a
+        # JSON-producing backend sharply reduces parse failures.
+        self.format = format
+        # Disable model "thinking" by default. Reasoning models (qwen3, deepseek,
+        # …) otherwise route their output to a separate `thinking` field and leave
+        # `response` EMPTY → the stages get "" and raise StageParseError. The
+        # cognitive stages want direct JSON, not chain-of-thought, so think=False
+        # is the right default; it is a harmless no-op on non-reasoning models.
+        self.think = think
         self._endpoint = f"{self.base_url}/api/generate"
 
     async def generate(self, system: str, prompt: str) -> tuple[str, int, int]:
@@ -41,6 +53,9 @@ class OllamaBackend(LLMBackend):
             "prompt": prompt,
             "stream": False,
         }
+        if self.format:
+            payload["format"] = self.format
+        payload["think"] = self.think
         options: dict = {}
         if self.temperature is not None:
             options["temperature"] = self.temperature
@@ -59,7 +74,10 @@ class OllamaBackend(LLMBackend):
         response.raise_for_status()
         data = response.json()
 
-        text = data.get("response", "")
+        # Prefer `response`; fall back to `thinking` so a reasoning model that
+        # (despite think=False) still emitted only to the thinking channel is
+        # salvaged instead of yielding an empty string.
+        text = data.get("response") or data.get("thinking") or ""
         tokens_in = data.get("prompt_eval_count", 0)
         tokens_out = data.get("eval_count", 0)
 
@@ -81,6 +99,13 @@ class OllamaBackend(LLMBackend):
 class OllamaEmbedder(Embedder):
     """
     Local embedding provider using Ollama's /api/embeddings endpoint.
+
+    This is a thin, stateless client. Caching is intentionally NOT done here —
+    wrap it in ``CachingEmbedder`` (cogno_core.llm.cache) to add a bounded LRU
+    cache and token accounting, so those concerns work for any backend, not
+    just Ollama::
+
+        embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text"))
     """
     def __init__(
         self,
@@ -91,15 +116,19 @@ class OllamaEmbedder(Embedder):
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        self._cache: dict[str, list[float]] = {}
 
     async def embed(self, text: str) -> list[float]:
-        if not text:
-            return []
+        vec, _ = await self.embed_with_usage(text)
+        return vec
 
-        key = text.strip().lower()
-        if key in self._cache:
-            return self._cache[key]
+    async def embed_with_usage(self, text: str) -> tuple[list[float], int]:
+        """Embed ``text`` and report ``(vector, prompt_tokens)``.
+
+        Ollama returns ``prompt_eval_count`` for embedding requests on recent
+        versions; older builds omit it, in which case tokens default to 0.
+        """
+        if not text:
+            return [], 0
 
         url = f"{self.base_url}/api/embeddings"
         payload = {"model": self.model, "prompt": text}
@@ -108,10 +137,15 @@ class OllamaEmbedder(Embedder):
         resp.raise_for_status()
         data = resp.json()
         embedding = data.get("embedding", [])
-        if embedding:
-            self._cache[key] = embedding
-        return embedding
+        tokens = int(data.get("prompt_eval_count", 0) or 0)
+        return embedding, tokens
 
     async def similarity(self, a: str, b: str) -> float:
-        vec_a, vec_b = await asyncio.gather(self.embed(a), self.embed(b))
-        return cosine_similarity(vec_a, vec_b)
+        sim, _ = await self.similarity_with_usage(a, b)
+        return sim
+
+    async def similarity_with_usage(self, a: str, b: str) -> tuple[float, int]:
+        (vec_a, tok_a), (vec_b, tok_b) = await asyncio.gather(
+            self.embed_with_usage(a), self.embed_with_usage(b)
+        )
+        return cosine_similarity(vec_a, vec_b), tok_a + tok_b

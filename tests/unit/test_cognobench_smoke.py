@@ -43,6 +43,19 @@ def test_stub_drift_hard_invariants_hold():
     assert all(c.correct for c in hard)
 
 
+def test_stub_id_multi_turn_runs_and_hard_invariants_hold():
+    """ID dimension runs multi-turn in stub mode; valid goal_status/route always hold."""
+    report = _run_stub(only=["id"], limit=3)
+    idd = next(d for d in report.dimensions if d.name == "id")
+    assert idd.errors == [], f"id raised: {idd.errors}"
+    hard = [c for c in idd.checks if c.field.endswith("_goal_status_valid")
+            or c.field.endswith("_route_valid")]
+    assert hard, "expected per-turn hard-invariant checks"
+    assert all(c.correct for c in hard)
+    # multi-turn cases produce checks for more than the first turn
+    assert any(c.field.startswith("t2_") for c in idd.checks)
+
+
 def test_report_to_dict_shape():
     report = _run_stub(only=["ner"], limit=1)
     d = report.to_dict()

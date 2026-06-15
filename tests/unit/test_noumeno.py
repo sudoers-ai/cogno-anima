@@ -1,3 +1,4 @@
+from cogno_core.errors import StageParseError
 import pytest
 from pathlib import Path
 from cogno_core.types import PipelineContext
@@ -195,6 +196,24 @@ class TestNoumenoStage:
         ctx = await noumeno.process(ctx, StubBackend())
         assert ctx.noumeno.language == "fr"
 
+    async def test_default_language_used_when_no_force(self, monkeypatch):
+        """default_language is used when the request has no force_language (langdetect NOT called)."""
+        def boom(text):
+            raise AssertionError("langdetect must not run when default_language is set")
+        monkeypatch.setattr("langdetect.detect", boom)
+
+        noumeno = Noumeno(embedder=StubEmbedder(), prompts_dir=PROMPTS_DIR, default_language="pt-BR")
+        ctx = PipelineContext(user_input="qualquer entrada")
+        ctx = await noumeno.process(ctx, StubBackend())
+        assert ctx.noumeno.language == "pt-BR"
+
+    async def test_force_language_overrides_default_language(self):
+        """Per-request force_language wins over the stage default_language (tenant precedence)."""
+        noumeno = Noumeno(embedder=StubEmbedder(), prompts_dir=PROMPTS_DIR, default_language="pt-BR")
+        ctx = PipelineContext(user_input="hello there", force_language="es")
+        ctx = await noumeno.process(ctx, StubBackend())
+        assert ctx.noumeno.language == "es"
+
     async def test_language_detection_failure_defaults_to_und(self, monkeypatch):
         """If langdetect raises, language defaults to 'und'."""
         import langdetect
@@ -368,28 +387,25 @@ class TestNoumenoStage:
 
     async def test_json_parse_fails_on_invalid_json(self):
         """If LLM returns invalid JSON, raise json.JSONDecodeError."""
-        import json
         noumeno = make_noumeno()
         ctx = PipelineContext(user_input="original")
-        with pytest.raises(json.JSONDecodeError):
+        with pytest.raises(StageParseError):
             await noumeno.process(ctx, StubBackend(
                 response='This is not JSON at all, just a plain text rewrite.'
             ))
 
     async def test_empty_llm_response_fails_parse(self):
         """If LLM returns empty string, raise json.JSONDecodeError."""
-        import json
         noumeno = make_noumeno()
         ctx = PipelineContext(user_input="original")
-        with pytest.raises(json.JSONDecodeError):
+        with pytest.raises(StageParseError):
             await noumeno.process(ctx, StubBackend(response=""))
 
     async def test_whitespace_only_response_fails_parse(self):
         """If LLM returns whitespace only, raise json.JSONDecodeError."""
-        import json
         noumeno = make_noumeno()
         ctx = PipelineContext(user_input="original")
-        with pytest.raises(json.JSONDecodeError):
+        with pytest.raises(StageParseError):
             await noumeno.process(ctx, StubBackend(response="   "))
 
     async def test_json_missing_rewritten_field(self):
@@ -448,6 +464,53 @@ class TestNoumenoStage:
         assert ctx.total_tokens == 15
         assert ctx.total_elapsed_ms > 0.0
         assert len(ctx.stage_metrics) == 1
+
+    async def test_embedding_tokens_captured_in_metrics(self):
+        """Embedding token cost (from similarity calls) is recorded in StageMetrics."""
+
+        class UsageEmbedder(StubEmbedder):
+            async def similarity_with_usage(self, a: str, b: str) -> tuple[float, int]:
+                return 0.9, 6   # 6 tokens per similarity call
+
+        noumeno = make_noumeno(embedder=UsageEmbedder())
+        ctx = PipelineContext(user_input="first turn")
+        # No history → exactly one similarity call (drift) → 6 tokens, 2 embeds.
+        ctx = await noumeno.process(ctx, StubBackend(tokens_in=10, tokens_out=5))
+
+        m = ctx.noumeno.metrics
+        assert m.embedding_tokens == 6
+        assert m.embedding_calls == 2
+        # tokens_total folds embeddings in: 10 + 5 + 6
+        assert m.tokens_total == 21
+        assert ctx.total_tokens == 21
+        assert ctx.total_llm_tokens == 15
+        assert ctx.total_embedding_tokens == 6
+
+    async def test_embedding_tokens_accumulate_across_similarity_calls(self):
+        """With history, both the subject-check and drift similarities are billed."""
+
+        class UsageEmbedder(StubEmbedder):
+            async def similarity_with_usage(self, a: str, b: str) -> tuple[float, int]:
+                return 0.95, 4
+
+        noumeno = make_noumeno(embedder=UsageEmbedder())
+        ctx = PipelineContext(user_input="follow up")
+        ctx.metadata["last_rewritten"] = "previous english query"
+        ctx = await noumeno.process(ctx, StubBackend(tokens_in=10, tokens_out=5))
+
+        m = ctx.noumeno.metrics
+        assert m.embedding_tokens == 8   # two similarity calls × 4
+        assert m.embedding_calls == 4
+
+    async def test_embedding_tokens_zero_for_plain_embedder(self):
+        """A plain Embedder (no usage method) reports 0 embedding tokens, no crash."""
+        noumeno = make_noumeno()   # StubEmbedder has no similarity_with_usage
+        ctx = PipelineContext(user_input="hello there")
+        ctx = await noumeno.process(ctx, StubBackend(tokens_in=10, tokens_out=5))
+        m = ctx.noumeno.metrics
+        assert m.embedding_tokens == 0
+        assert m.embedding_calls == 2   # still counts the operations
+        assert m.tokens_total == 15
 
     # ── History Injection ───────────────────────────────────────
 

@@ -1,6 +1,10 @@
 import pytest
 from cogno_core.types import DriftMetrics, IntentResult, NoumenoResult, StageMetrics
-from cogno_core.stages.drift import DriftCalculator
+from cogno_core.stages.drift import (
+    DriftCalculator,
+    DriftThresholds,
+    DEFAULT_CUMULATIVE_WEIGHTS,
+)
 
 
 def make_noumeno_result(original: str, rewritten: str) -> NoumenoResult:
@@ -82,9 +86,6 @@ def test_epistemological_drift():
     
     intent = make_intent_result()
     drift = calc.compute(noumeno, intent)
-    assert drift.intent_changed is False
-    assert drift.sentiment_changed is False
-    assert drift.temporal_changed is False
     assert drift.drift_score == 0.456
     assert drift.word_count_original == 3
     assert drift.word_count_noumeno == 6
@@ -107,10 +108,24 @@ def test_ontological_drift():
     assert drift.ontological_drift == pytest.approx(0.25, abs=0.05)
 
 
+def test_ontological_uncomputed_for_contentless_rewrite():
+    """A greeting-like rewrite (<2 content words) leaves ontological drift uncomputed,
+    so it is excluded from the renormalized cumulative (no spurious drift action)."""
+    calc = DriftCalculator()
+    noumeno = make_noumeno_result("oi", "hi")     # 'hi' has no content words
+    noumeno.drift_score = 0.3
+    intent = make_intent_result(entities_concepts=["greeting"])
+    drift = calc.compute(noumeno, intent)
+    calc.compute_ontological(drift, noumeno, intent)
+    assert drift.ontological_drift is None
+    calc.compute_cumulative(drift)
+    assert drift.cumulative_drift == pytest.approx(0.3)   # epistemological only
+    assert drift.drift_action == "none"
+
+
 def test_situational_drift():
     calc = DriftCalculator()
     drift = DriftMetrics(
-        intent_changed=False, sentiment_changed=False, temporal_changed=False,
         word_count_original=10, word_count_noumeno=10, compression_ratio=1.0,
         aristotelian_coverage=0, drift_score=0.0
     )
@@ -121,7 +136,6 @@ def test_situational_drift():
 def test_execution_drift():
     calc = DriftCalculator()
     drift = DriftMetrics(
-        intent_changed=False, sentiment_changed=False, temporal_changed=False,
         word_count_original=10, word_count_noumeno=10, compression_ratio=1.0,
         aristotelian_coverage=0, drift_score=0.0
     )
@@ -146,7 +160,6 @@ def test_execution_drift():
 def test_synthesis_drift():
     calc = DriftCalculator()
     drift = DriftMetrics(
-        intent_changed=False, sentiment_changed=False, temporal_changed=False,
         word_count_original=10, word_count_noumeno=10, compression_ratio=1.0,
         aristotelian_coverage=0, drift_score=0.0
     )
@@ -165,7 +178,6 @@ def test_synthesis_drift():
 def test_cumulative_drift_and_tags():
     calc = DriftCalculator()
     drift = DriftMetrics(
-        intent_changed=False, sentiment_changed=False, temporal_changed=False,
         word_count_original=10, word_count_noumeno=5, compression_ratio=0.5,
         aristotelian_coverage=0, drift_score=0.2,
         ontological_drift=0.3, situational_drift=0.1,
@@ -186,7 +198,6 @@ def test_cumulative_drift_and_tags():
 
 def _blank_drift(**overrides) -> DriftMetrics:
     base = dict(
-        intent_changed=False, sentiment_changed=False, temporal_changed=False,
         word_count_original=10, word_count_noumeno=10, compression_ratio=1.0,
         aristotelian_coverage=0, drift_score=0.0,
     )
@@ -224,6 +235,36 @@ def test_cumulative_drift_clamps_each_component():
     assert drift.drift_action == "warn"   # >= 0.50 threshold
 
 
+def test_cumulative_renormalizes_over_computed_stages():
+    """With only NOUMENO+NER populated, cumulative is the mean of epist+onto (full scale)."""
+    calc = DriftCalculator()
+    # epist via drift_score, onto via compute_ontological; situational/exec/synth = None
+    drift = _blank_drift(drift_score=0.6)
+    drift.ontological_drift = 1.0   # stage 2 present
+    # situational/execution/synthesis remain None (stages not computed)
+    calc.compute_cumulative(drift)
+    # renormalized: (0.15*0.6 + 0.15*1.0) / (0.15+0.15) = 0.8  → not deflated to 0.24
+    assert drift.cumulative_drift == pytest.approx(0.8)
+    assert drift.drift_action == "ask_user"   # 0.8 ≥ 0.70
+
+
+def test_cumulative_epistemological_only():
+    """Just after NOUMENO, cumulative equals the epistemological drift itself."""
+    calc = DriftCalculator()
+    drift = _blank_drift(drift_score=0.45)   # onto/sit/exec/synth all None
+    calc.compute_cumulative(drift)
+    assert drift.cumulative_drift == pytest.approx(0.45)
+
+
+def test_cumulative_full_pipeline_matches_static_weights():
+    """When all 5 stages are present, renormalization divides by 1.0 → original weighting."""
+    calc = DriftCalculator()
+    drift = _blank_drift(drift_score=0.2, ontological_drift=0.3, situational_drift=0.1,
+                         execution_drift=0.0, synthesis_drift=0.4)
+    calc.compute_cumulative(drift)
+    assert drift.cumulative_drift == pytest.approx(0.195)
+
+
 def test_cumulative_drift_all_max_is_capped_at_one():
     """All components at max → cumulative is exactly 1.0 (weights sum to 1.0)."""
     calc = DriftCalculator()
@@ -234,3 +275,96 @@ def test_cumulative_drift_all_max_is_capped_at_one():
     calc.compute_cumulative(drift)
     assert drift.cumulative_drift == pytest.approx(1.0)
     assert drift.drift_action == "self_correct"
+
+
+# ────────────────────────────────────────────────────────────────────
+#  Phase 2: injectable weights / thresholds + goal-aware downgrade
+# ────────────────────────────────────────────────────────────────────
+
+def test_default_calculator_unchanged():
+    """DriftCalculator() with no args = the historical defaults (regression guard)."""
+    calc = DriftCalculator()
+    assert calc._weights == DEFAULT_CUMULATIVE_WEIGHTS
+    assert calc._thresholds == DriftThresholds(warn=0.50, ask_user=0.70, self_correct=0.85)
+
+
+def test_injected_weights_change_cumulative():
+    """A host risk profile (e.g. FINANCE: execution-heavy) reweights cumulative."""
+    finance = {
+        "epistemological": 0.10, "ontological": 0.10,
+        "situational": 0.30, "execution": 0.50, "synthesis": 0.00,
+    }
+    calc = DriftCalculator(weights=finance)
+    drift = _blank_drift(drift_score=0.0, ontological_drift=0.0, situational_drift=0.0,
+                         execution_drift=1.0, synthesis_drift=0.0)
+    calc.compute_cumulative(drift)
+    # only execution is non-zero: 0.50*1.0 / 1.0 = 0.50
+    assert drift.cumulative_drift == pytest.approx(0.50)
+
+
+def test_injected_thresholds_change_action():
+    """Custom thresholds shift the action boundaries."""
+    calc = DriftCalculator(thresholds=DriftThresholds(warn=0.10, ask_user=0.20, self_correct=0.30))
+    drift = _blank_drift(drift_score=0.25)     # epistemological only
+    calc.compute_cumulative(drift)
+    assert drift.cumulative_drift == pytest.approx(0.25)
+    assert drift.drift_action == "ask_user"    # 0.25 ≥ 0.20 but < 0.30
+
+
+def test_weights_are_relative_renormalized():
+    """Weights need not sum to 1.0 — ratios are what matter after renormalization."""
+    calc = DriftCalculator(weights={
+        "epistemological": 1, "ontological": 1, "situational": 1,
+        "execution": 1, "synthesis": 1,
+    })
+    drift = _blank_drift(drift_score=0.4, ontological_drift=0.6)  # sit/exec/synth None
+    calc.compute_cumulative(drift)
+    # equal weights → plain mean of the two present stages
+    assert drift.cumulative_drift == pytest.approx(0.5)
+
+
+@pytest.mark.parametrize("bad,msg", [
+    ({"epistemological": 0.5, "ontological": 0.5}, "missing"),         # missing keys
+    ({**DEFAULT_CUMULATIVE_WEIGHTS, "bogus": 0.1}, "unknown"),         # extra key
+])
+def test_weights_validation_rejects_bad_keys(bad, msg):
+    with pytest.raises(ValueError, match=msg):
+        DriftCalculator(weights=bad)
+
+
+def test_weights_validation_rejects_negative_and_zero_sum():
+    neg = {**DEFAULT_CUMULATIVE_WEIGHTS, "execution": -0.1}
+    with pytest.raises(ValueError, match="non-negative"):
+        DriftCalculator(weights=neg)
+    zero = {k: 0.0 for k in DEFAULT_CUMULATIVE_WEIGHTS}
+    with pytest.raises(ValueError, match="positive sum"):
+        DriftCalculator(weights=zero)
+
+
+def test_downgrade_for_intentional_shift_softens_ask_user():
+    """ask_user → warn when the user intentionally changed topic (NEW/ABANDONED)."""
+    calc = DriftCalculator()
+    for status in ("NEW", "ABANDONED"):
+        drift = _blank_drift()
+        drift.drift_action = "ask_user"
+        calc.downgrade_for_intentional_shift(drift, status)
+        assert drift.drift_action == "warn"
+
+
+def test_downgrade_noop_for_ongoing_goal():
+    """An ONGOING goal keeps ask_user — the user is mid-task, clarification is warranted."""
+    calc = DriftCalculator()
+    drift = _blank_drift()
+    drift.drift_action = "ask_user"
+    calc.downgrade_for_intentional_shift(drift, "ONGOING")
+    assert drift.drift_action == "ask_user"
+
+
+def test_downgrade_only_touches_ask_user():
+    """Other actions (none/warn/self_correct) are left untouched regardless of goal_status."""
+    calc = DriftCalculator()
+    for action in ("none", "warn", "self_correct"):
+        drift = _blank_drift()
+        drift.drift_action = action
+        calc.downgrade_for_intentional_shift(drift, "NEW")
+        assert drift.drift_action == action

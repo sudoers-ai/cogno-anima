@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from cognobench.harness import CognitivePipeline
 from cognobench.types import CheckResult, DimensionResult
-from cognobench.ner_cases import NERCase, NER_CASES
-from cognobench.drift_cases import DriftCase, DRIFT_CASES, VALID_ACTIONS
-from cognobench.noumeno_cases import NoumenoCase, NOUMENO_CASES, VALID_DRIFT_TAGS
+from cognobench.ner_cases import NERCase
+from cognobench.drift_cases import DriftCase, VALID_ACTIONS
+from cognobench.noumeno_cases import NoumenoCase, VALID_DRIFT_TAGS
+from cognobench.id_cases import IdCase, VALID_GOAL_STATUS, VALID_ROUTES
 
 
 def _lang_prefix(value: str) -> str:
@@ -146,6 +147,67 @@ async def run_ner(
 
             for field, expected, actual, correct in checks:
                 dim.checks.append(CheckResult(case.id, field, expected, actual, correct))
+        except Exception as exc:  # noqa: BLE001
+            dim.errors.append((case.id, repr(exc)))
+    return dim
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  ID  (multi-turn — carries id_state + NER carry-over across turns)
+# ──────────────────────────────────────────────────────────────────────────
+
+async def run_id(
+    pipe: CognitivePipeline, cases: list[IdCase], calibrate: bool = False,
+    language: str | None = None,
+) -> DimensionResult:
+    dim = DimensionResult(name="id")
+    for case in cases:
+        try:
+            carry: dict = {}          # id_state + NER carry-over, threaded across turns
+            history: list[str] = []
+            for idx, turn in enumerate(case.turns, start=1):
+                meta = dict(carry)
+                meta["turn_number"] = idx
+                ctx = await pipe.run(
+                    turn.input, history=history or None, force_language=language,
+                    stop_after="id", metadata=meta,
+                )
+                r = ctx.id_result
+                if r is None:
+                    dim.errors.append((case.id, f"turn {idx}: id_result is None"))
+                    break
+
+                tag = f"t{idx}"
+                # Hard invariants (always enforced).
+                dim.checks.append(CheckResult(case.id, f"{tag}_goal_status_valid", "in set",
+                                              r.goal_status, r.goal_status in VALID_GOAL_STATUS))
+                dim.checks.append(CheckResult(case.id, f"{tag}_route_valid", "in set",
+                                              r.triad_route, r.triad_route in VALID_ROUTES))
+
+                # Soft goal-status lifecycle (skipped/recorded in calibrate mode).
+                if turn.expect_goal_status:
+                    ok = r.goal_status == turn.expect_goal_status
+                    dim.checks.append(CheckResult(
+                        case.id, f"{tag}_goal_status(soft)", turn.expect_goal_status,
+                        r.goal_status, True if calibrate else ok))
+
+                # Deterministic exact checks.
+                if turn.expect_route:
+                    dim.checks.append(CheckResult(case.id, f"{tag}_route", turn.expect_route,
+                                                  r.triad_route, r.triad_route == turn.expect_route))
+                if turn.expect_blocked is not None:
+                    dim.checks.append(CheckResult(case.id, f"{tag}_blocked",
+                                                  str(turn.expect_blocked), str(r.blocked),
+                                                  r.blocked == turn.expect_blocked))
+
+                # Thread state forward for the next turn.
+                carry = {"id_state": ctx.metadata.get("id_state", {})}
+                if ctx.intent and ctx.intent.goal:
+                    carry["last_goal"] = ctx.intent.goal
+                if ctx.intent and ctx.intent.domains:
+                    carry["active_domains"] = ctx.intent.domains
+                if ctx.noumeno:
+                    history.append(ctx.noumeno.rewritten)
         except Exception as exc:  # noqa: BLE001
             dim.errors.append((case.id, repr(exc)))
     return dim

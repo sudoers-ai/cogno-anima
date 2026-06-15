@@ -26,18 +26,19 @@ python3 -m pytest tests/unit/test_noumeno.py::TestNoumenoStage::test_metrics_pop
 # auto-skip if Ollama is unavailable)
 python3 -m pytest tests/integration
 
-# Cognitive benchmark (CognoBench) — scores NOUMENO/NER/Drift quality
+# Cognitive benchmark (CognoBench) — scores NOUMENO/NER/ID/Drift quality
 python3 cognobench.py                    # full run vs local Ollama
 python3 cognobench.py --only ner --limit 3   # one dimension, few cases
+python3 cognobench.py --only id              # multi-turn goal continuity + routing
 python3 cognobench.py --stub --limit 3       # fast plumbing smoke (no model)
-python3 cognobench.py --calibrate --only drift   # record drift actuals
+python3 cognobench.py --calibrate --only drift id   # record drift/goal_status actuals
 ```
 
-Integration tests use real models (`llama3.1:8b`, `nomic-embed-text:latest`) via Ollama and are written to be deterministic (`temperature=0.0`).
+Integration tests use real models via Ollama and are written to be deterministic (`temperature=0.0`). Default NOUMENO/NER model is `mistral:latest` (top scorer on the ID bench; `qwen3:8b` is the recommended alternative — override NER via `COGNO_NER_MODEL`); embeddings use `nomic-embed-text:latest`.
 
 ### CognoBench (`cognobench/`)
 
-A self-contained, dependency-light cognitive benchmark for the implemented stages (NOUMENO → NER → Drift), kept **decoupled** from the library: the harness (`cognobench/harness.py`) drives the stages directly via dependency injection (any `LLMBackend` + `Embedder`), with no `PipelineRunner`/infra. Curated cases live in `cognobench/{ner,drift,noumeno}_cases.py` (ported from the parent Cogno SaaS bench). It is **not** shipped in the library wheel (`packages.find` includes only `cogno_core*`). A stub-mode smoke test (`tests/unit/test_cognobench_smoke.py`) guards the plumbing in CI without needing Ollama. Drift numeric bands are **soft/recalibratable** — the parent's bands were calibrated against a heuristic drift model, but cogno-core's drift is embedding-based and pure, so only the hard invariants (valid action, cumulative ∈ [0,1]) are enforced; use `--calibrate` to record actuals. ID/EGO/SUPEREGO dimensions will be added as those stages land.
+A self-contained, dependency-light cognitive benchmark for the implemented stages (NOUMENO → NER → ID → Drift), kept **decoupled** from the library: the harness (`cognobench/harness.py`) drives the stages directly via dependency injection (any `LLMBackend` + `Embedder`), with no `PipelineRunner`/infra. Curated cases live in `cognobench/{ner,drift,noumeno,id}_cases.py` (ported from the parent Cogno SaaS bench). It is **not** shipped in the library wheel (`packages.find` includes only `cogno_core*`). A stub-mode smoke test (`tests/unit/test_cognobench_smoke.py`) guards the plumbing in CI without needing Ollama. Drift numeric bands are **soft/recalibratable** — the parent's bands were calibrated against a heuristic drift model, but cogno-core's drift is embedding-based and pure, so only the hard invariants (valid action, cumulative ∈ [0,1]) are enforced; use `--calibrate` to record actuals. The **ID dimension is multi-turn** (`run_id` threads `id_state` + NER carry-over across a case's turns) and scores `goal_status` directly off `IdResult` (the parent inferred it indirectly from the EGO skill) — lifecycle `created/continued/changed/completed` ↔ `NEW/ONGOING/COMPLETED/ABANDONED`; `goal_status` is **soft** (NER+embedding dependent, `--calibrate`able), with hard invariants (valid goal_status/route) and deterministic `expect_route`/`expect_blocked` checks. EGO/SUPEREGO dimensions will be added as those stages land.
 
 ## Architecture
 
@@ -47,7 +48,7 @@ The pipeline operates on a single mutable carrier object, `PipelineContext` (`co
 
 1. **NOUMENO** (`cogno_core/stages/noumeno.py`, class `Noumeno`) — perception/normalization:
    - Expands slang via `expand_slangs` (utils)
-   - Detects language with `langdetect` (or uses `ctx.force_language`)
+   - Resolves language by precedence: per-request `ctx.force_language` (the tenant/session language) → stage `default_language` (host/global config, e.g. the SaaS sets `Noumeno(default_language="pt-BR")`) → `langdetect` fallback. The library ships no business default (`default_language=None`); `langue` in NER is inherited from this resolved `noumeno.language`
    - Checks subject continuity against `ctx.metadata["last_rewritten"]` using an `Embedder` (cosine similarity vs `subject_threshold`)
    - Calls the LLM to rewrite input into canonical English, returning JSON (`rewritten`, `context_turn`, `confidence`, `changed`, `preserved_terms`, `rewrite_warnings`)
    - Computes `drift_score` = `1 - cosine(embed(original), embed(rewritten))` and classifies it via `classify_drift()` into `PASS_THROUGH | REWRITTEN | COMPRESSED | EXPANDED | DRIFT` (reconciliation rule: drift > 0.50 forces `changed=True` and tag `DRIFT`)
@@ -60,10 +61,21 @@ The pipeline operates on a single mutable carrier object, `PipelineContext` (`co
    - PII detection: raw `pii` strings are normalized/aliased (`security/pii.py: normalize_pii_types`) and risk is computed deterministically (`compute_pii_risk`) — never trust the LLM's own risk judgment
    - Populates `ctx.intent: IntentResult`
 
-3. **Drift** (`cogno_core/stages/drift.py`, class `DriftCalculator`) — pure, no I/O:
+3. **ID** (`cogno_core/stages/id.py`, class `IDStage`) — strategic router & continuity:
+   - Requires `ctx.intent` (and `ctx.noumeno`) to be populated first. **Heuristic — no LLM**; signature is `process(ctx, embedder)` (the embedder is used only for goal similarity).
+   - **Stateless across turns:** all cross-turn state rides in `ctx.metadata["id_state"]` (a serializable dict the *host* persists to its DB/Redis) — there is no live per-session instance, so it survives a multi-worker HTTP setup. `turn_number` comes from `ctx.metadata["turn_number"]` (host authoritative) or auto-increments from `id_state` when absent.
+   - Composes three pure helpers in `cogno_core/routing/`: `GoalManager` (goal continuity NEW→ONGOING→COMPLETED→ABANDONED via staged checks: CLARIFICATION → domain match → anaphoric-PII → `context_dependent` → semantic cosine with **one-sided enrichment**, Jaccard fallback; `update()` returns `(status, goal, similarity)`), `IntentionTracker` (BDI intentions, max 5, FIFO), `AttentionFilter` (additive scoring over host-injected `ctx.metadata["attention_candidates"]`).
+   - Routing priority (`_resolve_route`): `pii_risk=CRITICAL`→SUPEREGO (`blocked=True`) → `HIGH`→SUPEREGO → `emotional_override`→SUPEREGO → `CREATIVE_TASK`→SUPEREGO → `ACTION_REQUEST`+`SYSTEM` tag→EGO → `SOCIAL`→SUPEREGO → trust `triad_signal` → `BALANCED`.
+   - Cross-turn signals: temporal stickiness (a follow-up under an ONGOING goal keeps the prior turn's higher temporal — recorded on `IdResult.temporal_class`, **does not mutate the `IntentResult`**); `emotional_override` from a `frustration_streak` counter (≥ threshold of consecutive `FRUSTRATED` turns; host may inject its own); `complexity` (advisory `LOW|MEDIUM|HIGH|EXPERT`; `complex_domains` configurable, core default none — the core never escalates models).
+   - Feeds drift: seeds `ctx.drift` if absent, then `compute_situational(goal_similarity)` → `compute_cumulative()` → `downgrade_for_intentional_shift(goal_status)`. Records embedding cost (from the goal-similarity calls, via a usage-aware closure) in `StageMetrics(model="heuristic")`; tokens are 0 on fast-paths/first turn.
+   - Output (`triad_route`/`goal_status`/`complexity`) is sanitized against the closed vocab (`VALID_TRIAD`, `VALID_GOAL_STATUS`, `VALID_COMPLEXITY`). Populates `ctx.id_result: IdResult`.
+   - **Out of scope (host/EGO):** persona↔MCP binding, skill selection/execution, model-ladder escalation, session splitting, and the dynamic `ask_user` text — the ID emits signals (`drift_action`, `blocked`, `complexity`), the host decides.
+
+4. **Drift** (`cogno_core/stages/drift.py`, class `DriftCalculator`) — pure, no I/O:
    - `compute()` seeds `DriftMetrics` from `noumeno.drift_score` (epistemological drift) plus word-count/compression stats
-   - `compute_ontological()`, `compute_situational()`, `compute_execution()`, `compute_synthesis()` fill in drift for later pipeline stages (NER/ID/EGO/SUPEREGO) that live outside this library — callers invoke these incrementally as those stages complete
-   - `compute_cumulative()` applies fixed weights (`_CUMULATIVE_WEIGHTS`, must sum to 1.0) across all 5 stages and sets `drift_action` (`none|warn|ask_user|self_correct`) based on thresholds (`0.50/0.70/0.85`)
+   - `compute_ontological()`, `compute_situational()`, `compute_execution()`, `compute_synthesis()` fill in drift for the other pipeline stages (NER/ID/EGO/SUPEREGO) — callers invoke these incrementally as those stages complete (the ID stage calls `compute_situational` itself)
+   - `compute_cumulative()` applies weights (`DEFAULT_CUMULATIVE_WEIGHTS`, injectable via `DriftCalculator(weights=..., thresholds=...)`) across the 5 stages and sets `drift_action` (`none|warn|ask_user|self_correct`) based on `DriftThresholds` (default `0.50/0.70/0.85`). Weights are **relative** — cumulative is renormalized over the stages actually computed, so the "sum to 1.0" invariant is relaxed (5 keys, non-negative, positive sum); a host can plug a risk profile per-instance (multi-tenant safe).
+   - `downgrade_for_intentional_shift(drift, goal_status)` softens `ask_user`→`warn` on a deliberate topic change (NEW/ABANDONED); `compute_cumulative` stays goal-agnostic and the ID invokes this explicitly.
    - `DriftMetrics.to_tags()` turns scores into diagnostic tags (`NOUMENO.DRIFT`, `NOUMENO.PASS_THROUGH`, `DRIFT.ASK_USER`, etc.)
 
 ### LLM/Embedder abstraction
@@ -72,7 +84,7 @@ The pipeline operates on a single mutable carrier object, `PipelineContext` (`co
 - `LLMBackend`: `async generate(system, prompt) -> (text, tokens_in, tokens_out)`, plus a `model` attribute
 - `Embedder`: `async embed(text) -> list[float]`, `async similarity(a, b) -> float`
 
-`cogno_core/llm/ollama.py` provides the only concrete implementations (`OllamaBackend`, `OllamaEmbedder`), talking to a local Ollama server over `httpx`. `OllamaEmbedder` caches embeddings by lowercased text. New backends (OpenAI, Bedrock, etc.) should implement the same protocol shape — stages depend only on the protocol, not on Ollama.
+`cogno_core/llm/ollama.py` provides concrete implementations (`OllamaBackend`, `OllamaEmbedder`), talking to a local Ollama server over `httpx`. `OllamaBackend` sends `think=false` by default: reasoning models (qwen3, deepseek, …) otherwise route their output to a separate `thinking` field and leave `response` empty, which would make the JSON stages raise `StageParseError`; the cognitive stages want direct JSON, not chain-of-thought (`generate()` also falls back to `thinking` if `response` is empty). Set `OllamaBackend(..., think=True)` to opt back in. `OllamaEmbedder` is a thin, stateless client; it also exposes `embed_with_usage`/`similarity_with_usage` returning `(vector, tokens)` (from Ollama's `prompt_eval_count`). Caching is **backend-agnostic**: `cogno_core/llm/cache.py: CachingEmbedder` wraps *any* `Embedder` to add a bounded LRU cache (by lowercased text) plus token/call accounting (`EmbeddingUsage`) — e.g. `CachingEmbedder(OllamaEmbedder(...))`. New backends (OpenAI, Bedrock, etc.) implement the same protocol shape and get caching for free by composition — stages depend only on the protocol, not on Ollama.
 
 ### Prompts
 
@@ -82,7 +94,7 @@ The `domains` closed list inside `prompts/ner/system.txt` is the source of truth
 
 ### Models (`cogno_core/types.py`)
 
-All cross-stage data is `pydantic.BaseModel`. Key types: `StageMetrics` (per-call telemetry; `tokens_total` auto-computed in `model_post_init`), `NoumenoResult`, `IntentResult` (with helper methods `aristo_tag`/`aristo_desc`/`aristo_parsed` for parsing `"TAG | description"`-style aristotelian fields), `DriftMetrics`, and `PipelineContext` (the carrier, with derived properties `total_tokens`, `total_elapsed_ms`, `stage_metrics`).
+All cross-stage data is `pydantic.BaseModel`. Key types: `StageMetrics` (per-call telemetry; carries LLM `tokens_in`/`tokens_out` **and** `embedding_tokens`/`embedding_calls`; `tokens_total` auto-computed in `model_post_init` as `tokens_in + tokens_out + embedding_tokens`), `NoumenoResult`, `IntentResult` (with helper methods `aristo_tag`/`aristo_desc`/`aristo_parsed` for parsing `"TAG | description"`-style aristotelian fields), `IdResult` (ID routing/continuity output: `triad_route`, `active_goal`, `goal_status`, `goal_similarity`, `active_intentions`, `attention_focus`, `blocked`/`block_reason`, `turn_number`, `temporal_class`, `emotional_override`, `complexity`, `metrics`), `DriftMetrics`, and `PipelineContext` (the carrier — `noumeno`/`intent`/`id_result`/`drift` — with derived properties `total_tokens` (incl. embeddings), `total_llm_tokens`, `total_embedding_tokens`, `total_elapsed_ms`, `stage_metrics`, and per-stage `noumeno_metrics`/`ner_metrics`/`id_metrics`). NOUMENO records embedding cost from its similarity calls; NER records its LLM generate tokens; ID records embedding cost from goal similarity (no LLM tokens).
 
 ### Testing conventions
 

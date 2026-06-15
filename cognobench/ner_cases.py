@@ -87,8 +87,8 @@ NER_CASES: list[NERCase] = [
             expect_pii_risk="CRITICAL"),
     NERCase(id="ner_pii_email", input="meu email é joao.silva@example.com",
             expect_pii_risk="MEDIUM"),
-    NERCase(id="ner_pii_national_id", input="meu CPF é 123.456.789-00",
-            expect_pii_risk="HIGH"),
+    NERCase(id="ner_pii_national_id", input="meu CPF é 111.444.777-35",
+            expect_pii_risk="HIGH"),   # valid CPF (check digits) → caught deterministically
 
     # ── Speech Act classification (Austin/Searle) ────────────────────────
     NERCase(id="speech_act_directive", input="me explica como funciona o TCP",
