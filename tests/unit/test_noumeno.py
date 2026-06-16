@@ -6,7 +6,7 @@ from cogno_anima.stages.noumeno import Noumeno, classify_drift
 from cogno_anima.utils import cosine_similarity
 from tests.conftest import StubBackend, StubEmbedder
 
-PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
+PROMPTS_DIR = Path(__file__).parent.parent.parent / "cogno_anima" / "prompt_templates"
 SLANGS = {
     "vc": "você",
     "pq": "porque",

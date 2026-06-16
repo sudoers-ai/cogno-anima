@@ -3,7 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-_PROMPTS_ROOT = Path(__file__).resolve().parent.parent / "prompts"
+# Prompt templates ship INSIDE the package (cogno_anima/prompt_templates/) so a
+# plain `pip install cogno-anima` can load them — they are declared as
+# package-data in pyproject.toml. PROMPTS_ROOT is public for tooling/tests.
+PROMPTS_ROOT = Path(__file__).resolve().parent / "prompt_templates"
+_PROMPTS_ROOT = PROMPTS_ROOT  # backward-compatible alias
 
 def _clean_prompt(text: str) -> str:
     """Strip YAML frontmatter and TODO(docs) lines."""

@@ -7,7 +7,7 @@ from cogno_anima.types import StageMetrics
 from cogno_anima.stages.ner import IntentAnalyzer, _has_anaphora
 from tests.conftest import StubBackend
 
-PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
+PROMPTS_DIR = Path(__file__).parent.parent.parent / "cogno_anima" / "prompt_templates"
 
 
 def _ner():

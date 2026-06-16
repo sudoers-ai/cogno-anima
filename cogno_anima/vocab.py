@@ -3,7 +3,7 @@ Single source of truth for the NER closed vocabularies.
 
 These sets are the canonical contract. The NER stage (`cogno_anima/stages/ner.py`)
 validates LLM output against them, and the NER prompt
-(`prompts/ner/system.txt`) enumerates the SAME values. The alignment between
+(`cogno_anima/prompt_templates/ner/system.txt`) enumerates the SAME values. The alignment between
 this module and the prompt is enforced by `tests/unit/test_pipeline.py`, so the
 two can never silently drift apart (the bug class that caused `GENERAL` to be
 dropped and `LOGIC` to be accepted-but-never-taught).

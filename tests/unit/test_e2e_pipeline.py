@@ -16,7 +16,7 @@ from tests.conftest import StubEmbedder
 from cognobench.pipeline import ReferencePipeline
 from cogno_anima.types import PipelineContext, ToolResult
 
-PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
+PROMPTS_DIR = Path(__file__).parent.parent.parent / "cogno_anima" / "prompt_templates"
 
 
 # ── a single backend scripted by call order (all stages use .generate) ──

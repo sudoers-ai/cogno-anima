@@ -21,7 +21,7 @@ from cogno_anima.stages.ner import IntentAnalyzer
 from cogno_anima.types import StageMetrics
 from cogno_anima.errors import StageParseError
 
-PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
+PROMPTS_DIR = Path(__file__).parent.parent.parent / "cogno_anima" / "prompt_templates"
 
 # A small fixed toolset (well-formed schema dicts) for the tool parser.
 _TOOLS = [

@@ -21,7 +21,7 @@ from cogno_anima.stages.id import IDStage
 from cogno_anima.stages.drift import DriftCalculator
 from cogno_anima.types import PipelineContext
 
-PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+PROMPTS_DIR = Path(__file__).resolve().parent.parent / "cogno_anima" / "prompt_templates"
 
 SLANGS = {"vc": "você", "pq": "porque", "blz": "beleza", "pfv": "por favor"}
 
