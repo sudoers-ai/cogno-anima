@@ -199,6 +199,16 @@ async def test_voice_pii_backstop_flags_output():
 
 
 @pytest.mark.asyncio
+async def test_voice_includes_injected_memory_context():
+    ctx = _ctx()
+    ctx.metadata["ego_context"] = "[MEMORY] The user's name is João and prefers BRL."
+    b = ScriptedBackend(["resposta"])
+    await SuperegoStage().voice(ctx, b, voice_prompt="x")
+    prompt = b.calls[0]["prompt"]
+    assert "João" in prompt and "Context (memories/history)" in prompt
+
+
+@pytest.mark.asyncio
 async def test_voice_feeds_synthesis_drift():
     ctx = _ctx()
     ctx.drift = DriftCalculator().compute(ctx.noumeno, ctx.intent)

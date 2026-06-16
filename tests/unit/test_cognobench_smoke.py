@@ -77,6 +77,19 @@ def test_stub_superego_runs_and_hard_invariants_hold():
     assert all(c.correct for c in hard)
 
 
+def test_stub_conversations_runs_and_hard_invariants_hold():
+    """Full-pipeline conversation simulation runs multi-turn in stub mode."""
+    report = _run_stub(only=["conversations"], limit=3)
+    conv = next(d for d in report.dimensions if d.name == "conversations")
+    assert conv.errors == [], f"conversations raised: {conv.errors}"
+    hard = [c for c in conv.checks if c.field in ("route_valid", "reached_terminal",
+                                                  "dispatched_tools_valid")]
+    assert hard, "expected conversation hard-invariant checks"
+    assert all(c.correct for c in hard)
+    # multi-turn: at least one case produced a 2nd-turn check
+    assert any(".t2" in c.case_id for c in conv.checks)
+
+
 def test_report_to_dict_shape():
     report = _run_stub(only=["ner"], limit=1)
     d = report.to_dict()

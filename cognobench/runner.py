@@ -17,7 +17,7 @@ from cognobench.harness import (
     CognitivePipeline, build_ollama, build_ollama_text, build_stub, ollama_available,
 )
 from cognobench.dimensions import (
-    run_noumeno, run_ner, run_id, run_ego, run_superego, run_drift,
+    run_noumeno, run_ner, run_id, run_ego, run_superego, run_drift, run_conversations,
 )
 from cognobench.types import BenchReport
 from cognobench.report import render
@@ -27,9 +27,11 @@ from cognobench.noumeno_cases import NOUMENO_CASES
 from cognobench.id_cases import ID_CASES
 from cognobench.ego_cases import EGO_CASES
 from cognobench.superego_cases import SUPEREGO_CASES
+from cognobench.conversation_cases import CONVERSATION_CASES
 
-# Pipeline order: NOUMENO → NER → ID → EGO → SUPEREGO → Drift.
-ALL_DIMENSIONS = ("noumeno", "ner", "id", "ego", "superego", "drift")
+# Pipeline order: NOUMENO → NER → ID → EGO → SUPEREGO → Drift, then the broad
+# end-to-end conversation simulation (full pipeline, multi-turn).
+ALL_DIMENSIONS = ("noumeno", "ner", "id", "ego", "superego", "drift", "conversations")
 
 
 async def run_bench(
@@ -84,6 +86,12 @@ async def run_bench(
     if "drift" in dims:
         report.dimensions.append(
             await run_drift(pipe, cap(DRIFT_CASES), calibrate=calibrate, language=language))
+    if "conversations" in dims:
+        # Full-pipeline multi-turn simulation: gen=JSON backend, ego/voice=text backend.
+        conv_ego = backend if stub else build_ollama_text(model, base_url)
+        report.dimensions.append(
+            await run_conversations(backend, conv_ego, embedder, cap(CONVERSATION_CASES),
+                                    calibrate=calibrate, language=language))
 
     return report
 

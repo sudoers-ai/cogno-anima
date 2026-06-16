@@ -108,6 +108,10 @@ class EgoStage:
         interrupted = False
         interrupt_reason: Optional[str] = None
 
+        attempt_no = int(ctx.metadata.get("ego_correction", {}).get("attempt", 1))
+        logger.info("EGO start path=%s tools=%d max_steps=%d attempt=%d",
+                    path, len(tools), max_steps, attempt_no)
+
         for i in range(max_steps):
             # ── call the model ────────────────────────────────────────
             if fc_backend is not None:
@@ -164,6 +168,7 @@ class EgoStage:
                     raise ToolExecutionError(name, args, exc) from exc
                 if not r.ok:
                     failed_calls.add(sig)
+                logger.info("EGO step=%d tool=%s ok=%s side_effect=%s", i, name, r.ok, r.side_effect)
                 execs.append(ToolExecution(tool=name, arguments=args, result=r.output,
                                            ok=r.ok, error=r.error, side_effect=r.side_effect))
 
@@ -198,6 +203,8 @@ class EgoStage:
                 tokens_in=total_in, tokens_out=total_out, model=getattr(backend, "model", "unknown"),
             ),
         )
+        logger.info("EGO done steps=%d tools=%d interrupted=%s reason=%s",
+                    len(steps), len(ctx.ego_result.tools_executed), interrupted, interrupt_reason)
         return ctx
 
     # ── prompt assembly ──────────────────────────────────────────────

@@ -145,6 +145,11 @@ class IntentAnalyzer:
         )
 
         ctx.intent = intent
+        logger.info(
+            "NER intent=%s sentiment=%s pii_risk=%s domains=%s composite=%s",
+            intent.intent_class, intent.sentiment, intent.pii_risk,
+            intent.domains, intent.is_composite,
+        )
         return ctx
 
     async def analyze(

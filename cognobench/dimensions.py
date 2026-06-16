@@ -18,8 +18,14 @@ from cognobench.ego_cases import (
     EgoCase, BenchDispatcher, EGO_SYSTEM, VALID_TOOLS,
 )
 from cognobench.superego_cases import SuperegoCase
+from cognobench.conversation_cases import (
+    ConversationCase, BenchDispatcher as ConvDispatcher,
+    EGO_PROMPT, LIMITS_PROMPT, VOICE_PROMPT, VALID_TOOLS as CONV_TOOLS,
+)
+from cognobench.harness import PROMPTS_DIR, SLANGS
+from cognobench.pipeline import ReferencePipeline
 
-from cogno_core.llm import LLMBackend
+from cogno_core.llm import LLMBackend, Embedder
 from cogno_core.stages.ego import EgoStage
 from cogno_core.stages.superego import SuperegoStage
 from cogno_core.types import (
@@ -356,6 +362,90 @@ async def run_superego(
                     ok = case.expect_contains in r.response
                     dim.checks.append(CheckResult(case.id, "grounded(soft)", case.expect_contains,
                                                   r.response[:60], True if calibrate else ok))
+        except Exception as exc:  # noqa: BLE001
+            dim.errors.append((case.id, repr(exc)))
+    return dim
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  CONVERSATIONS — broad end-to-end multi-turn simulation (full pipeline)
+# ──────────────────────────────────────────────────────────────────────────
+
+async def run_conversations(
+    gen_backend: LLMBackend, ego_backend: LLMBackend, embedder: Embedder,
+    cases: list[ConversationCase], calibrate: bool = False, language: str | None = None,
+) -> DimensionResult:
+    """Drive whole sessions through the ReferencePipeline, threading id_state +
+    history + injected memories (modelling the sessions/turns/memories tables)."""
+    dim = DimensionResult(name="conversations")
+    pipe = ReferencePipeline(prompts_dir=PROMPTS_DIR, embedder=embedder, slangs=SLANGS)
+
+    for case in cases:
+        try:
+            carry: dict = {}
+            history: list[str] = []
+            for idx, turn in enumerate(case.turns, start=1):
+                ctx = PipelineContext(user_input=turn.user, force_language=language)
+                ctx.metadata.update(carry)
+                ctx.metadata["turn_number"] = idx
+                ctx.metadata["active_persona_id"] = case.persona
+                ctx.metadata["active_mcp_module"] = case.mcp_module
+                if history:
+                    ctx.metadata["last_rewritten"] = history[-1]
+                if turn.memories:
+                    ctx.metadata["ego_context"] = "[MEMORIES]\n" + "\n".join(turn.memories)
+
+                disp = ConvDispatcher()
+                ctx = await pipe.run_turn(
+                    ctx, gen_backend=gen_backend, ego_backend=ego_backend, dispatcher=disp,
+                    ego_prompt=EGO_PROMPT, scope_prompt=case.scope_prompt,
+                    limits_prompt=LIMITS_PROMPT, voice_prompt=VOICE_PROMPT)
+
+                tag = f"{case.id}.t{idx}"
+                route = ctx.id_result.triad_route if ctx.id_result else "?"
+                blocked = ctx.stop_reason in ("pii_blocked", "scope_blocked")
+                names = [t.tool for t in ctx.ego_result.tools_executed] if ctx.ego_result else []
+                resp = ctx.superego_result.response if ctx.superego_result else ""
+
+                # ── hard invariants (always) ──
+                dim.checks.append(CheckResult(tag, "route_valid", "in set", route,
+                                              route in VALID_ROUTES))
+                terminal = bool(ctx.superego_result) or ctx.needs_handoff or blocked
+                dim.checks.append(CheckResult(tag, "reached_terminal", "True", str(terminal), terminal))
+                dim.checks.append(CheckResult(tag, "dispatched_tools_valid", "subset",
+                                              str([n for n, _ in disp.executed]),
+                                              all(n in CONV_TOOLS for n, _ in disp.executed)))
+
+                # ── soft (model-dependent) ──
+                if turn.expect_route:
+                    ok = route == turn.expect_route
+                    dim.checks.append(CheckResult(tag, "route(soft)", turn.expect_route, route,
+                                                  True if calibrate else ok))
+                if turn.expect_blocked is not None:
+                    ok = blocked == turn.expect_blocked
+                    dim.checks.append(CheckResult(tag, "blocked(soft)", str(turn.expect_blocked),
+                                                  str(blocked), True if calibrate else ok))
+                if turn.expect_tool:
+                    ok = turn.expect_tool in names
+                    dim.checks.append(CheckResult(tag, "tool(soft)", turn.expect_tool, str(names),
+                                                  True if calibrate else ok))
+                if turn.expect_goal_status and ctx.id_result:
+                    ok = ctx.id_result.goal_status == turn.expect_goal_status
+                    dim.checks.append(CheckResult(tag, "goal_status(soft)", turn.expect_goal_status,
+                                                  ctx.id_result.goal_status, True if calibrate else ok))
+                if turn.expect_response_contains:
+                    ok = turn.expect_response_contains in resp
+                    dim.checks.append(CheckResult(tag, "grounded(soft)", turn.expect_response_contains,
+                                                  resp[:60], True if calibrate else ok))
+
+                # ── thread state forward ──
+                carry = {"id_state": ctx.metadata.get("id_state", {})}
+                if ctx.intent and ctx.intent.goal:
+                    carry["last_goal"] = ctx.intent.goal
+                if ctx.intent and ctx.intent.domains:
+                    carry["active_domains"] = ctx.intent.domains
+                if ctx.noumeno:
+                    history.append(ctx.noumeno.rewritten)
         except Exception as exc:  # noqa: BLE001
             dim.errors.append((case.id, repr(exc)))
     return dim

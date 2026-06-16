@@ -129,6 +129,7 @@ class SuperegoStage:
             data = self._parse_json(raw)
             blocked = bool(data.get("blocked", False))
             msg = str(data.get("refusal_message", "")) if blocked else ""
+            logger.info("SUPEREGO scope blocked=%s", blocked)
             return _result(blocked, msg, ti, to)
         except Exception as exc:  # noqa: BLE001 — fail-open: never refuse on error
             logger.warning("scope guard failed (%s) — allowing by default", exc)
@@ -184,6 +185,7 @@ class SuperegoStage:
             data = self._parse_json(raw)
             approved = bool(data.get("approved", False))
             critique = None if approved else str(data.get("critique", "")) or "execution rejected"
+            logger.info("SUPEREGO judge approved=%s critique=%s", approved, (critique or "")[:80])
             return _result(approved, critique, ti, to)
         except Exception as exc:  # noqa: BLE001 — fail-CLOSED: don't pass unverified
             logger.warning("judge failed (%s) — not approving (fail-closed)", exc)
@@ -246,6 +248,9 @@ class SuperegoStage:
             self._drift.compute_synthesis(ctx.drift, payload, response)
             self._drift.compute_cumulative(ctx.drift)
 
+        logger.info("SUPEREGO voice len=%d cot_stripped=%s adjustments=%s",
+                    len(response), cot_stripped, adjustments)
+
         return SuperegoResult(
             response=response, approved=True, adjustments=adjustments,
             cot_stripped=cot_stripped,
@@ -262,13 +267,19 @@ class SuperegoStage:
         if ctx.noumeno and ctx.noumeno.language:
             signals.append(f"Reply language: {ctx.noumeno.language}")
         signals.append(f"Tone hints: {', '.join(adjustments)}")
+        # Host-injected context (retrieved memories / history / clock) — the same
+        # block the EGO sees; included so memories can ground the final reply.
+        injected = ctx.metadata.get("ego_context")
+        context_section = f"# Context (memories/history)\n{str(injected).strip()}\n\n" if injected else ""
         return (
             f'# User request\n"{ctx.user_input}"\n\n'
-            f"# Data gathered by the executor (ground your answer ONLY in this)\n{payload}\n\n"
+            f"{context_section}"
+            f"# Data gathered by the executor (ground figures/dates ONLY in this)\n{payload}\n\n"
             f"# Signals\n" + "\n".join(signals) + "\n\n"
             "# Task\nWrite the final reply to the user in the persona's voice and "
-            "within its limits. Keep exact figures/dates verbatim from the data — "
-            "do not invent or alter them. Reply with the message text only."
+            "within its limits. Use the context for background, but keep exact "
+            "figures/dates verbatim from the executor data — do not invent or alter "
+            "them. Reply with the message text only."
         )
 
     @staticmethod

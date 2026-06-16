@@ -170,6 +170,10 @@ class Noumeno:
             metrics=metrics
         )
 
+        logger.info(
+            "NOUMENO lang=%s drift=%.2f tag=%s changed=%s change_subject=%s",
+            detected_lang, drift_score, drift_tag, changed, change_subject,
+        )
         return ctx
 
     async def _similarity(self, a: str, b: str) -> tuple[float, int, int]:
