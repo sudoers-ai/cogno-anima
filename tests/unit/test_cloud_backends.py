@@ -50,6 +50,65 @@ def test_factory_openai_with_key(monkeypatch):
     assert isinstance(b, OpenAIBackend) and b.model == "gpt-4o-mini"
 
 
+# ── OpenAI-compatible providers (base_url, no new class) ──────────────
+
+def test_parse_model_string_openai_compatible():
+    assert parse_model_string("deepseek:deepseek-chat") == ("deepseek", "deepseek-chat")
+    assert parse_model_string("kimi:kimi-k2") == ("kimi", "kimi-k2")
+    assert parse_model_string("grok:grok-2") == ("grok", "grok-2")
+    assert parse_model_string("openrouter:meta/llama") == ("openrouter", "meta/llama")
+    # Regression: "mistral:latest" must stay an OLLAMA model, not a cloud provider.
+    assert parse_model_string("mistral:latest") == ("ollama", "mistral:latest")
+
+
+def test_factory_deepseek_uses_openai_backend_with_base_url(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-real-key")
+    b = create_backend("deepseek:deepseek-chat")
+    assert isinstance(b, OpenAIBackend)
+    assert b.model == "deepseek-chat"
+    assert b.base_url == "https://api.deepseek.com"
+    assert b.api_key == "ds-real-key"
+
+
+def test_factory_kimi_maps_to_moonshot(monkeypatch):
+    monkeypatch.setenv("MOONSHOT_API_KEY", "ms-key")
+    b = create_backend("kimi:kimi-k2")
+    assert isinstance(b, OpenAIBackend)
+    assert b.base_url == "https://api.moonshot.cn/v1"
+
+
+def test_factory_openai_compatible_missing_key_raises(monkeypatch):
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    with pytest.raises(MissingAPIKeyError):
+        create_backend("grok:grok-2")
+
+
+def test_openai_backend_default_has_no_base_url():
+    assert OpenAIBackend(model="gpt-4o", api_key="k").base_url is None
+
+
+@pytest.mark.asyncio
+async def test_openai_backend_base_url_passed_to_client(monkeypatch):
+    """base_url, when set, reaches AsyncOpenAI; when None it is omitted."""
+    import sys
+    import types as pytypes
+    captured = {}
+
+    fake_openai = pytypes.ModuleType("openai")
+    fake_openai.AsyncOpenAI = lambda **kw: captured.update(kw) or FakeOpenAIClient(
+        lambda **k: _resp("ok"))
+    monkeypatch.setitem(sys.modules, "openai", fake_openai)
+
+    b = OpenAIBackend(model="deepseek-chat", api_key="k", base_url="https://api.deepseek.com")
+    await b.generate("s", "p")
+    assert captured["base_url"] == "https://api.deepseek.com"
+
+    captured.clear()
+    b2 = OpenAIBackend(model="gpt-4o", api_key="k")   # no base_url
+    await b2.generate("s", "p")
+    assert "base_url" not in captured
+
+
 # ── OpenAI backend with a mocked client ──────────────────────────────
 
 class _Completions:

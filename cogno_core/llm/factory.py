@@ -23,6 +23,29 @@ _KEY_ENV = {
     "groq": "GROQ_API_KEY", "gemini": "GEMINI_API_KEY", "bedrock": "AWS_ACCESS_KEY_ID",
 }
 
+# OpenAI-compatible providers: identical Chat Completions API (+ native tools),
+# only base_url and the key env var differ — so they all reuse OpenAIBackend
+# instead of a class each. NOTE: deliberately NO "mistral" prefix — it would
+# clobber Ollama's `mistral:latest` (the default local model in tests/benches).
+_OPENAI_COMPATIBLE = {
+    "deepseek":   ("https://api.deepseek.com", "DEEPSEEK_API_KEY"),
+    "moonshot":   ("https://api.moonshot.cn/v1", "MOONSHOT_API_KEY"),
+    "kimi":       ("https://api.moonshot.cn/v1", "MOONSHOT_API_KEY"),
+    "grok":       ("https://api.x.ai/v1", "XAI_API_KEY"),
+    "xai":        ("https://api.x.ai/v1", "XAI_API_KEY"),
+    "openrouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
+    "together":   ("https://api.together.xyz/v1", "TOGETHER_API_KEY"),
+    "fireworks":  ("https://api.fireworks.ai/inference/v1", "FIREWORKS_API_KEY"),
+}
+
+
+def _key_env(provider: str) -> str:
+    if provider in _KEY_ENV:
+        return _KEY_ENV[provider]
+    if provider in _OPENAI_COMPATIBLE:
+        return _OPENAI_COMPATIBLE[provider][1]
+    return ""
+
 
 def parse_model_string(model_string: str) -> tuple[str, str]:
     """"provider:model" → (provider, model). Bare/unknown prefix → ("ollama", ...)."""
@@ -31,13 +54,13 @@ def parse_model_string(model_string: str) -> tuple[str, str]:
     if ":" in model_string:
         prefix, rest = model_string.split(":", 1)
         prefix = prefix.lower()
-        if prefix in _EXTERNAL or prefix == "ollama":
+        if prefix in _EXTERNAL or prefix in _OPENAI_COMPATIBLE or prefix == "ollama":
             return prefix, rest
     return "ollama", model_string
 
 
 def _key_present(provider: str) -> bool:
-    val = os.environ.get(_KEY_ENV[provider], "")
+    val = os.environ.get(_key_env(provider), "")
     return bool(val) and val.lower() != "dummy" and "sk-proj-*" not in val
 
 
@@ -57,10 +80,16 @@ def create_backend(
     """
     provider, model = parse_model_string(model_string)
 
-    if provider in _EXTERNAL and not _key_present(provider):
+    if (provider in _EXTERNAL or provider in _OPENAI_COMPATIBLE) and not _key_present(provider):
         raise MissingAPIKeyError(
-            f"Model '{model_string}' needs {_KEY_ENV[provider]}, which is unset or a placeholder."
+            f"Model '{model_string}' needs {_key_env(provider)}, which is unset or a placeholder."
         )
+
+    if provider in _OPENAI_COMPATIBLE:
+        url, env = _OPENAI_COMPATIBLE[provider]
+        from cogno_core.llm.openai_backend import OpenAIBackend
+        return OpenAIBackend(model=model, api_key=os.environ.get(env), base_url=url,
+                             temperature=temperature, max_tokens=max_tokens, timeout=timeout)
 
     if provider == "openai":
         from cogno_core.llm.openai_backend import OpenAIBackend

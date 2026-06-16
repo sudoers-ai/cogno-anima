@@ -42,12 +42,16 @@ class OpenAIBackend:
         temperature: float | None = None,
         max_tokens: int = 4096,
         timeout: int = 120,
+        base_url: str | None = None,
     ) -> None:
         self.model = model
         self.api_key = api_key or os.getenv("OPENAI_API_KEY", "")
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout = timeout
+        # Point at any OpenAI-compatible endpoint (DeepSeek, Moonshot/Kimi, xAI,
+        # OpenRouter, Together, Fireworks, …). None → OpenAI's default base URL.
+        self.base_url = base_url
         if not self.api_key:
             logger.warning("OPENAI_API_KEY not set — OpenAI calls will fail")
 
@@ -67,7 +71,10 @@ class OpenAIBackend:
             raise ImportError(
                 'openai not installed. Run: pip install "cogno-core[openai]"'
             ) from exc
-        return openai.AsyncOpenAI(api_key=self.api_key, timeout=self.timeout)
+        kwargs: dict = {"api_key": self.api_key, "timeout": self.timeout}
+        if self.base_url:
+            kwargs["base_url"] = self.base_url
+        return openai.AsyncOpenAI(**kwargs)
 
     async def generate(self, system: str, prompt: str) -> tuple[str, int, int]:
         client = self._client()
