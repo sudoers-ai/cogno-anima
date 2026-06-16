@@ -33,7 +33,8 @@ built on a few hard contracts:
 
 What stays in the **host**: persona/MCP binding, RBAC, model ladders, the
 retry/correction *loop*, session splitting, the real human handoff, billing,
-semantic cache, and persistence. See `CLAUDE.md` for the full boundary map and
+semantic cache, and persistence. See **[docs/HOST_INTEGRATION.md](docs/HOST_INTEGRATION.md)**
+for how to wire the core into a host, `CLAUDE.md` for the full boundary map, and
 `cognobench/pipeline.py` (`ReferencePipeline`) for a reference orchestrator.
 
 ## Install
