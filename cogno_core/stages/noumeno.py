@@ -201,6 +201,12 @@ class Noumeno:
                 lines = lines[:-1]
             cleaned = "\n".join(lines).strip()
         try:
-            return json.loads(cleaned)
+            data = json.loads(cleaned)
         except json.JSONDecodeError as exc:
             raise StageParseError(STAGE_NAME, raw, exc) from exc
+        # Valid JSON that is not an object (e.g. "5", "[]", "true") would crash
+        # the field reads downstream with a raw AttributeError — treat it as a
+        # parse failure so the contract stays "valid dict OR StageParseError".
+        if not isinstance(data, dict):
+            raise StageParseError(STAGE_NAME, raw, TypeError("JSON is not an object"))
+        return data

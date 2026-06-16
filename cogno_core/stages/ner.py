@@ -231,6 +231,11 @@ class IntentAnalyzer:
             data = json.loads(cleaned)
         except json.JSONDecodeError as exc:
             raise StageParseError(STAGE_NAME, raw, exc) from exc
+        # Valid JSON that is not an object (e.g. "5", "[]") would crash the field
+        # coercion below with a raw AttributeError — treat it as a parse failure
+        # so the contract stays "valid IntentResult OR StageParseError".
+        if not isinstance(data, dict):
+            raise StageParseError(STAGE_NAME, raw, TypeError("JSON is not an object"))
 
         # intent_class
         intent_class = str(data.get("intent_class", "UNKNOWN")).upper()
