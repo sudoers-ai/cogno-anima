@@ -21,6 +21,8 @@ from cogno_core.errors import (
     StageParseError,
     ToolExecutionError,
     MCPDispatchError,
+    InvalidAPIKeyError,
+    MissingAPIKeyError,
 )
 from cogno_core.llm import (
     LLMBackend,
@@ -31,6 +33,13 @@ from cogno_core.llm import (
     CachingEmbedder,
     EmbeddingUsage,
     parse_tool_calls_from_text,
+    OpenAIBackend,
+    AnthropicBackend,
+    GroqBackend,
+    GeminiBackend,
+    BedrockBackend,
+    FallbackBackend,
+    create_backend,
 )
 from cogno_core.tools import ToolDispatcher
 from cogno_core.routing import GoalManager, AttentionFilter, IntentionTracker
@@ -63,6 +72,13 @@ __all__ = [
     "CachingEmbedder",
     "EmbeddingUsage",
     "parse_tool_calls_from_text",
+    "OpenAIBackend",
+    "AnthropicBackend",
+    "GroqBackend",
+    "GeminiBackend",
+    "BedrockBackend",
+    "FallbackBackend",
+    "create_backend",
     "ToolDispatcher",
     "GoalManager",
     "AttentionFilter",
@@ -79,4 +95,6 @@ __all__ = [
     "StageParseError",
     "ToolExecutionError",
     "MCPDispatchError",
+    "InvalidAPIKeyError",
+    "MissingAPIKeyError",
 ]

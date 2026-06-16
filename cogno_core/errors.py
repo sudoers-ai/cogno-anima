@@ -31,6 +31,24 @@ class StageParseError(CognoError, ValueError):
         )
 
 
+class MissingAPIKeyError(CognoError, RuntimeError):
+    """A cloud-provider model was requested but its API key is missing/placeholder.
+
+    Raised by the backend factory when a specific cloud provider is asked for
+    without a usable key — fail loudly instead of silently degrading to a weaker
+    local model the caller did not ask for.
+    """
+
+
+class InvalidAPIKeyError(CognoError, RuntimeError):
+    """A cloud API rejected the provided key at runtime (401/403).
+
+    Unlike transient errors (timeouts, rate limits), an auth error is a config
+    problem that retry/fallback cannot fix — backends raise this so the host can
+    surface it distinctly rather than treating it as "the model had nothing to say".
+    """
+
+
 class ToolExecutionError(CognoError):
     """A tool failed during EGO execution in a way the loop cannot recover from.
 
