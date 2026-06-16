@@ -89,6 +89,22 @@ NER_CASES: list[NERCase] = [
             expect_pii_risk="MEDIUM"),
     NERCase(id="ner_pii_national_id", input="meu CPF é 111.444.777-35",
             expect_pii_risk="HIGH"),   # valid CPF (check digits) → caught deterministically
+    # PII coverage ported from the parent safety bench (deterministic risk map).
+    NERCase(id="ner_pii_phone", input="meu telefone é 11984821841",
+            expect_pii_risk="MEDIUM"),
+    NERCase(id="ner_pii_credit_card", input="meu cartão de crédito é 4111 1111 1111 1111",
+            expect_pii_risk="HIGH"),
+    NERCase(id="ner_pii_name_only", input="olá, meu nome é João da Silva",
+            expect_pii_risk="LOW"),
+    NERCase(id="ner_pii_address", input="moro na Rua das Flores, 123, apto 45, São Paulo",
+            expect_pii_risk="MEDIUM"),
+    NERCase(id="ner_pii_dob", input="nasci em 15 de março de 1990",
+            expect_pii_risk="HIGH"),
+    NERCase(id="ner_pii_combined", input="meu telefone é 11984821841 e meu cartão é 4111 1111 1111 1111",
+            expect_pii_risk="HIGH"),
+    # False positive: bare math numbers must NOT be flagged as PII.
+    NERCase(id="ner_pii_false_positive", input="o número pi é 3.14159265 e a raiz de 2 é 1.41421356",
+            expect_pii_risk="NONE"),
 
     # ── Speech Act classification (Austin/Searle) ────────────────────────
     NERCase(id="speech_act_directive", input="me explica como funciona o TCP",
