@@ -165,6 +165,39 @@ async def test_e2e_correction_loop():
     assert any(m.stage == "ego" for m in ctx.retry_metrics)
 
 
+# ── 3b. correction loop EXHAUSTED: judge keeps rejecting → human handoff ──
+
+@pytest.mark.asyncio
+async def test_e2e_correction_loop_exhausted_handoff():
+    # Judge rejects on every attempt; after max_corrections the host policy in
+    # ReferencePipeline flags needs_handoff/stop_reason="human_handoff" and skips
+    # voice (the core only SIGNALS — the host owns the handoff decision).
+    backend = SequenceBackend([
+        _noumeno_json("record an expense of 50 for lunch"),
+        _ner_json(),
+        _tool_tag("record_income", {"amount": 50}),       # EGO attempt 1 — wrong tool
+        "Recorded income.",
+        '{"approved": false, "critique": "recorded income instead of expense"}',  # reject 1
+        _tool_tag("record_income", {"amount": 50}),       # EGO attempt 2 — still wrong
+        "Recorded income again.",
+        '{"approved": false, "critique": "still income, not expense"}',           # reject 2 → exhausted
+        # no voice response — handoff returns before voice
+    ])
+    disp = Dispatcher(["record_income", "record_expense"])
+    ctx = await _pipe().run_turn(
+        PipelineContext(user_input="registra despesa de 50"),
+        gen_backend=backend, ego_backend=backend,
+        dispatcher=disp, max_corrections=2, **KW)
+
+    assert ctx.needs_handoff is True
+    assert ctx.stop_reason == "human_handoff"
+    assert ctx.superego_result is None                    # voice never ran
+    assert [n for n, _ in disp.executed] == ["record_income", "record_income"]
+    assert ctx.metadata["ego_correction"]["attempt"] == 2
+    judge_calls = [m for m in ctx.retry_metrics if m.stage == "superego_judge"]
+    assert len(judge_calls) == 2                          # judged on every attempt
+
+
 # ── 4. SOCIAL routes to SUPEREGO voice directly — EGO never runs ──
 
 @pytest.mark.asyncio
