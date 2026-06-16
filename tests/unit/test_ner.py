@@ -11,7 +11,7 @@ from cogno_anima.stages.ner import (
 )
 from tests.conftest import StubBackend
 
-PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
+PROMPTS_DIR = Path(__file__).parent.parent.parent / "cogno_anima" / "prompt_templates"
 
 def make_noumeno_result(
     original="Olá, quero lavar meu carro",

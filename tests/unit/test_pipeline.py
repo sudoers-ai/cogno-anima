@@ -26,7 +26,7 @@ from cogno_anima.stages.ner import IntentAnalyzer, NER_KNOWLEDGE_DOMAINS
 from cogno_anima.stages.drift import DriftCalculator
 from tests.conftest import StubBackend, StubEmbedder
 
-PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
+PROMPTS_DIR = Path(__file__).parent.parent.parent / "cogno_anima" / "prompt_templates"
 
 NOUMENO_JSON = json.dumps({
     "rewritten": "I want to wash my car",
@@ -223,7 +223,7 @@ async def test_pii_risk_ignores_llm_value_and_recomputes():
 # ────────────────────────────────────────────────────────────────────
 
 def _parse_prompt_domains() -> set[str]:
-    """Extract the closed `domains` list declared in prompts/ner/system.txt."""
+    """Extract the closed `domains` list declared in cogno_anima/prompt_templates/ner/system.txt."""
     text = (PROMPTS_DIR / "ner" / "system.txt").read_text(encoding="utf-8")
     anchor = "EXACT closed list:"
     start = text.index(anchor) + len(anchor)
@@ -242,7 +242,7 @@ def test_general_domain_is_accepted():
 
 
 def _parse_prompt_mandatory_tags() -> set[str]:
-    """Extract the mandatory_tags vocabulary declared in prompts/ner/system.txt."""
+    """Extract the mandatory_tags vocabulary declared in cogno_anima/prompt_templates/ner/system.txt."""
     text = (PROMPTS_DIR / "ner" / "system.txt").read_text(encoding="utf-8")
     anchor = "mandatory_tags — 1 to 3 of:"
     start = text.index(anchor) + len(anchor)

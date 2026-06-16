@@ -21,7 +21,7 @@ from cogno_anima.stages.noumeno import Noumeno, NoumenoResult
 from cogno_anima.llm import OllamaBackend, OllamaEmbedder, CachingEmbedder
 from cogno_anima.types import PipelineContext
 
-PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
+PROMPTS_DIR = Path(__file__).parent.parent.parent / "cogno_anima" / "prompt_templates"
 SLANGS = {"vc": "você", "pq": "porque", "blz": "beleza", "pfv": "por favor"}
 
 

@@ -19,7 +19,7 @@ from cognobench.pipeline import ReferencePipeline
 
 from pathlib import Path
 
-PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
+PROMPTS_DIR = Path(__file__).parent.parent.parent / "cogno_anima" / "prompt_templates"
 MODEL = "mistral:latest"
 BASE_URL = "http://localhost:11434"
 
