@@ -19,7 +19,7 @@ from cognobench.ego_cases import (
 )
 from cognobench.superego_cases import SuperegoCase
 from cognobench.conversation_cases import (
-    ConversationCase, BenchDispatcher as ConvDispatcher,
+    ConversationCase, BenchDispatcher as ConvDispatcher, INHERIT_LANGUAGE,
     EGO_PROMPT, LIMITS_PROMPT, VOICE_PROMPT, VALID_TOOLS as CONV_TOOLS,
 )
 from cognobench.harness import PROMPTS_DIR, SLANGS
@@ -384,8 +384,12 @@ async def run_conversations(
         try:
             carry: dict = {}
             history: list[str] = []
+            # A case may pin its own language (multilingual cases); otherwise it
+            # inherits the run's global --language.
+            case_lang = (language if case.force_language == INHERIT_LANGUAGE
+                         else case.force_language)
             for idx, turn in enumerate(case.turns, start=1):
-                ctx = PipelineContext(user_input=turn.user, force_language=language)
+                ctx = PipelineContext(user_input=turn.user, force_language=case_lang)
                 ctx.metadata.update(carry)
                 ctx.metadata["turn_number"] = idx
                 ctx.metadata["active_persona_id"] = case.persona
