@@ -35,6 +35,14 @@ VALID_GOAL_STATUS: set[str] = {"NEW", "ONGOING", "COMPLETED", "ABANDONED"}
 
 VALID_COMPLEXITY: set[str] = {"LOW", "MEDIUM", "HIGH", "EXPERT"}
 
+# Closed vocabulary for `PipelineContext.stop_reason` — the terminal signal the
+# core emits for the host to act on. "completed" is the happy path; the others
+# are early-exits/escalations. The ACTION is always the host's (escalate to a
+# human, serve the cache, send a refusal) — the core only sets the signal.
+VALID_STOP_REASONS: set[str] = {
+    "completed", "human_handoff", "semantic_cache", "scope_blocked", "pii_blocked",
+}
+
 VALID_MODALITY: set[str] = {"CERTAIN", "PROBABLE", "POSSIBLE", "UNCERTAIN", "MIXED"}
 
 VALID_SPEECH_ACTS: set[str] = {
