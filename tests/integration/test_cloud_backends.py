@@ -3,7 +3,7 @@ Integration tests for cloud LLM backends — gated on real API keys.
 
 Each test skips unless its provider's API key (and SDK) is present, so the suite
 stays green in CI/dev without cloud credentials. Run locally with the relevant
-key exported (and `pip install "cogno-core[<provider>]"`).
+key exported (and `pip install "cogno-anima[<provider>]"`).
 """
 
 import importlib.util
@@ -11,8 +11,8 @@ import os
 
 import pytest
 
-from cogno_core.llm import OpenAIBackend, AnthropicBackend
-from cogno_core.llm.base import ToolCallingBackend
+from cogno_anima.llm import OpenAIBackend, AnthropicBackend
+from cogno_anima.llm.base import ToolCallingBackend
 
 TOOLS = [{
     "type": "function",

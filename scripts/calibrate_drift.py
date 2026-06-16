@@ -2,7 +2,7 @@
 """Run the drift cases through the real pipeline and print per-case actuals.
 
 Used to recalibrate the soft cumulative bands in cognobench/drift_cases.py
-against cogno-core's embedding-based drift (the original bands came from the
+against cogno-anima's embedding-based drift (the original bands came from the
 parent's heuristic drift model and do not transfer).
 """
 

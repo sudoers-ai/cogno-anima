@@ -1,8 +1,8 @@
 """
-cognobench — Cognitive benchmark for cogno-core.
+cognobench — Cognitive benchmark for cogno-anima.
 
 A self-contained, dependency-light benchmark for the cognitive layer
-(NOUMENO → NER → Drift) of cogno-core. Unlike the parent Cogno SaaS
+(NOUMENO → NER → Drift) of cogno-anima. Unlike the parent Cogno SaaS
 benchmark, this one has NO business/infra coupling: it drives the stages
 directly through dependency injection (any LLMBackend + Embedder).
 

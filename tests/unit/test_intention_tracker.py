@@ -1,8 +1,8 @@
-"""Unit tests for cogno_core.routing.intention.IntentionTracker (pure state)."""
+"""Unit tests for cogno_anima.routing.intention.IntentionTracker (pure state)."""
 
 from types import SimpleNamespace
 
-from cogno_core.routing.intention import IntentionTracker
+from cogno_anima.routing.intention import IntentionTracker
 
 
 def _intent(intent_class="ACTION_REQUEST", goal=None, concepts=None, objects=None):

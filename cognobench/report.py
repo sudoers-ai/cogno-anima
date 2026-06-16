@@ -14,7 +14,7 @@ def render(report: BenchReport, show_failures: bool = True) -> str:
     lines: list[str] = []
     lines.append("")
     lines.append("═" * 60)
-    lines.append(f"  CognoBench (cogno-core)   model={report.model or 'n/a'}")
+    lines.append(f"  CognoBench (cogno-anima)   model={report.model or 'n/a'}")
     lines.append("═" * 60)
 
     for dim in report.dimensions:

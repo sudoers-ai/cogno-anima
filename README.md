@@ -1,8 +1,8 @@
-# 🧠 cogno-core
+# 🧠 cogno-anima
 
 **The infrastructure-agnostic cognitive pipeline at the heart of [Cogno](https://github.com/sudoers-ai).**
 
-`cogno-core` is a modular, dependency-light library that turns raw user input
+`cogno-anima` is a modular, dependency-light library that turns raw user input
 into a routed, grounded, persona-voiced response — decoupled from any database,
 message bus, or proprietary infra. It is the brain; your application is the body.
 
@@ -22,7 +22,7 @@ NOUMENO  →  NER  →  ID  →  EGO  →  SUPEREGO        (+ Drift, woven throu
 
 ## Philosophy: the core signals, the host decides
 
-`cogno-core` deliberately ships **no business rules and no infrastructure**. It is
+`cogno-anima` deliberately ships **no business rules and no infrastructure**. It is
 built on a few hard contracts:
 
 - **Infra-agnostic** — no DB, no MCP, no queue. Tool execution is delegated to a host-injected `ToolDispatcher` ("EGO = brain, dispatcher = hands"). Persistence, transactions, rollback/outbox and atomicity are **host** concerns.
@@ -43,7 +43,7 @@ pip install -e .                      # core (pydantic, langdetect, httpx)
 pip install -e ".[dev]"               # + test/lint/type-check tooling
 
 # Optional cloud backends (SDKs are lazy-imported — install only what you use):
-pip install "cogno-core[openai]"      # also: anthropic | groq | gemini | bedrock | llm (all)
+pip install "cogno-anima[openai]"      # also: anthropic | groq | gemini | bedrock | llm (all)
 ```
 
 Local inference uses [Ollama](https://ollama.com) (`mistral:latest` for the
@@ -56,11 +56,11 @@ no DB:
 
 ```python
 import asyncio
-from cogno_core.types import PipelineContext
-from cogno_core.llm import OllamaBackend, OllamaEmbedder, CachingEmbedder
-from cogno_core.stages.noumeno import Noumeno
-from cogno_core.stages.ner import IntentAnalyzer
-from cogno_core.stages.id import IDStage
+from cogno_anima.types import PipelineContext
+from cogno_anima.llm import OllamaBackend, OllamaEmbedder, CachingEmbedder
+from cogno_anima.stages.noumeno import Noumeno
+from cogno_anima.stages.ner import IntentAnalyzer
+from cogno_anima.stages.id import IDStage
 
 async def main():
     llm = OllamaBackend(model="mistral:latest", temperature=0.0, format="json")
@@ -87,7 +87,7 @@ orchestration glue. A complete, runnable reference lives in
 ## LLM & embedder backends
 
 Stages depend only on three runtime-checkable `Protocol`s in
-`cogno_core/llm/base.py`: `LLMBackend`, the optional `ToolCallingBackend` (native
+`cogno_anima/llm/base.py`: `LLMBackend`, the optional `ToolCallingBackend` (native
 function calling), and `Embedder`. Anything matching the shape works.
 
 - **Local**: `OllamaBackend`, `OllamaEmbedder` (+ `CachingEmbedder` adds a bounded LRU + token accounting to any embedder).
@@ -96,7 +96,7 @@ function calling), and `Embedder`. Anything matching the shape works.
 - **Failover**: `FallbackBackend([...])` tries each in order; first success wins.
 
 ```python
-from cogno_core.llm import create_backend
+from cogno_anima.llm import create_backend
 backend = create_backend("openai:gpt-4o-mini")   # or "deepseek:deepseek-chat", "qwen3:8b", …
 ```
 

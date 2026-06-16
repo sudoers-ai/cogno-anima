@@ -12,9 +12,9 @@ Uses a REAL CachingEmbedder(OllamaEmbedder). Auto-skipped if Ollama is down.
 import httpx
 import pytest
 
-from cogno_core.llm import OllamaEmbedder, CachingEmbedder
-from cogno_core.stages.id import IDStage
-from cogno_core.types import PipelineContext, IntentResult, NoumenoResult, StageMetrics
+from cogno_anima.llm import OllamaEmbedder, CachingEmbedder
+from cogno_anima.stages.id import IDStage
+from cogno_anima.types import PipelineContext, IntentResult, NoumenoResult, StageMetrics
 
 
 async def is_ollama_available() -> bool:

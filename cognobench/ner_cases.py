@@ -1,7 +1,7 @@
 """
 NER analysis quality cases — ported and adapted from the parent Cogno bench.
 
-Tests the accuracy of the NER stage's semantic analysis against cogno-core's
+Tests the accuracy of the NER stage's semantic analysis against cogno-anima's
 `IntentResult` contract:
   - intent classification, sentiment, temporal class
   - entity extraction, language (inherited from NOUMENO), PII risk

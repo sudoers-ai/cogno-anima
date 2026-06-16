@@ -1,7 +1,7 @@
 """
 cognobench CLI runner.
 
-Drives the cogno-core cognitive stages (NOUMENO → NER → ID → Drift) over curated
+Drives the cogno-anima cognitive stages (NOUMENO → NER → ID → Drift) over curated
 case sets and prints a scored report. Defaults to a local Ollama backend;
 `--stub` runs a fast plumbing smoke test with no model.
 """
@@ -99,7 +99,7 @@ async def run_bench(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="cognobench",
-        description="Cognitive benchmark for cogno-core (NOUMENO → NER → ID → Drift)",
+        description="Cognitive benchmark for cogno-anima (NOUMENO → NER → ID → Drift)",
     )
     parser.add_argument("--model", "-m", default="mistral:latest",
                         help="Ollama model for NOUMENO/NER (default: mistral:latest; "

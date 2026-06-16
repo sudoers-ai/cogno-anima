@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from cogno_core.types import ToolResult
+from cogno_anima.types import ToolResult
 
 # ── The bench toolset (clear, finance + utility, to exercise selection) ──
 BENCH_TOOLS: list[dict] = [

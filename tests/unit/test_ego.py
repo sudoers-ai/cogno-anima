@@ -3,13 +3,13 @@
 import json
 import pytest
 
-from cogno_core.stages.ego import EgoStage
-from cogno_core.llm.base import ToolCallingBackend
-from cogno_core.types import (
+from cogno_anima.stages.ego import EgoStage
+from cogno_anima.llm.base import ToolCallingBackend
+from cogno_anima.types import (
     StageMetrics, NoumenoResult, IntentResult, PipelineContext, EgoResult,
     EgoStep, ToolExecution, ToolResult,
 )
-from cogno_core.errors import MCPDispatchError, ToolExecutionError
+from cogno_anima.errors import MCPDispatchError, ToolExecutionError
 
 
 # ── test doubles (self-contained; the import-from-conftest path is brittle

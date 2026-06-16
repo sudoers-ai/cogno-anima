@@ -1,8 +1,8 @@
-"""Unit tests for cogno_core.routing.goal.GoalManager (pure, async)."""
+"""Unit tests for cogno_anima.routing.goal.GoalManager (pure, async)."""
 
 import pytest
 
-from cogno_core.routing.goal import GoalManager, _jaccard, _tokenize
+from cogno_anima.routing.goal import GoalManager, _jaccard, _tokenize
 
 
 class _SimRecorder:

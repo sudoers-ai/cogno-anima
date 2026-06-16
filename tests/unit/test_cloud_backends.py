@@ -3,12 +3,12 @@
 import json
 import pytest
 
-from cogno_core.llm import (
+from cogno_anima.llm import (
     OpenAIBackend, AnthropicBackend, GroqBackend, GeminiBackend, BedrockBackend,
     FallbackBackend, create_backend, parse_model_string,
 )
-from cogno_core.llm.base import ToolCallingBackend, LLMBackend
-from cogno_core.errors import InvalidAPIKeyError, MissingAPIKeyError
+from cogno_anima.llm.base import ToolCallingBackend, LLMBackend
+from cogno_anima.errors import InvalidAPIKeyError, MissingAPIKeyError
 
 
 # ── protocol conformance ─────────────────────────────────────────────
@@ -39,7 +39,7 @@ def test_factory_missing_key_raises(monkeypatch):
 
 
 def test_factory_ollama_default():
-    from cogno_core.llm import OllamaBackend
+    from cogno_anima.llm import OllamaBackend
     b = create_backend("qwen3:8b")
     assert isinstance(b, OllamaBackend) and b.model == "qwen3:8b"
 

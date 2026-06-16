@@ -15,11 +15,11 @@ import pytest
 from hypothesis import given, settings, strategies as st
 
 from tests.conftest import StubEmbedder
-from cogno_core.llm.tool_parsing import parse_tool_calls_from_text
-from cogno_core.stages.noumeno import Noumeno
-from cogno_core.stages.ner import IntentAnalyzer
-from cogno_core.types import StageMetrics
-from cogno_core.errors import StageParseError
+from cogno_anima.llm.tool_parsing import parse_tool_calls_from_text
+from cogno_anima.stages.noumeno import Noumeno
+from cogno_anima.stages.ner import IntentAnalyzer
+from cogno_anima.types import StageMetrics
+from cogno_anima.errors import StageParseError
 
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
 

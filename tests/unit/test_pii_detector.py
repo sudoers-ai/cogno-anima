@@ -3,12 +3,12 @@
 import json
 import pytest
 
-from cogno_core.security.detector import (
+from cogno_anima.security.detector import (
     PiiDetector, PiiPattern, default_detector,
     BRAZIL_PATTERNS, INTERNATIONAL_PATTERNS, US_PATTERNS,
     cpf_valid, cnpj_valid, luhn_valid,
 )
-from cogno_core.stages.ner import IntentAnalyzer
+from cogno_anima.stages.ner import IntentAnalyzer
 from tests.conftest import StubBackend
 from tests.unit.test_ner import make_noumeno_result, PERFECT_JSON, PROMPTS_DIR
 

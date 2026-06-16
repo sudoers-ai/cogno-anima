@@ -1,10 +1,10 @@
-"""Unit tests for cogno_core.stages.id.IDStage (heuristic + embedder, async)."""
+"""Unit tests for cogno_anima.stages.id.IDStage (heuristic + embedder, async)."""
 
 import pytest
 
-from cogno_core.types import PipelineContext
-from cogno_core.stages.id import IDStage
-from cogno_core.stages.drift import DriftCalculator, DriftThresholds
+from cogno_anima.types import PipelineContext
+from cogno_anima.stages.id import IDStage
+from cogno_anima.stages.drift import DriftCalculator, DriftThresholds
 from tests.unit.test_drift import make_intent_result, make_noumeno_result
 
 

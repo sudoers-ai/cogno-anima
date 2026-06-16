@@ -1,6 +1,6 @@
-"""Unit tests for cogno_core.routing.attention.AttentionFilter (pure heuristic)."""
+"""Unit tests for cogno_anima.routing.attention.AttentionFilter (pure heuristic)."""
 
-from cogno_core.routing.attention import AttentionFilter
+from cogno_anima.routing.attention import AttentionFilter
 from tests.unit.test_drift import make_intent_result
 
 
