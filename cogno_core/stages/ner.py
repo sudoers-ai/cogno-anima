@@ -84,6 +84,25 @@ def make_tag(domain: str, name: str) -> str:
     return f"{domain}.{name}"
 
 
+# Strong anaphoric back-references — forms that almost always continue a prior
+# topic by pointing at entities mentioned earlier ("deles, qual o mais usado?").
+# Used as a deterministic fallback for `context_dependent`: small LLMs frequently
+# leave it False on these, which starves the ID stage's anaphoric continuity
+# fast-path. Conservative on purpose (plural "of them" forms + "the same"), so it
+# only ever flips False→True and won't mask a genuine topic change.
+_ANAPHORA_RE = re.compile(
+    r"\b(deles|delas|desses|dessas|destes|destas|daqueles|daquelas|"
+    r"disso|nisso|neles|nelas|os mesmos|as mesmas|o mesmo|a mesma|"
+    r"of them|of those|of these|the same|that one)\b",
+    re.IGNORECASE,
+)
+
+
+def _has_anaphora(*texts: str) -> bool:
+    """True if any text carries a strong anaphoric back-reference marker."""
+    return any(bool(t) and _ANAPHORA_RE.search(t) is not None for t in texts)
+
+
 class IntentAnalyzer:
     """
     IntentAnalyzer — NER Stage (Semantic Analysis).
@@ -126,6 +145,11 @@ class IntentAnalyzer:
         )
 
         ctx.intent = intent
+        logger.info(
+            "NER intent=%s sentiment=%s pii_risk=%s domains=%s composite=%s",
+            intent.intent_class, intent.sentiment, intent.pii_risk,
+            intent.domains, intent.is_composite,
+        )
         return ctx
 
     async def analyze(
@@ -187,10 +211,10 @@ class IntentAnalyzer:
         # 4. Parse da resposta. O idioma é herdado do NOUMENO, nunca do LLM.
         #    PII é detectado no texto ORIGINAL (não no rewrite, que pode mascarar).
         return self._parse(raw_response, metrics, language=noumeno.language,
-                           original=noumeno.original)
+                           original=noumeno.original, rewritten=noumeno.rewritten)
 
     def _parse(self, raw: str, metrics: StageMetrics, language: Optional[str] = None,
-               original: str = "") -> IntentResult:
+               original: str = "", rewritten: str = "") -> IntentResult:
         """
         Decodifica e sanitiza os campos do JSON gerado pelo LLM.
         """
@@ -207,6 +231,11 @@ class IntentAnalyzer:
             data = json.loads(cleaned)
         except json.JSONDecodeError as exc:
             raise StageParseError(STAGE_NAME, raw, exc) from exc
+        # Valid JSON that is not an object (e.g. "5", "[]") would crash the field
+        # coercion below with a raw AttributeError — treat it as a parse failure
+        # so the contract stays "valid IntentResult OR StageParseError".
+        if not isinstance(data, dict):
+            raise StageParseError(STAGE_NAME, raw, TypeError("JSON is not an object"))
 
         # intent_class
         intent_class = str(data.get("intent_class", "UNKNOWN")).upper()
@@ -444,6 +473,12 @@ class IntentAnalyzer:
             context_dependent = ctx_raw.strip().lower() in ("true", "1", "yes")
         else:
             context_dependent = False
+        # Deterministic fallback: strong anaphoric back-references ("deles, qual o
+        # mais usado?") are context-dependent even when the LLM misses it. Only
+        # flips False→True (never overrides a positive), so it can't mask a topic
+        # change; feeds the ID stage's anaphoric continuity fast-path.
+        if not context_dependent and _has_anaphora(original, rewritten):
+            context_dependent = True
 
         # is_composite
         comp_flag_raw = data.get("is_composite", False)

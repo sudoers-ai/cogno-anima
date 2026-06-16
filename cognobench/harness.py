@@ -105,6 +105,14 @@ def build_ollama(
     return backend, embedder
 
 
+def build_ollama_text(
+    model: str, base_url: str = "http://localhost:11434",
+) -> LLMBackend:
+    """Real Ollama backend for the EGO — NO JSON format, so the fallback path can
+    emit free text with ``<TOOL_CALL>`` tags (JSON-constrained output would forbid them)."""
+    return OllamaBackend(model=model, base_url=base_url, temperature=0.0)
+
+
 async def ollama_available(base_url: str = "http://localhost:11434") -> bool:
     import httpx
     try:

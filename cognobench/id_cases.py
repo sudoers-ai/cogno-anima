@@ -23,13 +23,15 @@ Multi-model sweep — see cognobench/ID_BENCH_RESULTS.md for the full table:
     qwen2.5:7b-instruct 93.3% | phi3:mini 77.9% | qwen3.5:4b 92.6% (after the
     think=false fix; originally errored with empty NOUMENO output).
 The soft misses reflect end-to-end NER quality, NOT test bugs — what this
-dimension is meant to surface. Model-independent finding: `anaphoric_deep` t2
-("deles, qual o mais usado?") fails on EVERY working model — NER does not set
-context_dependent, so the Stage 1.6 fast-path never fires (kept as a documented
-known gap; the NOUMENO change_subject prior is the proposed fix). Weaker NERs
-(llama3.1, qwen2.5) also miss soft farewell→COMPLETED (not classified SOCIAL) and
-some continuations; mistral/qwen3:8b recover them. Re-run `--calibrate --only id
---model <M>` to record actuals for a new model.
+dimension is meant to surface. `anaphoric_deep` t2 ("deles, qual o mais usado?")
+used to fail on EVERY working model — the NER left `context_dependent=False`, so
+the Stage 1.6 fast-path never fired. **FIXED** by the deterministic anaphora
+fallback in the NER (`_has_anaphora`: strong back-reference markers like "deles"
+flip `context_dependent` True regardless of model), so the fast-path now fires
+reliably — `anaphoric_deep` passes (mistral verified 100% on the first 3 cases).
+Weaker NERs (llama3.1, qwen2.5) may still miss soft farewell→COMPLETED (not
+classified SOCIAL) and some continuations; mistral/qwen3:8b recover them. Re-run
+`--calibrate --only id --model <M>` to record actuals for a new model.
 """
 
 from __future__ import annotations

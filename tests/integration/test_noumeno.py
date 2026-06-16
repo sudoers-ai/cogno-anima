@@ -118,8 +118,8 @@ REAL_TURNS_INPUTS = [
     # MBA / Reminders / Calendar
     ("reminder setup", "Crie um lembrete para daqui a 10 minutos, preciso acesse a planilha de aulas e que traga todas as próximas aulas do MBA de Data Engineering para o mês de Junho", [["reminder", "lembrete"], ["mba", "class", "aula", "engineering"]]),
     ("reminder general", "Crie uma lembrete para daqui a 5 minutos sobre minhas aulas do MBA", [["reminder", "lembrete"], ["mba"]]),
-    ("schedule blockage", "Bloqueie minha agenda no dia 2026-06-09 das 09:00 às 10:00.", [["block", "bloque"], ["agenda", "schedule"]]),
-    ("schedule unblockage", "Desbloquear minha agenda do dia 11", [["unblock", "unlock", "desbloque", "agenda", "schedule"]]),
+    ("schedule blockage", "Bloqueie minha agenda no dia 2026-06-09 das 09:00 às 10:00.", [["block", "bloque"], ["agenda", "schedule", "calendar"]]),
+    ("schedule unblockage", "Desbloquear minha agenda do dia 11", [["unblock", "unlock", "desbloque", "agenda", "schedule", "calendar"]]),
     
     # Finance / Market
     ("market news", "Gostaria de saber as notícias do mercado", [["news", "noticia"], ["market", "mercado"]]),

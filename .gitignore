@@ -66,3 +66,12 @@ venv.bak/
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# API keys / secrets (never commit cloud credentials)
+.env.*
+!.env.example
+*.pem
+
+# Logs
+*.log
+logs/

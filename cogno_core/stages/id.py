@@ -176,6 +176,10 @@ class IDStage:
             complexity=complexity,
             metrics=metrics,
         )
+        logger.info(
+            "ID turn=%d route=%s goal_status=%s blocked=%s complexity=%s sim=%.2f",
+            turn, triad_route, goal_status, blocked, complexity, goal_similarity,
+        )
         return ctx
 
     # ── Embedder usage closure (token accounting) ─────────────────────────────
@@ -215,8 +219,12 @@ class IDStage:
             return "SUPEREGO"            # de-escalate sustained frustration
         if intent.intent_class == "CREATIVE_TASK":
             return "SUPEREGO"
-        mandatory = [t.replace("NER.", "") for t in (intent.mandatory_tags or [])]
-        if intent.intent_class == "ACTION_REQUEST" and "SYSTEM" in mandatory:
+        # The EGO is the tool gateway: any request that may need execution OR
+        # data (ACTION_REQUEST / INFORMATION_REQUEST) routes to it — the EGO
+        # no-ops to a draft when no tool is needed. Pure conversation stays
+        # SUPEREGO-direct. (Widened from the old ACTION+SYSTEM rule, which
+        # starved tool-requiring info queries like "what's my balance?".)
+        if intent.intent_class in ("ACTION_REQUEST", "INFORMATION_REQUEST"):
             return "EGO"
         if intent.intent_class == "SOCIAL":
             return "SUPEREGO"
