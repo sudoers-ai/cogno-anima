@@ -3,7 +3,7 @@ name = "cogno-anima"
 version = "0.1.0"
 description = "Infrastructure-agnostic cognitive pipeline core (NOUMENO/NER/ID/EGO/SUPEREGO + Drift)"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 authors = [{ name = "Sudoers AI" }]
@@ -12,6 +12,7 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -26,9 +27,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/sudoers-ai/cogno-core"
-Repository = "https://github.com/sudoers-ai/cogno-core"
-Issues = "https://github.com/sudoers-ai/cogno-core/issues"
+Homepage = "https://github.com/sudoers-ai/cogno-anima"
+Repository = "https://github.com/sudoers-ai/cogno-anima"
+Issues = "https://github.com/sudoers-ai/cogno-anima/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -64,7 +65,7 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 110
-target-version = "py311"
+target-version = "py310"
 
 [tool.ruff.lint]
 # Default ruleset (pyflakes + core pycodestyle). Kept lean on purpose — the
@@ -73,7 +74,7 @@ target-version = "py311"
 select = ["E4", "E7", "E9", "F"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.10"
 ignore_missing_imports = true   # langdetect/httpx ship partial or no stubs
 # Type-check the library only; the prompt-driven parsing has many dynamic
 # `data.get(...)` accesses, so we keep this pragmatic rather than strict.
