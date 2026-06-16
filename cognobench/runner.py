@@ -16,7 +16,9 @@ import sys
 from cognobench.harness import (
     CognitivePipeline, build_ollama, build_ollama_text, build_stub, ollama_available,
 )
-from cognobench.dimensions import run_noumeno, run_ner, run_id, run_ego, run_drift
+from cognobench.dimensions import (
+    run_noumeno, run_ner, run_id, run_ego, run_superego, run_drift,
+)
 from cognobench.types import BenchReport
 from cognobench.report import render
 from cognobench.ner_cases import NER_CASES
@@ -24,9 +26,10 @@ from cognobench.drift_cases import DRIFT_CASES
 from cognobench.noumeno_cases import NOUMENO_CASES
 from cognobench.id_cases import ID_CASES
 from cognobench.ego_cases import EGO_CASES
+from cognobench.superego_cases import SUPEREGO_CASES
 
-# Pipeline order: NOUMENO → NER → ID → EGO → Drift.
-ALL_DIMENSIONS = ("noumeno", "ner", "id", "ego", "drift")
+# Pipeline order: NOUMENO → NER → ID → EGO → SUPEREGO → Drift.
+ALL_DIMENSIONS = ("noumeno", "ner", "id", "ego", "superego", "drift")
 
 
 async def run_bench(
@@ -71,6 +74,13 @@ async def run_bench(
         ego_backend = backend if stub else build_ollama_text(model, base_url)
         report.dimensions.append(
             await run_ego(ego_backend, cap(EGO_CASES), calibrate=calibrate, language=language))
+    if "superego" in dims:
+        # scope/judge consume JSON (use the json backend); voice needs free text.
+        judge_be = backend
+        voice_be = backend if stub else build_ollama_text(model, base_url)
+        report.dimensions.append(
+            await run_superego(judge_be, voice_be, cap(SUPEREGO_CASES),
+                               calibrate=calibrate, language=language))
     if "drift" in dims:
         report.dimensions.append(
             await run_drift(pipe, cap(DRIFT_CASES), calibrate=calibrate, language=language))

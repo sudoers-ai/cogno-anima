@@ -66,6 +66,17 @@ def test_stub_ego_runs_and_hard_invariants_hold():
     assert all(c.correct for c in hard)
 
 
+def test_stub_superego_runs_and_hard_invariants_hold():
+    """SUPEREGO dimension runs in stub mode; bool/non-empty invariants hold."""
+    report = _run_stub(only=["superego"], limit=4)
+    se = next(d for d in report.dimensions if d.name == "superego")
+    assert se.errors == [], f"superego raised: {se.errors}"
+    hard = [c for c in se.checks if c.field in
+            ("blocked_is_bool", "approved_is_bool", "response_nonempty")]
+    assert hard, "expected SUPEREGO hard-invariant checks"
+    assert all(c.correct for c in hard)
+
+
 def test_report_to_dict_shape():
     report = _run_stub(only=["ner"], limit=1)
     d = report.to_dict()

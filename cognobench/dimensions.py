@@ -17,10 +17,15 @@ from cognobench.id_cases import IdCase, VALID_GOAL_STATUS, VALID_ROUTES
 from cognobench.ego_cases import (
     EgoCase, BenchDispatcher, EGO_SYSTEM, VALID_TOOLS,
 )
+from cognobench.superego_cases import SuperegoCase
 
 from cogno_core.llm import LLMBackend
 from cogno_core.stages.ego import EgoStage
-from cogno_core.types import PipelineContext, NoumenoResult, IntentResult, StageMetrics
+from cogno_core.stages.superego import SuperegoStage
+from cogno_core.types import (
+    PipelineContext, NoumenoResult, IntentResult, StageMetrics,
+    EgoResult, EgoStep, ToolExecution,
+)
 
 
 def _lang_prefix(value: str) -> str:
@@ -281,6 +286,76 @@ async def run_ego(
                 ok = len(names) == 0
                 dim.checks.append(CheckResult(case.id, "no_tool(soft)", "[]",
                                               str(names), True if calibrate else ok))
+        except Exception as exc:  # noqa: BLE001
+            dim.errors.append((case.id, repr(exc)))
+    return dim
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  SUPEREGO
+# ──────────────────────────────────────────────────────────────────────────
+
+def _superego_ctx(case: SuperegoCase) -> PipelineContext:
+    m = StageMetrics(stage="x", elapsed_ms=1.0, tokens_in=1, tokens_out=1, model="bench")
+    noumeno = NoumenoResult(
+        original=case.user, rewritten=case.user, context_turn="", language="pt",
+        canonical_language="en", drift_score=0.0, drift_tag="PASS_THROUGH", changed=False,
+        confidence=1.0, change_subject=False, subject_similarity=1.0, context_used=False,
+        preserved_terms=[], rewrite_warnings=[], metrics=m,
+    )
+    intent = IntentResult(
+        intent_class=case.intent_class, sentiment="NEUTRAL", confidence=1.0,
+        temporal_class="TIMELESS", triad_signal="EGO", goal=case.goal or case.user,
+        domains=["FINANCE"], metrics=m,
+    )
+    ctx = PipelineContext(user_input=case.user, noumeno=noumeno, intent=intent)
+    if case.tool:
+        ctx.ego_result = EgoResult(steps=[EgoStep(
+            index=0, path="native", assistant_text="done",
+            tool_calls=[ToolExecution(tool=case.tool, arguments=case.args,
+                                      result=case.result, ok=True)],
+        )], metrics=m)
+    return ctx
+
+
+async def run_superego(
+    judge_backend: LLMBackend, voice_backend: LLMBackend, cases: list[SuperegoCase],
+    calibrate: bool = False, language: str | None = None,
+) -> DimensionResult:
+    """Score the SUPEREGO: scope guard + judge (goal↔execution) + voicer.
+
+    judge_backend should be JSON-constrained (scope/judge parse JSON); voice
+    needs a plain text backend.
+    """
+    dim = DimensionResult(name="superego")
+    stage = SuperegoStage()
+    for case in cases:
+        try:
+            ctx = _superego_ctx(case)
+            if case.kind == "scope":
+                r = await stage.check_input_scope(ctx, judge_backend, scope_prompt=case.scope_prompt)
+                dim.checks.append(CheckResult(case.id, "blocked_is_bool", "bool",
+                                              str(r.blocked), isinstance(r.blocked, bool)))
+                if case.expect_blocked is not None:
+                    ok = r.blocked == case.expect_blocked
+                    dim.checks.append(CheckResult(case.id, "scope(soft)", str(case.expect_blocked),
+                                                  str(r.blocked), True if calibrate else ok))
+            elif case.kind == "judge":
+                r = await stage.evaluate(ctx, judge_backend, limits_prompt="")
+                dim.checks.append(CheckResult(case.id, "approved_is_bool", "bool",
+                                              str(r.approved), isinstance(r.approved, bool)))
+                if case.expect_approved is not None:
+                    ok = r.approved == case.expect_approved
+                    dim.checks.append(CheckResult(case.id, "judge(soft)", str(case.expect_approved),
+                                                  str(r.approved), True if calibrate else ok))
+            elif case.kind == "voice":
+                r = await stage.voice(ctx, voice_backend, voice_prompt="You are a friendly finance assistant.")
+                dim.checks.append(CheckResult(case.id, "response_nonempty", ">0",
+                                              str(len(r.response)), bool(r.response)))
+                if case.expect_contains:
+                    ok = case.expect_contains in r.response
+                    dim.checks.append(CheckResult(case.id, "grounded(soft)", case.expect_contains,
+                                                  r.response[:60], True if calibrate else ok))
         except Exception as exc:  # noqa: BLE001
             dim.errors.append((case.id, repr(exc)))
     return dim
