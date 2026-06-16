@@ -1,7 +1,7 @@
 """
 cognobench.pipeline — a REFERENCE orchestrator wiring all stages end-to-end.
 
-This is the "host glue" the cogno-core library deliberately does NOT ship:
+This is the "host glue" the cogno-anima library deliberately does NOT ship:
 orchestration (control flow + the correction loop + signal handling + atomicity
 hooks) is the host's job. It lives in cognobench (decoupled, not in the wheel) as
 an **executable spec** of how a host composes the stages, and so the e2e tests
@@ -16,14 +16,14 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
-from cogno_core.stages.noumeno import Noumeno
-from cogno_core.stages.ner import IntentAnalyzer
-from cogno_core.stages.id import IDStage
-from cogno_core.stages.ego import EgoStage
-from cogno_core.stages.superego import SuperegoStage
-from cogno_core.tools import ToolDispatcher
-from cogno_core.llm import LLMBackend, Embedder
-from cogno_core.types import PipelineContext, StageMetrics, SuperegoResult
+from cogno_anima.stages.noumeno import Noumeno
+from cogno_anima.stages.ner import IntentAnalyzer
+from cogno_anima.stages.id import IDStage
+from cogno_anima.stages.ego import EgoStage
+from cogno_anima.stages.superego import SuperegoStage
+from cogno_anima.tools import ToolDispatcher
+from cogno_anima.llm import LLMBackend, Embedder
+from cogno_anima.types import PipelineContext, StageMetrics, SuperegoResult
 
 
 class ReferencePipeline:

@@ -11,10 +11,10 @@ reached, no crash, no hallucinated dispatch) — never exact model wording.
 import httpx
 import pytest
 
-from cogno_core.llm import OllamaBackend, OllamaEmbedder
-from cogno_core.llm.cache import CachingEmbedder
-from cogno_core.types import PipelineContext, ToolResult
-from cogno_core.vocab import VALID_TRIAD, VALID_STOP_REASONS
+from cogno_anima.llm import OllamaBackend, OllamaEmbedder
+from cogno_anima.llm.cache import CachingEmbedder
+from cogno_anima.types import PipelineContext, ToolResult
+from cogno_anima.vocab import VALID_TRIAD, VALID_STOP_REASONS
 from cognobench.pipeline import ReferencePipeline
 
 from pathlib import Path

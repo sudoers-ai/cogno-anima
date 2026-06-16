@@ -3,7 +3,7 @@ Phase 1 contract tests for the ID stage (Stage 3) additions:
 
   - IdResult is a validated pydantic model with the expected fields/defaults;
   - PipelineContext wires `id_result` into id_metrics / stage_metrics / totals;
-  - the ID closed vocabularies (goal status, complexity) exist in cogno_core.vocab.
+  - the ID closed vocabularies (goal status, complexity) exist in cogno_anima.vocab.
 
 No behavior is exercised yet (the IDStage lands in a later phase) — this only
 locks the data contract so the rest of the build can depend on it.
@@ -11,8 +11,8 @@ locks the data contract so the rest of the build can depend on it.
 
 import pytest
 
-from cogno_core import IdResult, StageMetrics, PipelineContext
-from cogno_core import vocab
+from cogno_anima import IdResult, StageMetrics, PipelineContext
+from cogno_anima import vocab
 
 
 def _metrics(stage: str = "id", **kw) -> StageMetrics:

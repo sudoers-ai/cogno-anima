@@ -1,11 +1,11 @@
-from cogno_core.errors import StageParseError
+from cogno_anima.errors import StageParseError
 import pytest
 import json
 from pathlib import Path
 from pydantic import ValidationError
 
-from cogno_core.types import NoumenoResult, IntentResult
-from cogno_core.stages.ner import (
+from cogno_anima.types import NoumenoResult, IntentResult
+from cogno_anima.stages.ner import (
     IntentAnalyzer,
     NER_KNOWLEDGE_DOMAINS,
 )
@@ -19,7 +19,7 @@ def make_noumeno_result(
     change_subject=False,
     context_turn="car washing",
 ) -> NoumenoResult:
-    from cogno_core.types import StageMetrics
+    from cogno_anima.types import StageMetrics
     metrics = StageMetrics(stage="noumeno", elapsed_ms=10.0, tokens_in=5, tokens_out=5, model="test")
     return NoumenoResult(
         original=original,

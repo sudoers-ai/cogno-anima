@@ -8,9 +8,9 @@ free text → plain backend. Auto-skipped if Ollama is unreachable. temperature=
 import httpx
 import pytest
 
-from cogno_core.llm import OllamaBackend
-from cogno_core.stages.superego import SuperegoStage
-from cogno_core.types import (
+from cogno_anima.llm import OllamaBackend
+from cogno_anima.stages.superego import SuperegoStage
+from cogno_anima.types import (
     PipelineContext, NoumenoResult, IntentResult, StageMetrics,
     EgoResult, EgoStep, ToolExecution,
 )

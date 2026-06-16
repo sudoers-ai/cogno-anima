@@ -2,7 +2,7 @@
 Dimension runners — execute cases through the reference pipeline and score them.
 
 Adapted from the parent Cogno `eval_ner` mixin, but decoupled: no PipelineRunner,
-no SkillRegistry, no infra. Scoring targets cogno-core's `IntentResult`,
+no SkillRegistry, no infra. Scoring targets cogno-anima's `IntentResult`,
 `NoumenoResult` and `DriftMetrics` contracts directly.
 """
 
@@ -25,10 +25,10 @@ from cognobench.conversation_cases import (
 from cognobench.harness import PROMPTS_DIR, SLANGS
 from cognobench.pipeline import ReferencePipeline
 
-from cogno_core.llm import LLMBackend, Embedder
-from cogno_core.stages.ego import EgoStage
-from cogno_core.stages.superego import SuperegoStage
-from cogno_core.types import (
+from cogno_anima.llm import LLMBackend, Embedder
+from cogno_anima.stages.ego import EgoStage
+from cogno_anima.stages.superego import SuperegoStage
+from cogno_anima.types import (
     PipelineContext, NoumenoResult, IntentResult, StageMetrics,
     EgoResult, EgoStep, ToolExecution,
 )

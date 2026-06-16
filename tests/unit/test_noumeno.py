@@ -1,9 +1,9 @@
-from cogno_core.errors import StageParseError
+from cogno_anima.errors import StageParseError
 import pytest
 from pathlib import Path
-from cogno_core.types import PipelineContext
-from cogno_core.stages.noumeno import Noumeno, classify_drift
-from cogno_core.utils import cosine_similarity
+from cogno_anima.types import PipelineContext
+from cogno_anima.stages.noumeno import Noumeno, classify_drift
+from cogno_anima.utils import cosine_similarity
 from tests.conftest import StubBackend, StubEmbedder
 
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"

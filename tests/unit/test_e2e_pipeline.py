@@ -14,7 +14,7 @@ import pytest
 
 from tests.conftest import StubEmbedder
 from cognobench.pipeline import ReferencePipeline
-from cogno_core.types import PipelineContext, ToolResult
+from cogno_anima.types import PipelineContext, ToolResult
 
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
 

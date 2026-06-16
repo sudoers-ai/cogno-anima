@@ -3,8 +3,8 @@
 import json
 from pathlib import Path
 
-from cogno_core.types import StageMetrics
-from cogno_core.stages.ner import IntentAnalyzer, _has_anaphora
+from cogno_anima.types import StageMetrics
+from cogno_anima.stages.ner import IntentAnalyzer, _has_anaphora
 from tests.conftest import StubBackend
 
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"

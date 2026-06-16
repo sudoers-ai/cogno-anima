@@ -13,8 +13,8 @@ import types as pytypes
 
 import pytest
 
-from cogno_core.llm import AnthropicBackend, GroqBackend, GeminiBackend, BedrockBackend
-from cogno_core.errors import InvalidAPIKeyError
+from cogno_anima.llm import AnthropicBackend, GroqBackend, GeminiBackend, BedrockBackend
+from cogno_anima.errors import InvalidAPIKeyError
 
 
 class _Box:

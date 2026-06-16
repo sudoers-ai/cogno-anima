@@ -31,7 +31,7 @@ The parent's **`goals`** dimension (32 checks, skill-inference proxy) over time:
 | `ALL=gpt-4o-mini` | 93.8–100% (after the MCP-collision bug fix; dipped to 15.6% while buggy) |
 | `NER=gpt-4.1-nano` / `gpt-4.1-mini` | 96.9% |
 
-**Validation:** cogno-core's ID reaches the parent's top band (`mistral` 99%,
+**Validation:** cogno-anima's ID reaches the parent's top band (`mistral` 99%,
 `qwen3:8b` 98%) while using a **single** model for both NOUMENO+NER (the parent
 split them) and a **stricter, direct** `goal_status` metric over 3× the checks.
 The port + decoupling holds, and the direct metric is at least as discriminating

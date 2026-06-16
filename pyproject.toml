@@ -1,5 +1,5 @@
 [project]
-name = "cogno-core"
+name = "cogno-anima"
 version = "0.1.0"
 description = "Infrastructure-agnostic cognitive pipeline core (NOUMENO/NER/ID/EGO/SUPEREGO + Drift)"
 readme = "README.md"
@@ -52,7 +52,7 @@ requires = ["setuptools>=77.0.3", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["cogno_core*"]
+include = ["cogno_anima*"]
 
 [tool.pytest.ini_options]
 # The whole suite runs on pytest-asyncio (a declared dev dependency).
@@ -77,5 +77,5 @@ python_version = "3.11"
 ignore_missing_imports = true   # langdetect/httpx ship partial or no stubs
 # Type-check the library only; the prompt-driven parsing has many dynamic
 # `data.get(...)` accesses, so we keep this pragmatic rather than strict.
-files = ["cogno_core"]
+files = ["cogno_anima"]
 warn_unused_ignores = true

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-cognobench.py — thin CLI shim for the cogno-core cognitive benchmark.
+cognobench.py — thin CLI shim for the cogno-anima cognitive benchmark.
 
 Usage:
     python3 cognobench.py                      # full run vs local Ollama

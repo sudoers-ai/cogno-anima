@@ -1,6 +1,6 @@
 import pytest
 import httpx
-from cogno_core.llm import OllamaBackend, OllamaEmbedder, CachingEmbedder
+from cogno_anima.llm import OllamaBackend, OllamaEmbedder, CachingEmbedder
 
 @pytest.mark.asyncio
 async def test_ollama_backend_generate_success(monkeypatch):

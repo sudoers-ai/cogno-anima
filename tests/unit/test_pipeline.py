@@ -18,12 +18,12 @@ import json
 import pytest
 from pathlib import Path
 
-from cogno_core.types import PipelineContext, IntentResult
-from cogno_core.errors import StageParseError
-from cogno_core.stages.base import BaseStage
-from cogno_core.stages.noumeno import Noumeno
-from cogno_core.stages.ner import IntentAnalyzer, NER_KNOWLEDGE_DOMAINS
-from cogno_core.stages.drift import DriftCalculator
+from cogno_anima.types import PipelineContext, IntentResult
+from cogno_anima.errors import StageParseError
+from cogno_anima.stages.base import BaseStage
+from cogno_anima.stages.noumeno import Noumeno
+from cogno_anima.stages.ner import IntentAnalyzer, NER_KNOWLEDGE_DOMAINS
+from cogno_anima.stages.drift import DriftCalculator
 from tests.conftest import StubBackend, StubEmbedder
 
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
@@ -252,15 +252,15 @@ def _parse_prompt_mandatory_tags() -> set[str]:
 
 def test_code_mandatory_tags_match_prompt_exactly():
     """VALID_MANDATORY must equal the prompt's mandatory_tags vocabulary (no stray LOGIC)."""
-    from cogno_core.stages.ner import VALID_MANDATORY
+    from cogno_anima.stages.ner import VALID_MANDATORY
     assert VALID_MANDATORY == _parse_prompt_mandatory_tags()
     assert "LOGIC" not in VALID_MANDATORY
 
 
 def test_all_vocab_values_are_taught_by_the_prompt():
-    """Single-source guard: every value in cogno_core.vocab must appear in the NER
+    """Single-source guard: every value in cogno_anima.vocab must appear in the NER
     prompt. Adding a value to vocab without teaching the LLM (or vice-versa) fails here."""
-    from cogno_core import vocab
+    from cogno_anima import vocab
     text = (PROMPTS_DIR / "ner" / "system.txt").read_text(encoding="utf-8")
     sets = {
         "VALID_INTENTS": vocab.VALID_INTENTS,
@@ -281,9 +281,9 @@ def test_all_vocab_values_are_taught_by_the_prompt():
 
 
 def test_ner_vocab_is_sourced_from_vocab_module():
-    """The NER stage must re-export the SAME objects as cogno_core.vocab (single source)."""
-    from cogno_core import vocab
-    from cogno_core.stages import ner
+    """The NER stage must re-export the SAME objects as cogno_anima.vocab (single source)."""
+    from cogno_anima import vocab
+    from cogno_anima.stages import ner
     assert ner.NER_KNOWLEDGE_DOMAINS is vocab.NER_KNOWLEDGE_DOMAINS
     assert ner.VALID_INTENTS is vocab.VALID_INTENTS
     assert ner.VALID_MANDATORY is vocab.VALID_MANDATORY
@@ -302,7 +302,7 @@ def test_intent_result_has_no_tool_fields():
 
 def test_ner_module_and_prompt_have_no_tool_routing():
     """The NER source and prompt must contain no tool/skill routing symbols."""
-    import cogno_core.stages.ner as ner_mod
+    import cogno_anima.stages.ner as ner_mod
     src = Path(ner_mod.__file__).read_text(encoding="utf-8").lower()
     prompt = (PROMPTS_DIR / "ner" / "system.txt").read_text(encoding="utf-8").lower()
     for needle in ("suggested_tools", "tools_section", "skill", "skillregistry",

@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from cogno_core.types import ToolResult
+from cogno_anima.types import ToolResult
 
 # ── A broad bench toolset (finance + scheduling), spanning two MCP modules ──
 BENCH_TOOLS: list[dict] = [

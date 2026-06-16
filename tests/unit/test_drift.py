@@ -1,6 +1,6 @@
 import pytest
-from cogno_core.types import DriftMetrics, IntentResult, NoumenoResult, StageMetrics
-from cogno_core.stages.drift import (
+from cogno_anima.types import DriftMetrics, IntentResult, NoumenoResult, StageMetrics
+from cogno_anima.stages.drift import (
     DriftCalculator,
     DriftThresholds,
     DEFAULT_CUMULATIVE_WEIGHTS,

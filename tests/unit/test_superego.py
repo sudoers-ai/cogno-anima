@@ -2,9 +2,9 @@
 
 import pytest
 
-from cogno_core.stages.superego import SuperegoStage
-from cogno_core.stages.drift import DriftCalculator
-from cogno_core.types import (
+from cogno_anima.stages.superego import SuperegoStage
+from cogno_anima.stages.drift import DriftCalculator
+from cogno_anima.types import (
     StageMetrics, NoumenoResult, IntentResult, PipelineContext,
     EgoResult, EgoStep, ToolExecution, SuperegoResult,
 )
@@ -58,7 +58,7 @@ def _ctx(user="record 50", intent_class="ACTION_REQUEST", sentiment="NEUTRAL",
                                       result="Recorded 50", ok=True, side_effect=True)],
         )], metrics=_m("ego"))
     if emotional and ctx.id_result is None:
-        from cogno_core.types import IdResult
+        from cogno_anima.types import IdResult
         ctx.id_result = IdResult(triad_route="SUPEREGO", emotional_override=emotional, metrics=_m("id"))
     return ctx
 

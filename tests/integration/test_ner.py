@@ -25,12 +25,12 @@ import asyncio
 import pytest
 
 from cognobench.harness import CognitivePipeline, build_ollama, ollama_available
-from cogno_core.stages.ner import (
+from cogno_anima.stages.ner import (
     VALID_INTENTS, VALID_SENTIMENTS, VALID_TEMPORAL, VALID_TRIAD,
     VALID_MODALITY, VALID_SPEECH_ACTS, VALID_PAROLE,
     NER_KNOWLEDGE_DOMAINS, VALID_MANDATORY,
 )
-from cogno_core.security.pii import PII_RISK_LEVELS
+from cogno_anima.security.pii import PII_RISK_LEVELS
 
 MODEL = os.environ.get("COGNO_NER_MODEL", "mistral:latest")
 LANGUAGE = "pt-BR"

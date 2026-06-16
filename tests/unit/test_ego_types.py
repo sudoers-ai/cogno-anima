@@ -1,6 +1,6 @@
 """Unit tests for the EGO data contracts and PipelineContext wiring."""
 
-from cogno_core.types import (
+from cogno_anima.types import (
     StageMetrics, ToolResult, ToolExecution, EgoStep, EgoResult, PipelineContext,
 )
 

@@ -1,6 +1,6 @@
 """Unit tests for the shared tool-call text parser."""
 
-from cogno_core.llm.tool_parsing import parse_tool_calls_from_text
+from cogno_anima.llm.tool_parsing import parse_tool_calls_from_text
 
 TOOLS = [
     {"function": {"name": "add_income"}},

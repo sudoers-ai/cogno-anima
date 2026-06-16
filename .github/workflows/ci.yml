@@ -26,11 +26,11 @@ jobs:
           pip install -e . --no-deps
 
       - name: Lint (ruff)
-        run: ruff check cogno_core cognobench tests scripts
+        run: ruff check cogno_anima cognobench tests scripts
 
       - name: Type check (mypy)
         run: mypy
 
       - name: Unit tests (with coverage gate)
         # Integration tests need a live Ollama and are skipped in CI.
-        run: pytest tests/unit -q --cov=cogno_core --cov-report=term-missing --cov-fail-under=85
+        run: pytest tests/unit -q --cov=cogno_anima --cov-report=term-missing --cov-fail-under=85

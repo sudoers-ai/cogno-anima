@@ -1,8 +1,8 @@
 """
-Benchmark harness — a minimal reference pipeline that drives the cogno-core
+Benchmark harness — a minimal reference pipeline that drives the cogno-anima
 stages directly through dependency injection.
 
-This deliberately does NOT live in the `cogno_core` library: orchestration is
+This deliberately does NOT live in the `cogno_anima` library: orchestration is
 the host's responsibility. The harness exists only so the benchmark can run
 NOUMENO → NER → Drift against a real (or stubbed) backend.
 """
@@ -14,12 +14,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from cogno_core.llm import LLMBackend, Embedder, OllamaBackend, OllamaEmbedder, CachingEmbedder
-from cogno_core.stages.noumeno import Noumeno
-from cogno_core.stages.ner import IntentAnalyzer
-from cogno_core.stages.id import IDStage
-from cogno_core.stages.drift import DriftCalculator
-from cogno_core.types import PipelineContext
+from cogno_anima.llm import LLMBackend, Embedder, OllamaBackend, OllamaEmbedder, CachingEmbedder
+from cogno_anima.stages.noumeno import Noumeno
+from cogno_anima.stages.ner import IntentAnalyzer
+from cogno_anima.stages.id import IDStage
+from cogno_anima.stages.drift import DriftCalculator
+from cogno_anima.types import PipelineContext
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 

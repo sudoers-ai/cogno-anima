@@ -3,11 +3,11 @@ ID (Stage 3) benchmark cases — multi-turn goal continuity + routing/safety gat
 
 Ported from the parent Cogno `bench/goal_cases.py`, but **decoupled and improved**:
 the parent inferred goal continuity indirectly from the *skill* the EGO ran
-(`current_skill == prev_skill`); cogno-core's ID exposes `id_result.goal_status`
+(`current_skill == prev_skill`); cogno-anima's ID exposes `id_result.goal_status`
 directly, so each turn is scored against the real lifecycle. The EGO-coupled
 `expect_skill` field is dropped.
 
-Lifecycle mapping (parent → cogno-core):
+Lifecycle mapping (parent → cogno-anima):
     created → NEW   |   continued → ONGOING   |   changed → ABANDONED   |   completed → COMPLETED
 
 `expect_goal_status` is a **soft** expectation: it depends on the NER (LLM) goal
