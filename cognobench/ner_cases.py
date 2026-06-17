@@ -95,7 +95,7 @@ NER_CASES: list[NERCase] = [
     NERCase(id="ner_pii_credit_card", input="meu cartão de crédito é 4111 1111 1111 1111",
             expect_pii_risk="HIGH"),
     NERCase(id="ner_pii_name_only", input="olá, meu nome é João da Silva",
-            expect_pii_risk="LOW"),
+            expect_pii_risk="NONE"),   # a bare name is not PII risk on its own
     NERCase(id="ner_pii_address", input="moro na Rua das Flores, 123, apto 45, São Paulo",
             expect_pii_risk="MEDIUM"),
     NERCase(id="ner_pii_dob", input="nasci em 15 de março de 1990",
