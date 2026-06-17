@@ -127,6 +127,11 @@ class IDStage:
         # Complexity (advisory only — the host scales the model, not the core).
         complexity = self._complexity(intent)
 
+        # Act-vs-confirm: the user framed an ACTION tentatively (a question, or
+        # low certainty). SIGNAL ONLY — the host decides (ask directly, or route
+        # to the EGO in read-only mode). The ID never forces the EGO.
+        needs_confirmation = self._needs_confirmation(intent)
+
         # Drift: seed once if absent, then situational → cumulative → downgrade.
         drift = ctx.drift
         if drift is None:
@@ -174,6 +179,7 @@ class IDStage:
             temporal_class=effective_temporal,
             emotional_override=emotional_override,
             complexity=complexity,
+            needs_confirmation=needs_confirmation,
             metrics=metrics,
         )
         logger.info(
@@ -232,6 +238,19 @@ class IDStage:
         if signal in VALID_TRIAD:
             return signal
         return "BALANCED"
+
+    @staticmethod
+    def _needs_confirmation(intent: IntentResult) -> bool:
+        """Tentative action → flag for the host (NOT a forced EGO read-only).
+
+        Fires only for an ACTION framed as a question (``speech_act`` =
+        INTERROGATIVE) or with low certainty (``modality`` ∈ {POSSIBLE,
+        UNCERTAIN}). INFORMATION_REQUEST never flags (answering a question is not
+        a commitment); None/other values → no flag.
+        """
+        if intent.intent_class != "ACTION_REQUEST":
+            return False
+        return intent.speech_act == "INTERROGATIVE" or intent.modality in ("POSSIBLE", "UNCERTAIN")
 
     # ── Temporal stickiness ─────────────────────────────────────────────────
 

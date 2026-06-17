@@ -45,3 +45,34 @@ class ToolDispatcher(Protocol):
             MCPDispatchError`` so the EGO propagates to the host.
         """
         ...
+
+
+@runtime_checkable
+class ToolPolicyDispatcher(ToolDispatcher, Protocol):
+    """Optional extension: a dispatcher that classifies its tools.
+
+    Kept SEPARATE from ``ToolDispatcher`` (mirrors the ``ToolCallingBackend``
+    pattern): a host that does not care about read-only / confirmation gating
+    implements only ``ToolDispatcher`` and both gates degrade safely. The EGO
+    probes ``isinstance(dispatcher, ToolPolicyDispatcher)``.
+
+    The core NEVER hardcodes which tools mutate or are destructive — only the
+    host knows. Two orthogonal axes:
+
+      * ``is_mutating`` drives the **read-only mask** (when the host sets
+        ``ctx.metadata["ego_readonly"]`` because the user was tentative, the EGO
+        offers only non-mutating tools). Fail-safe: without this protocol the EGO
+        masks ALL tools in read-only mode (proposes via draft, touches nothing).
+      * ``requires_confirmation`` drives the **confirmation gate** (the EGO holds
+        a destructive call and signals ``EgoResult.pending_confirmation`` until
+        the host sets ``ctx.metadata["ego_confirmed"]``). Opt-in: without this
+        protocol the core cannot know a tool is destructive, so no gate fires.
+    """
+
+    def is_mutating(self, name: str) -> bool:
+        """True if the tool writes / causes a side effect (vs. a pure read)."""
+        ...
+
+    def requires_confirmation(self, name: str) -> bool:
+        """True if the tool is destructive/aggressive and must be confirmed first."""
+        ...

@@ -11,23 +11,33 @@ native FC, so the EGO runs the **text-fallback path** (`<TOOL_CALL>` tags) — t
 same path the distilled student will use.
 
 Toolset: `record_expense`, `record_income`, `get_balance`, `get_summary`,
-`convert_currency`. 9 cases × 3 checks = **27 checks**:
+`convert_currency`, `delete_all_records` (destructive). Checks:
 - **hard** (always enforced): `steps_present` (≥1 loop step), `dispatched_tools_valid`
   (the loop never dispatches a hallucinated tool name);
+- **hard capability gates** (deterministic — see `docs/ACT_CONFIRM_READONLY.md`):
+  `no_mutation` (a read-only turn dispatches no mutating tool — they are masked),
+  `held_for_confirmation` (a destructive tool is held, never executed, without
+  `ego_confirmed`);
 - **soft** (model-dependent, `--calibrate`able): `tool_selected` (right tool for an
   action) or `no_tool` (a greeting/thank-you calls nothing).
 
-## Results (2026-06, 9 cases / 27 checks, text-fallback path, temperature 0.0)
+The two capability-gate cases (`readonly_propose`, `destructive_needs_confirmation`)
+replace the earlier *soft* "act-confirm" cases, which a strong host execution
+prompt overrode on the fallback path: a hopeful "the model will restrain itself"
+check became an **enforceable** "the mutating/destructive tool is not available /
+not executed" invariant. The classification (mutating / destructive) is
+host-declared via `ToolPolicyDispatcher`.
+
+## Results (2026-06, 11 cases / 34 checks, text-fallback path, temperature 0.0)
 
 | Model            | EGO accuracy |
 | ---------------- | ------------ |
-| mistral:latest   | 100.0% (27/27) |
-| qwen3:8b         | 100.0% (27/27) |
+| mistral:latest   | 100.0% (34/34) |
 
-Both defaults pick the correct tool for every action case and correctly stay
-conversational (no tool) on the chat cases, through the text-fallback path. The
-hard invariants (valid steps, no hallucinated dispatch) hold by construction —
-the loop blocks unknown tool names and feeds the block back.
+mistral picks the correct tool for every action case, stays conversational on
+chat cases, and the capability gates hold by construction (read-only masks the
+mutating tools; the confirmation gate holds the destructive call as
+`pending_confirmation`). Re-record `qwen3:8b` when convenient.
 
 Re-run for another model:
 

@@ -91,6 +91,25 @@ async def test_routing_table(intent_kw, expected, blocked):
         assert "CRITICAL" in out.id_result.block_reason
 
 
+@pytest.mark.parametrize("kw,expected", [
+    (dict(intent_class="ACTION_REQUEST", speech_act="INTERROGATIVE"), True),
+    (dict(intent_class="ACTION_REQUEST", modality="UNCERTAIN"), True),
+    (dict(intent_class="ACTION_REQUEST", modality="POSSIBLE"), True),
+    (dict(intent_class="ACTION_REQUEST", speech_act="DIRECTIVE", modality="CERTAIN"), False),
+    # info requests never flag, even when tentative (answering is not committing)
+    (dict(intent_class="INFORMATION_REQUEST", speech_act="INTERROGATIVE"), False),
+    (dict(intent_class="ACTION_REQUEST"), False),
+])
+async def test_needs_confirmation_signal(kw, expected):
+    """ID flags a tentatively-framed ACTION — SIGNAL only, never forces the EGO."""
+    stage = IDStage()
+    ctx = make_ctx(_intent(**kw))
+    out = await stage.process(ctx, PlainEmbedder())
+    assert out.id_result.needs_confirmation is expected
+    # the ID must NOT touch the EGO's read-only switch — that's the host's call
+    assert "ego_readonly" not in ctx.metadata
+
+
 async def test_emotional_override_forces_superego():
     stage = IDStage(frustration_threshold=1)
     ctx = make_ctx(_intent(sentiment="FRUSTRATED", triad_signal="EGO"))

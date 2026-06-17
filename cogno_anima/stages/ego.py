@@ -39,7 +39,7 @@ from cogno_anima.types import (
 from cogno_anima.llm import LLMBackend
 from cogno_anima.llm.base import ToolCallingBackend
 from cogno_anima.llm.tool_parsing import parse_tool_calls_from_text
-from cogno_anima.tools import ToolDispatcher
+from cogno_anima.tools import ToolDispatcher, ToolPolicyDispatcher
 from cogno_anima.errors import MCPDispatchError, ToolExecutionError
 
 logger = logging.getLogger("cogno_anima.ego")
@@ -85,10 +85,28 @@ class EgoStage:
         )
         use_native = fc_backend is not None
         path = "native" if use_native else "fallback"
+
+        # Host-declared tool classification (optional; mirrors ToolCallingBackend).
+        policy: Optional[ToolPolicyDispatcher] = (
+            dispatcher if isinstance(dispatcher, ToolPolicyDispatcher) else None
+        )
+        confirmed = ctx.metadata.get("ego_confirmed")  # host says "user confirmed"
+
+        # ── Read-only mask (Fonte A) ──────────────────────────────────────
+        # The host sets ego_readonly when the user was tentative (from the ID's
+        # needs_confirmation signal). In read-only mode the EGO offers ONLY
+        # non-mutating tools, so the model consults + proposes, never commits.
+        # Fail-safe: no policy → mask everything (propose via draft, touch nothing).
+        readonly = bool(ctx.metadata.get("ego_readonly"))
         tools = dispatcher.tools_schema()
+        if readonly:
+            tools = [t for t in tools if policy is not None
+                     and not policy.is_mutating(t.get("function", {}).get("name", ""))]
         valid_names = {t.get("function", {}).get("name", "") for t in tools} - {""}
         max_steps = int(ctx.metadata.get("ego_max_steps", self.MAX_STEPS_DEFAULT))
-        force_first = ctx.intent.intent_class == "ACTION_REQUEST"
+        # Force a tool on iteration 1 for actions — but never in read-only mode
+        # (a propose turn must be free to answer/clarify instead of dispatching).
+        force_first = ctx.intent.intent_class == "ACTION_REQUEST" and not readonly
 
         system = self._build_system(ctx, system_prompt, use_native, tools)
         task = ctx.noumeno.rewritten or ctx.user_input
@@ -101,6 +119,7 @@ class EgoStage:
         user_prompt = task
 
         steps: list[EgoStep] = []
+        pending_confirmation: list[ToolExecution] = []
         total_in = total_out = 0
         seen_calls: dict[str, int] = {}
         failed_calls: set[str] = set()
@@ -157,6 +176,19 @@ class EgoStage:
                                 "something different."),
                     ))
                     continue
+                # ── Confirmation gate (Fonte B) ───────────────────────
+                # A host-classified destructive tool must not run before the host
+                # confirms. Hold it (NEVER execute), record it as pending + signal.
+                if (policy is not None and policy.requires_confirmation(name)
+                        and not self._is_confirmed(confirmed, name)):
+                    held = ToolExecution(
+                        tool=name, arguments=args, ok=False, error="needs_confirmation",
+                        result=(f"[PENDING CONFIRMATION] '{name}' is destructive and was "
+                                "NOT executed; it needs explicit user confirmation first."),
+                    )
+                    execs.append(held)
+                    pending_confirmation.append(held)
+                    continue
                 # actually run it (delegated to the host)
                 seen_calls[sig] = seen_calls.get(sig, 0) + 1
                 executed_any = True
@@ -174,6 +206,10 @@ class EgoStage:
 
             steps.append(EgoStep(index=i, path=path, assistant_text=assistant_text,
                                  tool_calls=execs, tokens_in=ti, tokens_out=to))
+
+            # ── confirmation pending → stop and propose (host confirms) ─
+            if pending_confirmation:
+                break
 
             # ── convergence guard: all-blocked steps in a row → abort ─
             if executed_any:
@@ -194,6 +230,7 @@ class EgoStage:
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
         ctx.ego_result = EgoResult(
             steps=steps,
+            pending_confirmation=pending_confirmation,
             interrupted=interrupted,
             interrupt_reason=interrupt_reason,
             attempt=int(ctx.metadata.get("ego_correction", {}).get("attempt", 1)),
@@ -266,7 +303,33 @@ class EgoStage:
             lines.append(f"Domains: {', '.join(intent.domains)}")
         if intent.entities_objects:
             lines.append(f"Entities: {', '.join(intent.entities_objects)}")
+        # Pragmatic restrictions — the loop MUST honor these (host-facing NER
+        # signals previously dropped). constraints = positive limits, negation =
+        # things the user explicitly forbade.
+        if intent.constraints:
+            lines.append(f"Constraints (must respect): {', '.join(intent.constraints)}")
+        if intent.negation:
+            lines.append(f"Must NOT: {', '.join(intent.negation)}")
+        # Read-only / PROPOSE mode (Fonte A): the host masked the mutating tools
+        # this turn (the user was tentative). Tell the model WHY, so it consults
+        # and proposes instead of erroring on the missing write tools.
+        if ctx.metadata.get("ego_readonly"):
+            lines.append(
+                "PROPOSE mode: gather read-only information and propose an action "
+                "for the user to confirm; do NOT commit — mutating tools are "
+                "intentionally unavailable this turn."
+            )
         return "# Task context\n" + "\n".join(lines)
+
+    @staticmethod
+    def _is_confirmed(confirmed: object, name: str) -> bool:
+        """Did the host confirm this destructive tool? ``ego_confirmed`` is either
+        True (confirm all of this turn's actions) or a collection of tool names."""
+        if confirmed is True:
+            return True
+        if isinstance(confirmed, (list, set, tuple)):
+            return name in confirmed
+        return False
 
     def _actions_already_executed(self, ctx: PipelineContext) -> str:
         """Built from the prior EgoResult on a SUPEREGO-driven retry. Renders

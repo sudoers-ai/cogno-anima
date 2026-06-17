@@ -81,6 +81,63 @@ def test_detect_adjustments():
     assert any(a.startswith("pii:risk_") for a in adj3)
 
 
+# ── parole → register accommodation (Block 2) ────────────────────────
+
+def test_parole_to_register_mapping():
+    f = SuperegoStage._parole_to_register
+    assert f("ACADEMICO") == "register:formal"
+    assert f("FORMAL") == "register:formal"
+    assert f("TECNICO") == "register:technical"
+    assert f("COLOQUIAL") == "register:casual"
+    assert f("GIRIA") == "register:light"
+    assert f("POETICO") == "register:expressive"
+    # soft signal → no hint
+    assert f("MIXED") is None
+    assert f(None) is None
+    assert f("WHATEVER") is None
+
+
+def test_detect_adjustments_includes_register():
+    ctx = _ctx()
+    ctx.intent.parole = "ACADEMICO"
+    assert "register:formal" in SuperegoStage.detect_adjustments(ctx)
+    ctx.intent.parole = "MIXED"
+    assert not any(a.startswith("register:") for a in SuperegoStage.detect_adjustments(ctx))
+
+
+def test_voice_prompt_surfaces_register_with_persona_precedence():
+    ctx = _ctx()
+    ctx.intent.parole = "ACADEMICO"
+    se = SuperegoStage()
+    adjustments = se.detect_adjustments(ctx)
+    prompt = se._build_voice_prompt(ctx, "persona voice", "data", adjustments)
+    assert "User register: formal" in prompt
+    assert "persona takes precedence" in prompt
+    # absent when parole carries no register hint
+    ctx.intent.parole = None
+    prompt2 = se._build_voice_prompt(ctx, "persona voice", "data", se.detect_adjustments(ctx))
+    assert "User register:" not in prompt2
+
+
+# ── constraints/negation → judge prompt (Block 1) ────────────────────
+
+def test_judge_prompt_includes_user_constraints():
+    ctx = _ctx()
+    ctx.intent.constraints = ["only this month"]
+    ctx.intent.negation = ["do not delete anything"]
+    prompt = SuperegoStage()._build_judge_prompt(ctx, "")
+    assert "# User constraints" in prompt
+    assert "only this month" in prompt
+    assert "do not delete anything" in prompt
+    assert "CONSTRAINTS:" in prompt  # criterion present
+
+
+def test_judge_prompt_omits_constraints_when_none():
+    ctx = _ctx()
+    prompt = SuperegoStage()._build_judge_prompt(ctx, "")
+    assert "# User constraints" not in prompt
+
+
 # ── scope guard ──────────────────────────────────────────────────────
 
 @pytest.mark.asyncio

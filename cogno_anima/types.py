@@ -219,6 +219,11 @@ class IdResult(BaseModel):
     temporal_class: Optional[str] = None
     emotional_override: Optional[str] = None
     complexity: str = "LOW"         # LOW | MEDIUM | HIGH | EXPERT (advisory)
+    # The user framed an action tentatively (interrogative / low certainty) →
+    # this is a SIGNAL only. The host decides what to do: ask the user directly,
+    # or route to the EGO in read-only mode (ctx.metadata["ego_readonly"]). The
+    # ID never forces the EGO — it just flags the doubt.
+    needs_confirmation: bool = False
 
     # ── Telemetria ───────────────────────────────────────
     metrics: StageMetrics
@@ -280,6 +285,13 @@ class EgoResult(BaseModel):
     """
 
     steps: list[EgoStep] = Field(default_factory=list)
+
+    # Calls the model proposed but the core REFUSED to execute because the tool is
+    # host-classified ``requires_confirmation`` and the host had not confirmed
+    # (``ctx.metadata["ego_confirmed"]``). The core holds them (a side effect must
+    # not happen pre-confirmation) and signals; the host runs its confirm UX and,
+    # on the next turn with ego_confirmed set, the EGO executes them.
+    pending_confirmation: list[ToolExecution] = Field(default_factory=list)
 
     # Signals (not exceptions): the loop stopped early on a budget/convergence bound.
     interrupted: bool = False

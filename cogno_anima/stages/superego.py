@@ -95,9 +95,30 @@ class SuperegoStage:
             }.get(intent.intent_class, [])
             if intent.pii_risk not in ("NONE", "LOW"):
                 adj.append(f"pii:risk_{intent.pii_risk.lower()}")
+            register = SuperegoStage._parole_to_register(intent.parole)
+            if register:
+                adj.append(register)
         if ctx.id_result and ctx.id_result.emotional_override:
             adj.append(f"override:{ctx.id_result.emotional_override}")
         return adj or ["general:review"]
+
+    @staticmethod
+    def _parole_to_register(parole: Optional[str]) -> Optional[str]:
+        """Collapse the user's NER ``parole`` onto a formality-accommodation hint.
+
+        Distinct axis from sentiment (which carries *emotional* tone): this is
+        *formality/lexical level* only. Soft signal — MIXED/None/unknown → no hint
+        (degrade gracefully). GIRIA/POETICO are intentionally softened (the persona
+        + limits clamp them; we never echo slang/poetic register verbatim).
+        """
+        return {
+            "ACADEMICO": "register:formal",
+            "FORMAL": "register:formal",
+            "TECNICO": "register:technical",
+            "COLOQUIAL": "register:casual",
+            "GIRIA": "register:light",
+            "POETICO": "register:expressive",
+        }.get((parole or "").upper())
 
     # ── Early Input Scope Guard (pre-EGO) ────────────────────────────
 
@@ -202,20 +223,37 @@ class SuperegoStage:
         ) or "(no tools executed)"
         draft = ego.draft or "(none)"
         limits = f"\n# Persona limits\n{limits_prompt}\n" if limits_prompt and limits_prompt.strip() else ""
+        # User-stated pragmatic restrictions (NER signals): the judge must verify
+        # the execution honored them — including what the user forbade.
+        restrictions = self._format_restrictions(ctx.intent)
         return (
             f'# User request\n"{ctx.user_input}"\n\n'
             f"# Active goal\n{goal}\n"
+            f"{restrictions}"
             f"{limits}\n"
             f"# What the EGO executed\n{executed}\n\n"
             f"# EGO draft\n{draft}\n\n"
             "# Judge the EXECUTION against these criteria (most important first):\n"
             "1. GOAL↔EXECUTION: did it do exactly what was asked (X, not Y)?\n"
-            "2. COMPLETENESS: was the goal fully met (not partial)?\n"
-            "3. GROUNDING: is everything backed by the tool results (no invented data)?\n"
-            "4. SAFETY/LIMITS: within the persona's limits, no policy violation?\n\n"
+            "2. CONSTRAINTS: did it honor every user restriction (and NOT do what was forbidden)?\n"
+            "3. COMPLETENESS: was the goal fully met (not partial)?\n"
+            "4. GROUNDING: is everything backed by the tool results (no invented data)?\n"
+            "5. SAFETY/LIMITS: within the persona's limits, no policy violation?\n\n"
             'Respond ONLY with: {"approved": true/false, "critique": '
             '"...if not approved, what is wrong, to guide a retry..."}'
         )
+
+    @staticmethod
+    def _format_restrictions(intent) -> str:
+        """Render user constraints/negation for the judge prompt (empty if none)."""
+        if not intent:
+            return ""
+        lines = []
+        if intent.constraints:
+            lines.append(f"Constraints (must respect): {', '.join(intent.constraints)}")
+        if intent.negation:
+            lines.append(f"Must NOT: {', '.join(intent.negation)}")
+        return f"# User constraints\n" + "\n".join(lines) + "\n" if lines else ""
 
     # ── Voicer (post-EGO) — writes the final response ────────────────
 
@@ -266,6 +304,15 @@ class SuperegoStage:
             signals.append(f"Sentiment: {ctx.intent.sentiment}")
         if ctx.noumeno and ctx.noumeno.language:
             signals.append(f"Reply language: {ctx.noumeno.language}")
+        # Register accommodation (sibling of Reply language): match the user's
+        # formality where it does not conflict with the persona — the persona's
+        # voice/limits always win.
+        register = next((a for a in adjustments if a.startswith("register:")), None)
+        if register:
+            signals.append(
+                f"User register: {register.split(':', 1)[1]} — match it where it does "
+                "not conflict with the persona voice/limits (persona takes precedence)"
+            )
         signals.append(f"Tone hints: {', '.join(adjustments)}")
         # Host-injected context (retrieved memories / history / clock) — the same
         # block the EGO sees; included so memories can ground the final reply.
