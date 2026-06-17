@@ -20,7 +20,10 @@ VALID_PII_TYPES: set[str] = {
 PII_RISK_LEVELS: set[str] = {"NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"}
 
 PII_RISK_MAP: dict[str, str] = {
-    "NAME":          "LOW",
+    # A bare name is tracked (anaphora/session hints) but is NOT treated as a
+    # privacy risk on its own — only in combination with other identifiers does
+    # it matter, and that combination is already covered by the other types.
+    "NAME":          "NONE",
     "ADDRESS":       "MEDIUM",
     "EMAIL":         "MEDIUM",
     "PHONE":         "MEDIUM",

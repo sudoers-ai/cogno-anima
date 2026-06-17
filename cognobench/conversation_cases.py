@@ -130,7 +130,7 @@ CONVERSATION_CASES: list[ConversationCase] = [
             ConvTurn("registra uma despesa de 50 do almoço", expect_route="EGO",
                      expect_tool="record_expense", expect_goal_status="NEW"),
             ConvTurn("e uma receita de 200 do corte da cliente Maria", expect_route="EGO",
-                     expect_tool="record_income"),
+                     expect_tool="record_income", expect_goal_status="ONGOING"),  # same control goal (entrada/saída)
             ConvTurn("me dá o resumo do mês", expect_route="EGO", expect_tool="get_summary"),
             ConvTurn("perfeito, obrigado!", expect_route="SUPEREGO", expect_goal_status="COMPLETED"),
         ],
