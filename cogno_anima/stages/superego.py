@@ -262,7 +262,7 @@ class SuperegoStage:
             lines.append(f"Constraints (must respect): {', '.join(intent.constraints)}")
         if intent.negation:
             lines.append(f"Must NOT: {', '.join(intent.negation)}")
-        return f"# User constraints\n" + "\n".join(lines) + "\n" if lines else ""
+        return "# User constraints\n" + "\n".join(lines) + "\n" if lines else ""
 
     @staticmethod
     def _format_preserved(ctx: PipelineContext) -> str:
