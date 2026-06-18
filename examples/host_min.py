@@ -20,7 +20,7 @@ import asyncio
 
 import httpx
 
-from cogno_anima.llm import OllamaBackend, OllamaEmbedder, CachingEmbedder
+from cogno_synapse import OllamaBackend, OllamaEmbedder, CachingEmbedder
 from cogno_anima.stages.noumeno import Noumeno
 from cogno_anima.stages.ner import IntentAnalyzer
 from cogno_anima.stages.id import IDStage

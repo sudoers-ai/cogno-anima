@@ -33,7 +33,7 @@ from typing import Optional
 from cogno_anima.types import (
     PipelineContext, StageMetrics, SuperegoResult, ScopeCheckResult,
 )
-from cogno_anima.llm import LLMBackend
+from cogno_synapse import LLMBackend
 from cogno_anima.stages.drift import DriftCalculator
 from cogno_anima.security.detector import PiiDetector, default_detector
 

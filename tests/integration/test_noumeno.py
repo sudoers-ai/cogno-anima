@@ -18,7 +18,7 @@ import httpx
 from pathlib import Path
 
 from cogno_anima.stages.noumeno import Noumeno, NoumenoResult
-from cogno_anima.llm import OllamaBackend, OllamaEmbedder, CachingEmbedder
+from cogno_synapse import OllamaBackend, OllamaEmbedder, CachingEmbedder
 from cogno_anima.types import PipelineContext
 
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "cogno_anima" / "prompt_templates"

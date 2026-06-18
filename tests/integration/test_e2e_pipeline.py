@@ -11,8 +11,8 @@ reached, no crash, no hallucinated dispatch) — never exact model wording.
 import httpx
 import pytest
 
-from cogno_anima.llm import OllamaBackend, OllamaEmbedder
-from cogno_anima.llm.cache import CachingEmbedder
+from cogno_synapse import OllamaBackend, OllamaEmbedder
+from cogno_synapse.cache import CachingEmbedder
 from cogno_anima.types import PipelineContext, ToolResult
 from cogno_anima.vocab import VALID_TRIAD, VALID_STOP_REASONS
 from cognobench.pipeline import ReferencePipeline

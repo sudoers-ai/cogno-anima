@@ -27,7 +27,7 @@ from cognobench.conversation_cases import (
 from cognobench.harness import PROMPTS_DIR, SLANGS
 from cognobench.pipeline import ReferencePipeline
 
-from cogno_anima.llm import LLMBackend, Embedder
+from cogno_synapse import LLMBackend, Embedder
 from cogno_anima.stages.ego import EgoStage
 from cogno_anima.stages.superego import SuperegoStage
 from cogno_anima.types import (

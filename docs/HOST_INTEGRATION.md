@@ -212,7 +212,7 @@ Selecting the model per stage/tenant and building failover ladders is **host
 policy**. The core gives you the parts:
 
 ```python
-from cogno_anima.llm import create_backend, FallbackBackend
+from cogno_synapse import create_backend, FallbackBackend
 
 gen   = create_backend("openai:gpt-4o-mini")     # NOUMENO/NER/scope/judge (JSON)
 ego   = create_backend("deepseek:deepseek-chat") # EGO (native FC or text fallback)

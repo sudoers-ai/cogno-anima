@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from cogno_anima.llm import LLMBackend, Embedder, OllamaBackend, OllamaEmbedder, CachingEmbedder
+from cogno_synapse import LLMBackend, Embedder, OllamaBackend, OllamaEmbedder, CachingEmbedder
 from cogno_anima.stages.noumeno import Noumeno
 from cogno_anima.stages.ner import IntentAnalyzer
 from cogno_anima.stages.id import IDStage

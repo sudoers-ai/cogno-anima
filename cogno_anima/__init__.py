@@ -24,7 +24,7 @@ from cogno_anima.errors import (
     InvalidAPIKeyError,
     MissingAPIKeyError,
 )
-from cogno_anima.llm import (
+from cogno_synapse import (
     LLMBackend,
     ToolCallingBackend,
     Embedder,

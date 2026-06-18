@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from cogno_anima.types import PipelineContext, NoumenoResult, IntentResult, StageMetrics
-from cogno_anima.llm import LLMBackend
+from cogno_synapse import LLMBackend
 from cogno_anima.prompts import load_prompt
 from cogno_anima.security.pii import compute_pii_risk, normalize_pii_types
 from cogno_anima.security.detector import PiiDetector, default_detector

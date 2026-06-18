@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from cogno_anima.types import PipelineContext, NoumenoResult, StageMetrics
-from cogno_anima.llm import LLMBackend, Embedder
+from cogno_synapse import LLMBackend, Embedder
 from cogno_anima.utils import expand_slangs
 from cogno_anima.prompts import load_prompt
 from cogno_anima.errors import StageParseError
