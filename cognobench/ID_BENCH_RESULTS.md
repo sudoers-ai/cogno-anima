@@ -19,7 +19,9 @@ is a stricter, more direct metric over more checks (104 vs the parent's 32).
 | `llama3.1:8b` | 94.2% | 98/104 | ~21 min | 4 soft continuation/farewell + **NER missed CRITICAL credential PII** (safety gate not triggered). |
 | `qwen2.5:7b-instruct` | 93.3% | 97/104 | ~14 min | Soft farewell→COMPLETED and continuation misses. |
 | `phi3:mini` | 77.9% | 81/104 | ~15 min | Small model; weakest NER goal extraction. |
-| `qwen3.5:4b` | ⚠ ERROR → **92.6%** | 25/27 (first 4 cases, post-fix) | ~1 min err → ~50s | **FIXED:** initially errored — NOUMENO `response` was empty because the reasoning model routed output to a separate `thinking` field. Resolved by sending `think=false` (now the default in `OllamaBackend`); re-run scored 92.6% on the first 4 cases (only the universal soft misses). |
+| `qwen3.5:4b` | **98.1%** | 102/104 | ~6 min | Full run (2026-06-18). Matches `qwen3:8b` despite being a 4B model — strong goal continuity. (Earlier the reasoning model errored on empty `response`; fixed by the now-default `think=false` in `OllamaBackend`.) |
+
+> **2026-06-18 full-suite sweep** (all dimensions, post synapse/homeo extraction, within 6 GB VRAM): re-ran `llama3.1:8b` → ID **95.2%** (99/104), consistent with the 94.2% calibration row above; `qwen3.5:4b` → ID 98.1% as recorded. The extraction introduced no ID regression.
 
 ## Comparison to the parent (`cogno/bench_results/`)
 
