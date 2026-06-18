@@ -33,7 +33,7 @@ from typing import Optional
 from cogno_anima.types import (
     PipelineContext, StageMetrics, SuperegoResult, ScopeCheckResult,
 )
-from cogno_anima.llm import LLMBackend
+from cogno_synapse import LLMBackend
 from cogno_anima.stages.drift import DriftCalculator
 from cogno_anima.security.detector import PiiDetector, default_detector
 
@@ -262,7 +262,7 @@ class SuperegoStage:
             lines.append(f"Constraints (must respect): {', '.join(intent.constraints)}")
         if intent.negation:
             lines.append(f"Must NOT: {', '.join(intent.negation)}")
-        return f"# User constraints\n" + "\n".join(lines) + "\n" if lines else ""
+        return "# User constraints\n" + "\n".join(lines) + "\n" if lines else ""
 
     @staticmethod
     def _format_preserved(ctx: PipelineContext) -> str:

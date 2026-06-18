@@ -13,8 +13,8 @@ DB/MCP). Auto-skipped if Ollama is unreachable. temperature=0.0 for determinism.
 import httpx
 import pytest
 
-from cogno_anima.llm import OllamaBackend
-from cogno_anima.llm.base import ToolCallingBackend
+from cogno_synapse import OllamaBackend
+from cogno_synapse.base import ToolCallingBackend
 from cogno_anima.stages.ego import EgoStage
 from cogno_anima.types import (
     PipelineContext, IntentResult, NoumenoResult, StageMetrics, ToolResult,

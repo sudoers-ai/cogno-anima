@@ -58,7 +58,7 @@ no DB:
 ```python
 import asyncio
 from cogno_anima.types import PipelineContext
-from cogno_anima.llm import OllamaBackend, OllamaEmbedder, CachingEmbedder
+from cogno_synapse import OllamaBackend, OllamaEmbedder, CachingEmbedder
 from cogno_anima.stages.noumeno import Noumeno
 from cogno_anima.stages.ner import IntentAnalyzer
 from cogno_anima.stages.id import IDStage
@@ -87,9 +87,11 @@ orchestration glue. A complete, runnable reference lives in
 
 ## LLM & embedder backends
 
-Stages depend only on three runtime-checkable `Protocol`s in
-`cogno_anima/llm/base.py`: `LLMBackend`, the optional `ToolCallingBackend` (native
-function calling), and `Embedder`. Anything matching the shape works.
+Stages depend only on three runtime-checkable `Protocol`s defined in the sibling
+[`cogno-synapse`](https://github.com/sudoers-ai/cogno-synapse) lib
+(`cogno_synapse.base`): `LLMBackend`, the optional `ToolCallingBackend` (native
+function calling), and `Embedder`. Anything matching the shape works. (`cogno-anima`
+re-exports them, so `from cogno_anima import LLMBackend` keeps working.)
 
 - **Local**: `OllamaBackend`, `OllamaEmbedder` (+ `CachingEmbedder` adds a bounded LRU + token accounting to any embedder).
 - **Cloud**: OpenAI, Anthropic, Groq, Gemini, Bedrock — each implements native function calling.
@@ -97,7 +99,7 @@ function calling), and `Embedder`. Anything matching the shape works.
 - **Failover**: `FallbackBackend([...])` tries each in order; first success wins.
 
 ```python
-from cogno_anima.llm import create_backend
+from cogno_synapse import create_backend
 backend = create_backend("openai:gpt-4o-mini")   # or "deepseek:deepseek-chat", "qwen3:8b", …
 ```
 

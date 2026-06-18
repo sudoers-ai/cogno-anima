@@ -15,7 +15,7 @@ import pytest
 from hypothesis import given, settings, strategies as st
 
 from tests.conftest import StubEmbedder
-from cogno_anima.llm.tool_parsing import parse_tool_calls_from_text
+from cogno_synapse.tool_parsing import parse_tool_calls_from_text
 from cogno_anima.stages.noumeno import Noumeno
 from cogno_anima.stages.ner import IntentAnalyzer
 from cogno_anima.types import StageMetrics

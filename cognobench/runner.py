@@ -43,6 +43,7 @@ async def run_bench(
     limit: int | None,
     calibrate: bool,
     language: str | None = "pt-BR",
+    think: bool = False,
 ) -> BenchReport:
     if stub:
         backend, embedder = build_stub()
@@ -52,8 +53,8 @@ async def run_bench(
             print(f"✗ Ollama not reachable at {base_url}. "
                   f"Start it, or run with --stub for a plumbing check.", file=sys.stderr)
             sys.exit(2)
-        backend, embedder = build_ollama(model, embed_model, base_url)
-        model_label = model
+        backend, embedder = build_ollama(model, embed_model, base_url, think=think)
+        model_label = f"{model} (think)" if think else model
 
     pipe = CognitivePipeline(backend, embedder)
     report = BenchReport(model=model_label)
@@ -73,13 +74,13 @@ async def run_bench(
     if "ego" in dims:
         # EGO needs a TEXT backend (no JSON format) for the <TOOL_CALL> fallback path.
         # In stub mode the JSON stub yields a no-tool result — enough for plumbing.
-        ego_backend = backend if stub else build_ollama_text(model, base_url)
+        ego_backend = backend if stub else build_ollama_text(model, base_url, think=think)
         report.dimensions.append(
             await run_ego(ego_backend, cap(EGO_CASES), calibrate=calibrate, language=language))
     if "superego" in dims:
         # scope/judge consume JSON (use the json backend); voice needs free text.
         judge_be = backend
-        voice_be = backend if stub else build_ollama_text(model, base_url)
+        voice_be = backend if stub else build_ollama_text(model, base_url, think=think)
         report.dimensions.append(
             await run_superego(judge_be, voice_be, cap(SUPEREGO_CASES),
                                calibrate=calibrate, language=language))
@@ -88,7 +89,7 @@ async def run_bench(
             await run_drift(pipe, cap(DRIFT_CASES), calibrate=calibrate, language=language))
     if "conversations" in dims:
         # Full-pipeline multi-turn simulation: gen=JSON backend, ego/voice=text backend.
-        conv_ego = backend if stub else build_ollama_text(model, base_url)
+        conv_ego = backend if stub else build_ollama_text(model, base_url, think=think)
         report.dimensions.append(
             await run_conversations(backend, conv_ego, embedder, cap(CONVERSATION_CASES),
                                     calibrate=calibrate, language=language))
@@ -123,6 +124,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--calibrate", action="store_true",
                         help="Drift/ID: record actuals (cumulative band, goal_status) "
                              "without failing the soft checks")
+    parser.add_argument("--think", action="store_true",
+                        help="Enable the reasoning channel (qwen3, deepseek, …). No-op "
+                             "under JSON ops (scope/judge); visible on the text path "
+                             "(EGO loop, SUPEREGO voice). Use to compare accuracy×latency.")
     parser.add_argument("--json", action="store_true",
                         help="Emit machine-readable JSON summary instead of the table")
     parser.add_argument("--no-failures", action="store_true",
@@ -132,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
     report = asyncio.run(run_bench(
         model=args.model, embed_model=args.embed_model, base_url=args.base_url,
         only=args.only, stub=args.stub, limit=args.limit, calibrate=args.calibrate,
-        language=None if args.detect else args.language,
+        language=None if args.detect else args.language, think=args.think,
     ))
 
     if args.json:

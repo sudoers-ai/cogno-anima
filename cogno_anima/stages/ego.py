@@ -36,9 +36,9 @@ from cogno_anima.types import (
     EgoStep,
     EgoResult,
 )
-from cogno_anima.llm import LLMBackend
-from cogno_anima.llm.base import ToolCallingBackend
-from cogno_anima.llm.tool_parsing import parse_tool_calls_from_text
+from cogno_synapse import LLMBackend
+from cogno_synapse.base import ToolCallingBackend
+from cogno_synapse.tool_parsing import parse_tool_calls_from_text
 from cogno_anima.tools import ToolDispatcher, ToolPolicyDispatcher
 from cogno_anima.errors import MCPDispatchError, ToolExecutionError
 

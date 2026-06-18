@@ -12,7 +12,7 @@ Uses a REAL CachingEmbedder(OllamaEmbedder). Auto-skipped if Ollama is down.
 import httpx
 import pytest
 
-from cogno_anima.llm import OllamaEmbedder, CachingEmbedder
+from cogno_synapse import OllamaEmbedder, CachingEmbedder
 from cogno_anima.stages.id import IDStage
 from cogno_anima.types import PipelineContext, IntentResult, NoumenoResult, StageMetrics
 

@@ -1,6 +1,6 @@
 from typing import Protocol, runtime_checkable
 from cogno_anima.types import PipelineContext
-from cogno_anima.llm import LLMBackend
+from cogno_synapse import LLMBackend
 
 @runtime_checkable
 class BaseStage(Protocol):

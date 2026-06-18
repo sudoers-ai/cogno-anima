@@ -25,7 +25,7 @@ import logging
 from typing import Awaitable, Callable, Optional
 
 from cogno_anima.types import PipelineContext, IntentResult, StageMetrics, IdResult
-from cogno_anima.llm import Embedder
+from cogno_synapse import Embedder
 from cogno_anima.stages.drift import DriftCalculator
 from cogno_anima.routing import GoalManager, AttentionFilter, IntentionTracker
 from cogno_anima.vocab import VALID_TRIAD, VALID_GOAL_STATUS, VALID_COMPLEXITY

@@ -4,7 +4,7 @@ import json
 import pytest
 
 from cogno_anima.stages.ego import EgoStage
-from cogno_anima.llm.base import ToolCallingBackend
+from cogno_synapse.base import ToolCallingBackend
 from cogno_anima.types import (
     StageMetrics, NoumenoResult, IntentResult, PipelineContext, EgoResult,
     EgoStep, ToolExecution, ToolResult,

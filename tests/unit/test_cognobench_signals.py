@@ -6,7 +6,9 @@ ego_readonly, and the new cases exist with the scoring intent that validates the
 stage behavior end-to-end.
 """
 
-from cognobench.dimensions import _ego_ctx, _superego_ctx
+import pytest
+
+from cognobench.dimensions import _ego_ctx, _superego_ctx, _grounded_match
 from cognobench.ego_cases import EGO_CASES, EgoCase
 from cognobench.superego_cases import SUPEREGO_CASES, SuperegoCase
 
@@ -82,3 +84,18 @@ def test_voice_preserved_case_present():
     pv = next(c for c in SUPEREGO_CASES if c.id == "voice_preserved_figure")
     assert pv.kind == "voice" and pv.preserved_terms == ["1234.56"]
     assert pv.expect_contains == "1234.56"
+
+
+# ── locale-tolerant grounded check ──────────────────────────────────
+
+@pytest.mark.parametrize("needle,haystack,expected", [
+    ("hello", "hello world", True),               # literal substring still wins
+    ("hello", "goodbye", False),
+    ("50", "Recorded 50 for lunch", True),         # plain number, no separators
+    ("1234.56", "O valor de 1.234,56 foi pago", True),   # pt-BR locale of the same figure
+    ("1000", "saldo de 1.000,00 BRL", True),       # grouping separator tolerated
+    ("1234.56", "transferi 1.234,57 (errado)", False),   # different figure → not grounded
+    ("500", "gastei 250 e 30", False),             # per-run match: unrelated numbers don't fuse
+])
+def test_grounded_match_is_locale_tolerant(needle, haystack, expected):
+    assert _grounded_match(needle, haystack) is expected

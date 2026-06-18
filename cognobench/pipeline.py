@@ -22,7 +22,7 @@ from cogno_anima.stages.id import IDStage
 from cogno_anima.stages.ego import EgoStage
 from cogno_anima.stages.superego import SuperegoStage
 from cogno_anima.tools import ToolDispatcher
-from cogno_anima.llm import LLMBackend, Embedder
+from cogno_synapse import LLMBackend, Embedder
 from cogno_anima.types import PipelineContext, StageMetrics, SuperegoResult
 
 
