@@ -8,6 +8,8 @@ no SkillRegistry, no infra. Scoring targets cogno-anima's `IntentResult`,
 
 from __future__ import annotations
 
+import re
+
 from cognobench.harness import CognitivePipeline
 from cognobench.types import CheckResult, DimensionResult
 from cognobench.ner_cases import NERCase
@@ -36,6 +38,26 @@ from cogno_anima.types import (
 
 def _lang_prefix(value: str) -> str:
     return (value or "").lower().split("-")[0]
+
+
+# A run of digits with optional locale grouping/decimal separators (1.234,56 / 1,234.56).
+_DIGIT_RUN_RE = re.compile(r"\d[\d.,\s]*\d|\d")
+
+
+def _grounded_match(needle: str, haystack: str) -> bool:
+    """Locale-tolerant substring match for the `grounded` soft check.
+
+    A literal substring wins. For a purely numeric needle (a figure the executor
+    grounded), compare digit runs ignoring locale grouping/decimal separators, so a
+    reply that renders 1234.56 as the pt-BR `1.234,56` still counts as grounded.
+    Per-run comparison (not a global strip) avoids fusing unrelated numbers."""
+    if needle in haystack:
+        return True
+    if re.search(r"\d", needle) and re.fullmatch(r"[\d.,\s]+", needle.strip()):
+        nd = re.sub(r"\D", "", needle)
+        return bool(nd) and any(nd in re.sub(r"\D", "", run)
+                                for run in _DIGIT_RUN_RE.findall(haystack))
+    return False
 
 
 def _language_check(field_name: str, actual: str, case_expect: str, forced: str | None):
@@ -382,7 +404,7 @@ async def run_superego(
                 dim.checks.append(CheckResult(case.id, "response_nonempty", ">0",
                                               str(len(r.response)), bool(r.response)))
                 if case.expect_contains:
-                    ok = case.expect_contains in r.response
+                    ok = _grounded_match(case.expect_contains, r.response)
                     dim.checks.append(CheckResult(case.id, "grounded(soft)", case.expect_contains,
                                                   r.response[:60], True if calibrate else ok))
         except Exception as exc:  # noqa: BLE001
@@ -461,7 +483,7 @@ async def run_conversations(
                     dim.checks.append(CheckResult(tag, "goal_status(soft)", turn.expect_goal_status,
                                                   ctx.id_result.goal_status, True if calibrate else ok))
                 if turn.expect_response_contains:
-                    ok = turn.expect_response_contains in resp
+                    ok = _grounded_match(turn.expect_response_contains, resp)
                     dim.checks.append(CheckResult(tag, "grounded(soft)", turn.expect_response_contains,
                                                   resp[:60], True if calibrate else ok))
 
