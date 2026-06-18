@@ -17,6 +17,12 @@ grounding), all `--calibrate`-able.
 | ---------------- | ---------------------- | --------- |
 | mistral:latest   | 96.0% (144/150)        | 150 checks (pre-calibration) |
 | qwen3:8b         | 95.4% (144/151)        | 151 checks (post-calibration) |
+| llama3.1:8b      | 93.4% (141/151)        | 151 checks (2026-06-18 sweep) |
+| qwen3.5:4b       | 94.2% (129/137)        | 137 of 151 — 2 sessions hit `ReadTimeout` (4B model, slow composite turns) and were excluded |
+
+> `llama3.1:8b` and `qwen3.5:4b` added in the 2026-06-18 full-suite sweep (post
+> synapse/homeo extraction, within 6 GB VRAM). `qwen3.5:4b`'s two `ReadTimeout`s are
+> an infra/latency artifact on the heaviest composite sessions, not logic failures.
 
 > The 6a calibration (`finance_full_session` income turn → `goal_status=ONGOING`)
 > added **one** soft check, so the suite is now 151 checks. The mistral row

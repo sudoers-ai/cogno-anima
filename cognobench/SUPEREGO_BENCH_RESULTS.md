@@ -25,6 +25,12 @@ reject, `grounded` = a required substring appears).
 | mistral:latest      | 100.0% (26/26)    |
 | qwen3:8b            | 100.0% (26/26)    |
 | qwen3:8b (`--think`) | 100.0% (26/26)    |
+| qwen3.5:4b          | 100.0% (26/26)    |
+| llama3.1:8b         | 88.5% (23/26)     |
+
+> Added in the 2026-06-18 full-suite sweep. `qwen3.5:4b` matches the larger models
+> at 100%; `llama3.1:8b` misses 3 soft checks (weaker scope/judge/grounding) — a
+> model-quality difference, not a regression (the SUPEREGO code is unchanged).
 
 > qwen3:8b rows reflect the locale-tolerant `grounded` check (below). Pre-fix it
 > scored 92.3% / 96.2% — both "misses" were the literal substring match tripping

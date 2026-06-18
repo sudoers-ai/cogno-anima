@@ -37,6 +37,13 @@ host-declared via `ToolPolicyDispatcher`.
 | mistral:latest      | 100.0% (37/37) |
 | qwen3:8b            | 97.3% (36/37)  |
 | qwen3:8b (`--think`) | 100.0% (37/37) |
+| qwen3.5:4b          | 100.0% (37/37) |
+| llama3.1:8b         | 100.0% (37/37) |
+
+> `qwen3.5:4b` and `llama3.1:8b` added in the 2026-06-18 full-suite sweep (post
+> synapse/homeo extraction). Both pick the correct tool on every action case —
+> the EGO path (tool selection + the `parse_tool_calls_from_text` text-fallback,
+> now sourced from `cogno-synapse`) is unchanged by the extraction.
 
 mistral picks the correct tool for every action case, stays conversational on
 chat cases, and the capability gates hold by construction (read-only masks the
