@@ -23,6 +23,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
+          # Sibling transport libs (not yet on PyPI) from git so the runtime deps
+          # resolve: cogno-synapse -> cogno-homeo. Install homeo first (synapse needs it).
+          pip install "cogno-homeo @ git+https://github.com/sudoers-ai/cogno-homeo.git"
+          pip install "cogno-synapse @ git+https://github.com/sudoers-ai/cogno-synapse.git"
           pip install -e . --no-deps
 
       - name: Lint (ruff)
