@@ -98,19 +98,30 @@ def build_ollama(
     model: str,
     embed_model: str = "nomic-embed-text",
     base_url: str = "http://localhost:11434",
+    think: bool = False,
 ) -> tuple[LLMBackend, Embedder]:
-    """Real Ollama backend + embedder (temperature 0, JSON-constrained output)."""
-    backend = OllamaBackend(model=model, base_url=base_url, temperature=0.0, format="json")
+    """Real Ollama backend + embedder (temperature 0, JSON-constrained output).
+
+    ``think`` toggles the reasoning channel for reasoning models (qwen3, …). Under
+    ``format="json"`` Ollama suppresses the thinking channel, so it is a safe no-op
+    for these JSON-constrained ops — the visible effect is on the text path below.
+    """
+    backend = OllamaBackend(model=model, base_url=base_url, temperature=0.0,
+                            format="json", think=think)
     embedder = CachingEmbedder(OllamaEmbedder(model=embed_model, base_url=base_url))
     return backend, embedder
 
 
 def build_ollama_text(
-    model: str, base_url: str = "http://localhost:11434",
+    model: str, base_url: str = "http://localhost:11434", think: bool = False,
 ) -> LLMBackend:
     """Real Ollama backend for the EGO — NO JSON format, so the fallback path can
-    emit free text with ``<TOOL_CALL>`` tags (JSON-constrained output would forbid them)."""
-    return OllamaBackend(model=model, base_url=base_url, temperature=0.0)
+    emit free text with ``<TOOL_CALL>`` tags (JSON-constrained output would forbid them).
+
+    ``think`` enables the reasoning channel; with no ``format`` constraint the model
+    reasons internally and returns the answer in ``response`` (CognoBench's
+    think-on/off comparison lives here and in the EGO loop)."""
+    return OllamaBackend(model=model, base_url=base_url, temperature=0.0, think=think)
 
 
 async def ollama_available(base_url: str = "http://localhost:11434") -> bool:

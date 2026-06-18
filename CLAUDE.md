@@ -32,6 +32,7 @@ python3 cognobench.py --only ner --limit 3   # one dimension, few cases
 python3 cognobench.py --only id              # multi-turn goal continuity + routing
 python3 cognobench.py --stub --limit 3       # fast plumbing smoke (no model)
 python3 cognobench.py --calibrate --only drift id   # record drift/goal_status actuals
+python3 cognobench.py --only ego superego --model qwen3:8b --think  # reasoning on/off compare
 ```
 
 Integration tests use real models via Ollama and are written to be deterministic (`temperature=0.0`). Default NOUMENO/NER model is `mistral:latest` (top scorer on the ID bench; `qwen3:8b` is the recommended alternative — override NER via `COGNO_NER_MODEL`); embeddings use `nomic-embed-text:latest`.
