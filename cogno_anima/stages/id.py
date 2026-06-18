@@ -53,12 +53,15 @@ class IDStage:
         attention_top_n: int = 5,
         frustration_threshold: int = 2,
         complex_domains: Optional[set[str]] = None,
+        confidence_divergence_threshold: float = 0.4,
     ) -> None:
         self._drift = drift or DriftCalculator()
         self._goal_threshold = goal_threshold
         self._pii_goal_threshold = pii_goal_threshold
         self._attention = AttentionFilter(top_n=attention_top_n)
         self._frustration_threshold = frustration_threshold
+        # |noumeno.confidence - intent.confidence| at/above this → divergence flag.
+        self._confidence_divergence_threshold = confidence_divergence_threshold
         # Domains treated as inherently complex (host policy). Core default: none.
         self._complex_domains = set(complex_domains or ())
 
@@ -132,6 +135,15 @@ class IDStage:
         # to the EGO in read-only mode). The ID never forces the EGO.
         needs_confirmation = self._needs_confirmation(intent)
 
+        # Cross-stage doubt signals (2R-C / 2R-D) — both SIGNAL ONLY, host decides.
+        # C: NOUMENO/NER confidence DISAGREEMENT (robust where the absolute value
+        # is not). D: the rewriter flagged ambiguity/loss → maybe clarify.
+        confidence_divergence = (
+            abs((noumeno.confidence or 0.0) - (intent.confidence or 0.0))
+            >= self._confidence_divergence_threshold
+        )
+        clarification_suggested = bool(noumeno.rewrite_warnings)
+
         # Drift: seed once if absent, then situational → cumulative → downgrade.
         drift = ctx.drift
         if drift is None:
@@ -180,6 +192,8 @@ class IDStage:
             emotional_override=emotional_override,
             complexity=complexity,
             needs_confirmation=needs_confirmation,
+            confidence_divergence=confidence_divergence,
+            clarification_suggested=clarification_suggested,
             metrics=metrics,
         )
         logger.info(

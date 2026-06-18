@@ -44,6 +44,7 @@ class SuperegoCase:
     # voice
     expect_contains: str = ""       # grounding substring that must appear
     parole: str = ""                # NER register (Block 2) → voice accommodation
+    preserved_terms: list[str] = field(default_factory=list)  # NOUMENO verbatim terms (2R-A)
 
 
 SUPEREGO_CASES: list[SuperegoCase] = [
@@ -102,4 +103,12 @@ SUPEREGO_CASES: list[SuperegoCase] = [
                  intent_class="INFORMATION_REQUEST", goal="get balance",
                  tool="get_balance", args={}, result="Current balance: 1000 BRL",
                  parole="ACADEMICO", expect_contains="1000"),
+    # Preserved terms (2R-A): a critical figure the NOUMENO preserved must survive
+    # verbatim into the voiced reply (the judge sees it as grounding evidence; the
+    # voice runs a deterministic mutation backstop). Scored check stays grounding.
+    SuperegoCase("voice_preserved_figure", "voice", "transfere 1234.56 para a poupança",
+                 goal="record a transfer of 1234.56 to savings",
+                 tool="record_expense", args={"amount": 1234.56, "description": "savings transfer"},
+                 result="Recorded transfer of 1234.56 BRL to savings",
+                 preserved_terms=["1234.56"], expect_contains="1234.56"),
 ]

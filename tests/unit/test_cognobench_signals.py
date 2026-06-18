@@ -55,3 +55,30 @@ def test_voice_register_case_present():
     reg = next(c for c in SUPEREGO_CASES if c.id == "voice_academic_register")
     assert reg.kind == "voice" and reg.parole == "ACADEMICO"
     assert reg.expect_contains                # still grounded (no regression)
+
+
+# ── 2R wiring (preserved_terms / sequential ordering) ───────────────
+
+def test_ego_ctx_wires_sequential_signals():
+    case = EgoCase("c", "d", "convert then record", is_composite=True,
+                   is_sequential=True, causal_chain=("a", "b"))
+    ctx = _ego_ctx(case)
+    assert ctx.intent.is_composite is True and ctx.intent.is_sequential is True
+    assert ctx.intent.causal_chain == ["a", "b"]
+
+
+def test_ego_sequential_case_present():
+    seq = next(c for c in EGO_CASES if c.id == "sequential_convert_then_record")
+    assert seq.is_sequential and seq.expect_order == ("convert_currency", "record_income")
+
+
+def test_superego_ctx_wires_preserved_terms():
+    case = SuperegoCase("c", "voice", "transfere 1234.56", preserved_terms=["1234.56"])
+    ctx = _superego_ctx(case)
+    assert ctx.noumeno.preserved_terms == ["1234.56"]
+
+
+def test_voice_preserved_case_present():
+    pv = next(c for c in SUPEREGO_CASES if c.id == "voice_preserved_figure")
+    assert pv.kind == "voice" and pv.preserved_terms == ["1234.56"]
+    assert pv.expect_contains == "1234.56"

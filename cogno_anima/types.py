@@ -224,6 +224,14 @@ class IdResult(BaseModel):
     # or route to the EGO in read-only mode (ctx.metadata["ego_readonly"]). The
     # ID never forces the EGO — it just flags the doubt.
     needs_confirmation: bool = False
+    # NOUMENO×NER confidence disagreement: the rewrite *looked* clean but the
+    # intent read came back murky (or vice-versa). Not the absolute LLM confidence
+    # (the core distrusts that) — the DISAGREEMENT between two stages is the robust
+    # signal. SOFT/advisory — the host may pause or ask the user. (2R-C)
+    confidence_divergence: bool = False
+    # The NOUMENO rewriter flagged ambiguity / potential loss (rewrite_warnings):
+    # the host may consider asking the user to clarify. SIGNAL only. (2R-D)
+    clarification_suggested: bool = False
 
     # ── Telemetria ───────────────────────────────────────
     metrics: StageMetrics

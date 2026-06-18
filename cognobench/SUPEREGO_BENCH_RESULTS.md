@@ -9,23 +9,27 @@ three SUPEREGO operations, decoupled from NER (contexts hand-built):
   X, did X not Y"), **#2 user constraints** (honored `constraints`, did NOT do what
   `negation` forbade) → approve/reject (JSON backend).
 - **voice** — writes the final response **grounded** in the tool data, with a
-  **register-accommodation** signal from NER `parole` (text backend).
+  **register-accommodation** signal from NER `parole` (text backend) and a
+  deterministic **preserved-term backstop** (2R-A: a critical figure/email/URL the
+  NOUMENO preserved must survive verbatim — the judge also sees them as grounding
+  evidence).
 
-12 cases → 24 checks: hard invariants (`blocked`/`approved` are bool, `response`
+13 cases → 26 checks: hard invariants (`blocked`/`approved` are bool, `response`
 non-empty) + soft (`scope` = expected ALLOW/BLOCK, `judge` = expected approve/
 reject, `grounded` = a required substring appears).
 
-## Results (2026-06, 12 cases / 24 checks, temperature 0.0)
+## Results (2026-06, 13 cases / 26 checks, temperature 0.0)
 
 | Model            | SUPEREGO accuracy |
 | ---------------- | ----------------- |
-| mistral:latest   | 100.0% (24/24)    |
+| mistral:latest   | 100.0% (26/26)    |
 
 mistral blocks off-topic (recipe/trivia) and allows finance/greetings; the judge
 **catches income-recorded-instead-of-expense** (the goal↔execution miss) **and
 rejects a `negation`-violating execution** (categorized when told not to) while
 approving a constraint-honored one; voice grounds the figure (e.g. "1000") in the
-reply and carries the user's register (`parole`) into the voice prompt.
+reply, keeps a preserved figure ("1234.56") verbatim, and carries the user's
+register (`parole`) into the voice prompt.
 
 Re-run for another model:
 

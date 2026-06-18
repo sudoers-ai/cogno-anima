@@ -442,3 +442,45 @@ async def test_destructive_tool_runs_once_confirmed():
     ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
     assert disp.executed == [("delete_all", {})]
     assert ctx.ego_result.pending_confirmation == []
+
+
+# ── 2R-B: composite budget + sequential ordering ─────────────────────
+
+@pytest.mark.asyncio
+async def test_composite_raises_default_max_steps():
+    """A multi-task (is_composite) request gets more loop budget by default."""
+    turns = [_tool_turn("add_income", {"amount": i}) for i in range(12)]
+    backend = ScriptedToolCallingBackend(turns)
+    disp = StubDispatcher.with_tools("add_income")
+    ctx = _ctx()                       # no ego_max_steps override
+    ctx.intent.is_composite = True
+    ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+    assert ctx.ego_result.interrupt_reason == "max_steps"
+    assert len(ctx.ego_result.steps) == EgoStage.MAX_STEPS_COMPOSITE  # 8, not 5
+
+
+@pytest.mark.asyncio
+async def test_host_max_steps_overrides_composite():
+    """The host's explicit ego_max_steps always wins over the composite default."""
+    turns = [_tool_turn("add_income", {"amount": i}) for i in range(12)]
+    backend = ScriptedToolCallingBackend(turns)
+    disp = StubDispatcher.with_tools("add_income")
+    ctx = _ctx(ego_max_steps=2)
+    ctx.intent.is_composite = True
+    ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+    assert len(ctx.ego_result.steps) == 2
+
+
+def test_sequential_adds_order_hint_to_task_context():
+    """is_sequential renders an ordering instruction + the causal chain as a plan."""
+    ctx = _ctx()
+    ctx.intent.is_sequential = True
+    ctx.intent.causal_chain = ["convert to USD", "record the expense"]
+    task_ctx = EgoStage()._task_context(ctx)
+    assert "Execution order" in task_ctx
+    assert "1) convert to USD" in task_ctx and "2) record the expense" in task_ctx
+
+
+def test_non_sequential_has_no_order_hint():
+    ctx = _ctx()
+    assert "Execution order" not in EgoStage()._task_context(ctx)

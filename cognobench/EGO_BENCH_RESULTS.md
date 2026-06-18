@@ -19,7 +19,9 @@ Toolset: `record_expense`, `record_income`, `get_balance`, `get_summary`,
   `held_for_confirmation` (a destructive tool is held, never executed, without
   `ego_confirmed`);
 - **soft** (model-dependent, `--calibrate`able): `tool_selected` (right tool for an
-  action) or `no_tool` (a greeting/thank-you calls nothing).
+  action), `no_tool` (a greeting/thank-you calls nothing), or `order` (an
+  order-dependent multi-task request dispatches its tools in the right sequence —
+  2R-B: `is_composite` raises the loop budget, `is_sequential` adds the order hint).
 
 The two capability-gate cases (`readonly_propose`, `destructive_needs_confirmation`)
 replace the earlier *soft* "act-confirm" cases, which a strong host execution
@@ -28,16 +30,17 @@ check became an **enforceable** "the mutating/destructive tool is not available 
 not executed" invariant. The classification (mutating / destructive) is
 host-declared via `ToolPolicyDispatcher`.
 
-## Results (2026-06, 11 cases / 34 checks, text-fallback path, temperature 0.0)
+## Results (2026-06, 12 cases / 37 checks, text-fallback path, temperature 0.0)
 
 | Model            | EGO accuracy |
 | ---------------- | ------------ |
-| mistral:latest   | 100.0% (34/34) |
+| mistral:latest   | 100.0% (37/37) |
 
 mistral picks the correct tool for every action case, stays conversational on
 chat cases, and the capability gates hold by construction (read-only masks the
 mutating tools; the confirmation gate holds the destructive call as
-`pending_confirmation`). Re-record `qwen3:8b` when convenient.
+`pending_confirmation`). On the sequential case it dispatches `convert_currency`
+before `record_income` (order hint honored). Re-record `qwen3:8b` when convenient.
 
 Re-run for another model:
 

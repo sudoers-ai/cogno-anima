@@ -64,6 +64,7 @@ class EgoStage:
     name = STAGE_NAME
 
     MAX_STEPS_DEFAULT = 5
+    MAX_STEPS_COMPOSITE = 8        # multi-task request (intent.is_composite) → more loop budget
     MAX_DUPLICATE_CALLS = 2        # same (tool,args) seen this many times → block + warn
     MAX_CONSECUTIVE_BLOCKS = 2     # this many all-blocked steps in a row → abort the loop
 
@@ -103,7 +104,11 @@ class EgoStage:
             tools = [t for t in tools if policy is not None
                      and not policy.is_mutating(t.get("function", {}).get("name", ""))]
         valid_names = {t.get("function", {}).get("name", "") for t in tools} - {""}
-        max_steps = int(ctx.metadata.get("ego_max_steps", self.MAX_STEPS_DEFAULT))
+        # A composite (multi-task) request needs more loop budget; the host's
+        # explicit ego_max_steps always wins. is_sequential only adds ordering
+        # (rendered into the task context), not budget — it's a subset of composite.
+        default_steps = self.MAX_STEPS_COMPOSITE if ctx.intent.is_composite else self.MAX_STEPS_DEFAULT
+        max_steps = int(ctx.metadata.get("ego_max_steps", default_steps))
         # Force a tool on iteration 1 for actions — but never in read-only mode
         # (a propose turn must be free to answer/clarify instead of dispatching).
         force_first = ctx.intent.intent_class == "ACTION_REQUEST" and not readonly
@@ -310,6 +315,17 @@ class EgoStage:
             lines.append(f"Constraints (must respect): {', '.join(intent.constraints)}")
         if intent.negation:
             lines.append(f"Must NOT: {', '.join(intent.negation)}")
+        # Order-dependent multi-task request (2R-B): tell the loop the sub-tasks
+        # must run in sequence and surface the user's causal chain as a supporting
+        # plan (a hint — the loop still decides the real tool order).
+        if intent.is_sequential:
+            lines.append(
+                "Execution order: the sub-tasks are order-dependent — perform them "
+                "in the sequence stated; each step may depend on the previous one."
+            )
+            if intent.causal_chain:
+                plan = "; ".join(f"{i + 1}) {step}" for i, step in enumerate(intent.causal_chain))
+                lines.append(f"Sequence (user's reasoning, supporting hint): {plan}")
         # Read-only / PROPOSE mode (Fonte A): the host masked the mutating tools
         # this turn (the user was tentative). Tell the model WHY, so it consults
         # and proposes instead of erroring on the missing write tools.

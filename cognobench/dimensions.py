@@ -247,7 +247,8 @@ def _ego_ctx(case: EgoCase) -> PipelineContext:
     intent = IntentResult(
         intent_class=case.intent_class, sentiment="NEUTRAL", confidence=1.0,
         temporal_class="TIMELESS", triad_signal="EGO", goal=case.task, domains=["FINANCE"],
-        metrics=m,
+        is_composite=case.is_composite, is_sequential=case.is_sequential,
+        causal_chain=list(case.causal_chain), metrics=m,
     )
     ctx = PipelineContext(user_input=case.task, noumeno=noumeno, intent=intent)
     if case.readonly:                       # host turns on read-only (Fonte A)
@@ -306,6 +307,13 @@ async def run_ego(
                 ok = len(names) == 0
                 dim.checks.append(CheckResult(case.id, "no_tool(soft)", "[]",
                                               str(names), True if calibrate else ok))
+            # Soft order check (2R-B): the expected tools were dispatched in the
+            # given relative order (each present, and in sequence).
+            if case.expect_order:
+                idxs = [dispatched.index(t) for t in case.expect_order if t in dispatched]
+                ok = len(idxs) == len(case.expect_order) and idxs == sorted(idxs)
+                dim.checks.append(CheckResult(case.id, "order(soft)", str(case.expect_order),
+                                              str(dispatched), True if calibrate else ok))
         except Exception as exc:  # noqa: BLE001
             dim.errors.append((case.id, repr(exc)))
     return dim
@@ -321,7 +329,7 @@ def _superego_ctx(case: SuperegoCase) -> PipelineContext:
         original=case.user, rewritten=case.user, context_turn="", language="pt",
         canonical_language="en", drift_score=0.0, drift_tag="PASS_THROUGH", changed=False,
         confidence=1.0, change_subject=False, subject_similarity=1.0, context_used=False,
-        preserved_terms=[], rewrite_warnings=[], metrics=m,
+        preserved_terms=case.preserved_terms, rewrite_warnings=[], metrics=m,
     )
     intent = IntentResult(
         intent_class=case.intent_class, sentiment="NEUTRAL", confidence=1.0,
