@@ -219,6 +219,19 @@ class IdResult(BaseModel):
     temporal_class: Optional[str] = None
     emotional_override: Optional[str] = None
     complexity: str = "LOW"         # LOW | MEDIUM | HIGH | EXPERT (advisory)
+    # The user framed an action tentatively (interrogative / low certainty) →
+    # this is a SIGNAL only. The host decides what to do: ask the user directly,
+    # or route to the EGO in read-only mode (ctx.metadata["ego_readonly"]). The
+    # ID never forces the EGO — it just flags the doubt.
+    needs_confirmation: bool = False
+    # NOUMENO×NER confidence disagreement: the rewrite *looked* clean but the
+    # intent read came back murky (or vice-versa). Not the absolute LLM confidence
+    # (the core distrusts that) — the DISAGREEMENT between two stages is the robust
+    # signal. SOFT/advisory — the host may pause or ask the user. (2R-C)
+    confidence_divergence: bool = False
+    # The NOUMENO rewriter flagged ambiguity / potential loss (rewrite_warnings):
+    # the host may consider asking the user to clarify. SIGNAL only. (2R-D)
+    clarification_suggested: bool = False
 
     # ── Telemetria ───────────────────────────────────────
     metrics: StageMetrics
@@ -280,6 +293,13 @@ class EgoResult(BaseModel):
     """
 
     steps: list[EgoStep] = Field(default_factory=list)
+
+    # Calls the model proposed but the core REFUSED to execute because the tool is
+    # host-classified ``requires_confirmation`` and the host had not confirmed
+    # (``ctx.metadata["ego_confirmed"]``). The core holds them (a side effect must
+    # not happen pre-confirmation) and signals; the host runs its confirm UX and,
+    # on the next turn with ego_confirmed set, the EGO executes them.
+    pending_confirmation: list[ToolExecution] = Field(default_factory=list)
 
     # Signals (not exceptions): the loop stopped early on a budget/convergence bound.
     interrupted: bool = False

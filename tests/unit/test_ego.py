@@ -87,6 +87,28 @@ class StubDispatcher:
         return ToolResult(output=str(res), side_effect=self._side_effects.get(name, False))
 
 
+class PolicyDispatcher(StubDispatcher):
+    """ToolDispatcher that also satisfies ToolPolicyDispatcher (read/write +
+    destructive classification), for read-only mask and confirmation-gate tests."""
+
+    def __init__(self, *a, mutating=(), destructive=(), **kw):
+        super().__init__(*a, **kw)
+        self._mutating = set(mutating)
+        self._destructive = set(destructive)
+
+    @classmethod
+    def with_tools(cls, *names, mutating=(), destructive=(), **kwargs):
+        schema = [{"type": "function", "function": {"name": n, "description": n, "parameters": {}}}
+                  for n in names]
+        return cls(schema=schema, mutating=mutating, destructive=destructive, **kwargs)
+
+    def is_mutating(self, name):
+        return name in self._mutating
+
+    def requires_confirmation(self, name):
+        return name in self._destructive
+
+
 # ── helpers ──────────────────────────────────────────────────────────
 
 def _m(stage):
@@ -343,3 +365,122 @@ async def test_requires_noumeno_and_intent():
     bad = PipelineContext(user_input="hi")          # no noumeno/intent
     with pytest.raises(ValueError):
         await EgoStage().process(bad, backend, disp, system_prompt=SYS)
+
+
+# ── NER signal enrichment: constraints/negation (Block 1) ────────────
+
+def test_task_context_includes_constraints_and_negation():
+    ctx = _ctx()
+    ctx.intent.constraints = ["only this month"]
+    ctx.intent.negation = ["do not delete records"]
+    block = EgoStage()._task_context(ctx)
+    assert "Constraints (must respect): only this month" in block
+    assert "Must NOT: do not delete records" in block
+
+
+# ── Read-only mask (Fonte A) ─────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_readonly_masks_mutating_tools():
+    """ego_readonly → only non-mutating tools are offered; force_first off."""
+    backend = ScriptedToolCallingBackend([{"content": "Both 13:00 and 15:00 are open — which?"}])
+    disp = PolicyDispatcher.with_tools("get_balance", "record_expense", mutating=["record_expense"])
+    ctx = _ctx(intent_class="ACTION_REQUEST", ego_readonly=True)
+    ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+    # native call must NOT force a tool, and only the read tool is visible
+    assert backend.calls[0]["tool_choice"] is None
+    offered = {t["function"]["name"] for t in backend.calls[0]["tools"]}
+    assert offered == {"get_balance"}                       # record_expense masked
+    assert ctx.ego_result.tools_executed == []
+    assert "PROPOSE mode" in EgoStage()._task_context(ctx)
+
+
+@pytest.mark.asyncio
+async def test_readonly_without_policy_masks_everything():
+    """Fail-safe: a plain dispatcher (no policy) in read-only mode offers no tools."""
+    backend = ScriptedToolCallingBackend([{"content": "Want me to record 50?"}])
+    disp = StubDispatcher.with_tools("record_expense")      # no is_mutating
+    ctx = _ctx(intent_class="ACTION_REQUEST", ego_readonly=True)
+    ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+    assert backend.calls[0]["tools"] == []
+    assert ctx.ego_result.tools_executed == []
+
+
+@pytest.mark.asyncio
+async def test_firm_action_still_forces_first_tool():
+    backend = ScriptedToolCallingBackend([_tool_turn("record_expense", {"amount": 50}),
+                                          {"content": "done"}])
+    disp = StubDispatcher.with_tools("record_expense")
+    ctx = _ctx(intent_class="ACTION_REQUEST")   # no readonly
+    ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+    assert backend.calls[0]["tool_choice"] == "required"
+
+
+# ── Confirmation gate (Fonte B) ──────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_destructive_tool_held_without_confirmation():
+    """A requires_confirmation tool is NOT executed; it surfaces as pending."""
+    backend = ScriptedToolCallingBackend([_tool_turn("delete_all", {}), {"content": "x"}])
+    disp = PolicyDispatcher.with_tools("delete_all", mutating=["delete_all"],
+                                       destructive=["delete_all"])
+    ctx = _ctx(intent_class="ACTION_REQUEST")
+    ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+    res = ctx.ego_result
+    assert disp.executed == []                              # never ran the host tool
+    assert [t.tool for t in res.pending_confirmation] == ["delete_all"]
+    assert res.has_side_effects is False
+
+
+@pytest.mark.asyncio
+async def test_destructive_tool_runs_once_confirmed():
+    """With ego_confirmed set, the gate opens and the tool executes."""
+    backend = ScriptedToolCallingBackend([_tool_turn("delete_all", {}), {"content": "done"}])
+    disp = PolicyDispatcher.with_tools("delete_all", mutating=["delete_all"],
+                                       destructive=["delete_all"])
+    ctx = _ctx(intent_class="ACTION_REQUEST", ego_confirmed=True)
+    ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+    assert disp.executed == [("delete_all", {})]
+    assert ctx.ego_result.pending_confirmation == []
+
+
+# ── 2R-B: composite budget + sequential ordering ─────────────────────
+
+@pytest.mark.asyncio
+async def test_composite_raises_default_max_steps():
+    """A multi-task (is_composite) request gets more loop budget by default."""
+    turns = [_tool_turn("add_income", {"amount": i}) for i in range(12)]
+    backend = ScriptedToolCallingBackend(turns)
+    disp = StubDispatcher.with_tools("add_income")
+    ctx = _ctx()                       # no ego_max_steps override
+    ctx.intent.is_composite = True
+    ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+    assert ctx.ego_result.interrupt_reason == "max_steps"
+    assert len(ctx.ego_result.steps) == EgoStage.MAX_STEPS_COMPOSITE  # 8, not 5
+
+
+@pytest.mark.asyncio
+async def test_host_max_steps_overrides_composite():
+    """The host's explicit ego_max_steps always wins over the composite default."""
+    turns = [_tool_turn("add_income", {"amount": i}) for i in range(12)]
+    backend = ScriptedToolCallingBackend(turns)
+    disp = StubDispatcher.with_tools("add_income")
+    ctx = _ctx(ego_max_steps=2)
+    ctx.intent.is_composite = True
+    ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+    assert len(ctx.ego_result.steps) == 2
+
+
+def test_sequential_adds_order_hint_to_task_context():
+    """is_sequential renders an ordering instruction + the causal chain as a plan."""
+    ctx = _ctx()
+    ctx.intent.is_sequential = True
+    ctx.intent.causal_chain = ["convert to USD", "record the expense"]
+    task_ctx = EgoStage()._task_context(ctx)
+    assert "Execution order" in task_ctx
+    assert "1) convert to USD" in task_ctx and "2) record the expense" in task_ctx
+
+
+def test_non_sequential_has_no_order_hint():
+    ctx = _ctx()
+    assert "Execution order" not in EgoStage()._task_context(ctx)

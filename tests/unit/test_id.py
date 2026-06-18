@@ -91,6 +91,57 @@ async def test_routing_table(intent_kw, expected, blocked):
         assert "CRITICAL" in out.id_result.block_reason
 
 
+@pytest.mark.parametrize("kw,expected", [
+    (dict(intent_class="ACTION_REQUEST", speech_act="INTERROGATIVE"), True),
+    (dict(intent_class="ACTION_REQUEST", modality="UNCERTAIN"), True),
+    (dict(intent_class="ACTION_REQUEST", modality="POSSIBLE"), True),
+    (dict(intent_class="ACTION_REQUEST", speech_act="DIRECTIVE", modality="CERTAIN"), False),
+    # info requests never flag, even when tentative (answering is not committing)
+    (dict(intent_class="INFORMATION_REQUEST", speech_act="INTERROGATIVE"), False),
+    (dict(intent_class="ACTION_REQUEST"), False),
+])
+async def test_needs_confirmation_signal(kw, expected):
+    """ID flags a tentatively-framed ACTION — SIGNAL only, never forces the EGO."""
+    stage = IDStage()
+    ctx = make_ctx(_intent(**kw))
+    out = await stage.process(ctx, PlainEmbedder())
+    assert out.id_result.needs_confirmation is expected
+    # the ID must NOT touch the EGO's read-only switch — that's the host's call
+    assert "ego_readonly" not in ctx.metadata
+
+
+# ── Cross-stage doubt signals (2R-C / 2R-D) ────────────────────────────────
+
+@pytest.mark.parametrize("noumeno_conf,ner_conf,expected", [
+    (0.9, 0.4, True),    # rewrite looked clean but intent murky → diverge
+    (0.4, 0.9, True),    # the inverse also diverges
+    (0.9, 0.85, False),  # both confident → no signal
+    (0.5, 0.5, False),   # equal (even if low) → no DISAGREEMENT
+])
+async def test_confidence_divergence_signal(noumeno_conf, ner_conf, expected):
+    """The ID flags DISAGREEMENT between NOUMENO/NER confidence (not the absolute
+    value — the core distrusts that). SIGNAL only."""
+    stage = IDStage(confidence_divergence_threshold=0.4)
+    ctx = make_ctx(_intent())
+    ctx.noumeno.confidence = noumeno_conf
+    ctx.intent.confidence = ner_conf
+    out = await stage.process(ctx, PlainEmbedder())
+    assert out.id_result.confidence_divergence is expected
+
+
+@pytest.mark.parametrize("warnings,expected", [
+    (["ambiguous referent: 'ele' unresolved"], True),
+    ([], False),
+])
+async def test_clarification_suggested_signal(warnings, expected):
+    """rewrite_warnings (rewriter flagged ambiguity/loss) → clarification signal."""
+    stage = IDStage()
+    ctx = make_ctx(_intent())
+    ctx.noumeno.rewrite_warnings = warnings
+    out = await stage.process(ctx, PlainEmbedder())
+    assert out.id_result.clarification_suggested is expected
+
+
 async def test_emotional_override_forces_superego():
     stage = IDStage(frustration_threshold=1)
     ctx = make_ctx(_intent(sentiment="FRUSTRATED", triad_signal="EGO"))

@@ -81,6 +81,63 @@ def test_detect_adjustments():
     assert any(a.startswith("pii:risk_") for a in adj3)
 
 
+# ── parole → register accommodation (Block 2) ────────────────────────
+
+def test_parole_to_register_mapping():
+    f = SuperegoStage._parole_to_register
+    assert f("ACADEMICO") == "register:formal"
+    assert f("FORMAL") == "register:formal"
+    assert f("TECNICO") == "register:technical"
+    assert f("COLOQUIAL") == "register:casual"
+    assert f("GIRIA") == "register:light"
+    assert f("POETICO") == "register:expressive"
+    # soft signal → no hint
+    assert f("MIXED") is None
+    assert f(None) is None
+    assert f("WHATEVER") is None
+
+
+def test_detect_adjustments_includes_register():
+    ctx = _ctx()
+    ctx.intent.parole = "ACADEMICO"
+    assert "register:formal" in SuperegoStage.detect_adjustments(ctx)
+    ctx.intent.parole = "MIXED"
+    assert not any(a.startswith("register:") for a in SuperegoStage.detect_adjustments(ctx))
+
+
+def test_voice_prompt_surfaces_register_with_persona_precedence():
+    ctx = _ctx()
+    ctx.intent.parole = "ACADEMICO"
+    se = SuperegoStage()
+    adjustments = se.detect_adjustments(ctx)
+    prompt = se._build_voice_prompt(ctx, "persona voice", "data", adjustments)
+    assert "User register: formal" in prompt
+    assert "persona takes precedence" in prompt
+    # absent when parole carries no register hint
+    ctx.intent.parole = None
+    prompt2 = se._build_voice_prompt(ctx, "persona voice", "data", se.detect_adjustments(ctx))
+    assert "User register:" not in prompt2
+
+
+# ── constraints/negation → judge prompt (Block 1) ────────────────────
+
+def test_judge_prompt_includes_user_constraints():
+    ctx = _ctx()
+    ctx.intent.constraints = ["only this month"]
+    ctx.intent.negation = ["do not delete anything"]
+    prompt = SuperegoStage()._build_judge_prompt(ctx, "")
+    assert "# User constraints" in prompt
+    assert "only this month" in prompt
+    assert "do not delete anything" in prompt
+    assert "CONSTRAINTS:" in prompt  # criterion present
+
+
+def test_judge_prompt_omits_constraints_when_none():
+    ctx = _ctx()
+    prompt = SuperegoStage()._build_judge_prompt(ctx, "")
+    assert "# User constraints" not in prompt
+
+
 # ── scope guard ──────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
@@ -222,6 +279,59 @@ async def test_voice_feeds_synthesis_drift():
 async def test_voice_propagates_backend_error():
     with pytest.raises(ConnectionError):
         await SuperegoStage().voice(_ctx(), RaisingBackend(), voice_prompt="x")
+
+
+# ── 2R-A: preserved_terms → judge grounding + voice backstop ─────────
+
+def test_judge_prompt_includes_preserved_terms():
+    ctx = _ctx()
+    ctx.noumeno.preserved_terms = ["50", "https://acme.io/inv/7"]
+    prompt = SuperegoStage()._build_judge_prompt(ctx, "")
+    assert "Preserved terms" in prompt
+    assert "50" in prompt and "https://acme.io/inv/7" in prompt
+
+
+def test_judge_prompt_omits_preserved_when_none():
+    prompt = SuperegoStage()._build_judge_prompt(_ctx(), "")
+    assert "Preserved terms" not in prompt
+
+
+@pytest.mark.parametrize("term,payload,response,flagged", [
+    # critical term grounded in payload, appears ALTERED → flag (digit dropped)
+    ("50", "record_expense: Recorded 50", "I recorded 5 for you.", True),
+    # reproduced verbatim → fine
+    ("50", "record_expense: Recorded 50", "I recorded 50 for you.", False),
+    # mere absence (no same-kind token) → NOT flagged (forcing it would be nonsense)
+    ("50", "record_expense: Recorded 50", "All set.", False),
+    # term not in the grounded data → out of scope
+    ("50", "record_expense: Recorded 99", "I recorded 5.", False),
+    # non-critical term (no figure/email/url) → ignored
+    ("Acme", "vendor: Acme", "Logged for Acmee.", False),
+    # email mutated
+    ("a@x.com", "lookup: a@x.com", "sent to b@y.com", True),
+    # url mutated
+    ("https://acme.io/x", "link: https://acme.io/x", "see https://acme.io/y", True),
+])
+def test_preserved_mutated_backstop(term, payload, response, flagged):
+    assert SuperegoStage._preserved_mutated([term], payload, response) is flagged
+
+
+@pytest.mark.asyncio
+async def test_voice_preserved_backstop_flags_mutation():
+    ctx = _ctx()                                   # ego payload = "record_expense: Recorded 50"
+    ctx.noumeno.preserved_terms = ["50"]
+    b = ScriptedBackend(["I recorded 5 for lunch."])   # 50 → 5 (corrupted figure)
+    r = await SuperegoStage().voice(ctx, b, voice_prompt="x")
+    assert "preserved:mutated_in_output" in r.adjustments
+
+
+@pytest.mark.asyncio
+async def test_voice_preserved_backstop_silent_when_verbatim():
+    ctx = _ctx()
+    ctx.noumeno.preserved_terms = ["50"]
+    b = ScriptedBackend(["I recorded 50 for lunch."])
+    r = await SuperegoStage().voice(ctx, b, voice_prompt="x")
+    assert "preserved:mutated_in_output" not in r.adjustments
 
 
 # ── blocked + wiring ─────────────────────────────────────────────────

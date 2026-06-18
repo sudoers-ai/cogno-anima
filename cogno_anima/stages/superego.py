@@ -41,6 +41,10 @@ logger = logging.getLogger("cogno_anima.superego")
 
 _COT_RE = re.compile(r"<think(?:ing)?>.*?</think(?:ing)?>", re.DOTALL | re.IGNORECASE)
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
+# A preserved term is "critical" (worth a grounding backstop) when it carries a
+# figure or is an email/URL — altering one of these silently corrupts the answer.
+_NUM_RE = re.compile(r"\d[\d.,]*\d|\d")
+_CRITICAL_TERM_RE = re.compile(r"\d|@|https?://", re.IGNORECASE)
 
 _SCOPE_SYSTEM = (
     "You are a scope classifier for a business AI assistant. Detect ONLY clearly "
@@ -95,9 +99,30 @@ class SuperegoStage:
             }.get(intent.intent_class, [])
             if intent.pii_risk not in ("NONE", "LOW"):
                 adj.append(f"pii:risk_{intent.pii_risk.lower()}")
+            register = SuperegoStage._parole_to_register(intent.parole)
+            if register:
+                adj.append(register)
         if ctx.id_result and ctx.id_result.emotional_override:
             adj.append(f"override:{ctx.id_result.emotional_override}")
         return adj or ["general:review"]
+
+    @staticmethod
+    def _parole_to_register(parole: Optional[str]) -> Optional[str]:
+        """Collapse the user's NER ``parole`` onto a formality-accommodation hint.
+
+        Distinct axis from sentiment (which carries *emotional* tone): this is
+        *formality/lexical level* only. Soft signal — MIXED/None/unknown → no hint
+        (degrade gracefully). GIRIA/POETICO are intentionally softened (the persona
+        + limits clamp them; we never echo slang/poetic register verbatim).
+        """
+        return {
+            "ACADEMICO": "register:formal",
+            "FORMAL": "register:formal",
+            "TECNICO": "register:technical",
+            "COLOQUIAL": "register:casual",
+            "GIRIA": "register:light",
+            "POETICO": "register:expressive",
+        }.get((parole or "").upper())
 
     # ── Early Input Scope Guard (pre-EGO) ────────────────────────────
 
@@ -202,20 +227,86 @@ class SuperegoStage:
         ) or "(no tools executed)"
         draft = ego.draft or "(none)"
         limits = f"\n# Persona limits\n{limits_prompt}\n" if limits_prompt and limits_prompt.strip() else ""
+        # User-stated pragmatic restrictions (NER signals): the judge must verify
+        # the execution honored them — including what the user forbade.
+        restrictions = self._format_restrictions(ctx.intent)
+        # Terms the NOUMENO preserved verbatim (names/URLs/emails/figures): the
+        # judge uses them as concrete grounding evidence (2R-A).
+        preserved = self._format_preserved(ctx)
         return (
             f'# User request\n"{ctx.user_input}"\n\n'
             f"# Active goal\n{goal}\n"
+            f"{restrictions}"
+            f"{preserved}"
             f"{limits}\n"
             f"# What the EGO executed\n{executed}\n\n"
             f"# EGO draft\n{draft}\n\n"
             "# Judge the EXECUTION against these criteria (most important first):\n"
             "1. GOAL↔EXECUTION: did it do exactly what was asked (X, not Y)?\n"
-            "2. COMPLETENESS: was the goal fully met (not partial)?\n"
-            "3. GROUNDING: is everything backed by the tool results (no invented data)?\n"
-            "4. SAFETY/LIMITS: within the persona's limits, no policy violation?\n\n"
+            "2. CONSTRAINTS: did it honor every user restriction (and NOT do what was forbidden)?\n"
+            "3. COMPLETENESS: was the goal fully met (not partial)?\n"
+            "4. GROUNDING: is everything backed by the tool results (no invented data), "
+            "and are the preserved terms (if any) reproduced exactly?\n"
+            "5. SAFETY/LIMITS: within the persona's limits, no policy violation?\n\n"
             'Respond ONLY with: {"approved": true/false, "critique": '
             '"...if not approved, what is wrong, to guide a retry..."}'
         )
+
+    @staticmethod
+    def _format_restrictions(intent) -> str:
+        """Render user constraints/negation for the judge prompt (empty if none)."""
+        if not intent:
+            return ""
+        lines = []
+        if intent.constraints:
+            lines.append(f"Constraints (must respect): {', '.join(intent.constraints)}")
+        if intent.negation:
+            lines.append(f"Must NOT: {', '.join(intent.negation)}")
+        return f"# User constraints\n" + "\n".join(lines) + "\n" if lines else ""
+
+    @staticmethod
+    def _format_preserved(ctx: PipelineContext) -> str:
+        """Render NOUMENO preserved terms as grounding evidence for the judge."""
+        terms = [t for t in (ctx.noumeno.preserved_terms if ctx.noumeno else []) if (t or "").strip()]
+        if not terms:
+            return ""
+        return "# Preserved terms (must be reproduced verbatim)\n" + ", ".join(terms) + "\n"
+
+    @staticmethod
+    def _preserved_mutated(preserved: list[str], payload: str, response: str) -> bool:
+        """Flag-only grounding backstop: a CRITICAL preserved term (figure/email/
+        URL) the executor grounded (present in ``payload``) shows up ALTERED in the
+        response. Mutation-of-present only — a same-kind token must appear in the
+        reply but differ; mere absence is NOT flagged (forcing every term in would
+        be nonsense). See ``docs`` / 2R-A."""
+        for term in preserved:
+            term = (term or "").strip()
+            if not term or not _CRITICAL_TERM_RE.search(term):
+                continue
+            if term not in payload or term in response:
+                continue  # out of grounded scope, or reproduced verbatim → fine
+            if SuperegoStage._same_kind_altered(term, response):
+                return True
+        return False
+
+    @staticmethod
+    def _same_kind_altered(term: str, response: str) -> bool:
+        """Does a same-kind token appear in ``response`` but differ from ``term``?"""
+        if "@" in term:
+            return "@" in response and term not in response
+        if re.match(r"https?://", term, re.IGNORECASE):
+            return bool(re.search(r"https?://", response, re.IGNORECASE)) and term not in response
+        # Numeric: a response figure is a digit-drop/add variant of the term's
+        # figure (one digit-string is a prefix of the other but they differ).
+        # Catches 1000→100 without flagging unrelated numbers (e.g. "2 items").
+        td = re.sub(r"\D", "", term)
+        if not td:
+            return False
+        for rn in _NUM_RE.findall(response):
+            rd = re.sub(r"\D", "", rn)
+            if rd and rd != td and (td.startswith(rd) or rd.startswith(td)):
+                return True
+        return False
 
     # ── Voicer (post-EGO) — writes the final response ────────────────
 
@@ -243,6 +334,14 @@ class SuperegoStage:
         if response and self._pii.detect(response):
             adjustments.append("pii:flagged_in_output")
 
+        # Deterministic preserved-term backstop on the OUTPUT (2R-A) — flag-only,
+        # never auto-inject. Fires only when a CRITICAL term (figure/email/URL)
+        # that the executor grounded appears ALTERED in the reply (mutation-of-
+        # present), not on mere absence (the reply may legitimately omit it).
+        preserved = ctx.noumeno.preserved_terms if ctx.noumeno else []
+        if response and self._preserved_mutated(preserved, payload, response):
+            adjustments.append("preserved:mutated_in_output")
+
         # Feed synthesis drift (lexical grounding of response vs tool data).
         if ctx.drift is not None:
             self._drift.compute_synthesis(ctx.drift, payload, response)
@@ -266,6 +365,15 @@ class SuperegoStage:
             signals.append(f"Sentiment: {ctx.intent.sentiment}")
         if ctx.noumeno and ctx.noumeno.language:
             signals.append(f"Reply language: {ctx.noumeno.language}")
+        # Register accommodation (sibling of Reply language): match the user's
+        # formality where it does not conflict with the persona — the persona's
+        # voice/limits always win.
+        register = next((a for a in adjustments if a.startswith("register:")), None)
+        if register:
+            signals.append(
+                f"User register: {register.split(':', 1)[1]} — match it where it does "
+                "not conflict with the persona voice/limits (persona takes precedence)"
+            )
         signals.append(f"Tone hints: {', '.join(adjustments)}")
         # Host-injected context (retrieved memories / history / clock) — the same
         # block the EGO sees; included so memories can ground the final reply.

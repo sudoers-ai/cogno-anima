@@ -15,7 +15,7 @@ from cognobench.drift_cases import DriftCase, VALID_ACTIONS
 from cognobench.noumeno_cases import NoumenoCase, VALID_DRIFT_TAGS
 from cognobench.id_cases import IdCase, VALID_GOAL_STATUS, VALID_ROUTES
 from cognobench.ego_cases import (
-    EgoCase, BenchDispatcher, EGO_SYSTEM, VALID_TOOLS,
+    EgoCase, BenchDispatcher, EGO_SYSTEM, VALID_TOOLS, SIDE_EFFECT_TOOLS,
 )
 from cognobench.superego_cases import SuperegoCase
 from cognobench.conversation_cases import (
@@ -247,9 +247,13 @@ def _ego_ctx(case: EgoCase) -> PipelineContext:
     intent = IntentResult(
         intent_class=case.intent_class, sentiment="NEUTRAL", confidence=1.0,
         temporal_class="TIMELESS", triad_signal="EGO", goal=case.task, domains=["FINANCE"],
-        metrics=m,
+        is_composite=case.is_composite, is_sequential=case.is_sequential,
+        causal_chain=list(case.causal_chain), metrics=m,
     )
-    return PipelineContext(user_input=case.task, noumeno=noumeno, intent=intent)
+    ctx = PipelineContext(user_input=case.task, noumeno=noumeno, intent=intent)
+    if case.readonly:                       # host turns on read-only (Fonte A)
+        ctx.metadata["ego_readonly"] = True
+    return ctx
 
 
 async def run_ego(
@@ -283,6 +287,17 @@ async def run_ego(
                                           str(dispatched),
                                           all(n in VALID_TOOLS for n in dispatched)))
 
+            # Hard capability gates (deterministic — not model goodwill).
+            if case.expect_no_mutation:
+                muts = [n for n in dispatched if n in SIDE_EFFECT_TOOLS]
+                dim.checks.append(CheckResult(case.id, "no_mutation", "[]",
+                                              str(muts), not muts))
+            if case.expect_pending:
+                held = [t.tool for t in res.pending_confirmation]
+                ok = case.expect_pending in held and case.expect_pending not in dispatched
+                dim.checks.append(CheckResult(case.id, "held_for_confirmation",
+                                              case.expect_pending, str(held), ok))
+
             # Soft (model-dependent) tool selection.
             if case.expect_tool:
                 ok = case.expect_tool in names
@@ -292,6 +307,13 @@ async def run_ego(
                 ok = len(names) == 0
                 dim.checks.append(CheckResult(case.id, "no_tool(soft)", "[]",
                                               str(names), True if calibrate else ok))
+            # Soft order check (2R-B): the expected tools were dispatched in the
+            # given relative order (each present, and in sequence).
+            if case.expect_order:
+                idxs = [dispatched.index(t) for t in case.expect_order if t in dispatched]
+                ok = len(idxs) == len(case.expect_order) and idxs == sorted(idxs)
+                dim.checks.append(CheckResult(case.id, "order(soft)", str(case.expect_order),
+                                              str(dispatched), True if calibrate else ok))
         except Exception as exc:  # noqa: BLE001
             dim.errors.append((case.id, repr(exc)))
     return dim
@@ -307,12 +329,13 @@ def _superego_ctx(case: SuperegoCase) -> PipelineContext:
         original=case.user, rewritten=case.user, context_turn="", language="pt",
         canonical_language="en", drift_score=0.0, drift_tag="PASS_THROUGH", changed=False,
         confidence=1.0, change_subject=False, subject_similarity=1.0, context_used=False,
-        preserved_terms=[], rewrite_warnings=[], metrics=m,
+        preserved_terms=case.preserved_terms, rewrite_warnings=[], metrics=m,
     )
     intent = IntentResult(
         intent_class=case.intent_class, sentiment="NEUTRAL", confidence=1.0,
         temporal_class="TIMELESS", triad_signal="EGO", goal=case.goal or case.user,
-        domains=["FINANCE"], metrics=m,
+        domains=["FINANCE"], constraints=case.constraints, negation=case.negation,
+        parole=case.parole or None, metrics=m,
     )
     ctx = PipelineContext(user_input=case.user, noumeno=noumeno, intent=intent)
     if case.tool:

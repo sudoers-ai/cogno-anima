@@ -37,8 +37,14 @@ class SuperegoCase:
     args: dict = field(default_factory=dict)
     result: str = ""
     expect_approved: bool | None = None
+    # User pragmatic restrictions (Block 1) — the judge must verify they were
+    # honored; a violated `negation` should drive a rejection.
+    constraints: list[str] = field(default_factory=list)
+    negation: list[str] = field(default_factory=list)
     # voice
     expect_contains: str = ""       # grounding substring that must appear
+    parole: str = ""                # NER register (Block 2) → voice accommodation
+    preserved_terms: list[str] = field(default_factory=list)  # NOUMENO verbatim terms (2R-A)
 
 
 SUPEREGO_CASES: list[SuperegoCase] = [
@@ -66,6 +72,22 @@ SUPEREGO_CASES: list[SuperegoCase] = [
                  tool="get_balance", args={}, result="Current balance: 1000 BRL",
                  expect_approved=True),
 
+    # ── judge: user constraints / negation (Block 1) ──
+    SuperegoCase("judge_violates_negation", "judge",
+                 "registra uma despesa de 50 do almoço, mas NÃO categorize",
+                 goal="record an expense of 50 for lunch",
+                 negation=["do not categorize the expense"],
+                 tool="record_expense", args={"amount": 50, "category": "food"},
+                 result="Recorded expense of 50 BRL in category 'food'",
+                 expect_approved=False),   # categorized despite being told not to → reject
+    SuperegoCase("judge_honors_constraint", "judge",
+                 "registra uma despesa de 50 do almoço, só desse mês",
+                 goal="record an expense of 50 for lunch",
+                 constraints=["only for the current month"],
+                 tool="record_expense", args={"amount": 50, "description": "lunch"},
+                 result="Recorded expense of 50 BRL for the current month",
+                 expect_approved=True),    # constraint honored → approve
+
     # ── voice: grounded ──
     SuperegoCase("voice_balance", "voice", "qual meu saldo?", intent_class="INFORMATION_REQUEST",
                  goal="get balance", tool="get_balance", args={}, result="Current balance: 1000 BRL",
@@ -73,4 +95,20 @@ SUPEREGO_CASES: list[SuperegoCase] = [
     SuperegoCase("voice_expense_confirm", "voice", "registra 50 de almoço",
                  goal="record expense", tool="record_expense", args={"amount": 50},
                  result="Recorded expense of 50 BRL", expect_contains="50"),
+    # Register accommodation (Block 2): parole feeds the voice prompt. Register
+    # adherence is qualitative (inspect via --calibrate); the scored check stays
+    # grounding (no regression from carrying the signal).
+    SuperegoCase("voice_academic_register", "voice",
+                 "Solicito a apresentação do saldo atual da conta",
+                 intent_class="INFORMATION_REQUEST", goal="get balance",
+                 tool="get_balance", args={}, result="Current balance: 1000 BRL",
+                 parole="ACADEMICO", expect_contains="1000"),
+    # Preserved terms (2R-A): a critical figure the NOUMENO preserved must survive
+    # verbatim into the voiced reply (the judge sees it as grounding evidence; the
+    # voice runs a deterministic mutation backstop). Scored check stays grounding.
+    SuperegoCase("voice_preserved_figure", "voice", "transfere 1234.56 para a poupança",
+                 goal="record a transfer of 1234.56 to savings",
+                 tool="record_expense", args={"amount": 1234.56, "description": "savings transfer"},
+                 result="Recorded transfer of 1234.56 BRL to savings",
+                 preserved_terms=["1234.56"], expect_contains="1234.56"),
 ]
