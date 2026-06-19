@@ -238,7 +238,8 @@ class IntentAnalyzer:
             raise StageParseError(STAGE_NAME, raw, TypeError("JSON is not an object"))
 
         # intent_class
-        intent_class = str(data.get("intent_class", "UNKNOWN")).upper()
+        llm_intent_class = str(data.get("intent_class", "UNKNOWN")).upper()
+        intent_class = llm_intent_class
         if intent_class not in VALID_INTENTS or intent_class == "UNKNOWN":
             raw_ic = str(data.get("raw_intent_class", "UNKNOWN")).upper()
             if raw_ic in VALID_INTENTS:
@@ -255,6 +256,14 @@ class IntentAnalyzer:
                 intent_class = "CREATIVE_TASK"
             elif {"ANALYSIS"} & set(raw_tags):
                 intent_class = "INFORMATION_REQUEST"
+
+        # The LLM gave an invalid/absent intent_class and we coerced it from
+        # tags/heuristics — a quality degradation worth surfacing (handled, not fatal).
+        if llm_intent_class not in VALID_INTENTS or llm_intent_class == "UNKNOWN":
+            logger.warning(
+                "stage=ner event=intent_class_fallback llm=%s coerced=%s",
+                llm_intent_class, intent_class,
+            )
 
         # sentiment
         sentiment = str(data.get("sentiment", "NEUTRAL")).upper()
@@ -405,6 +414,8 @@ class IntentAnalyzer:
                 d = _TAG_TO_DOMAIN.get(tag)
                 if d and d not in domains:
                     domains.append(d)
+            if domains:
+                logger.debug("stage=ner event=domains_fallback derived=%s", domains)
 
         # goal
         goal_raw = data.get("goal")

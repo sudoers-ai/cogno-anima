@@ -161,11 +161,13 @@ class EgoStage:
             for tc in raw_calls:
                 name, args = self._name_args(tc)
                 if name not in valid_names:
+                    logger.warning("stage=ego event=unknown_tool step=%d tool=%s", i, name)
                     execs.append(ToolExecution(tool=name, arguments=args, result="",
                                                ok=False, error=f"unknown tool {name!r}"))
                     continue
                 sig = self._sig(name, args)
                 if sig in failed_calls:
+                    logger.debug("stage=ego event=blocked_retry step=%d tool=%s", i, name)
                     execs.append(ToolExecution(
                         tool=name, arguments=args, ok=False, error="blocked_retry",
                         result=(f"[BLOCKED] '{name}' with these args already FAILED. "
@@ -174,6 +176,7 @@ class EgoStage:
                     ))
                     continue
                 if seen_calls.get(sig, 0) >= self.MAX_DUPLICATE_CALLS:
+                    logger.warning("stage=ego event=duplicate_call step=%d tool=%s", i, name)
                     execs.append(ToolExecution(
                         tool=name, arguments=args, ok=False, error="duplicate",
                         result=(f"[DUPLICATE] You already called '{name}' with these exact "
@@ -193,6 +196,7 @@ class EgoStage:
                     )
                     execs.append(held)
                     pending_confirmation.append(held)
+                    logger.info("stage=ego event=pending_confirmation step=%d tool=%s", i, name)
                     continue
                 # actually run it (delegated to the host)
                 seen_calls[sig] = seen_calls.get(sig, 0) + 1
@@ -245,8 +249,12 @@ class EgoStage:
                 tokens_in=total_in, tokens_out=total_out, model=getattr(backend, "model", "unknown"),
             ),
         )
-        logger.info("EGO done steps=%d tools=%d interrupted=%s reason=%s",
-                    len(steps), len(ctx.ego_result.tools_executed), interrupted, interrupt_reason)
+        n_tools = len(ctx.ego_result.tools_executed)
+        if interrupted:
+            logger.warning("stage=ego event=done steps=%d tools=%d interrupted=true reason=%s",
+                           len(steps), n_tools, interrupt_reason)
+        else:
+            logger.info("EGO done steps=%d tools=%d interrupted=false", len(steps), n_tools)
         return ctx
 
     # ── prompt assembly ──────────────────────────────────────────────

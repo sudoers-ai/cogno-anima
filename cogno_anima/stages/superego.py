@@ -210,7 +210,12 @@ class SuperegoStage:
             data = self._parse_json(raw)
             approved = bool(data.get("approved", False))
             critique = None if approved else str(data.get("critique", "")) or "execution rejected"
-            logger.info("SUPEREGO judge approved=%s critique=%s", approved, (critique or "")[:80])
+            if approved:
+                logger.info("stage=superego event=judge approved=true")
+            else:
+                # A rejection feeds the EGO↔SUPEREGO correction loop — surface it.
+                logger.warning("stage=superego event=judge approved=false critique=%s",
+                               (critique or "")[:80])
             return _result(approved, critique, ti, to)
         except Exception as exc:  # noqa: BLE001 — fail-CLOSED: don't pass unverified
             logger.warning("judge failed (%s) — not approving (fail-closed)", exc)
@@ -333,6 +338,7 @@ class SuperegoStage:
         # the host's limits policy decides). Signal via adjustments.
         if response and self._pii.detect(response):
             adjustments.append("pii:flagged_in_output")
+            logger.warning("stage=superego event=pii_flagged_in_output")
 
         # Deterministic preserved-term backstop on the OUTPUT (2R-A) — flag-only,
         # never auto-inject. Fires only when a CRITICAL term (figure/email/URL)
@@ -341,6 +347,7 @@ class SuperegoStage:
         preserved = ctx.noumeno.preserved_terms if ctx.noumeno else []
         if response and self._preserved_mutated(preserved, payload, response):
             adjustments.append("preserved:mutated_in_output")
+            logger.warning("stage=superego event=preserved_mutated_in_output")
 
         # Feed synthesis drift (lexical grounding of response vs tool data).
         if ctx.drift is not None:

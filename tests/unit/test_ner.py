@@ -481,6 +481,28 @@ async def test_intent_class_falls_back_to_raw_when_unknown():
 
 
 @pytest.mark.asyncio
+async def test_intent_class_fallback_logs_warning(caplog):
+    """A coerced intent_class is a quality degradation → WARNING."""
+    import logging
+    payload = PERFECT_JSON.copy()
+    payload["intent_class"] = "GARBAGE"          # invalid → coerced from tags (SYSTEM)
+    payload["raw_intent_class"] = "ALSO_BAD"
+    with caplog.at_level(logging.WARNING, logger="cogno_anima.ner"):
+        result = await _analyze(payload)
+    assert result.intent_class == "ACTION_REQUEST"   # coerced via SYSTEM tag
+    msgs = [r.message for r in caplog.records if "intent_class_fallback" in r.message]
+    assert msgs and "coerced=ACTION_REQUEST" in msgs[0]
+
+
+@pytest.mark.asyncio
+async def test_valid_intent_class_no_warning(caplog):
+    import logging
+    with caplog.at_level(logging.WARNING, logger="cogno_anima.ner"):
+        await _analyze(PERFECT_JSON.copy())
+    assert not [r for r in caplog.records if "intent_class_fallback" in r.message]
+
+
+@pytest.mark.asyncio
 async def test_empty_mandatory_tags_defaults_to_unknown_tag():
     payload = PERFECT_JSON.copy()
     payload["mandatory_tags"] = ["NONSENSE_TAG"]   # filtered out → none valid
