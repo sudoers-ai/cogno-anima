@@ -214,6 +214,16 @@ async def test_judge_rejects_with_critique():
 
 
 @pytest.mark.asyncio
+async def test_judge_rejection_logs_warning(caplog):
+    import logging
+    b = ScriptedBackend(['{"approved": false, "critique": "did X not Y"}'])
+    with caplog.at_level(logging.WARNING, logger="cogno_anima.superego"):
+        await SuperegoStage().evaluate(_ctx(), b, limits_prompt="")
+    assert any("event=judge approved=false" in r.message and r.levelno == logging.WARNING
+               for r in caplog.records)
+
+
+@pytest.mark.asyncio
 async def test_judge_fails_closed_on_error():
     r = await SuperegoStage().evaluate(_ctx(), RaisingBackend(), limits_prompt="")
     assert r.approved is False and r.critique   # fail-closed: don't pass unverified

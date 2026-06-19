@@ -247,6 +247,20 @@ async def test_duplicate_calls_abort():
     assert len(blocked) >= 2
 
 
+@pytest.mark.asyncio
+async def test_duplicate_and_interrupt_log_warnings(caplog):
+    import logging
+    turns = [_tool_turn("add_income", {"amount": 40}) for _ in range(6)]
+    backend = ScriptedToolCallingBackend(turns)
+    disp = StubDispatcher.with_tools("add_income")
+    with caplog.at_level(logging.WARNING, logger="cogno_anima.ego"):
+        await EgoStage().process(_ctx(), backend, disp, system_prompt=SYS)
+    msgs = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("event=duplicate_call" in m for m in msgs)
+    assert any("event=done" in m and "interrupted=true" in m and "reason=duplicate_calls" in m
+               for m in msgs)
+
+
 # ── tool name / error handling ───────────────────────────────────────
 
 @pytest.mark.asyncio
@@ -262,6 +276,20 @@ async def test_unknown_tool_fed_back():
     assert first.ok is False and "unknown tool" in first.error
     assert disp.executed == []                     # never dispatched
     assert res.draft == "Sorry, I can't do that."
+
+
+@pytest.mark.asyncio
+async def test_unknown_tool_logs_warning(caplog):
+    import logging
+    backend = ScriptedToolCallingBackend([
+        _tool_turn("drop_db", {}),
+        {"content": "Sorry, I can't do that."},
+    ])
+    disp = StubDispatcher.with_tools("add_income")
+    with caplog.at_level(logging.WARNING, logger="cogno_anima.ego"):
+        await EgoStage().process(_ctx(), backend, disp, system_prompt=SYS)
+    assert any("event=unknown_tool" in r.message and "tool=drop_db" in r.message
+               for r in caplog.records)
 
 
 @pytest.mark.asyncio
