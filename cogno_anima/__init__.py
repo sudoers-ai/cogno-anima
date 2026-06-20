@@ -41,7 +41,7 @@ from cogno_synapse import (
     FallbackBackend,
     create_backend,
 )
-from cogno_anima.tools import ToolDispatcher
+from cogno_anima.tools import ToolDispatcher, CompositeDispatcher
 from cogno_anima.routing import GoalManager, AttentionFilter, IntentionTracker
 from cogno_anima.stages.base import BaseStage
 from cogno_anima.stages.noumeno import Noumeno
@@ -80,6 +80,7 @@ __all__ = [
     "FallbackBackend",
     "create_backend",
     "ToolDispatcher",
+    "CompositeDispatcher",
     "GoalManager",
     "AttentionFilter",
     "IntentionTracker",
