@@ -24,23 +24,27 @@ reject, `grounded` = a required substring appears).
 > from the parent's `safety_cases.py` (adversarial/out-of-scope → the scope-guard
 > BLOCK seam: prompt injection, off-topic health, coding) plus more judge
 > goal↔execution failures (wrong amount, wrong entity) and a multi-figure grounding
-> case. `mistral:latest` (the default) re-verified at **100% (42/42)**. The other
-> rows are the prior **2026-06-18 sweep over the 13-case set** (26 checks), pending
-> a re-run on the expanded set.
+> case. Full **5-model re-sweep on the 21-case set (2026-06-22)** below.
 
 | Model               | SUPEREGO accuracy     |
 | ------------------- | --------------------- |
 | mistral:latest      | 100.0% (42/42)        |
-| qwen3:8b            | 100.0% (26/26) †      |
-| qwen3:8b (`--think`) | 100.0% (26/26) †      |
-| qwen3.5:4b          | 100.0% (26/26) †      |
-| llama3.1:8b         | 88.5% (23/26) †       |
+| qwen3:8b            | 100.0% (42/42)        |
+| qwen3:8b (`--think`) | 100.0% (42/42)        |
+| qwen3.5:4b          | 97.6% (41/42)         |
+| llama3.1:8b         | 90.5% (38/42)         |
 
-> † 13-case set (2026-06-18); not yet re-swept on the 21-case set.
-
-> Added in the 2026-06-18 full-suite sweep. `qwen3.5:4b` matches the larger models
-> at 100%; `llama3.1:8b` misses 3 soft checks (weaker scope/judge/grounding) — a
-> model-quality difference, not a regression (the SUPEREGO code is unchanged).
+> The two larger reasoners and mistral are perfect. **`qwen3.5:4b`** misses **one**
+> `judge(soft)`: it rejects `judge_correct_summary` (a correct multi-figure summary)
+> — over-strict on the new multi-figure judge case. **`llama3.1:8b`** misses **four**,
+> *all the same shape*: `judge(soft)` **false rejections** of correct executions
+> (`judge_correct_expense/balance/honors_constraint/summary` — it returns reject where
+> the bigger models approve). That is the **safe** failure direction for a fail-closed
+> judge (a false reject triggers a needless correction loop; a false *approve* would
+> ship a wrong answer), and it is consistent with llama3.1:8b's prior 88.5% — a
+> model-quality gap in the judge, not a wiring regression. The scope guard and voice
+> grounding pass on every model. **Takeaway: a weak judge model over-rejects; size the
+> judge backend up (mistral / qwen3:8b) for the goal↔execution gate.**
 
 > qwen3:8b rows reflect the locale-tolerant `grounded` check (below). Pre-fix it
 > scored 92.3% / 96.2% — both "misses" were the literal substring match tripping
