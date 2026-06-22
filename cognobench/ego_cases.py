@@ -181,4 +181,42 @@ EGO_CASES: list[EgoCase] = [
             is_composite=True, is_sequential=True,
             causal_chain=("convert 100 USD to BRL", "record the converted amount as income"),
             expect_order=("convert_currency", "record_income")),
+
+    # ── Selection breadth (ported in spirit from the parent's execution_cases) ──
+    # The parent tested execution variety (math/search/market/disambiguation); anima's
+    # EGO scores tool SELECTION, so these widen the disambiguation surface on BENCH_TOOLS.
+    EgoCase("income_received", "Income — received money",
+            "I received 200 reais from a client today.", expect_tool="record_income"),
+    EgoCase("expense_paid_someone", "Expense — paid someone",
+            "I paid 80 reais to the electrician.", expect_tool="record_expense"),
+    EgoCase("balance_phrased_as_have", "Balance — 'how much do I have'",
+            "How much money do I have right now?",
+            intent_class="INFORMATION_REQUEST", expect_tool="get_balance"),
+    EgoCase("summary_week", "Summary — weekly overview",
+            "Summarise my finances for this week.",
+            intent_class="INFORMATION_REQUEST", expect_tool="get_summary"),
+    EgoCase("currency_reverse", "Currency — reversed direction",
+            "How many reais is 500 dollars?",
+            intent_class="INFORMATION_REQUEST", expect_tool="convert_currency"),
+    EgoCase("greeting_ptbr", "Greeting (pt-BR) — no tool",
+            "Olá, tudo bem com você?", intent_class="SOCIAL", expect_no_tool=True),
+
+    # ── More gate coverage (HARD invariants — deterministic, model-independent) ──
+    # Read-only mask over a plain (non-destructive) mutating tool: a tentative "maybe
+    # log…" must NOT commit — the mask removes record_* so no mutation can be dispatched.
+    EgoCase("readonly_record_propose", "Tentative record → propose, never commit",
+            "Maybe log that I spent around 40 reais on a taxi? I'm not totally sure.",
+            readonly=True, expect_no_mutation=True),
+    # Read-only mask over a DESTRUCTIVE tool: a tentative wipe is caught by the mask
+    # BEFORE it ever reaches the confirmation gate (defence in depth).
+    EgoCase("readonly_destructive_masked", "Tentative wipe → masked, no mutation",
+            "I might want to wipe all of my records at some point.",
+            readonly=True, expect_no_mutation=True),
+
+    # ── Composite, NON-sequential (raises budget; order-free) ──
+    # Two independent expenses in one turn: both should be recorded (soft tool check
+    # stays on record_expense; the budget bump comes from is_composite).
+    EgoCase("composite_two_expenses", "Two expenses in one turn",
+            "Record 20 reais for coffee and 50 reais for lunch.",
+            is_composite=True, expect_tool="record_expense"),
 ]
