@@ -30,15 +30,27 @@ check became an **enforceable** "the mutating/destructive tool is not available 
 not executed" invariant. The classification (mutating / destructive) is
 host-declared via `ToolPolicyDispatcher`.
 
-## Results (2026-06, 12 cases / 37 checks, text-fallback path, temperature 0.0)
+## Results (2026-06-22, 21 cases / 64 checks, text-fallback path, temperature 0.0)
 
-| Model               | EGO accuracy   |
-| ------------------- | -------------- |
-| mistral:latest      | 100.0% (37/37) |
-| qwen3:8b            | 97.3% (36/37)  |
-| qwen3:8b (`--think`) | 100.0% (37/37) |
-| qwen3.5:4b          | 100.0% (37/37) |
-| llama3.1:8b         | 100.0% (37/37) |
+> **2026-06-22 expansion.** The case set grew from 12→21 (+9) to widen selection
+> breadth and gate coverage — ported *in spirit* (not 1:1) from the parent's
+> `execution_cases.py` (income/expense disambiguation, balance-vs-summary, reversed
+> currency, a second read-only mask over a plain mutating tool, a read-only-over-
+> destructive defence-in-depth case, and a non-sequential composite). Adapted to
+> anima's contract (EGO scores tool *selection*, not the parent's response prose).
+> `mistral:latest` (the default) re-verified at **100% (64/64)**. The other rows
+> below are the prior **2026-06-18 sweep over the 12-case set** (37 checks) and are
+> pending a re-run on the expanded set.
+
+| Model               | EGO accuracy          |
+| ------------------- | --------------------- |
+| mistral:latest      | 100.0% (64/64)        |
+| qwen3:8b            | 97.3% (36/37) †       |
+| qwen3:8b (`--think`) | 100.0% (37/37) †      |
+| qwen3.5:4b          | 100.0% (37/37) †      |
+| llama3.1:8b         | 100.0% (37/37) †      |
+
+> † 12-case set (2026-06-18); not yet re-swept on the 21-case set.
 
 > `qwen3.5:4b` and `llama3.1:8b` added in the 2026-06-18 full-suite sweep (post
 > synapse/homeo extraction). Both pick the correct tool on every action case —

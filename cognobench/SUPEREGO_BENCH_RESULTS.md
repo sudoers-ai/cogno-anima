@@ -14,19 +14,29 @@ three SUPEREGO operations, decoupled from NER (contexts hand-built):
   NOUMENO preserved must survive verbatim — the judge also sees them as grounding
   evidence).
 
-13 cases → 26 checks: hard invariants (`blocked`/`approved` are bool, `response`
+21 cases → 42 checks: hard invariants (`blocked`/`approved` are bool, `response`
 non-empty) + soft (`scope` = expected ALLOW/BLOCK, `judge` = expected approve/
 reject, `grounded` = a required substring appears).
 
-## Results (2026-06, 13 cases / 26 checks, temperature 0.0)
+## Results (2026-06-22, 21 cases / 42 checks, temperature 0.0)
 
-| Model               | SUPEREGO accuracy |
-| ------------------- | ----------------- |
-| mistral:latest      | 100.0% (26/26)    |
-| qwen3:8b            | 100.0% (26/26)    |
-| qwen3:8b (`--think`) | 100.0% (26/26)    |
-| qwen3.5:4b          | 100.0% (26/26)    |
-| llama3.1:8b         | 88.5% (23/26)     |
+> **2026-06-22 expansion.** The case set grew from 13→21 (+8) — ported *in spirit*
+> from the parent's `safety_cases.py` (adversarial/out-of-scope → the scope-guard
+> BLOCK seam: prompt injection, off-topic health, coding) plus more judge
+> goal↔execution failures (wrong amount, wrong entity) and a multi-figure grounding
+> case. `mistral:latest` (the default) re-verified at **100% (42/42)**. The other
+> rows are the prior **2026-06-18 sweep over the 13-case set** (26 checks), pending
+> a re-run on the expanded set.
+
+| Model               | SUPEREGO accuracy     |
+| ------------------- | --------------------- |
+| mistral:latest      | 100.0% (42/42)        |
+| qwen3:8b            | 100.0% (26/26) †      |
+| qwen3:8b (`--think`) | 100.0% (26/26) †      |
+| qwen3.5:4b          | 100.0% (26/26) †      |
+| llama3.1:8b         | 88.5% (23/26) †       |
+
+> † 13-case set (2026-06-18); not yet re-swept on the 21-case set.
 
 > Added in the 2026-06-18 full-suite sweep. `qwen3.5:4b` matches the larger models
 > at 100%; `llama3.1:8b` misses 3 soft checks (weaker scope/judge/grounding) — a
