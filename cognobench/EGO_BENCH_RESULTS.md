@@ -38,19 +38,22 @@ host-declared via `ToolPolicyDispatcher`.
 > currency, a second read-only mask over a plain mutating tool, a read-only-over-
 > destructive defence-in-depth case, and a non-sequential composite). Adapted to
 > anima's contract (EGO scores tool *selection*, not the parent's response prose).
-> `mistral:latest` (the default) re-verified at **100% (64/64)**. The other rows
-> below are the prior **2026-06-18 sweep over the 12-case set** (37 checks) and are
-> pending a re-run on the expanded set.
+> Full **5-model re-sweep on the 21-case set (2026-06-22)** below.
 
 | Model               | EGO accuracy          |
 | ------------------- | --------------------- |
 | mistral:latest      | 100.0% (64/64)        |
-| qwen3:8b            | 97.3% (36/37) †       |
-| qwen3:8b (`--think`) | 100.0% (37/37) †      |
-| qwen3.5:4b          | 100.0% (37/37) †      |
-| llama3.1:8b         | 100.0% (37/37) †      |
+| qwen3:8b            | 100.0% (64/64)        |
+| qwen3:8b (`--think`) | 100.0% (64/64)        |
+| qwen3.5:4b          | 100.0% (64/64)        |
+| llama3.1:8b         | 100.0% (64/64)        |
 
-> † 12-case set (2026-06-18); not yet re-swept on the 21-case set.
+> **Every model selects the right tool on all 21 cases and passes all gates.** The
+> single qwen3:8b balance miss seen on the 12-case run did **not** recur on the
+> re-sweep (Ollama at temp 0 is not bit-deterministic across runs/context); EGO tool
+> selection is robust across the whole model range. The capability gates
+> (read-only mask, confirmation hold, read-only-over-destructive) hold by
+> construction for every model — they are deterministic, not model goodwill.
 
 > `qwen3.5:4b` and `llama3.1:8b` added in the 2026-06-18 full-suite sweep (post
 > synapse/homeo extraction). Both pick the correct tool on every action case —
