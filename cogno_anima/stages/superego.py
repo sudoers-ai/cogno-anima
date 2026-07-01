@@ -370,8 +370,7 @@ class SuperegoStage:
         signals = []
         if ctx.intent:
             signals.append(f"Sentiment: {ctx.intent.sentiment}")
-        if ctx.noumeno and ctx.noumeno.language:
-            signals.append(f"Reply language: {ctx.noumeno.language}")
+        language = ctx.noumeno.language if ctx.noumeno else ""
         # Register accommodation (sibling of Reply language): match the user's
         # formality where it does not conflict with the persona — the persona's
         # voice/limits always win.
@@ -386,12 +385,17 @@ class SuperegoStage:
         # block the EGO sees; included so memories can ground the final reply.
         injected = ctx.metadata.get("ego_context")
         context_section = f"# Context (memories/history)\n{str(injected).strip()}\n\n" if injected else ""
+        # The reply language is a HARD instruction (leading the Task), not a soft signal —
+        # a small model otherwise drifts into another language when the user's turn is short
+        # (e.g. a bare "sim"). Empty language → no directive (let the model match the input).
+        lang_rule = (f"Write the reply IN {language} (the user's language) — the ENTIRE reply, "
+                     "with no other language. " if language else "")
         return (
             f'# User request\n"{ctx.user_input}"\n\n'
             f"{context_section}"
             f"# Data gathered by the executor (ground figures/dates ONLY in this)\n{payload}\n\n"
             f"# Signals\n" + "\n".join(signals) + "\n\n"
-            "# Task\nWrite the final reply to the user in the persona's voice and "
+            f"# Task\n{lang_rule}Write the final reply to the user in the persona's voice and "
             "within its limits. Use the context for background, but keep exact "
             "figures/dates verbatim from the executor data — do not invent or alter "
             "them. Reply with the message text only."
