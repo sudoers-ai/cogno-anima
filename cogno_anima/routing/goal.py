@@ -132,9 +132,11 @@ class GoalManager:
             self._goal_intent = ""
             return self._goal_status, self._active_goal, 1.0
 
-        # Rule 2: no current goal (fresh start).
+        # Rule 2: no current goal (fresh start). Only a goal-oriented intent establishes a
+        # persistent goal — a SOCIAL greeting ("E aí") must NOT, otherwise the user stating
+        # their real request next turn looks like they ABANDONED the "greeting goal".
         if prior_active is None:
-            if new_goal:
+            if new_goal and intent_class in _GOAL_INTENTS:
                 self._set_active_goal(new_goal, intent_class, current_domains)
             self._goal_status = "NEW"
             return self._goal_status, self._active_goal, 1.0
