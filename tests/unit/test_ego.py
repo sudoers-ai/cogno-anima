@@ -472,6 +472,39 @@ async def test_destructive_tool_runs_once_confirmed():
     assert ctx.ego_result.pending_confirmation == []
 
 
+@pytest.mark.asyncio
+async def test_confirmed_calls_execute_deterministically_without_model_reissue():
+    """Gate-B completion: the approved calls run even if the model re-issues NOTHING (a small
+    model often just replies 'done' on the confirm turn) — the side effect must not be skipped."""
+    backend = PlainBackend()   # emits no tool call, ever
+    disp = StubDispatcher.with_tools("book_appointment", side_effects={"book_appointment": True})
+    ctx = _ctx(ego_confirmed=True,
+               ego_confirmed_calls=[{"tool": "book_appointment",
+                                     "arguments": {"host_id": "dr_x", "date": "2026-07-02",
+                                                   "time": "11:00"}}])
+    ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+    # executed exactly once, recorded in the trace, and flagged a side effect
+    assert disp.executed == [("book_appointment", {"host_id": "dr_x", "date": "2026-07-02",
+                                                   "time": "11:00"})]
+    booked = [tc for s in ctx.ego_result.steps for tc in s.tool_calls
+              if tc.tool == "book_appointment"]
+    assert len(booked) == 1 and booked[0].ok and booked[0].side_effect
+    assert ctx.ego_result.has_side_effects
+
+
+@pytest.mark.asyncio
+async def test_confirmed_call_blocks_a_redundant_model_reissue():
+    """If the model DOES re-issue the same confirmed call, the dedup guard blocks it — never
+    execute the destructive action twice."""
+    backend = ScriptedToolCallingBackend([_tool_turn("book_appointment", {"host_id": "dr_x"}),
+                                          {"content": "done"}])
+    disp = StubDispatcher.with_tools("book_appointment")
+    ctx = _ctx(ego_confirmed=True,
+               ego_confirmed_calls=[{"tool": "book_appointment", "arguments": {"host_id": "dr_x"}}])
+    ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+    assert disp.executed == [("book_appointment", {"host_id": "dr_x"})]   # exactly once
+
+
 # ── 2R-B: composite budget + sequential ordering ─────────────────────
 
 @pytest.mark.asyncio
