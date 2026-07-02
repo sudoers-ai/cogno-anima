@@ -505,6 +505,40 @@ async def test_confirmed_call_blocks_a_redundant_model_reissue():
     assert disp.executed == [("book_appointment", {"host_id": "dr_x"})]   # exactly once
 
 
+@pytest.mark.asyncio
+async def test_confirmed_call_failure_feeds_the_error_not_already_executed():
+    """A confirmed call can still fail execute-time business validation (slot taken, limit
+    reached). The model must receive the ERROR — '[ALREADY EXECUTED] → (empty)' makes it
+    hallucinate success — and the trace must record the failed execution."""
+    class RecordingBackend:
+        model = "plain"
+        def __init__(self):
+            self.prompts = []
+        async def generate(self, system, prompt):
+            self.prompts.append(prompt)
+            return "That slot is taken; 10:00 is free.", 1, 1
+
+    backend = RecordingBackend()
+    disp = StubDispatcher.with_tools("book_appointment", handlers={
+        "book_appointment": lambda a: ToolResult(
+            output="", ok=False, error="09:00 on 2026-07-02 is already booked. Free: 10:00",
+            side_effect=True),
+    })
+    ctx = _ctx(ego_confirmed=True,
+               ego_confirmed_calls=[{"tool": "book_appointment",
+                                     "arguments": {"date": "2026-07-02", "time": "09:00"}}])
+    ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+    # the model saw the failure (not a success note) with the business error verbatim
+    assert "[EXECUTION FAILED]" in backend.prompts[0]
+    assert "already booked" in backend.prompts[0]
+    assert "[ALREADY EXECUTED] book_appointment → \n" not in backend.prompts[0]
+    # trace records the failed execution (the judge sees ERROR, not silence)
+    call = ctx.ego_result.steps[0].tool_calls[0]
+    assert call.ok is False and "already booked" in call.error
+    # loop converged to an honest draft
+    assert "taken" in ctx.ego_result.draft
+
+
 # ── 2R-B: composite budget + sequential ordering ─────────────────────
 
 @pytest.mark.asyncio
