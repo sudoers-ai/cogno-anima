@@ -119,6 +119,17 @@ def test_voice_prompt_surfaces_register_with_persona_precedence():
     assert "User register:" not in prompt2
 
 
+def test_voice_prompt_hard_pins_the_reply_language():
+    ctx = _ctx()   # noumeno.language == "pt"
+    se = SuperegoStage()
+    prompt = se._build_voice_prompt(ctx, "persona voice", "data", [])
+    # a firm directive in the Task, not a soft signal — so a small model does not drift languages
+    assert "Write the reply IN pt" in prompt
+    # no language known → no directive (fall back to matching the input)
+    ctx.noumeno.language = ""
+    assert "Write the reply IN" not in se._build_voice_prompt(ctx, "persona voice", "data", [])
+
+
 # ── constraints/negation → judge prompt (Block 1) ────────────────────
 
 def test_judge_prompt_includes_user_constraints():

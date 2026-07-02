@@ -33,6 +33,16 @@ async def test_no_goal_first_turn_stays_new():
     assert goal is None and sim == 1.0
 
 
+async def test_social_greeting_does_not_establish_a_goal_to_abandon():
+    # "E aí" (SOCIAL) must NOT set a persistent goal — otherwise stating the real request next
+    # turn looks like the user ABANDONED the greeting. It should read as a fresh NEW goal.
+    gm = GoalManager()
+    s1, g1, _ = await gm.update("greet the user", "SOCIAL", domains=[])
+    assert s1 == "NEW" and g1 is None            # greeting sets no active goal
+    s2, g2, _ = await gm.update("schedule an appointment", "ACTION_REQUEST", domains=["SCHEDULING"])
+    assert s2 == "NEW" and g2 == "schedule an appointment"   # NOT ABANDONED
+
+
 # ── Fast-paths (no embedding) ─────────────────────────────────────────────
 
 async def test_stage0_clarification_is_ongoing():

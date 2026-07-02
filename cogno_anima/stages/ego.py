@@ -136,6 +136,33 @@ class EgoStage:
         logger.info("EGO start path=%s tools=%d max_steps=%d attempt=%d",
                     path, len(tools), max_steps, attempt_no)
 
+        # ── Confirmation completion (Fonte B, deterministic) ──────────────
+        # After the host holds a destructive call and the user approves it, it re-runs the
+        # turn with ``ego_confirmed_calls`` = the EXACT calls to execute. Run them directly
+        # instead of trusting the model to re-issue the tool on the confirm turn — a small
+        # model often just replies "done" without re-calling it, silently skipping the action
+        # (and any downstream side effect like a reminder). Seed the dedup guard so a redundant
+        # model re-issue is blocked, and feed the result back so the loop converges to a reply.
+        for c in (ctx.metadata.get("ego_confirmed_calls") or []):
+            name = c.get("tool", "") if isinstance(c, dict) else getattr(c, "tool", "")
+            args = (c.get("arguments") if isinstance(c, dict) else getattr(c, "arguments", None)) or {}
+            if not name or name not in valid_names:
+                continue
+            try:
+                r = await dispatcher.execute(name, args)
+            except MCPDispatchError:
+                raise                                             # fatal → propagate
+            except Exception as exc:                              # stray → wrap + propagate
+                raise ToolExecutionError(name, args, exc) from exc
+            ex = ToolExecution(tool=name, arguments=args, result=r.output, ok=r.ok,
+                               error=r.error, side_effect=r.side_effect)
+            steps.append(EgoStep(index=len(steps), path=path, assistant_text="", tool_calls=[ex]))
+            seen_calls[self._sig(name, args)] = self.MAX_DUPLICATE_CALLS   # block a re-issue
+            note = f"[ALREADY EXECUTED] {name} → {r.output}"
+            user_prompt = f"{user_prompt}\n\n{note}"
+            messages.append({"role": "user", "content": note})
+            logger.info("stage=ego event=confirmed_exec tool=%s ok=%s", name, r.ok)
+
         for i in range(max_steps):
             # ── call the model ────────────────────────────────────────
             if fc_backend is not None:
