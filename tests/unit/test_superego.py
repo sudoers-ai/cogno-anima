@@ -149,6 +149,15 @@ def test_judge_prompt_omits_constraints_when_none():
     assert "# User constraints" not in prompt
 
 
+def test_judge_prompt_allows_an_honest_failure_relay():
+    # A confirmed call can fail execute-time business validation (slot taken / limit reached);
+    # the judge must be told a truthful failure relay is APPROVED — a retry cannot fix a
+    # business refusal, and rejecting it dead-ends the turn in a handoff with no voice.
+    prompt = SuperegoStage()._build_judge_prompt(_ctx(), "")
+    assert "tool FAILURE is a VALID outcome" in prompt
+    assert "REJECT a draft that claims success despite an ERROR" in prompt
+
+
 # ── scope guard ──────────────────────────────────────────────────────
 
 @pytest.mark.asyncio

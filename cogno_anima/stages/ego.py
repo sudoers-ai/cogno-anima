@@ -158,7 +158,16 @@ class EgoStage:
                                error=r.error, side_effect=r.side_effect)
             steps.append(EgoStep(index=len(steps), path=path, assistant_text="", tool_calls=[ex]))
             seen_calls[self._sig(name, args)] = self.MAX_DUPLICATE_CALLS   # block a re-issue
-            note = f"[ALREADY EXECUTED] {name} → {r.output}"
+            if r.ok:
+                note = f"[ALREADY EXECUTED] {name} → {r.output}"
+            else:
+                # A confirmed call can still fail execute-time business validation (slot
+                # taken, limit reached). Feed the ERROR — an empty r.output would tell the
+                # model "already executed → (nothing)" and it happily claims success.
+                note = (f"[EXECUTION FAILED] {name} → {r.error or 'tool error'}\n"
+                        "The confirmed action could NOT be completed. Do NOT claim success — "
+                        "relay the failure to the user truthfully and offer the alternative "
+                        "suggested by the error (if any).")
             user_prompt = f"{user_prompt}\n\n{note}"
             messages.append({"role": "user", "content": note})
             logger.info("stage=ego event=confirmed_exec tool=%s ok=%s", name, r.ok)

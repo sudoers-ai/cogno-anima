@@ -253,6 +253,11 @@ class SuperegoStage:
             "4. GROUNDING: is everything backed by the tool results (no invented data), "
             "and are the preserved terms (if any) reproduced exactly?\n"
             "5. SAFETY/LIMITS: within the persona's limits, no policy violation?\n\n"
+            "EXCEPTION — an honestly-relayed tool FAILURE is a VALID outcome: when a tool "
+            "returned ERROR (a business refusal like a taken slot or a reached limit) and the "
+            "draft truthfully reports that failure without fabricating success, APPROVE — "
+            "a retry cannot fix a business refusal, and telling the user is the right action. "
+            "Still REJECT a draft that claims success despite an ERROR result.\n\n"
             'Respond ONLY with: {"approved": true/false, "critique": '
             '"...if not approved, what is wrong, to guide a retry..."}'
         )
