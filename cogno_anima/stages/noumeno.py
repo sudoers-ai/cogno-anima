@@ -104,13 +104,20 @@ class Noumeno:
             change_subject = subject_similarity < self._subject_threshold
 
         # 4. Formulate Prompt
-        history_str = ""
+        # The recent transcript (user + assistant) is injected UNCONDITIONALLY — a short reply
+        # ("com o Vinicius Vale", "às 14h", "sim") is embedding-dissimilar to the last query, so
+        # the subject-continuity gate would drop it; but it must still resolve against what the
+        # assistant just asked. The single-query hint stays gated by continuity (it is a summary,
+        # not the back-and-forth).
+        conversation = (ctx.metadata.get("conversation_history") or "").strip()
+        history_parts = []
+        if conversation:
+            history_parts.append(f"Conversation so far:\n{conversation}")
         if not change_subject and last_rewritten:
-            history_str = (
-                f"Recent conversation:\n"
+            history_parts.append(
                 f"Last Query (English): {last_rewritten}\n"
-                f"Last Context Summary: {last_context_turn or ''}\n\n"
-            )
+                f"Last Context Summary: {last_context_turn or ''}")
+        history_str = ("\n\n".join(history_parts) + "\n\n") if history_parts else ""
 
         prompt = self._user_tpl.format(history=history_str, input=normalized_input)
 
