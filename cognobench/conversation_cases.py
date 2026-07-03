@@ -49,10 +49,15 @@ BENCH_TOOLS: list[dict] = [
         "parameters": {"type": "object", "properties": {
             "date": {"type": "string"}, "time": {"type": "string"}},
             "required": ["date", "time"]}}},
+    {"type": "function", "function": {
+        "name": "cancel_appointment", "description": "Cancel a previously booked appointment.",
+        "parameters": {"type": "object", "properties": {
+            "date": {"type": "string"}, "time": {"type": "string"}},
+            "required": ["date"]}}},
 ]
 
 VALID_TOOLS = {t["function"]["name"] for t in BENCH_TOOLS}
-SIDE_EFFECT_TOOLS = {"record_expense", "record_income", "book_appointment"}
+SIDE_EFFECT_TOOLS = {"record_expense", "record_income", "book_appointment", "cancel_appointment"}
 
 # Persona prompts the host would store (split: execution vs limits vs voice).
 EGO_PROMPT = ("You are the execution engine of a personal assistant for finance and "
@@ -87,6 +92,7 @@ class BenchDispatcher:
             "get_summary": "This period: income 1200, expenses 800, net +400.",
             "check_availability": f"Free slots on {arguments.get('date')}: 09:00, 14:00.",
             "book_appointment": f"Booked {arguments.get('date')} {arguments.get('time')}.",
+            "cancel_appointment": f"Cancelled the appointment on {arguments.get('date')}.",
         }
         if name not in canned:
             return ToolResult(output="", ok=False, error=f"unknown tool {name!r}")
@@ -172,6 +178,35 @@ CONVERSATION_CASES: list[ConversationCase] = [
         turns=[
             ConvTurn("tem horário amanhã?", expect_route="EGO", expect_tool="check_availability"),
             ConvTurn("pode marcar às 14h", expect_route="EGO", expect_tool="book_appointment"),
+        ],
+    ),
+    # 5b. Cancel lifecycle (ported from the parent's secretary_cancel_appointment): the user
+    #     signals they can't make it, the assistant offers to cancel, the confirmation executes it.
+    ConversationCase(
+        id="cancel_session",
+        description="Appointment cancel: 'can't make it' → confirm → cancel_appointment runs",
+        persona="SECRETARY", mcp_module="scheduler",
+        turns=[
+            ConvTurn("pode marcar amanhã às 14h", expect_route="EGO",
+                     expect_tool="book_appointment"),
+            ConvTurn("na verdade não vou conseguir ir amanhã, pode cancelar?",
+                     expect_route="EGO", expect_tool="cancel_appointment"),
+        ],
+    ),
+    # 5c. Reschedule lifecycle — the flow that regressed to a human handoff on a small model
+    #     (reject the booked slot, ask for another date → must re-check + re-book, never hand off).
+    #     Structural guard: the turn routes to EGO and runs the scheduler tools to a terminal.
+    ConversationCase(
+        id="reschedule_session",
+        description="Reschedule: book a slot, then reject the date and rebook another → EGO, no handoff",
+        persona="SECRETARY", mcp_module="scheduler",
+        turns=[
+            ConvTurn("pode marcar amanhã às 14h", expect_route="EGO",
+                     expect_tool="book_appointment"),
+            ConvTurn("esse dia não consigo, tem para depois de amanhã?",
+                     expect_route="EGO", expect_tool="check_availability"),
+            ConvTurn("pode marcar às 9h então", expect_route="EGO",
+                     expect_tool="book_appointment"),
         ],
     ),
     # 6. Safety: PII-CRITICAL blocks.
