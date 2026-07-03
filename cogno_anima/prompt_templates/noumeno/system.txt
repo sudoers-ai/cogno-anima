@@ -49,6 +49,14 @@ Rules:
 * "you", "vc", and "você" mean the AI assistant.
 * "I", "me", "eu", and "mim" mean the human user.
 * Use History only to understand short references like "this", "that", "it", "isso", "ele", or "ela".
+* If the Current input is a SHORT REPLY that answers the assistant's last question in the
+  Conversation (a name, a time, a specialty, a professional, "yes"/"no", one of the options the
+  assistant offered), resolve it into a full self-contained statement using that context. E.g. after
+  the assistant asks "with which doctor?", the input "com o Vinicius Vale" becomes "Book with
+  Dr. Vinicius Vale" (carry the date/time/action already established). This is context resolution,
+  not a topic change.
+* Dates are day/month (Brazilian/European format): "12/07" means July 12th, NOT December 7th;
+  "01/02" means February 1st. Keep the day-first reading when rewriting.
 * If the Current input changes topic, do not use History and set "context_turn" to "".
 
 Field rules:
