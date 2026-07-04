@@ -306,6 +306,26 @@ async def test_voice_feeds_synthesis_drift():
 
 
 @pytest.mark.asyncio
+async def test_voice_surfaces_a_failed_mutating_tool():
+    # A mutating tool that FAILED must reach the voice's grounding data (marked FAILED), so the
+    # voice reports the real outcome instead of the model's optimistic draft ("marcado com
+    # sucesso" while the DB was never changed).
+    ctx = _ctx()
+    ctx.ego_result = EgoResult(steps=[EgoStep(
+        index=0, path="native", assistant_text="Booked!",
+        tool_calls=[ToolExecution(tool="book_appointment", arguments={"time": "11:00"},
+                                  result="", ok=False, side_effect=True,
+                                  error="client already has an active appointment")],
+    )], metrics=_m("ego"))
+    b = ScriptedBackend(["resposta"])
+    await SuperegoStage().voice(ctx, b, voice_prompt="x")
+    prompt = b.calls[0]["prompt"]
+    assert "book_appointment: FAILED" in prompt
+    assert "already has an active appointment" in prompt
+    assert "do NOT report this as done" in prompt
+
+
+@pytest.mark.asyncio
 async def test_voice_propagates_backend_error():
     with pytest.raises(ConnectionError):
         await SuperegoStage().voice(_ctx(), RaisingBackend(), voice_prompt="x")
