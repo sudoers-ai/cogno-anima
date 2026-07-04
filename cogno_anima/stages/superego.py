@@ -290,7 +290,13 @@ class SuperegoStage:
             "returned ERROR (a business refusal like a taken slot or a reached limit) and the "
             "draft truthfully reports that failure without fabricating success, APPROVE — "
             "a retry cannot fix a business refusal, and telling the user is the right action. "
-            "Still REJECT a draft that claims success despite an ERROR result.\n\n"
+            "Still REJECT a draft that claims success despite an ERROR result.\n"
+            "NO FABRICATION after a failure: when a tool returned ERROR, the draft may relay "
+            "ONLY that failure and any alternative the tool's OWN message named — it must NOT "
+            "present substitute data the tool never returned (offering options/times/values a "
+            "tool said are unavailable, or listing choices no SUCCESSFUL call produced). Every "
+            "specific option/figure/slot the draft shows must trace to a successful tool result; "
+            "inventing replacement data is as bad as claiming false success — REJECT it.\n\n"
             "MID-FLOW is a VALID outcome: a single turn need not complete the WHOLE multi-turn "
             "goal. When the execution correctly gathered/presented data (availability, a listing) "
             "or the draft asks the user for a genuinely missing detail (a date, a time, a choice, "
@@ -461,7 +467,16 @@ class SuperegoStage:
                 # done ("marcado com sucesso") while the DB was never changed. The voice prompt's
                 # rule ("a FAILED write is not a success") then reports the real outcome.
                 parts.append(f"{t.tool}: FAILED — {t.error or 'the operation did not complete'} "
-                             f"(NOTHING was changed; do NOT report this as done)")
+                             f"(NOTHING was changed; do NOT report this as done, and do NOT "
+                             f"invent alternatives the tool did not return)")
+            elif t.error:
+                # A READ that FAILED (e.g. check_availability on a closed day → "no expediente,
+                # next working day is X"). Surface it too — otherwise the payload drops it and the
+                # voice falls back to the model's optimistic DRAFT, which fabricates substitute data
+                # (offering slots the tool refused). Grounding the voice in the real error kills the
+                # fabrication at the source (the reply the user sees).
+                parts.append(f"{t.tool}: unavailable — {t.error} "
+                             f"(no data was returned; relay THIS, do NOT invent alternatives)")
         return "\n".join(parts) or (ctx.ego_result.draft or "(no data)")
 
     # ── PII-CRITICAL block ───────────────────────────────────────────
