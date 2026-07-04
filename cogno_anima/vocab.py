@@ -41,6 +41,12 @@ VALID_COMPLEXITY: set[str] = {"LOW", "MEDIUM", "HIGH", "EXPERT"}
 # human, serve the cache, send a refusal) — the core only sets the signal.
 VALID_STOP_REASONS: set[str] = {
     "completed", "human_handoff", "semantic_cache", "scope_blocked", "pii_blocked",
+    # The judge rejected the EGO execution but nothing was committed (the EGO only ran
+    # READ tools — no mutating dispatch), so instead of dead-ending in a human handoff the
+    # SUPEREGO voices a grounded continuation ("I found your appointment — change it to
+    # 11:00?"). The turn is still terminal for the core; the HOST owns the escalation
+    # policy (e.g. force a real handoff after N consecutive clarifications).
+    "needs_clarification",
 }
 
 VALID_MODALITY: set[str] = {"CERTAIN", "PROBABLE", "POSSIBLE", "UNCERTAIN", "MIXED"}
