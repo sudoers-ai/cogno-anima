@@ -160,6 +160,27 @@ def test_judge_prompt_allows_an_honest_failure_relay():
     assert "REJECT a draft that claims success despite an ERROR" in prompt
 
 
+def test_judge_prompt_accepts_a_mid_flow_turn():
+    # The judge must not apply whole-goal completeness to one mid-flow turn (showing
+    # availability / asking for a missing detail) — that over-rejects and dead-ends
+    # a legitimate multi-turn scheduling flow in a handoff.
+    prompt = SuperegoStage()._build_judge_prompt(_ctx(), "")
+    assert "MID-FLOW is a VALID outcome" in prompt
+
+
+def test_judge_prompt_carries_the_clock_context_and_trusts_tools():
+    # Without the [TODAY] anchor the judge re-derives dates and wrongly rejects a
+    # correct tool resolution → handoff. It must see the host context and be told
+    # tool-returned values are authoritative.
+    ctx = _ctx()
+    ctx.metadata["ego_context"] = "[TODAY] 2026-07-04 (Saturday)\nsome memory"
+    prompt = SuperegoStage()._build_judge_prompt(ctx, "")
+    assert "[TODAY] 2026-07-04" in prompt
+    assert "TRUST THE TOOLS" in prompt
+    # absent context → no context block (degrade gracefully)
+    assert "# Context (authoritative" not in SuperegoStage()._build_judge_prompt(_ctx(), "")
+
+
 # ── scope guard ──────────────────────────────────────────────────────
 
 @pytest.mark.asyncio

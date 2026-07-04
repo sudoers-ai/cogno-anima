@@ -258,8 +258,16 @@ class SuperegoStage:
         # Terms the NOUMENO preserved verbatim (names/URLs/emails/figures): the
         # judge uses them as concrete grounding evidence (2R-A).
         preserved = self._format_preserved(ctx)
+        # Host-injected context (the same block the EGO/voice see): the clock anchor
+        # ([TODAY] …), retrieved memories, history. Without it the judge re-derives
+        # dates from its own (wrong) sense of "now" and rejects a CORRECT tool
+        # resolution ("resolved 'July 9th' to 2026-07-09 — wrong"), dead-ending a
+        # valid turn in a handoff.
+        injected = ctx.metadata.get("ego_context")
+        context = f"# Context (authoritative — clock/memories/history)\n{str(injected).strip()}\n\n" if injected else ""
         return (
             f'# User request\n"{ctx.user_input}"\n\n'
+            f"{context}"
             f"# Active goal\n{goal}\n"
             f"{restrictions}"
             f"{preserved}"
@@ -273,11 +281,23 @@ class SuperegoStage:
             "4. GROUNDING: is everything backed by the tool results (no invented data), "
             "and are the preserved terms (if any) reproduced exactly?\n"
             "5. SAFETY/LIMITS: within the persona's limits, no policy violation?\n\n"
+            "TRUST THE TOOLS: values a tool returned — resolved dates, ids, availability, "
+            "figures — are AUTHORITATIVE. Do NOT re-derive them from your own reasoning or "
+            "reject them as wrong (e.g. do not second-guess a resolved calendar date against "
+            "your own idea of today — the Context above carries the real clock). Judge only "
+            "whether the execution USED them correctly, not whether the tool was right.\n\n"
             "EXCEPTION — an honestly-relayed tool FAILURE is a VALID outcome: when a tool "
             "returned ERROR (a business refusal like a taken slot or a reached limit) and the "
             "draft truthfully reports that failure without fabricating success, APPROVE — "
             "a retry cannot fix a business refusal, and telling the user is the right action. "
             "Still REJECT a draft that claims success despite an ERROR result.\n\n"
+            "MID-FLOW is a VALID outcome: a single turn need not complete the WHOLE multi-turn "
+            "goal. When the execution correctly gathered/presented data (availability, a listing) "
+            "or the draft asks the user for a genuinely missing detail (a date, a time, a choice, "
+            "a confirmation), APPROVE it — judge completeness against what THIS turn had to do, "
+            "not the entire goal. A read-only step that returned the right data is DONE for this "
+            "turn. Reject only when the execution did the WRONG thing: ignored the request, used "
+            "data that does not match it, fabricated, or claimed a mutation that never happened.\n\n"
             'Respond ONLY with: {"approved": true/false, "critique": '
             '"...if not approved, what is wrong, to guide a retry..."}'
         )
