@@ -410,8 +410,18 @@ class SuperegoStage:
     def _tool_payload(ctx: PipelineContext) -> str:
         if not ctx.ego_result:
             return "(no execution)"
-        parts = [f"{t.tool}: {t.result or t.error or ''}"
-                 for t in ctx.ego_result.tools_executed if t.ok]
+        parts = []
+        for t in ctx.ego_result.tools_executed:
+            if t.ok:
+                parts.append(f"{t.tool}: {t.result or t.error or ''}")
+            elif t.side_effect:
+                # A MUTATING tool that FAILED (e.g. slot taken, client already has an active
+                # appointment, past date). It MUST be surfaced — otherwise the voice only sees the
+                # successful reads + the model's optimistic draft and falsely reports the action as
+                # done ("marcado com sucesso") while the DB was never changed. The voice prompt's
+                # rule ("a FAILED write is not a success") then reports the real outcome.
+                parts.append(f"{t.tool}: FAILED — {t.error or 'the operation did not complete'} "
+                             f"(NOTHING was changed; do NOT report this as done)")
         return "\n".join(parts) or (ctx.ego_result.draft or "(no data)")
 
     # ── PII-CRITICAL block ───────────────────────────────────────────
