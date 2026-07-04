@@ -38,9 +38,10 @@ def _m(stage="x"):
 
 
 def _ctx(user="record 50", intent_class="ACTION_REQUEST", sentiment="NEUTRAL",
-         goal="record expense", with_ego=True, pii_risk="NONE", emotional=None):
+         goal="record expense", with_ego=True, pii_risk="NONE", emotional=None,
+         goal_status=None, language="pt"):
     noumeno = NoumenoResult(
-        original=user, rewritten=user, context_turn="", language="pt",
+        original=user, rewritten=user, context_turn="", language=language,
         canonical_language="en", drift_score=0.0, drift_tag="PASS_THROUGH", changed=False,
         confidence=1.0, change_subject=False, subject_similarity=1.0, context_used=False,
         preserved_terms=[], rewrite_warnings=[], metrics=_m("noumeno"),
@@ -57,9 +58,10 @@ def _ctx(user="record 50", intent_class="ACTION_REQUEST", sentiment="NEUTRAL",
             tool_calls=[ToolExecution(tool="record_expense", arguments={"amount": 50},
                                       result="Recorded 50", ok=True, side_effect=True)],
         )], metrics=_m("ego"))
-    if emotional and ctx.id_result is None:
+    if (emotional or goal_status) and ctx.id_result is None:
         from cogno_anima.types import IdResult
-        ctx.id_result = IdResult(triad_route="SUPEREGO", emotional_override=emotional, metrics=_m("id"))
+        ctx.id_result = IdResult(triad_route="SUPEREGO", emotional_override=emotional,
+                                 goal_status=goal_status or "NEW", metrics=_m("id"))
     return ctx
 
 
@@ -173,6 +175,39 @@ async def test_scope_ner_bypass_for_social():
     r = await SuperegoStage().check_input_scope(
         _ctx(intent_class="SOCIAL"), b, scope_prompt="finance only")
     assert r.blocked is False and b.calls == []   # bypassed, no LLM call
+
+
+@pytest.mark.asyncio
+async def test_scope_continuation_bypass_for_ongoing_goal():
+    # A short follow-up under an ONGOING goal (NER often lands UNKNOWN) must NOT
+    # hit the contextless scope classifier — the thread already cleared scope.
+    b = ScriptedBackend([])
+    r = await SuperegoStage().check_input_scope(
+        _ctx(user="com o cardiologista", intent_class="UNKNOWN", goal_status="ONGOING"),
+        b, scope_prompt="medical scheduling only")
+    assert r.blocked is False and b.calls == []   # bypassed, no LLM call
+
+
+@pytest.mark.asyncio
+async def test_scope_still_checks_a_new_goal():
+    # A NEW goal is NOT bypassed — the guard still runs (this is where genuine
+    # off-topic first turns get caught).
+    b = ScriptedBackend(['{"blocked": true, "refusal_message": "Fora de escopo."}'])
+    r = await SuperegoStage().check_input_scope(
+        _ctx(user="como faço bolo?", intent_class="INFORMATION_REQUEST", goal_status="NEW"),
+        b, scope_prompt="medical scheduling only")
+    assert r.blocked is True and len(b.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_scope_refusal_language_is_pinned_in_prompt():
+    # P3: the refusal must be pinned to the user's language (noumeno.language),
+    # not left to the model to guess (small models drift to Spanish for pt-BR).
+    b = ScriptedBackend(['{"blocked": true, "refusal_message": "Fora de escopo."}'])
+    await SuperegoStage().check_input_scope(
+        _ctx(user="como faço bolo?", intent_class="INFORMATION_REQUEST", language="pt-BR"),
+        b, scope_prompt="medical scheduling only")
+    assert "pt-BR" in b.calls[0]["prompt"]
 
 
 @pytest.mark.asyncio

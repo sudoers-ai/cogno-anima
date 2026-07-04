@@ -146,8 +146,19 @@ class SuperegoStage:
         # NER-assisted bypass: greetings / follow-ups are always in-scope.
         if ctx.intent and ctx.intent.intent_class in ("SOCIAL", "CLARIFICATION"):
             return _result(False, "")
+        # Continuation bypass: an ONGOING goal means the user already cleared the
+        # scope guard on an earlier turn of this thread. A short follow-up ("at
+        # 3pm", "with the cardiologist", a bare name) then carries little lexical
+        # signal — NER often lands on UNKNOWN and the *contextless* scope
+        # classifier wrongly blocks a legitimate continuation. Trust the goal:
+        # once a conversation is in-scope, its follow-ups are too (fail-open, and
+        # a genuine mid-thread topic change is caught by the NER/ID drift signals,
+        # not this cheap gate).
+        if ctx.id_result and ctx.id_result.goal_status == "ONGOING":
+            return _result(False, "")
 
-        prompt = self._build_scope_prompt(scope_prompt, ctx.user_input)
+        language = ctx.noumeno.language if ctx.noumeno else ""
+        prompt = self._build_scope_prompt(scope_prompt, ctx.user_input, language)
         try:
             raw, ti, to = await backend.generate(_SCOPE_SYSTEM, prompt)
             raw, _ = self.strip_cot(raw)
@@ -161,7 +172,15 @@ class SuperegoStage:
             return _result(False, "")
 
     @staticmethod
-    def _build_scope_prompt(scope_prompt: str, user_input: str) -> str:
+    def _build_scope_prompt(scope_prompt: str, user_input: str, language: str = "") -> str:
+        # Pin the refusal language HARD (not a soft "in the user's language"): a
+        # small model otherwise drifts to the wrong tongue (e.g. Spanish for a
+        # pt-BR user) — same failure the voice/NOUMENO fixes addressed. Empty
+        # language → no directive (let the model match the input).
+        lang_name = language or "the user's language"
+        lang_rule = (f"the refusal_message MUST be written in {language} "
+                     "(the user's language), no other language") if language else \
+                    "the refusal_message must be in the user's language"
         return (
             f"# Scope Definition\n{scope_prompt}\n\n"
             f'# User Input\n"{user_input}"\n\n'
@@ -169,14 +188,15 @@ class SuperegoStage:
             "- Block ONLY what is clearly, obviously unrelated to the scope.\n"
             "- When in doubt, ALLOW (false positives are NOT acceptable).\n"
             "- Greetings, follow-ups, clarifications and questions about the "
-            "business/product are ALWAYS in-scope.\n\n"
+            "business/product are ALWAYS in-scope.\n"
+            f"- If blocked, {lang_rule}.\n\n"
             "# Examples\n"
             'User: "how do I bake a cake?" → blocked=true\n'
             'User: "who is the president?" → blocked=true\n'
             'User: "how much is the plan?" → blocked=false\n'
             'User: "thanks for the help" → blocked=false\n\n'
             'Respond ONLY with: {"blocked": true/false, "refusal_message": '
-            '"...polite refusal in the user\'s language if blocked, else empty..."}'
+            f'"...polite refusal in {lang_name} if blocked, else empty..."}}'
         )
 
     # ── Quality gate / JUDGE (post-EGO) ──────────────────────────────
