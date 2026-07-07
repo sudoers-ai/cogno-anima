@@ -160,6 +160,15 @@ def test_judge_prompt_allows_an_honest_failure_relay():
     assert "REJECT a draft that claims success despite an ERROR" in prompt
 
 
+def test_judge_prompt_forbids_fabrication_after_a_failure():
+    # A tool ERROR must not license the draft to invent substitute data (e.g. offering
+    # slots the tool said are unavailable) — every option shown must trace to a
+    # successful tool result. Generic (domain-agnostic) grounding tightening.
+    prompt = SuperegoStage()._build_judge_prompt(_ctx(), "")
+    assert "NO FABRICATION after a failure" in prompt
+    assert "must trace to a successful tool result" in prompt
+
+
 def test_judge_prompt_accepts_a_mid_flow_turn():
     # The judge must not apply whole-goal completeness to one mid-flow turn (showing
     # availability / asking for a missing detail) — that over-rejects and dead-ends
@@ -379,6 +388,28 @@ async def test_voice_surfaces_a_failed_mutating_tool():
     assert "book_appointment: FAILED" in prompt
     assert "already has an active appointment" in prompt
     assert "do NOT report this as done" in prompt
+
+
+@pytest.mark.asyncio
+async def test_voice_surfaces_a_failed_read_so_it_cannot_fabricate():
+    # A READ that FAILED (e.g. check_availability on a closed day) must reach the voice's
+    # grounding data with its error — otherwise the payload drops it, the voice falls back to
+    # the model's optimistic DRAFT, and it fabricates substitute slots the tool refused.
+    ctx = _ctx()
+    ctx.ego_result = EgoResult(steps=[EgoStep(
+        index=0, path="native", assistant_text="Here are some times: 09h, 11h",  # fabricating draft
+        tool_calls=[ToolExecution(tool="check_availability", arguments={"date": "2026-07-11"},
+                                  result="", ok=False, side_effect=False,
+                                  error="não há expediente aos sábados — o próximo dia útil é 2026-07-13")],
+    )], metrics=_m("ego"))
+    b = ScriptedBackend(["resposta"])
+    await SuperegoStage().voice(ctx, b, voice_prompt="x")
+    prompt = b.calls[0]["prompt"]
+    assert "check_availability: unavailable" in prompt
+    assert "2026-07-13" in prompt
+    assert "do NOT invent alternatives" in prompt
+    # the fabricating draft must NOT be the grounding data (payload is non-empty from the error)
+    assert "09h, 11h" not in prompt
 
 
 @pytest.mark.asyncio
