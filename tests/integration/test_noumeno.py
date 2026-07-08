@@ -117,7 +117,7 @@ REAL_TURNS_INPUTS = [
     
     # MBA / Reminders / Calendar
     ("reminder setup", "Crie um lembrete para daqui a 10 minutos, preciso acesse a planilha de aulas e que traga todas as próximas aulas do MBA de Data Engineering para o mês de Junho", [["reminder", "lembrete"], ["mba", "class", "aula", "engineering"]]),
-    ("reminder general", "Crie uma lembrete para daqui a 5 minutos sobre minhas aulas do MBA", [["reminder", "lembrete"], ["mba"]]),
+    ("reminder general", "Crie uma lembrete para daqui a 5 minutos sobre minhas aulas do MBA", [["reminder", "lembrete", "alarm"], ["mba"]]),
     ("schedule blockage", "Bloqueie minha agenda no dia 2026-06-09 das 09:00 às 10:00.", [["block", "bloque"], ["agenda", "schedule", "calendar"]]),
     ("schedule unblockage", "Desbloquear minha agenda do dia 11", [["unblock", "unlock", "desbloque", "agenda", "schedule", "calendar"]]),
     
@@ -272,17 +272,17 @@ async def test_noumeno_conversational_flows(flow_name):
         # 2. Prompt History Injection Validation
         latest_prompt = spy_llm.captured_prompts[-1]
         if i == 0:
-            assert "Recent conversation:" not in latest_prompt
+            assert "Last Query (English):" not in latest_prompt
         else:
             if not res.change_subject:
-                assert "Recent conversation:" in latest_prompt, (
+                assert "Last Query (English):" in latest_prompt, (
                     f"Subject stayed, but history was NOT injected!\n"
                     f"  Turn {i}: {user_input!r}\n"
                     f"  Similarity: {res.subject_similarity:.4f}\n"
                     f"  Prompt:\n{latest_prompt}"
                 )
             else:
-                assert "Recent conversation:" not in latest_prompt, (
+                assert "Last Query (English):" not in latest_prompt, (
                     f"Subject changed, but history WAS injected!\n"
                     f"  Turn {i}: {user_input!r}\n"
                     f"  Similarity: {res.subject_similarity:.4f}\n"
@@ -447,7 +447,7 @@ async def test_noumeno_anaphoric_reference_resolution(case):
 
     # History MUST have been injected (same subject)
     latest_prompt = spy_llm.captured_prompts[-1]
-    assert "Recent conversation:" in latest_prompt, (
+    assert "Last Query (English):" in latest_prompt, (
         f"History was not injected for anaphoric input!\n"
         f"  Input: {case['input']!r}\n"
         f"  Similarity: {res.subject_similarity:.4f}"

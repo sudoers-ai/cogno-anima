@@ -94,7 +94,15 @@ def test_entities_present(ner, text, entity):
         *intent.entities_people, *intent.entities_concepts,
         *intent.entities_objects, intent.location or "",
     ]).lower()
-    assert entity in pool
+    # Accent-fold both sides: the NOUMENO canonicalizes to English, so the model may return
+    # "sao paulo" for "São Paulo" — the entity is present, just de-accented.
+    import unicodedata
+
+    def _fold(s: str) -> str:
+        return "".join(c for c in unicodedata.normalize("NFKD", s)
+                       if not unicodedata.combining(c))
+
+    assert _fold(entity) in _fold(pool)
 
 
 # ── Deterministic PII (model-independent: regex + check digits + Luhn) ─────
