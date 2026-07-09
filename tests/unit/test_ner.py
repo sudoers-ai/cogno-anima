@@ -312,6 +312,35 @@ async def test_pii_risk_computation():
     assert result.pii_risk == "CRITICAL"
 
 
+@pytest.mark.asyncio
+async def test_appointment_date_is_not_dob():
+    """An appointment date the LLM mislabels DATE_OF_BIRTH is dropped (no birth context) → the
+    turn keeps a routable risk instead of a spurious HIGH that would starve the EGO gateway."""
+    payload = PERFECT_JSON.copy()
+    payload["pii"] = ["NAME", "DATE_OF_BIRTH"]
+    backend = StubBackend(response=json.dumps(payload))
+    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
+    result = await analyzer.analyze(
+        make_noumeno_result(original="quero marcar com o Dr. Jose Luiz Manzoli dia 20/07 as 10",
+                            rewritten="I want to book with Dr. Jose Luiz Manzoli on 20/07 at 10"))
+    assert "DATE_OF_BIRTH" not in result.pii     # bare appointment date, not a birth date
+    assert result.pii_risk != "HIGH"             # so it no longer detours away from the EGO
+
+
+@pytest.mark.asyncio
+async def test_dob_kept_with_birth_context():
+    """A date framed as a birth date (birth vocabulary present) stays a DATE_OF_BIRTH → HIGH."""
+    payload = PERFECT_JSON.copy()
+    payload["pii"] = ["DATE_OF_BIRTH"]
+    backend = StubBackend(response=json.dumps(payload))
+    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
+    result = await analyzer.analyze(
+        make_noumeno_result(original="minha data de nascimento é 20/07/1985",
+                            rewritten="my date of birth is 20/07/1985"))
+    assert "DATE_OF_BIRTH" in result.pii
+    assert result.pii_risk == "HIGH"
+
+
 def test_validation_error():
     """17. Propagação de ValidationError se Pydantic falhar."""
     with pytest.raises(ValidationError):
