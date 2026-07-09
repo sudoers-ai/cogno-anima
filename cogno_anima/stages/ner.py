@@ -10,7 +10,11 @@ from typing import Optional
 from cogno_anima.types import PipelineContext, NoumenoResult, IntentResult, StageMetrics
 from cogno_synapse import LLMBackend
 from cogno_anima.prompts import load_prompt
-from cogno_anima.security.pii import compute_pii_risk, normalize_pii_types
+from cogno_anima.security.pii import (
+    compute_pii_risk,
+    filter_uncontextualized_dob,
+    normalize_pii_types,
+)
 from cogno_anima.security.detector import PiiDetector, default_detector
 from cogno_anima.errors import StageParseError
 
@@ -527,6 +531,10 @@ class IntentAnalyzer:
         pii_llm = normalize_pii_types(data.get("pii", []))
         pii_regex = self._pii_detector.detect(original) if original else []
         pii = list(dict.fromkeys([*pii_llm, *pii_regex]))[:10]
+        # Drop a DATE_OF_BIRTH the LLM invented from a bare/appointment date (no birth context
+        # in the original) — otherwise a plain date inflates pii_risk to HIGH and the ID detours
+        # an actionable request away from the EGO tool gateway (the "agent can't book" failure).
+        pii = filter_uncontextualized_dob(pii, original)
         pii_risk = compute_pii_risk(pii)
 
         # raw fields
