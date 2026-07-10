@@ -436,6 +436,23 @@ class SuperegoStage:
         # block the EGO sees; included so memories can ground the final reply.
         injected = ctx.metadata.get("ego_context")
         context_section = f"# Context (memories/history)\n{str(injected).strip()}\n\n" if injected else ""
+        # Rejeição final do juiz (orquestrador → ctx.metadata["voice_correction"]): a execução
+        # NÃO cumpriu o objetivo e NADA foi commitado. Sem esta seção a voz só vê os reads
+        # bem-sucedidos + o draft otimista e narra o objetivo como feito ("Prontinho!
+        # confirmados") — regra DURA: proibido alegar ação executada; relatar o que foi
+        # encontrado ou fazer UMA pergunta de esclarecimento.
+        rejection = ctx.metadata.get("voice_correction")
+        rejection_section = ""
+        if isinstance(rejection, dict) and (rejection.get("reason") or "").strip():
+            rejection_section = (
+                "# Execution verdict (HARD RULE)\n"
+                "The execution of this turn was REJECTED by review and NOTHING was committed — "
+                "no action was performed.\n"
+                f"Reviewer critique: {str(rejection['reason']).strip()}\n"
+                "You MUST NOT claim, imply or narrate that any action was performed or completed "
+                "this turn. Either state truthfully what was found in the executor data, or ask "
+                "the user ONE clarifying question to move forward.\n\n"
+            )
         # The reply language is a HARD instruction (leading the Task), not a soft signal —
         # a small model otherwise drifts into another language when the user's turn is short
         # (e.g. a bare "sim"). Empty language → no directive (let the model match the input).
@@ -445,6 +462,7 @@ class SuperegoStage:
             f'# User request\n"{ctx.user_input}"\n\n'
             f"{context_section}"
             f"# Data gathered by the executor (ground figures/dates ONLY in this)\n{payload}\n\n"
+            f"{rejection_section}"
             f"# Signals\n" + "\n".join(signals) + "\n\n"
             f"# Task\n{lang_rule}Write the final reply to the user in the persona's voice and "
             "within its limits. Use the context for background, but keep exact "
