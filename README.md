@@ -4,7 +4,8 @@
 
 `cogno-anima` is a modular, dependency-light library that turns raw user input
 into a routed, grounded, persona-voiced response — decoupled from any database,
-message bus, or proprietary infra. It is the brain; your application is the body.
+message bus, or proprietary infra. It is the brain; the host — your application —
+is the body that carries it.
 
 ```
 NOUMENO  →  NER  →  ID  →  EGO  →  SUPEREGO        (+ Drift, woven through)
@@ -118,6 +119,21 @@ python3 cognobench.py --stub --limit 3         # fast plumbing smoke (no model)
 Dimensions: `noumeno · ner · id · ego · superego · drift · conversations`. Hard
 invariants are enforced; model-dependent "soft" checks are recalibratable with
 `--calibrate`. The benchmark is **not** shipped in the wheel.
+
+## The Cogno ecosystem
+
+`cogno-anima` is one organ of **[Cogno](https://github.com/sudoers-ai)** — a family of
+small, composable, Apache-2.0 libraries that together form a complete
+conversational-agent platform. Each library owns a single concern and stays
+infra-agnostic; a **host** assembles them into a running agent:
+
+![The Cogno ecosystem](docs/assets/cogno-ecosystem.svg)
+
+The open-source libraries are the organs; the **host is the body** that joins
+them. Our reference host — `cogno-host`, with its `cogno-ui` dashboard — is the
+private product layer, but it holds no special powers: everything it does rides
+on the public seams documented in each library's `docs/HOST_INTEGRATION.md`, so
+you can assemble a body of your own.
 
 ## Testing
 
