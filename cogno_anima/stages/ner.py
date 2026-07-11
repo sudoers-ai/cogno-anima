@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+from cogno_anima import metakeys as mk
 from cogno_anima.types import PipelineContext, NoumenoResult, IntentResult, StageMetrics
 from cogno_synapse import LLMBackend
 from cogno_anima.prompts import load_prompt
@@ -136,9 +137,9 @@ class IntentAnalyzer:
         if not ctx.noumeno:
             raise ValueError("NoumenoResult must be populated before running IntentAnalyzer")
 
-        prior_goal = ctx.metadata.get("last_goal")
-        active_domains = ctx.metadata.get("active_domains")
-        turn_number = ctx.metadata.get("turn_number")
+        prior_goal = ctx.metadata.get(mk.LAST_GOAL)
+        active_domains = ctx.metadata.get(mk.ACTIVE_DOMAINS)
+        turn_number = ctx.metadata.get(mk.TURN_NUMBER)
 
         intent = await self.analyze(
             noumeno=ctx.noumeno,
