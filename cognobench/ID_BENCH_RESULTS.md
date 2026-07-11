@@ -20,6 +20,7 @@ is a stricter, more direct metric over more checks (104 vs the parent's 32).
 | `qwen2.5:7b-instruct` | 93.3% | 97/104 | ~14 min | Soft farewell→COMPLETED and continuation misses. |
 | `phi3:mini` | 77.9% | 81/104 | ~15 min | Small model; weakest NER goal extraction. |
 | `qwen3.5:4b` | **98.1%** | 102/104 | ~6 min | Full run (2026-06-18). Matches `qwen3:8b` despite being a 4B model — strong goal continuity. (Earlier the reasoning model errored on empty `response`; fixed by the now-default `think=false` in `OllamaBackend`.) |
+| `qwen3.5:8b` | **99.0%** | 103/104 | ~30 min | Full run (2026-07-10). **Ties mistral's best score**; its one miss is a soft `goal_status` call on `long_chain` (ONGOING→ABANDONED), not the universal `anaphoric_deep`. |
 
 > **2026-06-18 full-suite sweep** (all dimensions, post synapse/homeo extraction, within 6 GB VRAM): re-ran `llama3.1:8b` → ID **95.2%** (99/104), consistent with the 94.2% calibration row above; `qwen3.5:4b` → ID 98.1% as recorded. The extraction introduced no ID regression.
 

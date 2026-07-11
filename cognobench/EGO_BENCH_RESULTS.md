@@ -47,6 +47,14 @@ host-declared via `ToolPolicyDispatcher`.
 | qwen3:8b (`--think`) | 100.0% (64/64)        |
 | qwen3.5:4b          | 100.0% (64/64)        |
 | llama3.1:8b         | 100.0% (64/64)        |
+| qwen3.5:8b          | 100.0% (64/64)        |
+| phi3:mini (3.8B)    | 98.4% (63/64)         |
+
+> **2026-07-10 sweep**: `qwen3.5:8b` joins the 100% club. `phi3:mini` (3.8B) misses one
+> soft `tool_selected` (`summary_period` — answers without dispatching) and, on the
+> composite currency cases, loops re-calling `convert_currency` until the
+> **duplicate-call guard + `max_steps` budget** interrupt it (`interrupted=True`) —
+> the deterministic containment doing exactly its job on a too-small model.
 
 > **Every model selects the right tool on all 21 cases and passes all gates.** The
 > single qwen3:8b balance miss seen on the 12-case run did **not** recur on the
