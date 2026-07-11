@@ -7,6 +7,15 @@ into a routed, grounded, persona-voiced response — decoupled from any database
 message bus, or proprietary infra. It is the brain; the host — your application —
 is the body that carries it.
 
+![SECRETARY demo — the full pipeline booking an appointment on a free local model](docs/assets/secretary-demo.gif)
+
+*The whole stack, live on a free 8B local model: NOUMENO rewrites Portuguese to
+canonical English, the ID routes, the EGO calls real scheduling tools (and
+self-corrects around a weekend), the judge approves, the voice replies in the
+persona. Run it yourself in ~15 minutes — see
+[Try it](#try-it--a-complete-agent-in-15-minutes) · quality numbers in
+[BENCHMARKS.md](BENCHMARKS.md).*
+
 ```
 NOUMENO  →  NER  →  ID  →  EGO  →  SUPEREGO        (+ Drift, woven through)
    │         │       │      │          │
@@ -37,6 +46,29 @@ retry/correction *loop*, session splitting, the real human handoff, billing,
 semantic cache, and persistence. See **[docs/HOST_INTEGRATION.md](docs/HOST_INTEGRATION.md)**
 for how to wire the core into a host, `CLAUDE.md` for the full boundary map, and
 `cognobench/pipeline.py` (`ReferencePipeline`) for a reference orchestrator.
+
+## Try it — a complete agent in 15 minutes
+
+The fastest way to *feel* the pipeline is the SECRETARY demo in
+[`cogno-praxis`](https://github.com/sudoers-ai/cogno-praxis): the full
+cognitive loop over local Ollama, with a real scheduling vertical served as an
+MCP subprocess — free, offline, any language in:
+
+```bash
+ollama pull qwen3:8b && ollama pull nomic-embed-text     # the download IS most of the 15 min
+
+pip install "git+https://github.com/sudoers-ai/cogno-homeo" \
+            "git+https://github.com/sudoers-ai/cogno-synapse" \
+            "git+https://github.com/sudoers-ai/cogno-anima" \
+            "git+https://github.com/sudoers-ai/cogno-soma" \
+            "cogno-mcp[mcp] @ git+https://github.com/sudoers-ai/cogno-mcp"
+
+git clone https://github.com/sudoers-ai/cogno-praxis && cd cogno-praxis
+pip install -e .
+python examples/secretary_demo.py --trace     # --trace shows each cognitive stage live
+```
+
+(PyPI packages are coming; the git chain above is the interim install.)
 
 ## Install
 
@@ -119,6 +151,9 @@ python3 cognobench.py --stub --limit 3         # fast plumbing smoke (no model)
 Dimensions: `noumeno · ner · id · ego · superego · drift · conversations`. Hard
 invariants are enforced; model-dependent "soft" checks are recalibratable with
 `--calibrate`. The benchmark is **not** shipped in the wheel.
+
+**Consolidated scoreboard — quality per cognitive function × model, and where
+small models break: [BENCHMARKS.md](BENCHMARKS.md).**
 
 ## The Cogno ecosystem
 
