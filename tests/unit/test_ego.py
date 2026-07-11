@@ -310,6 +310,41 @@ async def test_recoverable_error_fed_back_and_loop_continues():
 
 
 @pytest.mark.asyncio
+async def test_failed_call_retryable_after_new_information():
+    """A host guard may refuse a write until the SAME turn reads first (id provenance),
+    then expect the IDENTICAL call again — the retry must execute, not hit blocked_retry.
+    A success clears the failed-sig memory (new information arrived)."""
+    state = {"read": False}
+
+    def guarded_write(_args):
+        if not state["read"]:
+            return ToolResult(output="", ok=False,
+                              error="id not read this turn — call get_summary first")
+        return ToolResult(output="income recorded", ok=True)
+
+    def read(_args):
+        state["read"] = True
+        return ToolResult(output="pending: amount 40", ok=True)
+
+    disp = StubDispatcher.with_tools(
+        "add_income", "get_summary",
+        handlers={"add_income": guarded_write, "get_summary": read})
+    backend = ScriptedToolCallingBackend([
+        _tool_turn("add_income", {"amount": 40}),    # refused by the guard
+        _tool_turn("get_summary", {}),               # the requested read succeeds
+        _tool_turn("add_income", {"amount": 40}),    # identical retry → must RUN
+        {"content": "done"},
+    ])
+    ctx = await EgoStage().process(_ctx(), backend, disp, system_prompt=SYS)
+    res = ctx.ego_result
+    writes = [t for t in res.tools_executed if t.tool == "add_income"]
+    assert writes[0].ok is False
+    assert writes[1].ok is True                      # dispatched again, not blocked
+    assert not [t for t in res.tools_executed if t.error == "blocked_retry"]
+    assert res.interrupted is False
+
+
+@pytest.mark.asyncio
 async def test_fatal_error_propagates():
     def boom(_):
         raise MCPDispatchError("add_income", {}, ConnectionError("server down"))

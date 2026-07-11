@@ -245,6 +245,13 @@ class EgoStage:
                     raise ToolExecutionError(name, args, exc) from exc
                 if not r.ok:
                     failed_calls.add(sig)
+                else:
+                    # A success brings NEW information/state, so an earlier failure with the
+                    # same sig is no longer conclusive — e.g. a host id-provenance guard
+                    # refuses a write until the SAME turn reads the id, then expects the
+                    # IDENTICAL call again. Allow that one fresh retry; a call that fails
+                    # again re-blocks, and max_steps + the duplicate cap still bound the loop.
+                    failed_calls.clear()
                 logger.info("EGO step=%d tool=%s ok=%s side_effect=%s", i, name, r.ok, r.side_effect)
                 execs.append(ToolExecution(tool=name, arguments=args, result=r.output,
                                            ok=r.ok, error=r.error, side_effect=r.side_effect))
