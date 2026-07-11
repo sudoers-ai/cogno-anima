@@ -33,6 +33,13 @@ reject, `grounded` = a required substring appears).
 | qwen3:8b (`--think`) | 100.0% (42/42)        |
 | qwen3.5:4b          | 97.6% (41/42)         |
 | llama3.1:8b         | 90.5% (38/42)         |
+| qwen3.5:8b          | 97.6% (41/42)         |
+| phi3:mini (3.8B)    | 90.5% (38/42)         |
+
+> **2026-07-10 sweep**: `qwen3.5:8b` matches its 4b sibling (one over-strict judge
+> rejection). `phi3:mini` mirrors llama3.1's shape — 3 judge false-rejections + 1
+> scope miss — again the *safe* fail-closed direction (a needless retry, never a
+> false approve).
 
 > The two larger reasoners and mistral are perfect. **`qwen3.5:4b`** misses **one**
 > `judge(soft)`: it rejects `judge_correct_summary` (a correct multi-figure summary)

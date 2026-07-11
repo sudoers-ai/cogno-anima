@@ -16,11 +16,11 @@ the numbers below are the model-dependent quality on top of those guarantees.
 |---|---|---|---|---|---|
 | **mistral:latest** (7B, default) | **100%** (64/64) | **100%** (42/42) | **99.0%** (103/104) | 96.0% (144/150)¹ | — |
 | **qwen3:8b** (recommended) | **100%** (64/64) | **100%** (42/42) | 98.1% (102/104) | 95.4% (144/151) | **100%** (16/16) |
-| qwen3.5:8b | — | — | — | — | 94% (15/16) |
+| qwen3.5:8b | **100%** (64/64) | 97.6% (41/42) | **99.0%** (103/104) | — | 94% (15/16) |
 | qwen3.5:4b | **100%** (64/64) | 97.6% (41/42) | 98.1% (102/104) | 94.2% (129/137)² | — |
 | llama3.1:8b | **100%** (64/64) | 90.5% (38/42) | 94.2% (98/104) | 93.4% (141/151) | — |
 | qwen2.5:7b-instruct | — | — | 93.3% (97/104) | — | — |
-| phi3:mini (3.8B) | — | — | 77.9% (81/104) | — | — |
+| phi3:mini (3.8B) | 98.4% (63/64) | 90.5% (38/42) | 77.9% (81/104) | — | — |
 
 ¹ predates one added soft check (150- vs 151-check suite).
 ² two heaviest composite sessions hit client `ReadTimeout` on the 4B model
@@ -39,17 +39,23 @@ The point of sweeping small local models is mapping their **failure shapes**,
 not crowning a winner:
 
 - **Tool selection is NOT the bottleneck.** Every model from 4B up scores 100%
-  on EGO tool selection — the deterministic runtime (closed vocabularies,
-  duplicate-call detection, capability gates) does the heavy lifting, so the
-  model only has to pick the right tool.
-- **The judge is where quality shows.** `llama3.1:8b` loses 4 points on
-  SUPEREGO — all **false rejections** of correct executions. That is the *safe*
-  failure direction for a fail-closed judge (a needless retry, never a false
-  approve), but it costs latency/tokens.
-- **Goal continuity degrades gracefully with size.** ID stays ≥93% down to 7B;
-  `phi3:mini` (3.8B) drops to 77.9% — weak goal extraction, and in one case a
-  missed CRITICAL credential PII (`llama3.1:8b` also missed it once). The
-  deterministic PII risk floor catches the common cases regardless of model.
+  on EGO tool selection — even `phi3:mini` (3.8B) hits 98.4% — because the
+  deterministic runtime (closed vocabularies, duplicate-call detection,
+  capability gates) does the heavy lifting; the model only has to pick the
+  right tool. When `phi3:mini` *does* degrade, the shape is instructive: it
+  loops re-calling the same tool, and the **duplicate-call guard + step budget**
+  contain it (`interrupted=True`, a signal — never a crash or a runaway bill).
+- **The judge is where quality shows.** `llama3.1:8b` and `phi3:mini` each lose
+  4 points on SUPEREGO — all **false rejections** of correct executions
+  (`qwen3.5` models lose 1 the same way). That is the *safe* failure direction
+  for a fail-closed judge (a needless retry, never a false approve), but it
+  costs latency/tokens.
+- **Goal continuity degrades gracefully with size.** ID stays ≥93% down to 7B —
+  and `qwen3.5:8b` ties the best score (99.0%, its one miss a soft goal-status
+  call on the longest chain). `phi3:mini` (3.8B) drops to 77.9% — weak goal
+  extraction, and in one case a missed CRITICAL credential PII (`llama3.1:8b`
+  also missed it once). The deterministic PII risk floor catches the common
+  cases regardless of model.
 - **Safety gates never depend on the model.** Read-only masks, confirmation
   holds and valid-dispatch invariants held on *every* model in *every* sweep —
   they are code, not model goodwill.
