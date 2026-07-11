@@ -3,6 +3,7 @@
 import json
 import pytest
 
+from cogno_anima import metakeys as mk
 from cogno_anima.stages.ego import EgoStage
 from cogno_synapse.base import ToolCallingBackend
 from cogno_anima.types import (
@@ -382,6 +383,38 @@ async def test_information_request_no_force():
     backend = ScriptedToolCallingBackend([{"content": "here is info"}])
     disp = StubDispatcher.with_tools("get_summary")
     await EgoStage().process(_ctx(intent_class="INFORMATION_REQUEST"), backend, disp, system_prompt=SYS)
+    assert backend.calls[0]["tool_choice"] is None
+
+
+@pytest.mark.asyncio
+async def test_host_force_tool_forces_first_tool_without_rewriting_intent():
+    """metadata[EGO_FORCE_TOOL]: the host routed a SOCIAL/short turn ("sim",
+    "confirmar") to the executor. tool_choice is forced on step 1, but the NER's
+    intent_class stays untouched — the perception record must remain honest."""
+    backend = ScriptedToolCallingBackend([_tool_turn("add_income", {"amount": 1}),
+                                          {"content": "ok"}])
+    disp = StubDispatcher.with_tools("add_income")
+    ctx = _ctx(intent_class="SOCIAL", **{mk.EGO_FORCE_TOOL: True})
+    ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+    assert backend.calls[0]["tool_choice"] == "required"
+    assert ctx.intent.intent_class == "SOCIAL"          # NER record untouched
+
+
+def test_force_tool_adds_directive_to_task_context():
+    """Fallback-path parity: the flag renders a host directive into the task
+    context (the pressure the old intent_class rewrite used to give)."""
+    ctx = _ctx(intent_class="SOCIAL", **{mk.EGO_FORCE_TOOL: True})
+    assert "REQUIRES tool execution" in EgoStage()._task_context(ctx)
+    assert "REQUIRES tool execution" not in EgoStage()._task_context(_ctx(intent_class="SOCIAL"))
+
+
+@pytest.mark.asyncio
+async def test_readonly_wins_over_force_tool():
+    """A tentative user (read-only mask) beats the force flag: propose, don't force."""
+    backend = ScriptedToolCallingBackend([{"content": "Want me to record it?"}])
+    disp = StubDispatcher.with_tools("record_expense")
+    ctx = _ctx(intent_class="SOCIAL", ego_readonly=True, **{mk.EGO_FORCE_TOOL: True})
+    await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
     assert backend.calls[0]["tool_choice"] is None
 
 

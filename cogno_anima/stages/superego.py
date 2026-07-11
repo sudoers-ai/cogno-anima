@@ -30,6 +30,7 @@ import json
 import logging
 from typing import Optional
 
+from cogno_anima import metakeys as mk
 from cogno_anima.types import (
     PipelineContext, StageMetrics, SuperegoResult, ScopeCheckResult,
 )
@@ -263,7 +264,7 @@ class SuperegoStage:
         # dates from its own (wrong) sense of "now" and rejects a CORRECT tool
         # resolution ("resolved 'July 9th' to 2026-07-09 — wrong"), dead-ending a
         # valid turn in a handoff.
-        injected = ctx.metadata.get("ego_context")
+        injected = ctx.metadata.get(mk.EGO_CONTEXT)
         context = f"# Context (authoritative — clock/memories/history)\n{str(injected).strip()}\n\n" if injected else ""
         return (
             f'# User request\n"{ctx.user_input}"\n\n'
@@ -434,14 +435,14 @@ class SuperegoStage:
         signals.append(f"Tone hints: {', '.join(adjustments)}")
         # Host-injected context (retrieved memories / history / clock) — the same
         # block the EGO sees; included so memories can ground the final reply.
-        injected = ctx.metadata.get("ego_context")
+        injected = ctx.metadata.get(mk.EGO_CONTEXT)
         context_section = f"# Context (memories/history)\n{str(injected).strip()}\n\n" if injected else ""
         # Rejeição final do juiz (orquestrador → ctx.metadata["voice_correction"]): a execução
         # NÃO cumpriu o objetivo e NADA foi commitado. Sem esta seção a voz só vê os reads
         # bem-sucedidos + o draft otimista e narra o objetivo como feito ("Prontinho!
         # confirmados") — regra DURA: proibido alegar ação executada; relatar o que foi
         # encontrado ou fazer UMA pergunta de esclarecimento.
-        rejection = ctx.metadata.get("voice_correction")
+        rejection = ctx.metadata.get(mk.VOICE_CORRECTION)
         rejection_section = ""
         if isinstance(rejection, dict) and (rejection.get("reason") or "").strip():
             rejection_section = (

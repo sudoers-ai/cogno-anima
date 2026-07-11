@@ -29,6 +29,7 @@ import hashlib
 import logging
 from typing import Optional
 
+from cogno_anima import metakeys as mk
 from cogno_anima.types import (
     PipelineContext,
     StageMetrics,
@@ -91,14 +92,14 @@ class EgoStage:
         policy: Optional[ToolPolicyDispatcher] = (
             dispatcher if isinstance(dispatcher, ToolPolicyDispatcher) else None
         )
-        confirmed = ctx.metadata.get("ego_confirmed")  # host says "user confirmed"
+        confirmed = ctx.metadata.get(mk.EGO_CONFIRMED)  # host says "user confirmed"
 
         # ── Read-only mask (Fonte A) ──────────────────────────────────────
         # The host sets ego_readonly when the user was tentative (from the ID's
         # needs_confirmation signal). In read-only mode the EGO offers ONLY
         # non-mutating tools, so the model consults + proposes, never commits.
         # Fail-safe: no policy → mask everything (propose via draft, touch nothing).
-        readonly = bool(ctx.metadata.get("ego_readonly"))
+        readonly = bool(ctx.metadata.get(mk.EGO_READONLY))
         tools = dispatcher.tools_schema()
         if readonly:
             tools = [t for t in tools if policy is not None
@@ -108,10 +109,14 @@ class EgoStage:
         # explicit ego_max_steps always wins. is_sequential only adds ordering
         # (rendered into the task context), not budget — it's a subset of composite.
         default_steps = self.MAX_STEPS_COMPOSITE if ctx.intent.is_composite else self.MAX_STEPS_DEFAULT
-        max_steps = int(ctx.metadata.get("ego_max_steps", default_steps))
+        max_steps = int(ctx.metadata.get(mk.EGO_MAX_STEPS, default_steps))
         # Force a tool on iteration 1 for actions — but never in read-only mode
         # (a propose turn must be free to answer/clarify instead of dispatching).
-        force_first = ctx.intent.intent_class == "ACTION_REQUEST" and not readonly
+        # EGO_FORCE_TOOL is the host saying "this turn requires a tool" WITHOUT
+        # rewriting the NER's intent_class (the perception record stays honest;
+        # the routing decision rides here instead).
+        force_tool = bool(ctx.metadata.get(mk.EGO_FORCE_TOOL))
+        force_first = (ctx.intent.intent_class == "ACTION_REQUEST" or force_tool) and not readonly
 
         system = self._build_system(ctx, system_prompt, use_native, tools)
         task = ctx.noumeno.rewritten or ctx.user_input
@@ -132,7 +137,7 @@ class EgoStage:
         interrupted = False
         interrupt_reason: Optional[str] = None
 
-        attempt_no = int(ctx.metadata.get("ego_correction", {}).get("attempt", 1))
+        attempt_no = int(ctx.metadata.get(mk.EGO_CORRECTION, {}).get("attempt", 1))
         logger.info("EGO start path=%s tools=%d max_steps=%d attempt=%d",
                     path, len(tools), max_steps, attempt_no)
 
@@ -143,7 +148,7 @@ class EgoStage:
         # model often just replies "done" without re-calling it, silently skipping the action
         # (and any downstream side effect like a reminder). Seed the dedup guard so a redundant
         # model re-issue is blocked, and feed the result back so the loop converges to a reply.
-        for c in (ctx.metadata.get("ego_confirmed_calls") or []):
+        for c in (ctx.metadata.get(mk.EGO_CONFIRMED_CALLS) or []):
             name = c.get("tool", "") if isinstance(c, dict) else getattr(c, "tool", "")
             args = (c.get("arguments") if isinstance(c, dict) else getattr(c, "arguments", None)) or {}
             if not name or name not in valid_names:
@@ -285,8 +290,8 @@ class EgoStage:
             pending_confirmation=pending_confirmation,
             interrupted=interrupted,
             interrupt_reason=interrupt_reason,
-            attempt=int(ctx.metadata.get("ego_correction", {}).get("attempt", 1)),
-            persona=ctx.metadata.get("ego_persona"),
+            attempt=int(ctx.metadata.get(mk.EGO_CORRECTION, {}).get("attempt", 1)),
+            persona=ctx.metadata.get(mk.EGO_PERSONA),
             metrics=StageMetrics(
                 stage=STAGE_NAME, elapsed_ms=elapsed_ms,
                 tokens_in=total_in, tokens_out=total_out, model=getattr(backend, "model", "unknown"),
@@ -318,7 +323,7 @@ class EgoStage:
         if task_ctx:
             parts.append(task_ctx)
 
-        injected = ctx.metadata.get("ego_context")
+        injected = ctx.metadata.get(mk.EGO_CONTEXT)
         if injected:
             parts.append(str(injected).strip())
 
@@ -377,10 +382,21 @@ class EgoStage:
             if intent.causal_chain:
                 plan = "; ".join(f"{i + 1}) {step}" for i, step in enumerate(intent.causal_chain))
                 lines.append(f"Sequence (user's reasoning, supporting hint): {plan}")
+        # Host tool directive (EGO_FORCE_TOOL): the host routed this turn to the
+        # executor even though the NER read it as SOCIAL/short (a decision on a
+        # pending action, an onboarding turn). On the text-fallback path the
+        # "User intent:" line above would say SOCIAL and push the model AWAY from
+        # the tools — this directive restores the pressure the old intent_class
+        # rewrite used to give, without falsifying the NER record.
+        if ctx.metadata.get(mk.EGO_FORCE_TOOL):
+            lines.append(
+                "This turn REQUIRES tool execution (host directive): perform the "
+                "requested action with the available tools before giving a final answer."
+            )
         # Read-only / PROPOSE mode (Fonte A): the host masked the mutating tools
         # this turn (the user was tentative). Tell the model WHY, so it consults
         # and proposes instead of erroring on the missing write tools.
-        if ctx.metadata.get("ego_readonly"):
+        if ctx.metadata.get(mk.EGO_READONLY):
             lines.append(
                 "PROPOSE mode: gather read-only information and propose an action "
                 "for the user to confirm; do NOT commit — mutating tools are "

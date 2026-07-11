@@ -24,6 +24,7 @@ import time
 import logging
 from typing import Awaitable, Callable, Optional
 
+from cogno_anima import metakeys as mk
 from cogno_anima.types import PipelineContext, IntentResult, StageMetrics, IdResult
 from cogno_synapse import Embedder
 from cogno_anima.stages.drift import DriftCalculator
@@ -72,10 +73,10 @@ class IDStage:
         intent = ctx.intent
         noumeno = ctx.noumeno
 
-        id_state = dict(ctx.metadata.get("id_state") or {})
+        id_state = dict(ctx.metadata.get(mk.ID_STATE) or {})
 
         # Turn number: host authoritative (turns.turn_n), else auto-increment.
-        turn = ctx.metadata.get("turn_number")
+        turn = ctx.metadata.get(mk.TURN_NUMBER)
         if turn is None:
             turn = int(id_state.get("turn_number", 0)) + 1
         id_state["turn_number"] = turn
@@ -95,12 +96,12 @@ class IDStage:
         streak = int(id_state.get("frustration_streak", 0))
         streak = streak + 1 if intent.sentiment == "FRUSTRATED" else 0
         id_state["frustration_streak"] = streak
-        emotional_override = ctx.metadata.get("emotional_override")
+        emotional_override = ctx.metadata.get(mk.EMOTIONAL_OVERRIDE)
         if emotional_override is None and streak >= self._frustration_threshold:
             emotional_override = "sustained_frustration"
 
         # Goal continuity (may reach Stage 2 → embedding).
-        pii_hint = bool(ctx.metadata.get("pii_session_hint", False))
+        pii_hint = bool(ctx.metadata.get(mk.PII_SESSION_HINT, False))
         goal_status, active_goal, goal_similarity = await goal_mgr.update(
             new_goal=intent.goal,
             intent_class=intent.intent_class,
@@ -124,7 +125,7 @@ class IDStage:
 
         # Intentions + attention focus (over host-injected candidates).
         active_intentions = intentions.update(intent, goal_status)
-        candidates = list(ctx.metadata.get("attention_candidates") or [])
+        candidates = list(ctx.metadata.get(mk.ATTENTION_CANDIDATES) or [])
         attention_focus = self._attention.focus(intent, candidates)
 
         # Complexity (advisory only — the host scales the model, not the core).
@@ -157,7 +158,7 @@ class IDStage:
         # Persist cross-turn state back into the carrier.
         id_state["goal"] = goal_mgr.to_dict()
         id_state["intentions"] = intentions.to_dict()
-        ctx.metadata["id_state"] = id_state
+        ctx.metadata[mk.ID_STATE] = id_state
 
         # Sanitize against the closed vocab ("never trust" carry-over/hints).
         if triad_route not in VALID_TRIAD:

@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+from cogno_anima import metakeys as mk
 from cogno_anima.types import PipelineContext, NoumenoResult, StageMetrics
 from cogno_synapse import LLMBackend, Embedder
 from cogno_anima.utils import expand_slangs
@@ -84,8 +85,8 @@ class Noumeno:
                 logger.warning("Failed to detect language, defaulting to 'und': %s", le)
 
         # 3. Subject Continuity Check (Pré-LLM)
-        last_rewritten = ctx.metadata.get("last_rewritten")
-        last_context_turn = ctx.metadata.get("last_context_turn")
+        last_rewritten = ctx.metadata.get(mk.LAST_REWRITTEN)
+        last_context_turn = ctx.metadata.get(mk.LAST_CONTEXT_TURN)
 
         subject_similarity = 1.0
         change_subject = False
@@ -109,7 +110,7 @@ class Noumeno:
         # the subject-continuity gate would drop it; but it must still resolve against what the
         # assistant just asked. The single-query hint stays gated by continuity (it is a summary,
         # not the back-and-forth).
-        conversation = (ctx.metadata.get("conversation_history") or "").strip()
+        conversation = (ctx.metadata.get(mk.CONVERSATION_HISTORY) or "").strip()
         history_parts = []
         if conversation:
             history_parts.append(f"Conversation so far:\n{conversation}")
