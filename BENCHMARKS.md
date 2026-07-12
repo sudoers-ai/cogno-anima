@@ -44,13 +44,25 @@ exercises; embeddings stay local. The run's token footer is the cost meter.
 | Model (cloud) | EGO | SUPEREGO | ID | Conversations | Overall | Tokens (in/out) | ~$/sweep |
 |---|---|---|---|---|---|---|---|
 | openai:gpt-4o-mini | **100%** (64/64) | **100%** (42/42)⁵ | 97.0% (98/101) | 98.7% (154/156) | **96.8%** (491/507) | 581k / 46.5k | $0.12 |
+| openai:gpt-5-mini | **100%** (64/64) | 95.2% (40/42)⁵ | **99.0%** (103/104) | 98.3% (173/176) | **97.2%** (520/535) | 621k / 340k | $0.84 |
+| openai:gpt-5-nano | **100%** (64/64) | **100%** (42/42) | 97.4% (74/76)⁶ | **100%** (76/76)⁶ | **97.5%** (347/356)⁶ | 515k / 571k | $0.25 |
 
 ⁵ full sweep predates the clause pairs; on the 58-check suite gpt-4o-mini scores
-**98.3% (57/58)** — one *safe* false-reject (the honest-failure relay).
-5 case errors in this sweep were a strict NOUMENO/NER JSON parser tripping on
-cloud "extra data" output — fixed (raw_decode fallback), so the scores above are
-conservative. gpt-5-nano / gpt-5-mini sweeps: in progress (reasoning-family
-latency), rows land as they complete.
+**98.3% (57/58)** and gpt-5-mini **93.1% (54/58)** — every miss on both is the
+*safe* direction (a false reject / an under-block), never a false approve.
+5 gpt-4o-mini case errors were a strict NOUMENO/NER JSON parser tripping on
+cloud "extra data" output — fixed (raw_decode fallback), so scores are
+conservative.
+⁶ the gpt-5-nano sweep ran pre-parser-fix and hit that same bug 36× (its
+reasoning style emits trailing text more often), shrinking coverage — the
+percentages hold on what ran; a post-fix re-run lifts the denominators.
+
+**Reasoning tax, measured:** gpt-5-nano emitted MORE output than input (571k out
+vs 515k in — reasoning tokens) and took ~3× gpt-4o-mini's wall-clock for the
+same suites; gpt-5-mini 340k out. The token footer is exactly the meter that
+makes this visible per sweep. Every cloud model keeps the EGO invariants at
+100% on the native-FC path — same story as the local column: the deterministic
+runtime carries tool selection; the judge is where models differ.
 
 Full per-case analyses: [`cognobench/EGO_BENCH_RESULTS.md`](cognobench/EGO_BENCH_RESULTS.md) ·
 [`SUPEREGO_BENCH_RESULTS.md`](cognobench/SUPEREGO_BENCH_RESULTS.md) ·
