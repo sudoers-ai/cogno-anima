@@ -182,6 +182,28 @@ Unit tests run on a coverage gate (`--cov-fail-under=85`) and use the
 `StubBackend`/`StubEmbedder` doubles in `tests/conftest.py`. Integration tests
 use real models at `temperature=0.0` for determinism.
 
+## Inspiration
+
+Cogno models a conversational agent on a coarse map of **human perception and the
+psyche** rather than on a flat prompt→response call. The stage names are the map:
+
+- **NOUMENO** — after Kant's *noumenon*: the raw thing-in-itself is normalized into
+  a *perceived* phenomenon (canonical English) before the mind reasons over it.
+- **ID · EGO · SUPEREGO** — Freud's structural model of the psyche: the **ID** as the
+  strategic drive/router, the **EGO** as the executor mediating with the outside world
+  (tools), the **SUPEREGO** as the internalized judge and voice of limits.
+- **Aristotelian** intent tags — the categories/causal analysis borrowed from Aristotle.
+- **Drift** — an epistemological check on how far perception has strayed from the input.
+
+It is an engineering metaphor, not a claim of psychological fidelity — but the analogy
+is load-bearing: it is *why* perception, drive, execution and conscience are separate,
+deterministically-gated stages instead of one prompt.
+
+## Credits
+
+Created by **Vinicius Vale** — [Sudoers](https://github.com/sudoers-ai).
+Contributions welcome under the Apache-2.0 license below.
+
 ## License
 
 Licensed under the [Apache License 2.0](LICENSE).

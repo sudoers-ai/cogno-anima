@@ -109,7 +109,7 @@ REAL_TURNS_INPUTS = [
     ("consultation items", "Adicionar ao atendimento atual do Thor os itens do catálogo: Vacina V8/V10 e Consulta Clínica Geral", [["thor"], ["v8", "v10"]]),
     ("status report", "Fechar o atendimento, diagnóstico: animal saudável, vacinação em dia", [["close", "clos", "fechar", "finish"], ["health", "saud", "vaccin"]]),
     
-    # Restaurant / Cardápio
+    # Restaurant / Menu
     ("menu query", "Olá, o que temos de cardápio para hoje?", [["menu", "cardapio", "today", "hoje"]]),
     ("add item with detail", "Coloque 2 Hambúrgueres Artesanais no carrinho. Um deles sem cebola.", [["burger", "hamburguer"], ["onion", "cebola"]]),
     ("add drink", "Adicionar também uma Coca-Cola.", [["coca", "coke", "cola"]]),

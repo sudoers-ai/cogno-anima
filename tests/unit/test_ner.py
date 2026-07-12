@@ -82,7 +82,7 @@ PERFECT_JSON = {
 
 @pytest.mark.asyncio
 async def test_perfect_payload():
-    """1. Extração estruturada com payload JSON perfeito."""
+    """1. Structured extraction with a perfect JSON payload."""
     backend = StubBackend(response=json.dumps(PERFECT_JSON))
     analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
     # Original mentions São Paulo so the (grounded) location survives.
@@ -102,7 +102,7 @@ async def test_perfect_payload():
 
 @pytest.mark.asyncio
 async def test_think_tag_stripping():
-    """2. Recuperação de falha se o LLM injetar tags <think>...</think>."""
+    """2. Failure recovery if the LLM injects <think>...</think> tags."""
     think_response = f"<think>thinking logic here...</think>\n{json.dumps(PERFECT_JSON)}"
     backend = StubBackend(response=think_response)
     analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
@@ -112,7 +112,7 @@ async def test_think_tag_stripping():
 
 @pytest.mark.asyncio
 async def test_pronoun_normalization():
-    """3. Conversão e normalização de pronomes (ex: eu -> I, ele -> he)."""
+    """3. Pronoun conversion and normalization (e.g. eu -> I, ele -> he)."""
     payload = PERFECT_JSON.copy()
     payload["entities"] = PERFECT_JSON["entities"].copy()
     payload["entities"]["pronouns"] = ["eu", "você", "ele", "ela", "nós", "eles"]
@@ -129,7 +129,7 @@ async def test_pronoun_normalization():
 
 @pytest.mark.asyncio
 async def test_possessive_normalization():
-    """4. Conversão e normalização de possessivos (ex: meu -> my, nosso -> our)."""
+    """4. Possessive conversion and normalization (e.g. meu -> my, nosso -> our)."""
     payload = PERFECT_JSON.copy()
     payload["entities"] = PERFECT_JSON["entities"].copy()
     payload["entities"]["possessives"] = ["meu", "minha", "seu", "sua", "nosso", "nossa"]
@@ -175,7 +175,7 @@ async def test_domain_aliases():
 
 @pytest.mark.asyncio
 async def test_abstract_tags_sanitization():
-    """7. Sanitização de abstract_tags para UPPER_SNAKE_CASE."""
+    """7. Sanitization of abstract_tags to UPPER_SNAKE_CASE."""
     payload = PERFECT_JSON.copy()
     payload["abstract_tags"] = ["car wash!", "clean_service#1", "INVALID-TAG@"]
     backend = StubBackend(response=json.dumps(payload))
@@ -205,7 +205,7 @@ async def test_aristotelian_categories():
 
 @pytest.mark.asyncio
 async def test_intent_safeguard_coercion():
-    """9. Coerção de salvaguarda estrutural (UNKNOWN em intent_class remapeado)."""
+    """9. Structural safeguard coercion (UNKNOWN intent_class remapped)."""
     payload = PERFECT_JSON.copy()
     payload["intent_class"] = "UNKNOWN"
     payload["mandatory_tags"] = ["MATH"]
@@ -217,7 +217,7 @@ async def test_intent_safeguard_coercion():
 
 @pytest.mark.asyncio
 async def test_langue_inherited_from_noumeno():
-    """10. langue é SEMPRE herdado de noumeno.language; o langue do LLM é ignorado."""
+    """10. langue is ALWAYS inherited from noumeno.language; the LLM's langue is ignored."""
     # PERFECT_JSON carries langue="pt-BR" from the LLM — it must be ignored.
     backend = StubBackend(response=json.dumps(PERFECT_JSON))
     analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
@@ -235,7 +235,7 @@ async def test_langue_inherited_from_noumeno():
 
 @pytest.mark.asyncio
 async def test_json_decode_error():
-    """11. Propagação estrita de json.JSONDecodeError."""
+    """11. Strict propagation of json.JSONDecodeError."""
     backend = StubBackend(response="invalid json response")
     analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
     with pytest.raises(StageParseError):
@@ -244,7 +244,7 @@ async def test_json_decode_error():
 
 @pytest.mark.asyncio
 async def test_change_subject_logic_cleaning():
-    """12. Limpeza lógica de contexto se change_subject=True no Noumeno."""
+    """12. Logical context reset when change_subject=True in the Noumeno."""
     class PromptCheckingBackend(StubBackend):
         async def generate(self, system: str, prompt: str) -> tuple[str, int, int]:
             self.generated_prompt = prompt
@@ -263,7 +263,7 @@ async def test_change_subject_logic_cleaning():
 
 @pytest.mark.asyncio
 async def test_legacy_tags_removal():
-    """13. Não decodificação de tags com namespaces customizados (remover legado)."""
+    """13. No decoding of tags with custom namespaces (legacy removal)."""
     payload = PERFECT_JSON.copy()
     payload["mandatory_tags"] = ["LEGACY.STUFF", "SYSTEM"]
     backend = StubBackend(response=json.dumps(payload))
@@ -290,7 +290,7 @@ async def test_composite_sequential_comparatives():
 
 @pytest.mark.asyncio
 async def test_pii_types_normalization():
-    """15. Conversão e normalização de PII types usando normalize_pii_types()."""
+    """15. PII type conversion and normalization using normalize_pii_types()."""
     payload = PERFECT_JSON.copy()
     payload["pii"] = ["CPF", "EMAIL_ADDRESS", "INVALID_PII"]
     backend = StubBackend(response=json.dumps(payload))
@@ -303,7 +303,7 @@ async def test_pii_types_normalization():
 
 @pytest.mark.asyncio
 async def test_pii_risk_computation():
-    """16. Cálculo de pii_risk no core."""
+    """16. pii_risk computation in the core."""
     payload = PERFECT_JSON.copy()
     payload["pii"] = ["CPF", "HEALTH_DATA"]
     backend = StubBackend(response=json.dumps(payload))
@@ -342,14 +342,14 @@ async def test_dob_kept_with_birth_context():
 
 
 def test_validation_error():
-    """17. Propagação de ValidationError se Pydantic falhar."""
+    """17. Propagation of ValidationError if Pydantic fails."""
     with pytest.raises(ValidationError):
         IntentResult(intent_class=123, sentiment=456)
 
 
 @pytest.mark.asyncio
 async def test_is_sequential_requires_composite():
-    """18. is_sequential=True com is_composite=False é reconciliado para False."""
+    """18. is_sequential=True with is_composite=False is reconciled to False."""
     payload = PERFECT_JSON.copy()
     payload["is_composite"] = False
     payload["is_sequential"] = True
@@ -371,7 +371,7 @@ async def test_is_sequential_requires_composite():
 
 @pytest.mark.asyncio
 async def test_aristotelian_description_capped_preserving_tag():
-    """19. A descrição aristotélica é limitada a 40 chars sem cortar a TAG."""
+    """19. The aristotelian description is capped at 40 chars without cutting the TAG."""
     payload = PERFECT_JSON.copy()
     payload["aristotelian"] = {"ACTION": "WASH_CAR | " + "d" * 100}
     backend = StubBackend(response=json.dumps(payload))
@@ -383,7 +383,7 @@ async def test_aristotelian_description_capped_preserving_tag():
 
 @pytest.mark.asyncio
 async def test_entity_grounding_drops_hallucinated_people():
-    """20. Nome de pessoa que não aparece no ORIGINAL é descartado (anti-alucinação)."""
+    """20. A person name that does not appear in the ORIGINAL is dropped (anti-hallucination)."""
     payload = PERFECT_JSON.copy()
     payload["entities"] = dict(PERFECT_JSON["entities"])
     payload["entities"]["people"] = ["Copernicus", "Napoleon"]
@@ -397,7 +397,7 @@ async def test_entity_grounding_drops_hallucinated_people():
 
 @pytest.mark.asyncio
 async def test_entity_grounding_drops_hallucinated_location():
-    """21. Location que não aparece no ORIGINAL vira None."""
+    """21. A location that does not appear in the ORIGINAL becomes None."""
     payload = PERFECT_JSON.copy()
     payload["location"] = "Tokyo"
     backend = StubBackend(response=json.dumps(payload))

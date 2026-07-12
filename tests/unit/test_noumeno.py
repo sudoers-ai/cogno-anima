@@ -395,8 +395,8 @@ class TestNoumenoStage:
             ))
 
     async def test_json_with_trailing_extra_data_parses_first_object(self):
-        """Backend cloud sem format=json emite o objeto + texto extra ("Extra
-        data") — o primeiro objeto válido é a resposta (raw_decode fallback)."""
+        """A cloud backend without format=json emits the object + extra text ("Extra
+        data") — the first valid object is the response (raw_decode fallback)."""
         noumeno = make_noumeno()
         ctx = PipelineContext(user_input="test")
         ctx = await noumeno.process(ctx, StubBackend(

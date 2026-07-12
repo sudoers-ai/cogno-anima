@@ -437,11 +437,11 @@ class SuperegoStage:
         # block the EGO sees; included so memories can ground the final reply.
         injected = ctx.metadata.get(mk.EGO_CONTEXT)
         context_section = f"# Context (memories/history)\n{str(injected).strip()}\n\n" if injected else ""
-        # Rejeição final do juiz (orquestrador → ctx.metadata["voice_correction"]): a execução
-        # NÃO cumpriu o objetivo e NADA foi commitado. Sem esta seção a voz só vê os reads
-        # bem-sucedidos + o draft otimista e narra o objetivo como feito ("Prontinho!
-        # confirmados") — regra DURA: proibido alegar ação executada; relatar o que foi
-        # encontrado ou fazer UMA pergunta de esclarecimento.
+        # Judge's final rejection (orchestrator → ctx.metadata["voice_correction"]): the
+        # execution did NOT meet the goal and NOTHING was committed. Without this section
+        # the voice only sees the successful reads + the optimistic draft and narrates the
+        # goal as done ("All set! confirmed") — HARD RULE: claiming an executed action is
+        # forbidden; report what was found or ask ONE clarifying question.
         rejection = ctx.metadata.get(mk.VOICE_CORRECTION)
         rejection_section = ""
         if isinstance(rejection, dict) and (rejection.get("reason") or "").strip():

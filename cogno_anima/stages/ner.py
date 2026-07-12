@@ -166,19 +166,19 @@ class IntentAnalyzer:
         llm: Optional[LLMBackend] = None,
     ) -> IntentResult:
         """
-        Analisa o NoumenoResult e extrai o IntentResult estruturado.
+        Analyze the NoumenoResult and extract the structured IntentResult.
 
-        O idioma (`langue`) do IntentResult é SEMPRE herdado de
-        `noumeno.language` — o NER nunca redetecta idioma nem usa o `langue`
-        devolvido pelo LLM.
+        The IntentResult's language (`langue`) is ALWAYS inherited from
+        `noumeno.language` — the NER never re-detects language nor uses the
+        `langue` returned by the LLM.
         """
         backend = llm or self._backend
         if not backend:
             raise ValueError("LLMBackend must be provided either at init or analyze call")
 
-        # 1. Regra de Mudança de Assunto (Subject Continuity / Shift Context Rules)
-        #    Se houve mudança de assunto, todo o contexto anterior é limpo antes
-        #    de montar o prompt.
+        # 1. Subject Continuity / Shift Context Rules
+        #    If the subject changed, all prior context is cleared before
+        #    building the prompt.
         if noumeno.change_subject:
             prior_goal_line = ""
             domain_context_line = ""
@@ -190,7 +190,7 @@ class IntentAnalyzer:
             domain_context_line = f"ACTIVE DOMAINS: {', '.join(active_domains)}" if active_domains else ""
             turn_context_line = f"TURN: {turn_number}" if turn_number is not None else ""
 
-        # 2. Formatar Prompt do Usuário
+        # 2. Format the user prompt
         prompt = self._user_tpl.format(
             original_input=noumeno.original,
             noumeno_output=noumeno.rewritten,
@@ -200,7 +200,7 @@ class IntentAnalyzer:
             turn_context_line=turn_context_line,
         )
 
-        # 3. Executar Chamada ao LLM
+        # 3. Execute the LLM call
         t0 = time.perf_counter()
         raw_response, tokens_in, tokens_out = await backend.generate(self._system, prompt)
         elapsed_ms = (time.perf_counter() - t0) * 1000
@@ -213,15 +213,15 @@ class IntentAnalyzer:
             model=backend.model,
         )
 
-        # 4. Parse da resposta. O idioma é herdado do NOUMENO, nunca do LLM.
-        #    PII é detectado no texto ORIGINAL (não no rewrite, que pode mascarar).
+        # 4. Parse the response. Language is inherited from NOUMENO, never the LLM.
+        #    PII is detected on the ORIGINAL text (not the rewrite, which may mask it).
         return self._parse(raw_response, metrics, language=noumeno.language,
                            original=noumeno.original, rewritten=noumeno.rewritten)
 
     def _parse(self, raw: str, metrics: StageMetrics, language: Optional[str] = None,
                original: str = "", rewritten: str = "") -> IntentResult:
         """
-        Decodifica e sanitiza os campos do JSON gerado pelo LLM.
+        Decode and sanitize the fields of the JSON produced by the LLM.
         """
         cleaned = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
         if cleaned.startswith("```"):
@@ -235,9 +235,9 @@ class IntentAnalyzer:
         try:
             data = json.loads(cleaned)
         except json.JSONDecodeError as exc:
-            # Backends sem format="json" (cloud) às vezes emitem o objeto seguido
-            # de texto/objeto extra ("Extra data") — o primeiro objeto válido é a
-            # resposta; aparar o resto em vez de falhar o estágio.
+            # Backends without format="json" (cloud) sometimes emit the object
+            # followed by extra text/objects ("Extra data") — the first valid
+            # object is the response; trim the rest instead of failing the stage.
             try:
                 data, _end = json.JSONDecoder().raw_decode(cleaned)
             except json.JSONDecodeError:
@@ -258,7 +258,7 @@ class IntentAnalyzer:
             else:
                 intent_class = "UNKNOWN"
 
-        # Coerção de salvaguarda estrutural
+        # Structural safeguard coercion
         if intent_class == "UNKNOWN":
             raw_tags = [str(t).upper().split(".")[-1] for t in data.get("mandatory_tags", []) if isinstance(t, str)]
             if {"MATH", "SYSTEM"} & set(raw_tags):
@@ -449,7 +449,7 @@ class IntentAnalyzer:
             parole = p if p in VALID_PAROLE else None
 
         # langue — ALWAYS inherited from noumeno.language. The LLM's own `langue`
-        # field (if any) is deliberately ignored: the NER must not redetect idioma.
+        # field (if any) is deliberately ignored: the NER must not redetect language.
         langue = language
 
         # negation
