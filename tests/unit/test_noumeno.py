@@ -394,6 +394,18 @@ class TestNoumenoStage:
                 response='This is not JSON at all, just a plain text rewrite.'
             ))
 
+    async def test_json_with_trailing_extra_data_parses_first_object(self):
+        """Backend cloud sem format=json emite o objeto + texto extra ("Extra
+        data") — o primeiro objeto válido é a resposta (raw_decode fallback)."""
+        noumeno = make_noumeno()
+        ctx = PipelineContext(user_input="test")
+        ctx = await noumeno.process(ctx, StubBackend(
+            response='{"rewritten": "clean text", "context_turn": "", "confidence": 0.9, '
+                     '"changed": false, "preserved_terms": [], "rewrite_warnings": []} '
+                     'Some trailing commentary the model added.'
+        ))
+        assert ctx.noumeno.rewritten == "clean text"
+
     async def test_empty_llm_response_fails_parse(self):
         """If LLM returns empty string, raise json.JSONDecodeError."""
         noumeno = make_noumeno()

@@ -235,7 +235,13 @@ class IntentAnalyzer:
         try:
             data = json.loads(cleaned)
         except json.JSONDecodeError as exc:
-            raise StageParseError(STAGE_NAME, raw, exc) from exc
+            # Backends sem format="json" (cloud) às vezes emitem o objeto seguido
+            # de texto/objeto extra ("Extra data") — o primeiro objeto válido é a
+            # resposta; aparar o resto em vez de falhar o estágio.
+            try:
+                data, _end = json.JSONDecoder().raw_decode(cleaned)
+            except json.JSONDecodeError:
+                raise StageParseError(STAGE_NAME, raw, exc) from exc
         # Valid JSON that is not an object (e.g. "5", "[]") would crash the field
         # coercion below with a raw AttributeError — treat it as a parse failure
         # so the contract stays "valid IntentResult OR StageParseError".
