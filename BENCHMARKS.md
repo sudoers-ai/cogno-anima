@@ -14,17 +14,43 @@ the numbers below are the model-dependent quality on top of those guarantees.
 
 | Model (local, free) | EGO — tool selection | SUPEREGO — scope·judge·voice | ID — routing & goal continuity | Conversations — multi-turn e2e | BOOKKEEPER — financial tools |
 |---|---|---|---|---|---|
-| **mistral:latest** (7B, default) | **100%** (64/64) | **100%** (42/42) | **99.0%** (103/104) | 96.0% (144/150)¹ | — |
-| **qwen3:8b** (recommended) | **100%** (64/64) | **100%** (42/42) | 98.1% (102/104) | 95.4% (144/151) | **100%** (16/16) |
-| qwen3.5:8b | **100%** (64/64) | 97.6% (41/42) | **99.0%** (103/104) | — | 94% (15/16) |
-| qwen3.5:4b | **100%** (64/64) | 97.6% (41/42) | 98.1% (102/104) | 94.2% (129/137)² | — |
-| llama3.1:8b | **100%** (64/64) | 90.5% (38/42) | 94.2% (98/104) | 93.4% (141/151) | — |
+| **mistral:latest** (7B, default) | **100%** (64/64) | 93.1% (54/58)³ | **99.0%** (103/104) | 96.0% (144/150)¹ | — |
+| **qwen3:8b** (recommended) | **100%** (64/64) | **100%** (58/58)³ | 98.1% (102/104) | 95.4% (144/151) | **100%** (16/16) |
+| qwen3.5:8b | **100%** (64/64) | 97.6% (41/42)⁴ | **99.0%** (103/104) | — | 94% (15/16) |
+| qwen3.5:4b | **100%** (64/64) | 97.6% (41/42)⁴ | 98.1% (102/104) | 94.2% (129/137)² | — |
+| llama3.1:8b | **100%** (64/64) | 90.5% (38/42)⁴ | 94.2% (98/104) | 93.4% (141/151) | — |
 | qwen2.5:7b-instruct | — | — | 93.3% (97/104) | — | — |
-| phi3:mini (3.8B) | 98.4% (63/64) | 90.5% (38/42) | 77.9% (81/104) | — | — |
+| phi3:mini (3.8B) | 98.4% (63/64) | 90.5% (38/42)⁴ | 77.9% (81/104) | — | — |
 
 ¹ predates one added soft check (150- vs 151-check suite).
 ² two heaviest composite sessions hit client `ReadTimeout` on the 4B model
 (latency artifact, not logic) and were excluded.
+³ 2026-07-12 **judge clause-pair suite** (21→29 cases, 58 checks): every judge
+prompt exception clause (trust-the-tools, honest-failure, no-fabrication,
+mid-flow) is fenced by a SAVE+GUARD pair. mistral keeps 100% on the old 42
+checks but **falsely APPROVES 3** of the new fabrication cases — the dangerous
+direction, and exactly the surface the host's deterministic grounding backstops
+cover. Route the JUDGE slot to `qwen3:8b` (per-stage routing) even when mistral
+drives NOUMENO/NER.
+⁴ 42-check suite (predates the clause pairs) — re-run pending.
+
+## Cloud column (same suites, `--model provider:model`)
+
+Same harness, cloud backends via `cogno-synapse` (`python3 cognobench.py --model
+openai:gpt-4o-mini`): the EGO runs **native function calling** here (the
+production-realistic path) vs the `<TOOL_CALL>` text fallback the local column
+exercises; embeddings stay local. The run's token footer is the cost meter.
+
+| Model (cloud) | EGO | SUPEREGO | ID | Conversations | Overall | Tokens (in/out) | ~$/sweep |
+|---|---|---|---|---|---|---|---|
+| openai:gpt-4o-mini | **100%** (64/64) | **100%** (42/42)⁵ | 97.0% (98/101) | 98.7% (154/156) | **96.8%** (491/507) | 581k / 46.5k | $0.12 |
+
+⁵ full sweep predates the clause pairs; on the 58-check suite gpt-4o-mini scores
+**98.3% (57/58)** — one *safe* false-reject (the honest-failure relay).
+5 case errors in this sweep were a strict NOUMENO/NER JSON parser tripping on
+cloud "extra data" output — fixed (raw_decode fallback), so the scores above are
+conservative. gpt-5-nano / gpt-5-mini sweeps: in progress (reasoning-family
+latency), rows land as they complete.
 
 Full per-case analyses: [`cognobench/EGO_BENCH_RESULTS.md`](cognobench/EGO_BENCH_RESULTS.md) ·
 [`SUPEREGO_BENCH_RESULTS.md`](cognobench/SUPEREGO_BENCH_RESULTS.md) ·
