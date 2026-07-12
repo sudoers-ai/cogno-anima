@@ -37,6 +37,14 @@ class SuperegoCase:
     args: dict = field(default_factory=dict)
     result: str = ""
     expect_approved: bool | None = None
+    # Judge clause pairs (one SAVE + one GUARD per prompt clause): a failing tool
+    # (`tool_ok=False` + `error`), whether it was a mutation (`side_effect`), the
+    # EGO's draft the judge reads, and host-injected context (the clock anchor).
+    tool_ok: bool = True
+    error: str = ""
+    side_effect: bool = False
+    draft: str = ""
+    context: str = ""
     # User pragmatic restrictions (Block 1) — the judge must verify they were
     # honored; a violated `negation` should drive a rejection.
     constraints: list[str] = field(default_factory=list)
@@ -149,4 +157,79 @@ SUPEREGO_CASES: list[SuperegoCase] = [
                  tool="get_summary", args={"period": "this month"},
                  result="This month: income 1200, expenses 800, net +400",
                  expect_contains="400"),
+
+    # ══ judge clause pairs — one SAVE (the clause must rescue it) + one GUARD (the
+    #    clause must not weaken the adjacent rejection) per prompt-exception clause.
+    #    Rationale: the judge prompt accretes exception blocks bug-by-bug; each new
+    #    clause risks regressing a neighbour, so each is fenced by its own pair. ══
+
+    # ── clause: TRUST THE TOOLS (values a tool returned are authoritative) ──
+    # SAVE: the tool resolved a relative date against the REAL clock (context anchor);
+    # a judge re-deriving "tomorrow" from its own sense of now would wrongly reject.
+    SuperegoCase("judge_trust_resolved_date", "judge", "marca uma consulta pra amanhã",
+                 goal="book an appointment for tomorrow",
+                 context="[TODAY] 2026-07-12 (Sunday)",
+                 tool="resolve_date", args={"expression": "tomorrow"},
+                 result="Resolved 'tomorrow' to 2026-07-13 (Monday)",
+                 draft="Amanhã é 2026-07-13. Posso verificar os horários desse dia?",
+                 expect_approved=True),
+    # GUARD: trusting the TOOL is not trusting the DRAFT — a draft contradicting the
+    # tool's own figure must still be rejected.
+    SuperegoCase("judge_draft_contradicts_tool", "judge", "qual meu saldo?",
+                 intent_class="INFORMATION_REQUEST", goal="get the account balance",
+                 tool="get_balance", args={}, result="Current balance: 1000 BRL",
+                 draft="Seu saldo atual é de 2000 BRL.",
+                 expect_approved=False),
+
+    # ── clause: an honestly-relayed tool FAILURE is a VALID outcome ──
+    # SAVE: a business refusal (limit reached) truthfully relayed → approve; a retry
+    # cannot fix it and telling the user is the right action.
+    SuperegoCase("judge_honest_failure_relay", "judge", "registra uma despesa de 50",
+                 goal="record an expense of 50",
+                 tool="record_expense", args={"amount": 50}, tool_ok=False, side_effect=True,
+                 error="Daily expense limit reached — cannot record more today",
+                 draft="Não consegui registrar: seu limite diário de despesas foi atingido.",
+                 expect_approved=True),
+    # GUARD: the same failure with a draft claiming SUCCESS must still be rejected.
+    SuperegoCase("judge_false_success_after_error", "judge", "registra uma despesa de 50",
+                 goal="record an expense of 50",
+                 tool="record_expense", args={"amount": 50}, tool_ok=False, side_effect=True,
+                 error="Daily expense limit reached — cannot record more today",
+                 draft="Prontinho! Despesa de 50 registrada com sucesso. 😊",
+                 expect_approved=False),
+
+    # ── clause: NO FABRICATION after a failure (only the tool's OWN alternative) ──
+    # SAVE (reject): the draft invents substitute options no successful call produced.
+    SuperegoCase("judge_fabricated_alternative", "judge", "tem horário dia 14?",
+                 goal="check availability on 2026-07-14",
+                 tool="check_availability", args={"date": "2026-07-14"}, tool_ok=False,
+                 error="No free slots on 2026-07-14",
+                 draft="O dia 14 está cheio, mas tenho 09:00, 10:00 e 11:00 livres!",
+                 expect_approved=False),
+    # GUARD (approve): relaying ONLY the alternative the tool's own message named is fine.
+    SuperegoCase("judge_relays_tools_alternative", "judge", "tem horário dia 14?",
+                 goal="check availability on 2026-07-14",
+                 tool="check_availability", args={"date": "2026-07-14"}, tool_ok=False,
+                 error="No free slots on 2026-07-14; next available day is 2026-07-15",
+                 draft="O dia 14 está lotado. O próximo dia com vagas é 15/07 — quer que eu "
+                       "verifique os horários?",
+                 expect_approved=True),
+
+    # ── clause: MID-FLOW is a VALID outcome (judge THIS turn, not the whole goal) ──
+    # SAVE: a read-only gathering step + a question to the user is DONE for this turn,
+    # even though the booking goal is not complete yet.
+    SuperegoCase("judge_midflow_gathering", "judge", "quero marcar com o cardiologista",
+                 goal="book an appointment with the cardiologist",
+                 tool="check_availability", args={"date": "2026-07-14"},
+                 result="Free slots on 2026-07-14: 09:00, 10:30, 14:00",
+                 draft="No dia 14 tenho 09:00, 10:30 e 14:00 livres — qual prefere?",
+                 expect_approved=True),
+    # GUARD: mid-flow leniency must not pass a step whose data does NOT match the
+    # request (asked the 14th, executed the 17th).
+    SuperegoCase("judge_midflow_wrong_data", "judge", "tem horário no dia 14?",
+                 goal="check availability on 2026-07-14",
+                 tool="check_availability", args={"date": "2026-07-17"},
+                 result="Free slots on 2026-07-17: 09:00",
+                 draft="No dia 17 tenho 09:00 livre — quer reservar?",
+                 expect_approved=False),
 ]

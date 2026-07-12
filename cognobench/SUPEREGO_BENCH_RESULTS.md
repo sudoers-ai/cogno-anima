@@ -14,11 +14,43 @@ three SUPEREGO operations, decoupled from NER (contexts hand-built):
   NOUMENO preserved must survive verbatim — the judge also sees them as grounding
   evidence).
 
-21 cases → 42 checks: hard invariants (`blocked`/`approved` are bool, `response`
+29 cases → 58 checks: hard invariants (`blocked`/`approved` are bool, `response`
 non-empty) + soft (`scope` = expected ALLOW/BLOCK, `judge` = expected approve/
 reject, `grounded` = a required substring appears).
 
+## Judge clause pairs (added 2026-07-12, 21→29 cases)
+
+The judge prompt accretes **exception clauses** bug-by-bug (TRUST THE TOOLS, an
+honestly-relayed failure is valid, NO FABRICATION after a failure, MID-FLOW is
+valid) — and each new clause risks regressing a neighbour. Every clause is now
+fenced by its own **pair**: one *SAVE* case the clause must rescue, one *GUARD*
+case the clause must not weaken. The pairs needed the bench case to carry a
+failing tool (`tool_ok`/`error`/`side_effect`), the EGO `draft` the judge reads,
+and host-injected `context` (the clock anchor).
+
+| Clause | SAVE (must pass because of it) | GUARD (must still fail despite it) |
+| --- | --- | --- |
+| TRUST THE TOOLS | approve a tool-resolved relative date vs the context clock | reject a draft contradicting the tool's own figure |
+| honest failure = valid | approve a truthfully-relayed business refusal | reject a draft claiming success over an ERROR |
+| no fabrication post-failure | approve relaying the tool's OWN alternative | reject invented substitute options |
+| MID-FLOW = valid | approve a gathering step + question | reject a step whose data mismatches the request |
+
+**Results on the 29-case suite (2026-07-12):** `qwen3:8b` **100% (58/58)** — its
+critiques name the exact violation (the contradicted figure, the fabricated
+slots, the wrong date). `mistral:latest` **93.1% (54/58)**: it keeps 100% on the
+pre-existing 42 checks but misses 4 of the new clause checks — **3 false
+APPROVES** (draft contradicting the tool, false success after an ERROR,
+fabricated alternatives) and 1 safe false-reject (mid-flow). That is the
+*dangerous* failure direction, and it is precisely the fabrication surface the
+host's deterministic grounding backstops cover in production — the bench now
+measures what those nets are for. **Takeaway: mistral remains the NOUMENO/NER
+default, but the JUDGE slot deserves qwen3:8b (per-stage routing exists for
+exactly this).**
+
 ## Results (2026-06-22, 21 cases / 42 checks, temperature 0.0)
+
+> Rows below predate the 2026-07-12 clause pairs (42-check suite); re-run with
+> `--only superego` for a 58-check row.
 
 > **2026-06-22 expansion.** The case set grew from 13→21 (+8) — ported *in spirit*
 > from the parent's `safety_cases.py` (adversarial/out-of-scope → the scope-guard
