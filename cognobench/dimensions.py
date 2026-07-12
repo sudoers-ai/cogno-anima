@@ -360,11 +360,14 @@ def _superego_ctx(case: SuperegoCase) -> PipelineContext:
         parole=case.parole or None, metrics=m,
     )
     ctx = PipelineContext(user_input=case.user, noumeno=noumeno, intent=intent)
+    if case.context:
+        ctx.metadata["ego_context"] = case.context      # host-injected clock/memories
     if case.tool:
         ctx.ego_result = EgoResult(steps=[EgoStep(
-            index=0, path="native", assistant_text="done",
+            index=0, path="native", assistant_text=case.draft or "done",
             tool_calls=[ToolExecution(tool=case.tool, arguments=case.args,
-                                      result=case.result, ok=True)],
+                                      result=case.result, ok=case.tool_ok,
+                                      error=case.error, side_effect=case.side_effect)],
         )], metrics=m)
     return ctx
 

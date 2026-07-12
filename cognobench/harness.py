@@ -124,6 +124,65 @@ def build_ollama_text(
     return OllamaBackend(model=model, base_url=base_url, temperature=0.0, think=think)
 
 
+def build_cloud(spec: str) -> LLMBackend:
+    """Cloud backend via the cogno-synapse factory (``"openai:gpt-4o-mini"``,
+    ``"anthropic:…"``, any OpenAI-compatible prefix). ``temperature=0`` like the
+    local runs. One instance serves BOTH the JSON stages (they regex-extract the
+    object from plain text) and the text paths (EGO/voice) — cloud backends are
+    not response-format-locked the way ``format="json"`` Ollama is. Note the EGO
+    runs the NATIVE function-calling path on these (they satisfy
+    ``ToolCallingBackend``) — the production-realistic cloud measurement, vs the
+    text-fallback path the local column exercises. Raises ``MissingAPIKeyError``
+    when the provider's key env is unset."""
+    from cogno_synapse import create_backend
+    return create_backend(spec, temperature=0.0)
+
+
+def build_local_embedder(
+    embed_model: str = "nomic-embed-text", base_url: str = "http://localhost:11434",
+) -> Embedder:
+    """The bench's embedder is ALWAYS local Ollama (free, deterministic), even on a
+    cloud-LLM run — embedding drift/similarity is not the model under test."""
+    return CachingEmbedder(OllamaEmbedder(model=embed_model, base_url=base_url))
+
+
+class TokenTally:
+    """Wrap any ``LLMBackend`` and count tokens/calls across the whole run — the
+    bench's cost meter (multiply by the provider's price table to get $ per
+    sweep). Transparent: forwards ``generate``/``chat_with_tools`` untouched, so
+    it satisfies ``ToolCallingBackend`` structurally; ``supports_native_tools``
+    defers to the inner backend, keeping the EGO's native-vs-fallback gate
+    exactly as if unwrapped."""
+
+    def __init__(self, inner: LLMBackend) -> None:
+        self._inner = inner
+        self.tokens_in = 0
+        self.tokens_out = 0
+        self.calls = 0
+
+    @property
+    def model(self) -> str:
+        return getattr(self._inner, "model", "unknown")
+
+    async def generate(self, system: str, prompt: str):
+        text, tin, tout = await self._inner.generate(system, prompt)
+        self.tokens_in += tin
+        self.tokens_out += tout
+        self.calls += 1
+        return text, tin, tout
+
+    async def chat_with_tools(self, messages, tools, tool_choice=None):
+        msg, tin, tout = await self._inner.chat_with_tools(messages, tools, tool_choice)
+        self.tokens_in += tin
+        self.tokens_out += tout
+        self.calls += 1
+        return msg, tin, tout
+
+    def supports_native_tools(self) -> bool:
+        inner = getattr(self._inner, "supports_native_tools", None)
+        return bool(inner()) if callable(inner) else False
+
+
 async def ollama_available(base_url: str = "http://localhost:11434") -> bool:
     import httpx
     try:

@@ -29,6 +29,11 @@ def render(report: BenchReport, show_failures: bool = True) -> str:
         f"  {'OVERALL':<9} {_bar(report.accuracy)} "
         f"{report.accuracy:5.1f}%  ({report.correct_count}/{report.total})"
     )
+    if report.llm_calls:
+        lines.append(
+            f"  {'tokens':<9} in={report.tokens_in:,}  out={report.tokens_out:,}  "
+            f"calls={report.llm_calls}  (× provider price table = $ per sweep)"
+        )
     lines.append("═" * 60)
 
     if show_failures:
