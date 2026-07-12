@@ -14,7 +14,8 @@ import json
 import sys
 
 from cognobench.harness import (
-    CognitivePipeline, build_ollama, build_ollama_text, build_stub, ollama_available,
+    CognitivePipeline, TokenTally, build_cloud, build_local_embedder, build_ollama,
+    build_ollama_text, build_stub, ollama_available,
 )
 from cognobench.dimensions import (
     run_noumeno, run_ner, run_id, run_ego, run_superego, run_drift, run_conversations,
@@ -45,15 +46,36 @@ async def run_bench(
     language: str | None = "pt-BR",
     think: bool = False,
 ) -> BenchReport:
+    # "openai:gpt-4o-mini" etc. → cloud column (the synapse factory owns the prefix
+    # registry; a bare/unknown prefix — mistral:latest, qwen3:8b — stays Ollama).
+    from cogno_synapse.factory import parse_model_string
+    provider, _ = parse_model_string(model)
+    cloud = not stub and provider != "ollama"
+
+    text_backend: object  # the EGO/voice path (no JSON constraint)
     if stub:
         backend, embedder = build_stub()
+        text_backend = backend
         model_label = "stub"
+    elif cloud:
+        # Embeddings stay LOCAL Ollama even on a cloud run (free; not the model
+        # under test) — so Ollama must still be up for the embedder.
+        if not await ollama_available(base_url):
+            print(f"✗ Ollama not reachable at {base_url} (the embedder is local even "
+                  f"on a cloud run). Start it, or run with --stub.", file=sys.stderr)
+            sys.exit(2)
+        backend = TokenTally(build_cloud(model))
+        text_backend = backend           # cloud backends serve JSON and text alike
+        embedder = build_local_embedder(embed_model, base_url)
+        model_label = model
     else:
         if not await ollama_available(base_url):
             print(f"✗ Ollama not reachable at {base_url}. "
                   f"Start it, or run with --stub for a plumbing check.", file=sys.stderr)
             sys.exit(2)
-        backend, embedder = build_ollama(model, embed_model, base_url, think=think)
+        json_be, embedder = build_ollama(model, embed_model, base_url, think=think)
+        backend = TokenTally(json_be)
+        text_backend = TokenTally(build_ollama_text(model, base_url, think=think))
         model_label = f"{model} (think)" if think else model
 
     pipe = CognitivePipeline(backend, embedder)
@@ -72,28 +94,30 @@ async def run_bench(
         report.dimensions.append(
             await run_id(pipe, cap(ID_CASES), calibrate=calibrate, language=language))
     if "ego" in dims:
-        # EGO needs a TEXT backend (no JSON format) for the <TOOL_CALL> fallback path.
+        # EGO needs a TEXT backend: <TOOL_CALL> fallback on Ollama, native FC on cloud.
         # In stub mode the JSON stub yields a no-tool result — enough for plumbing.
-        ego_backend = backend if stub else build_ollama_text(model, base_url, think=think)
         report.dimensions.append(
-            await run_ego(ego_backend, cap(EGO_CASES), calibrate=calibrate, language=language))
+            await run_ego(text_backend, cap(EGO_CASES), calibrate=calibrate, language=language))
     if "superego" in dims:
         # scope/judge consume JSON (use the json backend); voice needs free text.
-        judge_be = backend
-        voice_be = backend if stub else build_ollama_text(model, base_url, think=think)
         report.dimensions.append(
-            await run_superego(judge_be, voice_be, cap(SUPEREGO_CASES),
+            await run_superego(backend, text_backend, cap(SUPEREGO_CASES),
                                calibrate=calibrate, language=language))
     if "drift" in dims:
         report.dimensions.append(
             await run_drift(pipe, cap(DRIFT_CASES), calibrate=calibrate, language=language))
     if "conversations" in dims:
         # Full-pipeline multi-turn simulation: gen=JSON backend, ego/voice=text backend.
-        conv_ego = backend if stub else build_ollama_text(model, base_url, think=think)
         report.dimensions.append(
-            await run_conversations(backend, conv_ego, embedder, cap(CONVERSATION_CASES),
+            await run_conversations(backend, text_backend, embedder, cap(CONVERSATION_CASES),
                                     calibrate=calibrate, language=language))
 
+    # Cost meter: total LLM tokens across every backend call this run (the tallies
+    # wrap both the JSON and the text paths; on cloud they are the same instance).
+    tallies = {id(b): b for b in (backend, text_backend) if isinstance(b, TokenTally)}
+    report.tokens_in = sum(t.tokens_in for t in tallies.values())
+    report.tokens_out = sum(t.tokens_out for t in tallies.values())
+    report.llm_calls = sum(t.calls for t in tallies.values())
     return report
 
 

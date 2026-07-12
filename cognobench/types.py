@@ -53,6 +53,11 @@ class BenchReport:
     """Top-level report across all dimensions."""
     dimensions: list[DimensionResult] = field(default_factory=list)
     model: str = ""
+    # Cost meter (filled by the runner's TokenTally): total LLM tokens/calls across
+    # the run — multiply by the provider's price table for $ per sweep. 0 on --stub.
+    tokens_in: int = 0
+    tokens_out: int = 0
+    llm_calls: int = 0
 
     @property
     def total(self) -> int:
@@ -72,5 +77,8 @@ class BenchReport:
             "overall_accuracy": round(self.accuracy, 1),
             "total": self.total,
             "correct": self.correct_count,
+            "tokens_in": self.tokens_in,
+            "tokens_out": self.tokens_out,
+            "llm_calls": self.llm_calls,
             "dimensions": [d.to_dict() for d in self.dimensions],
         }
