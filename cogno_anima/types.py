@@ -24,108 +24,108 @@ class StageMetrics(BaseModel):
 
 
 class NoumenoResult(BaseModel):
-    """Resultado da camada NOUMENO — percepção e normalização do input."""
+    """Result of the NOUMENO layer — perception and normalization of the input."""
 
-    # ── Textos ────────────────────────────────────────────
-    original: str               # Texto bruto do usuário, inalterado
-    rewritten: str              # Texto reescrito em inglês
-    context_turn: str           # Resumo curto do contexto ("" se 1º turno ou mudou assunto)
+    # ── Texts ─────────────────────────────────────────────
+    original: str               # Raw user text, untouched
+    rewritten: str              # Text rewritten into English
+    context_turn: str           # Short context summary ("" if 1st turn or subject changed)
 
-    # ── Idioma ────────────────────────────────────────────
-    language: str               # Idioma detectado no original (BCP-47: "pt", "en")
-    canonical_language: str = "en" # Idioma interno padrão (sempre "en")
+    # ── Language ──────────────────────────────────────────
+    language: str               # Language detected in the original (BCP-47: "pt", "en")
+    canonical_language: str = "en" # Default internal language (always "en")
 
-    # ── Drift (distorção da reescrita) ────────────────────
+    # ── Drift (rewrite distortion) ────────────────────────
     drift_score: float          # 1.0 - cosine(embed(original), embed(rewritten)) → [0.0, 1.0]
     drift_tag: str              # PASS_THROUGH | REWRITTEN | COMPRESSED | EXPANDED | DRIFT
-    changed: bool               # True se o LLM realizou alterações estruturais/semânticas ativas
-    confidence: float           # Confiança do LLM na preservação da intenção [0.0, 1.0]
+    changed: bool               # True if the LLM made active structural/semantic changes
+    confidence: float           # LLM confidence in preserving the intent [0.0, 1.0]
 
-    # ── Continuidade de assunto ───────────────────────────
-    change_subject: bool        # True se houve mudança de assunto vs. histórico
+    # ── Subject continuity ────────────────────────────────
+    change_subject: bool        # True if the subject changed vs. history
     subject_similarity: float   # cosine(embed(input), embed(last_rewritten)) → [0.0, 1.0]
-    context_used: bool          # True se o histórico foi usado (= bool(context_turn))
+    context_used: bool          # True if history was used (= bool(context_turn))
 
-    # ── Preservação ──────────────────────────────────────
-    preserved_terms: list[str]  # Termos preservados intactos (nomes, URLs, emails...)
-    rewrite_warnings: list[str] # Alertas da reescrita (ambiguidade, perda potencial...)
+    # ── Preservation ──────────────────────────────────────
+    preserved_terms: list[str]  # Terms preserved intact (names, URLs, emails...)
+    rewrite_warnings: list[str] # Rewrite warnings (ambiguity, potential loss...)
 
-    # ── Telemetria ───────────────────────────────────────
+    # ── Telemetry ─────────────────────────────────────────
     metrics: StageMetrics
 
 
 class IntentResult(BaseModel):
-    """Resultado estruturado da análise semântica e intenções (NER Stage)."""
+    """Structured result of the semantic and intent analysis (NER Stage)."""
 
-    # ── Classificação Semântica ──────────────────────────
+    # ── Semantic classification ───────────────────────────
     intent_class: str           # INFORMATION_REQUEST | ACTION_REQUEST | CLARIFICATION | CREATIVE_TASK | SOCIAL | UNKNOWN
     sentiment: str              # POSITIVE | NEGATIVE | NEUTRAL | CURIOUS | FRUSTRATED | URGENT | PLAYFUL
-    confidence: float           # Confiança no mapeamento [0.0, 1.0]
+    confidence: float           # Confidence in the mapping [0.0, 1.0]
     temporal_class: str         # RECENT | HISTORICAL | TIMELESS | MIXED
     triad_signal: str           # ID | EGO | SUPEREGO | BALANCED
 
-    # ── Entidades Nomeadas ────────────────────────────────
+    # ── Named entities ────────────────────────────────────
     entities_people: list[str] = Field(default_factory=list)
     entities_pronouns: list[str] = Field(default_factory=list)
     entities_possessives: list[str] = Field(default_factory=list)
     entities_objects: list[str] = Field(default_factory=list)
     entities_concepts: list[str] = Field(default_factory=list)
 
-    # ── Geolocalização ────────────────────────────────────
+    # ── Geolocation ───────────────────────────────────────
     location: Optional[str] = None
 
-    # ── Tags Cognitivas ───────────────────────────────────
+    # ── Cognitive tags ────────────────────────────────────
     mandatory_tags: list[str] = Field(default_factory=list) # NER.SYSTEM, NER.MATH...
     abstract_tags: list[str] = Field(default_factory=list)  # NER.XXX
     aristotelian: dict[str, str] = Field(default_factory=dict)
     domains: list[str] = Field(default_factory=list)
 
-    # ── Cadeia Causal e Objetivos ────────────────────────
+    # ── Causal chain and goals ────────────────────────────
     goal: Optional[str] = None
     causal_chain: list[str] = Field(default_factory=list)
 
-    # ── Linguagem e Fala ─────────────────────────────────
+    # ── Language and speech ───────────────────────────────
     parole: Optional[str] = None
     langue: Optional[str] = None
 
-    # ── Restrições Pragmáticas ───────────────────────────
+    # ── Pragmatic constraints ─────────────────────────────
     negation: list[str] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)
     modality: Optional[str] = None
     speech_act: Optional[str] = None
     verbs: list[str] = Field(default_factory=list)
 
-    # ── Complexidade Lexical ─────────────────────────────
+    # ── Lexical complexity ────────────────────────────────
     context_dependent: bool = False
     is_composite: bool = False
     is_sequential: bool = False
     comparatives: list[str] = Field(default_factory=list)
 
-    # ── Informações Pessoais (PII) ────────────────────────
+    # ── Personally identifiable information (PII) ─────────
     pii: list[str] = Field(default_factory=list)
     pii_risk: str = "NONE"
 
-    # ── Classificação Raw (Original em Isolamento) ───────
+    # ── Raw classification (original in isolation) ────────
     raw_intent_class: Optional[str] = None
     raw_domains: list[str] = Field(default_factory=list)
     raw_goal: Optional[str] = None
 
-    # ── Telemetria ───────────────────────────────────────
+    # ── Telemetry ─────────────────────────────────────────
     metrics: StageMetrics
     raw_response: Optional[str] = None
 
     def aristo_tag(self, cat: str) -> str:
-        """Retorna a tag Aristotélica."""
+        """Return the Aristotelian tag."""
         val = self.aristotelian.get(cat, "")
         return val.split(" | ")[0].strip() if " | " in val else val.strip()
 
     def aristo_desc(self, cat: str) -> str:
-        """Retorna a descrição Aristotélica."""
+        """Return the Aristotelian description."""
         val = self.aristotelian.get(cat, "")
         return val.split(" | ")[1].strip() if " | " in val else ""
 
     def aristo_parsed(self) -> dict[str, tuple[str, str]]:
-        """Retorna o dicionário de categorias mapeadas em (tag, descrição)."""
+        """Return the dict of categories mapped to (tag, description)."""
         result: dict[str, tuple[str, str]] = {}
         for cat, val in self.aristotelian.items():
             if " | " in val:
@@ -137,7 +137,7 @@ class IntentResult(BaseModel):
 
 
 class DriftMetrics(BaseModel):
-    """Métricas de desvio semântico/epistemológico do pipeline."""
+    """Semantic/epistemological drift metrics of the pipeline."""
     # Stage 1: Epistemological drift (NOUMENO → NER)
     word_count_original: int
     word_count_noumeno: int
@@ -159,7 +159,7 @@ class DriftMetrics(BaseModel):
     drift_action: str = "none"  # none | warn | ask_user | self_correct
 
     def to_tags(self) -> list[str]:
-        """Gera tags de diagnóstico baseadas em drift."""
+        """Generate diagnostic tags based on drift."""
         tags: list[str] = []
 
         if self.drift_score >= 0.4:
@@ -186,36 +186,36 @@ class DriftMetrics(BaseModel):
 
 
 class IdResult(BaseModel):
-    """Resultado da camada ID (Stage 3) — roteamento estratégico e continuidade.
+    """Result of the ID layer (Stage 3) — strategic routing and continuity.
 
-    A camada ID é 100% heurística (sem chamada de LLM): só usa o Embedder para a
-    similaridade de objetivo (quando o GoalManager chega ao estágio semântico).
-    `metrics.tokens_in`/`tokens_out` são 0; o custo de embedding aparece em
+    The ID layer is 100% heuristic (no LLM call): it only uses the Embedder for
+    goal similarity (when the GoalManager reaches the semantic stage).
+    `metrics.tokens_in`/`tokens_out` are 0; the embedding cost shows up in
     `metrics.embedding_tokens`/`embedding_calls`.
     """
 
-    # ── Roteamento ────────────────────────────────────────
+    # ── Routing ───────────────────────────────────────────
     triad_route: str                # ID | EGO | SUPEREGO | BALANCED
 
-    # ── Continuidade de objetivo (GoalManager) ───────────
+    # ── Goal continuity (GoalManager) ─────────────────────
     active_goal: Optional[str] = None
     goal_status: str = "NEW"        # NEW | ONGOING | COMPLETED | ABANDONED
-    goal_similarity: float = 1.0    # similaridade que alimentou compute_situational
+    goal_similarity: float = 1.0    # similarity that fed compute_situational
 
-    # ── Intenções (IntentionTracker / BDI) ───────────────
+    # ── Intentions (IntentionTracker / BDI) ───────────────
     active_intentions: list[str] = Field(default_factory=list)
 
-    # ── Atenção (AttentionFilter) ─────────────────────────
+    # ── Attention (AttentionFilter) ───────────────────────
     attention_focus: list[str] = Field(default_factory=list)
 
-    # ── Gate de segurança ─────────────────────────────────
-    blocked: bool = False           # True quando pii_risk=CRITICAL → pular EGO
+    # ── Safety gate ───────────────────────────────────────
+    blocked: bool = False           # True when pii_risk=CRITICAL → skip EGO
     block_reason: Optional[str] = None
 
-    # ── Sinais cross-turn ─────────────────────────────────
+    # ── Cross-turn signals ────────────────────────────────
     turn_number: int = 1
-    # Temporal efetivo após stickiness. Gravado AQUI (não muta o IntentResult):
-    # o NER é stateless e não deve ser reescrito por uma etapa posterior.
+    # Effective temporal after stickiness. Recorded HERE (does not mutate the
+    # IntentResult): the NER is stateless and must not be rewritten by a later stage.
     temporal_class: Optional[str] = None
     emotional_override: Optional[str] = None
     complexity: str = "LOW"         # LOW | MEDIUM | HIGH | EXPERT (advisory)

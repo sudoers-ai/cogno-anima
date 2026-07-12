@@ -45,7 +45,7 @@ _RISK_ORDER = {"NONE": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
 
 
 def compute_pii_risk(pii_types: list[str]) -> str:
-    """Calcula deterministicamente o nível de risco (NONE, LOW, MEDIUM, HIGH, CRITICAL)."""
+    """Deterministically compute the risk level (NONE, LOW, MEDIUM, HIGH, CRITICAL)."""
     if not pii_types:
         return "NONE"
     return max(
@@ -84,7 +84,7 @@ def filter_uncontextualized_dob(pii_types: list[str], text: str) -> list[str]:
 
 
 def normalize_pii_types(raw: list[str]) -> list[str]:
-    """Mapeia aliases (ex: CPF -> NATIONAL_ID, DOB -> DATE_OF_BIRTH) e remove inválidos."""
+    """Map aliases (e.g. CPF -> NATIONAL_ID, DOB -> DATE_OF_BIRTH) and drop invalid ones."""
     _PII_ALIASES: dict[str, str] = {
         "PHONE_NUMBER": "PHONE", "TELEPHONE": "PHONE", "MOBILE": "PHONE",
         "CELL_PHONE": "PHONE", "MOBILE_NUMBER": "PHONE",

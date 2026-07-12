@@ -84,7 +84,7 @@ class Noumeno:
             except Exception as le:
                 logger.warning("Failed to detect language, defaulting to 'und': %s", le)
 
-        # 3. Subject Continuity Check (Pré-LLM)
+        # 3. Subject Continuity Check (pre-LLM)
         last_rewritten = ctx.metadata.get(mk.LAST_REWRITTEN)
         last_context_turn = ctx.metadata.get(mk.LAST_CONTEXT_TURN)
 
@@ -134,7 +134,7 @@ class Noumeno:
         preserved_terms = list(data.get("preserved_terms", []))
         rewrite_warnings = list(data.get("rewrite_warnings", []))
 
-        # 7. Drift Computation (Pós-LLM)
+        # 7. Drift Computation (post-LLM)
         sim, t, c = await self._similarity(user_input, rewritten)
         emb_tokens += t
         emb_calls += c
@@ -211,9 +211,9 @@ class Noumeno:
         try:
             data = json.loads(cleaned)
         except json.JSONDecodeError as exc:
-            # Backends sem format="json" (cloud) às vezes emitem o objeto seguido
-            # de texto/objeto extra ("Extra data") — o primeiro objeto válido é a
-            # resposta; aparar o resto em vez de falhar o estágio.
+            # Backends without format="json" (cloud) sometimes emit the object
+            # followed by extra text/objects ("Extra data") — the first valid
+            # object is the response; trim the rest instead of failing the stage.
             try:
                 data, _end = json.JSONDecoder().raw_decode(cleaned)
             except json.JSONDecodeError:

@@ -130,4 +130,4 @@ All cross-stage data is `pydantic.BaseModel`. Key types: `StageMetrics` (per-cal
 
 ### Language conventions
 
-Docstrings/comments in stage logic (`noumeno.py`, type field comments in `types.py`) are frequently written in Portuguese (the original domain language); code identifiers, prompts, and LLM I/O are in English. Match the existing language of the file/section you're editing.
+All docstrings, comments, identifiers, prompts, and documentation are in **English** — the project's canonical language for its open-source audience. The one deliberate exception is **Portuguese domain data** that must stay Portuguese to function: e.g. the PT/ES pronoun map and slang dictionary, the birth-context regex in `security/pii.py`, and Portuguese user-input fixtures in `tests/`/`cognobench/` (they are the input under test for the PT→English rewrite — translating them would defeat the test). English comments may quote a Portuguese example string to illustrate such input. (Historically stage-logic comments were written in Portuguese; that convention was retired — do not add new Portuguese prose.)

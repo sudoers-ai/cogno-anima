@@ -133,9 +133,9 @@ def test_voice_prompt_hard_pins_the_reply_language():
 
 
 def test_voice_prompt_renders_judge_rejection_as_hard_rule():
-    """``ctx.metadata["voice_correction"]`` (o orquestrador seta na rejeição final sem commit)
-    vira uma regra DURA no prompt — sem ela a voz narra o objetivo como feito ("Prontinho!
-    confirmados") em cima de um turno que só LEU."""
+    """``ctx.metadata["voice_correction"]`` (the orchestrator sets it on the final rejection
+    without commit) becomes a HARD rule in the prompt — without it the voice narrates the goal
+    as done ("All set! confirmed") on top of a turn that only READ."""
     ctx = _ctx()
     se = SuperegoStage()
     ctx.metadata["voice_correction"] = {"reason": "goal asked to confirm; execution only read"}
@@ -143,11 +143,11 @@ def test_voice_prompt_renders_judge_rejection_as_hard_rule():
     assert "REJECTED" in prompt and "NOTHING was committed" in prompt
     assert "goal asked to confirm; execution only read" in prompt
     assert "MUST NOT claim" in prompt
-    # ausente → nenhuma seção de rejeição
+    # absent → no rejection section
     ctx.metadata.pop("voice_correction")
     clean = se._build_voice_prompt(ctx, "persona voice", "data", [])
     assert "Execution verdict" not in clean
-    # razão vazia / formato inesperado → ignora (fail-open, nunca quebra a voz)
+    # empty reason / unexpected format → ignore (fail-open, never breaks the voice)
     ctx.metadata["voice_correction"] = {"reason": "  "}
     assert "Execution verdict" not in se._build_voice_prompt(ctx, "persona voice", "data", [])
     ctx.metadata["voice_correction"] = "not-a-dict"
