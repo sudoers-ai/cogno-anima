@@ -47,6 +47,12 @@ measures what those nets are for. **Takeaway: mistral remains the NOUMENO/NER
 default, but the JUDGE slot deserves qwen3:8b (per-stage routing exists for
 exactly this).**
 
+Cloud judges on the same 58 checks: `openai:gpt-4o-mini` **98.3% (57/58)** (one
+safe false-reject — the honest-failure relay); `openai:gpt-5-mini` **93.1%
+(54/58)** — over-strict, all 4 misses safe-direction (false rejects of correct
+executions + one scope under-block), the mirror image of mistral's failure
+shape. No cloud model false-approved a fabrication.
+
 ## Results (2026-06-22, 21 cases / 42 checks, temperature 0.0)
 
 > Rows below predate the 2026-07-12 clause pairs (42-check suite); re-run with
