@@ -18,7 +18,7 @@ import asyncio
 import os
 
 from cogno_anima.types import PipelineContext
-from cogno_synapse import OllamaEmbedder, CachingEmbedder, create_backend
+from cogno_synapse import Embedder, LLMBackend, OllamaEmbedder, CachingEmbedder, create_backend
 from cogno_anima.stages.noumeno import Noumeno
 from cogno_anima.stages.ner import IntentAnalyzer
 from cogno_anima.stages.id import IDStage
@@ -26,10 +26,7 @@ from cogno_anima.stages.id import IDStage
 BACKEND = os.environ.get("COGNO_BACKEND", "mistral:latest")   # any create_backend() spec
 
 
-async def perceive(text: str) -> None:
-    llm = create_backend(BACKEND)
-    embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text"))
-
+async def perceive(text: str, llm: LLMBackend, embedder: Embedder) -> None:
     ctx = PipelineContext(user_input=text)
     ctx = await Noumeno(embedder).process(ctx, llm)      # rewrite → canonical English + drift
     ctx = await IntentAnalyzer().process(ctx, llm)       # intent, sentiment, PII (deterministic)
@@ -44,12 +41,17 @@ async def perceive(text: str) -> None:
 
 
 async def main() -> None:
+    # Build the backend + embedder once and reuse across turns (the CachingEmbedder
+    # then actually caches repeated vectors).
+    llm = create_backend(BACKEND)
+    embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text"))
+
     for text in [
         "quanto tá o meu saldo?",              # PT info request → EGO (tool gateway)
         "cancela meu cartão AGORA!!!",         # urgent action → routing shifts
         "oi, tudo bem?",                        # social → SUPEREGO
     ]:
-        await perceive(text)
+        await perceive(text, llm, embedder)
 
 
 if __name__ == "__main__":
