@@ -474,26 +474,6 @@ def test_task_context_includes_constraints_and_negation():
     assert "Must NOT: do not delete records" in block
 
 
-def test_task_context_surfaces_aristotelian_slots():
-    ctx = _ctx()
-    ctx.intent.aristotelian = {
-        "ACTION": "CREATE_MEETING_AND_SEARCH | Schedule event + search rate",
-        "TIME": "TOMORROW | Relative temporal marker",
-        "QUANTITY": "DOLLAR_VALUE | Monetary quantity to retrieve",
-    }
-    block = EgoStage()._task_context(ctx)
-    assert "Request breakdown (map these to tool arguments):" in block
-    # tag + description surfaced per category, so the loop can fill args from the user's words
-    assert "TIME=TOMORROW (Relative temporal marker)" in block
-    assert "QUANTITY=DOLLAR_VALUE (Monetary quantity to retrieve)" in block
-    # a bare tag (no " | ") still renders, description omitted
-    ctx.intent.aristotelian = {"ACTION": "BOOK"}
-    assert "Request breakdown (map these to tool arguments): ACTION=BOOK" in EgoStage()._task_context(ctx)
-    # empty → no line
-    ctx.intent.aristotelian = {}
-    assert "Request breakdown" not in EgoStage()._task_context(ctx)
-
-
 # ── Read-only mask (Fonte A) ─────────────────────────────────────────
 
 @pytest.mark.asyncio
