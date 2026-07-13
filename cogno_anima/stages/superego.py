@@ -381,7 +381,7 @@ class SuperegoStage:
         adjustments = self.detect_adjustments(ctx)
         payload = self._tool_payload(ctx)
 
-        prompt = self._build_voice_prompt(ctx, voice_prompt, payload, adjustments)
+        prompt = self._build_voice_prompt(ctx, payload, adjustments)
         raw, ti, to = await backend.generate(voice_prompt or "You are a helpful assistant.", prompt)
         response, cot_stripped = self.strip_cot(raw)
 
@@ -417,7 +417,7 @@ class SuperegoStage:
                                  tokens_in=ti, tokens_out=to, model=model),
         )
 
-    def _build_voice_prompt(self, ctx: PipelineContext, voice_prompt: str,
+    def _build_voice_prompt(self, ctx: PipelineContext,
                             payload: str, adjustments: list[str]) -> str:
         signals = []
         if ctx.intent:

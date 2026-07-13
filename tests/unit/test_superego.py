@@ -112,24 +112,24 @@ def test_voice_prompt_surfaces_register_with_persona_precedence():
     ctx.intent.parole = "ACADEMICO"
     se = SuperegoStage()
     adjustments = se.detect_adjustments(ctx)
-    prompt = se._build_voice_prompt(ctx, "persona voice", "data", adjustments)
+    prompt = se._build_voice_prompt(ctx, "data", adjustments)
     assert "User register: formal" in prompt
     assert "persona takes precedence" in prompt
     # absent when parole carries no register hint
     ctx.intent.parole = None
-    prompt2 = se._build_voice_prompt(ctx, "persona voice", "data", se.detect_adjustments(ctx))
+    prompt2 = se._build_voice_prompt(ctx, "data", se.detect_adjustments(ctx))
     assert "User register:" not in prompt2
 
 
 def test_voice_prompt_hard_pins_the_reply_language():
     ctx = _ctx()   # noumeno.language == "pt"
     se = SuperegoStage()
-    prompt = se._build_voice_prompt(ctx, "persona voice", "data", [])
+    prompt = se._build_voice_prompt(ctx, "data", [])
     # a firm directive in the Task, not a soft signal — so a small model does not drift languages
     assert "Write the reply IN pt" in prompt
     # no language known → no directive (fall back to matching the input)
     ctx.noumeno.language = ""
-    assert "Write the reply IN" not in se._build_voice_prompt(ctx, "persona voice", "data", [])
+    assert "Write the reply IN" not in se._build_voice_prompt(ctx, "data", [])
 
 
 def test_voice_prompt_renders_judge_rejection_as_hard_rule():
@@ -139,19 +139,19 @@ def test_voice_prompt_renders_judge_rejection_as_hard_rule():
     ctx = _ctx()
     se = SuperegoStage()
     ctx.metadata["voice_correction"] = {"reason": "goal asked to confirm; execution only read"}
-    prompt = se._build_voice_prompt(ctx, "persona voice", "data", [])
+    prompt = se._build_voice_prompt(ctx, "data", [])
     assert "REJECTED" in prompt and "NOTHING was committed" in prompt
     assert "goal asked to confirm; execution only read" in prompt
     assert "MUST NOT claim" in prompt
     # absent → no rejection section
     ctx.metadata.pop("voice_correction")
-    clean = se._build_voice_prompt(ctx, "persona voice", "data", [])
+    clean = se._build_voice_prompt(ctx, "data", [])
     assert "Execution verdict" not in clean
     # empty reason / unexpected format → ignore (fail-open, never breaks the voice)
     ctx.metadata["voice_correction"] = {"reason": "  "}
-    assert "Execution verdict" not in se._build_voice_prompt(ctx, "persona voice", "data", [])
+    assert "Execution verdict" not in se._build_voice_prompt(ctx, "data", [])
     ctx.metadata["voice_correction"] = "not-a-dict"
-    assert "Execution verdict" not in se._build_voice_prompt(ctx, "persona voice", "data", [])
+    assert "Execution verdict" not in se._build_voice_prompt(ctx, "data", [])
 
 
 # ── constraints/negation → judge prompt (Block 1) ────────────────────
