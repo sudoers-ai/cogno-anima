@@ -364,6 +364,19 @@ class EgoStage:
             lines.append(f"Domains: {', '.join(intent.domains)}")
         if intent.entities_objects:
             lines.append(f"Entities: {', '.join(intent.entities_objects)}")
+        # Aristotelian decomposition (structured NER slots the model otherwise never
+        # sees): a per-category breakdown of the request. Use it to pick tools and FILL
+        # their arguments from the user's own words — TIME→date/when, QUANTITY→amount,
+        # PLACE→location, SUBSTANCE→subject, ACTION→operation — instead of inventing
+        # values. Only the categories the NER judged relevant are present.
+        parsed = intent.aristo_parsed()
+        if parsed:
+            slots = "; ".join(
+                f"{cat}={tag}" + (f" ({desc})" if desc else "")
+                for cat, (tag, desc) in parsed.items() if tag
+            )
+            if slots:
+                lines.append(f"Request breakdown (map these to tool arguments): {slots}")
         # Pragmatic restrictions — the loop MUST honor these (host-facing NER
         # signals previously dropped). constraints = positive limits, negation =
         # things the user explicitly forbade.
