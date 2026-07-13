@@ -270,12 +270,25 @@ def _ego_ctx(case: EgoCase) -> PipelineContext:
         intent_class=case.intent_class, sentiment="NEUTRAL", confidence=1.0,
         temporal_class="TIMELESS", triad_signal="EGO", goal=case.task, domains=["FINANCE"],
         is_composite=case.is_composite, is_sequential=case.is_sequential,
-        causal_chain=list(case.causal_chain), metrics=m,
+        causal_chain=list(case.causal_chain), aristotelian=dict(case.aristotelian), metrics=m,
     )
     ctx = PipelineContext(user_input=case.task, noumeno=noumeno, intent=intent)
     if case.readonly:                       # host turns on read-only (Fonte A)
         ctx.metadata["ego_readonly"] = True
     return ctx
+
+
+def _arg_matches(got: object, want: object) -> bool:
+    """Loose arg equality: numbers compare by value (45 == '45' == 45.0); strings
+    case-insensitively (want is a substring of got, e.g. 'USD' in 'US Dollar')."""
+    if got is None:
+        return False
+    if isinstance(want, (int, float)):
+        try:
+            return abs(float(got) - float(want)) < 1e-6  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return False
+    return str(want).strip().lower() in str(got).strip().lower()
 
 
 async def run_ego(
@@ -329,6 +342,14 @@ async def run_ego(
                 ok = len(names) == 0
                 dim.checks.append(CheckResult(case.id, "no_tool(soft)", "[]",
                                               str(names), True if calibrate else ok))
+            # Soft argument fidelity (aristo→EGO slots): the dispatched tool carried
+            # the expected argument value (numbers compared loosely). This is what the
+            # Aristotelian slots target — did the loop map the right value to the arg?
+            for tool, want in case.expect_args.items():
+                got = next((a for n, a in disp.executed if n == tool), None)
+                ok = got is not None and all(_arg_matches(got.get(k), v) for k, v in want.items())
+                dim.checks.append(CheckResult(case.id, "args(soft)", f"{tool}:{want}",
+                                              str(got), True if calibrate else ok))
             # Soft order check (2R-B): the expected tools were dispatched in the
             # given relative order (each present, and in sequence).
             if case.expect_order:

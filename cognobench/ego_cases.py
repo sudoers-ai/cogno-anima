@@ -21,7 +21,7 @@ chat turn called no tool.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from cogno_anima.types import ToolResult
 
@@ -136,6 +136,11 @@ class EgoCase:
     is_sequential: bool = False    # those sub-tasks are order-dependent
     causal_chain: tuple[str, ...] = ()   # the user's ordered reasoning (supporting hint)
     expect_order: tuple[str, ...] = ()   # soft: tools dispatched in this relative order
+    # Aristotelian argument-fidelity (the aristo→EGO slots): the NER decomposition
+    # the case injects, and the tool args the dispatch MUST carry (a value is correct
+    # if the dispatched arg equals it, numbers compared loosely). "" tool = skip.
+    aristotelian: dict[str, str] = field(default_factory=dict)
+    expect_args: dict[str, dict] = field(default_factory=dict)   # {tool: {arg: value}}
 
 
 EGO_CASES: list[EgoCase] = [
@@ -219,4 +224,23 @@ EGO_CASES: list[EgoCase] = [
     EgoCase("composite_two_expenses", "Two expenses in one turn",
             "Record 20 reais for coffee and 50 reais for lunch.",
             is_composite=True, expect_tool="record_expense"),
+
+    # ── Argument fidelity (aristo→EGO slots) — multi-value turns where a distractor
+    #    number competes with the real amount; the QUANTITY slot names the right one. ──
+    EgoCase("arg_expense_discount_distractor", "Amount vs discount distractor",
+            "I got a 30 percent discount and the meal ended up costing 45 reais — log it.",
+            expect_tool="record_expense", expect_args={"record_expense": {"amount": 45}},
+            aristotelian={"ACTION": "RECORD_EXPENSE | log the meal cost",
+                          "QUANTITY": "45 | final amount paid in BRL"}),
+    EgoCase("arg_income_commission_distractor", "Income amount amid sale/commission",
+            "The sale was 800 reais at 15 percent commission, so log the 120 reais I earned.",
+            expect_tool="record_income", expect_args={"record_income": {"amount": 120}},
+            aristotelian={"ACTION": "RECORD_INCOME | log the commission earned",
+                          "QUANTITY": "120 | amount received in BRL"}),
+    EgoCase("arg_currency_amount", "Currency amount (single-value control)",
+            "Convert 100 dollars to reais at today's rate.",
+            intent_class="INFORMATION_REQUEST",
+            expect_tool="convert_currency", expect_args={"convert_currency": {"amount": 100}},
+            aristotelian={"ACTION": "CONVERT_CURRENCY | change dollars to reais",
+                          "QUANTITY": "100 | amount to convert", "SUBSTANCE": "USD | source currency"}),
 ]
