@@ -561,6 +561,35 @@ async def test_confirmed_calls_execute_deterministically_without_model_reissue()
 
 
 @pytest.mark.asyncio
+async def test_confirmed_call_missing_tool_records_error_not_silent_drop():
+    """A confirmed call whose tool is genuinely absent (renamed/misconfigured, NOT read-only)
+    must record an error step — silently dropping a user-approved action would lose it."""
+    backend = PlainBackend()
+    disp = StubDispatcher.with_tools("book_appointment")            # 'cancel_appointment' absent
+    ctx = _ctx(ego_confirmed=True,
+               ego_confirmed_calls=[{"tool": "cancel_appointment", "arguments": {"id": "x"}}])
+    ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+    dropped = [tc for s in ctx.ego_result.steps for tc in s.tool_calls
+               if tc.tool == "cancel_appointment"]
+    assert len(dropped) == 1 and dropped[0].ok is False and not dropped[0].side_effect
+    assert "not available" in (dropped[0].error or "")
+
+
+@pytest.mark.asyncio
+async def test_confirmed_call_dropped_quietly_in_readonly():
+    """In read-only mode a masked confirmed call is dropped WITHOUT an error step — it's the
+    host's post-failure read-only retry, where the call already ran on the first attempt."""
+    backend = PlainBackend()
+    disp = PolicyDispatcher.with_tools("book_appointment", mutating=("book_appointment",))
+    ctx = _ctx(ego_confirmed=True, ego_readonly=True,
+               ego_confirmed_calls=[{"tool": "book_appointment", "arguments": {"host_id": "x"}}])
+    ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+    booked = [tc for s in ctx.ego_result.steps for tc in s.tool_calls
+              if tc.tool == "book_appointment"]
+    assert booked == []                              # masked, and no error step recorded
+
+
+@pytest.mark.asyncio
 async def test_confirmed_call_blocks_a_redundant_model_reissue():
     """If the model DOES re-issue the same confirmed call, the dedup guard blocks it — never
     execute the destructive action twice."""
