@@ -243,6 +243,17 @@ async def test_json_decode_error():
 
 
 @pytest.mark.asyncio
+async def test_multi_object_picks_richest_not_first():
+    """C9: a cloud model emits an empty/partial {} before the real object — the parser must pick
+    the RICHEST object, not the first, so fields aren't silently coerced to UNKNOWN defaults."""
+    payload = json.dumps(PERFECT_JSON)
+    backend = StubBackend(response="{} " + payload)      # leading empty object then the real one
+    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
+    result = await analyzer.analyze(make_noumeno_result())
+    assert result.intent_class == PERFECT_JSON["intent_class"]   # real payload won, not the {}
+
+
+@pytest.mark.asyncio
 async def test_change_subject_logic_cleaning():
     """12. Logical context reset when change_subject=True in the Noumeno."""
     class PromptCheckingBackend(StubBackend):
