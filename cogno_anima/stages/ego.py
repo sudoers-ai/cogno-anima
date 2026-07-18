@@ -152,6 +152,20 @@ class EgoStage:
             name = c.get("tool", "") if isinstance(c, dict) else getattr(c, "tool", "")
             args = (c.get("arguments") if isinstance(c, dict) else getattr(c, "arguments", None)) or {}
             if not name or name not in valid_names:
+                # A host-approved call whose tool isn't available this turn. In read-only mode
+                # this is EXPECTED (gate A masked mutating tools — e.g. the host's post-failure
+                # read-only retry, where the call already ran on the first attempt): drop quietly.
+                # Otherwise the tool is genuinely absent (renamed / misconfigured) and silently
+                # dropping a user-CONFIRMED action would lose it with no signal — record an error
+                # step so the trace, the SUPEREGO and metrics see it wasn't executed.
+                if name and not readonly:
+                    logger.warning("EGO confirmed-call dropped: tool=%s not in dispatcher", name)
+                    steps.append(EgoStep(
+                        index=len(steps), path=path, assistant_text="",
+                        tool_calls=[ToolExecution(
+                            tool=name, arguments=args, result="", ok=False,
+                            error=f"confirmed tool '{name}' is not available this turn",
+                            side_effect=False)]))
                 continue
             try:
                 r = await dispatcher.execute(name, args)
