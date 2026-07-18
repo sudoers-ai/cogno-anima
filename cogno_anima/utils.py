@@ -115,3 +115,43 @@ def extend_strings(target: list[str], values: Iterable[object] | object) -> None
         if value:
             target.append(value)
 
+
+
+def parse_json_object(cleaned: str) -> "dict":
+    """Parse the JSON *object* from a model response, tolerant of leading/trailing junk.
+
+    A backend without a JSON-mode guarantee (a cloud model) sometimes emits more than one
+    top-level value — e.g. an empty/partial ``{}`` followed by the real corrected object, or the
+    object trailed by prose. ``json.loads`` fails ("Extra data"); a naive ``raw_decode`` returns
+    the FIRST value, so ``{} {real}`` silently yields the empty object and every field falls back
+    to defaults with no visible error.
+
+    This scans every top-level value and returns the RICHEST dict (most keys) — the real payload
+    outweighs a stray empty/partial object. Raises ``ValueError`` when no JSON object is present at
+    all, so the caller can turn it into a visible ``StageParseError`` (the "valid dict OR error"
+    contract). Non-object top-level values (numbers, arrays, strings) are skipped.
+    """
+    import json
+
+    dec = json.JSONDecoder()
+    objects: list[dict] = []
+    idx, n = 0, len(cleaned)
+    while idx < n:
+        # skip whitespace / stray separators between values
+        while idx < n and cleaned[idx] in " \t\r\n,":
+            idx += 1
+        if idx >= n:
+            break
+        try:
+            value, end = dec.raw_decode(cleaned, idx)
+        except json.JSONDecodeError:
+            # junk that isn't a JSON value here — step past one char and keep scanning, so prose
+            # wrapped around a valid object ("Here: {..}") still yields the object.
+            idx += 1
+            continue
+        if isinstance(value, dict):
+            objects.append(value)
+        idx = end
+    if not objects:
+        raise ValueError("no JSON object found in model response")
+    return max(objects, key=len)

@@ -9,7 +9,7 @@ from typing import Optional
 from cogno_anima import metakeys as mk
 from cogno_anima.types import PipelineContext, NoumenoResult, StageMetrics
 from cogno_synapse import LLMBackend, Embedder
-from cogno_anima.utils import expand_slangs
+from cogno_anima.utils import expand_slangs, parse_json_object
 from cogno_anima.prompts import load_prompt
 from cogno_anima.errors import StageParseError
 
@@ -211,12 +211,13 @@ class Noumeno:
         try:
             data = json.loads(cleaned)
         except json.JSONDecodeError as exc:
-            # Backends without format="json" (cloud) sometimes emit the object
-            # followed by extra text/objects ("Extra data") — the first valid
-            # object is the response; trim the rest instead of failing the stage.
+            # Backends without format="json" (cloud) sometimes emit more than one top-level object
+            # ("Extra data") — e.g. an empty/partial {} before the real one, or the object trailed
+            # by prose. Pick the RICHEST object (not the first — a leading {} must not silently
+            # win). No object at all → visible StageParseError.
             try:
-                data, _end = json.JSONDecoder().raw_decode(cleaned)
-            except json.JSONDecodeError:
+                data = parse_json_object(cleaned)
+            except ValueError:
                 raise StageParseError(STAGE_NAME, raw, exc) from exc
         # Valid JSON that is not an object (e.g. "5", "[]", "true") would crash
         # the field reads downstream with a raw AttributeError — treat it as a
