@@ -2,6 +2,15 @@
 cogno_anima — The cognitive core intelligence pipeline library.
 """
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _dist_version
+
+try:
+    __version__ = _dist_version("cogno-anima")
+except PackageNotFoundError:  # source tree without an installed dist (e.g. vendored checkout)
+    __version__ = "0.0.0"
+
+
 from cogno_anima.types import (
     StageMetrics,
     NoumenoResult,
