@@ -26,7 +26,7 @@ dependencies = [
     "langdetect>=1.0.9",
     # Model transport (LLM/embedding backends, factory, fallback) lives in
     # cogno-synapse; it brings httpx + cogno-homeo transitively.
-    "cogno-synapse",
+    "cogno-synapse>=0.1,<0.2",
 ]
 
 [project.urls]
@@ -45,7 +45,7 @@ dev = [
 ]
 # Cloud LLM backends moved to cogno-synapse; this convenience extra pulls them
 # all in (install a single provider with e.g. `pip install "cogno-synapse[openai]"`).
-llm = ["cogno-synapse[llm]"]
+llm = ["cogno-synapse[llm]>=0.1,<0.2"]
 
 [build-system]
 requires = ["setuptools>=77.0.3", "wheel"]
