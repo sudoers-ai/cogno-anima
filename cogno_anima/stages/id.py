@@ -20,6 +20,7 @@ text — the ID emits signals (drift_action, blocked, complexity), the host acts
 
 from __future__ import annotations
 
+import re
 import time
 import logging
 from typing import Awaitable, Callable, Optional
@@ -39,6 +40,11 @@ STAGE_NAME = "id"
 # higher (more specific) temporal of the prior turn — NER evaluates each turn in
 # isolation and loses this otherwise.
 _TEMPORAL_RANK = {"RECENT": 3, "MIXED": 2, "HISTORICAL": 1, "TIMELESS": 0}
+
+# Max whitespace-separated tokens for an input to count as an elliptical reply
+# ("Sim", "WhatsApp e Telegram", "entre 10 e 20" is already 4 → not elliptical is
+# fine: 4+ words carry enough signal for the NER to classify on their own).
+_ELLIPSIS_MAX_TOKENS = 3
 
 
 class IDStage:
@@ -108,6 +114,7 @@ class IDStage:
             domains=intent.domains,
             pii_session_hint=pii_hint,
             context_dependent=intent.context_dependent,
+            ellipsis_reply=self._is_ellipsis_reply(ctx),
         )
 
         # Routing + safety gate.
@@ -253,6 +260,32 @@ class IDStage:
         if signal in VALID_TRIAD:
             return signal
         return "BALANCED"
+
+    @staticmethod
+    def _is_ellipsis_reply(ctx: PipelineContext) -> bool:
+        """A bare short answer to the assistant's pending question ("Sim",
+        "WhatsApp", "20"). Deterministic, no LLM. Both conditions must hold:
+
+        1. the assistant's last utterance in the transcript ends with a question
+           mark (trailing emoji/markdown tolerated) — the agent is waiting for
+           an answer;
+        2. the user's input is at most ``_ELLIPSIS_MAX_TOKENS`` words — an
+           answer fragment, not a full farewell sentence.
+
+        Condition 2 is what keeps Rule 1 alive for personas that end nearly
+        every reply with a question (the CLOSER): a long genuine goodbye still
+        completes the goal; only the bare fragment is guarded.
+        """
+        if len((ctx.user_input or "").split()) > _ELLIPSIS_MAX_TOKENS:
+            return False
+        history = str(ctx.metadata.get(mk.CONVERSATION_HISTORY) or "")
+        idx = history.rfind("Assistant:")
+        if idx < 0:
+            return False
+        # The transcript ends with the assistant's reply (possibly multi-line);
+        # "?" followed only by non-word chars (emoji, markdown, whitespace).
+        tail = history[idx + len("Assistant:"):]
+        return bool(re.search(r"\?[^\w]*$", tail.strip()))
 
     @staticmethod
     def _needs_confirmation(intent: IntentResult) -> bool:

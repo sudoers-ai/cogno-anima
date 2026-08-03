@@ -49,12 +49,18 @@ Rules:
 * "you", "vc", and "você" mean the AI assistant.
 * "I", "me", "eu", and "mim" mean the human user.
 * Use History only to understand short references like "this", "that", "it", "isso", "ele", or "ela".
-* If the Current input is a SHORT REPLY that answers the assistant's last question in the
-  Conversation (a name, a time, a specialty, a professional, "yes"/"no", one of the options the
-  assistant offered), resolve it into a full self-contained statement using that context. E.g. after
-  the assistant asks "with which doctor?", the input "com o Vinicius Vale" becomes "Book with
-  Dr. Vinicius Vale" (carry the date/time/action already established). This is context resolution,
-  not a topic change.
+* SHORT-REPLY RESOLUTION IS MANDATORY. If the Current input only makes sense as an answer to
+  the assistant's last question in the Conversation ("sim", "não", "talvez", "ok", a number, a
+  name, a time, a specialty, one of the options the assistant offered), NEVER return it bare or
+  as a literal translation. Rewrite it as a complete statement by merging in the content of that
+  question. E.g. after the assistant asks "with which doctor?", the input "com o Vinicius Vale"
+  becomes "Book with Dr. Vinicius Vale" (carry the date/time/action already established). This
+  is context resolution, not a topic change.
+* When resolving a short reply, carry ONLY what the assistant's question established — never add
+  new facts, and keep the question's key terms exactly as written.
+* When resolving a short reply, preserve the degree of certainty: "sim" stays affirmative, "não"
+  stays negative, "talvez"/"pode ser" stay uncertain ("Maybe ..."). Never turn a hedge into a
+  firm yes or no.
 * Dates are day/month (Brazilian/European format): "12/07" means July 12th, NOT December 7th;
   "01/02" means February 1st. Keep the day-first reading when rewriting.
 * If the Current input changes topic, do not use History and set "context_turn" to "".
@@ -92,3 +98,18 @@ Input:
 "bloop zorg fnarg"
 Output:
 {"rewritten":"bloop zorg fnarg","context_turn":"","confidence":0.2,"changed":false,"preserved_terms":[],"rewrite_warnings":["UNINTELLIGIBLE_INPUT"]}
+
+Input with Conversation ending in: Assistant: "Você gostaria de saber mais sobre como configurar isso?"
+"Sim"
+Output:
+{"rewritten":"Yes, I would like to know more about how to configure it.","context_turn":"The user confirmed interest in the setup details.","confidence":0.95,"changed":false,"preserved_terms":[],"rewrite_warnings":[]}
+
+Input with Conversation ending in: Assistant: "Por onde os seus clientes chegam até você?"
+"WhatsApp"
+Output:
+{"rewritten":"My clients reach me through WhatsApp.","context_turn":"The user is describing their customer service channels.","confidence":0.95,"changed":false,"preserved_terms":["WhatsApp"],"rewrite_warnings":[]}
+
+Input with Conversation ending in: Assistant: "Quer que eu agende a consulta?"
+"talvez"
+Output:
+{"rewritten":"Maybe I want you to schedule the appointment.","context_turn":"The user is undecided about scheduling the appointment.","confidence":0.9,"changed":false,"preserved_terms":[],"rewrite_warnings":[]}

@@ -168,6 +168,32 @@ async def test_no_goal_carryover_keeps_ongoing():
     assert goal == "configure docker" and sim == 1.0
 
 
+async def test_ellipsis_reply_guard_keeps_goal_on_social():
+    # "Sim" answering the assistant's pending question is often classified SOCIAL by the
+    # context-blind NER; Rule 1 must NOT read it as completion when the caller flags the
+    # turn as an elliptical reply — erasing the goal restarts the conversation.
+    gm = GoalManager()
+    await gm.update("learn about the premium plan", "INFORMATION_REQUEST", domains=["GENERAL"])
+    status, goal, sim = await gm.update(None, "SOCIAL", domains=[], ellipsis_reply=True)
+    assert status == "ONGOING"
+    assert goal == "learn about the premium plan" and sim == 1.0
+
+
+async def test_ellipsis_reply_without_active_goal_unchanged():
+    # No active goal → the guard has nothing to protect; behavior is the fresh-start rule.
+    gm = GoalManager()
+    status, goal, _ = await gm.update(None, "SOCIAL", ellipsis_reply=True)
+    assert status == "NEW" and goal is None
+
+
+async def test_social_completion_still_works_without_ellipsis_flag():
+    # A genuine farewell (flag False) keeps the original Rule 1: COMPLETED + wiped goal.
+    gm = GoalManager()
+    await gm.update("configure docker", "ACTION_REQUEST", domains=["TECH"])
+    status, goal, _ = await gm.update(None, "SOCIAL", ellipsis_reply=False)
+    assert status == "COMPLETED" and goal is None
+
+
 # ── State round-trip ──────────────────────────────────────────────────────
 
 async def test_to_dict_from_dict_round_trip():

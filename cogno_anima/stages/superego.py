@@ -28,7 +28,7 @@ import re
 import time
 import json
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from cogno_anima import metakeys as mk
 from cogno_anima.types import (
@@ -94,6 +94,12 @@ _CONVERSATIONAL_CRITERIA = (
     "in our list') fully satisfies this — demanding more is asking the model to invent. When "
     "the user asked NOTHING (they answered a question, greeted, or made small talk) this "
     "criterion DOES NOT APPLY — do not reject for it, and do not treat it as unverifiable.\n"
+    "   Restating the user's own question back at them is the clearest form of ducking, and it "
+    "is easy to miss because it reads like engagement: if the draft is largely the user's "
+    "message reworded — with no answer and no admitted limit — REJECT it. Repeating their words "
+    "to CONFIRM something ('so: Thursday at 3pm?') or to reflect a figure they gave before "
+    "asking the next question is NOT ducking; the test is whether their question got an "
+    "answer.\n"
     "4. SAFETY/LIMITS: the draft breaks the persona's limits or a policy.\n\n"
 )
 
@@ -518,6 +524,7 @@ class SuperegoStage:
             f'# User request\n"{ctx.user_input}"\n\n'
             f"{context_section}"
             f"# Data gathered by the executor (ground figures/dates ONLY in this)\n{payload}\n\n"
+            f"{self._draft_section(ctx, payload, rejection)}"
             f"{rejection_section}"
             f"# Signals\n" + "\n".join(signals) + "\n\n"
             f"# Task\n{lang_rule}Write the final reply to the user in the persona's voice and "
@@ -525,6 +532,45 @@ class SuperegoStage:
             "figures/dates verbatim from the executor data — do not invent or alter "
             "them. Reply with the message text only."
         )
+
+    @staticmethod
+    def _draft_section(ctx: PipelineContext, payload: str, rejection: Any) -> str:
+        """The executor's own answer text, as its own clearly-subordinate section.
+
+        EGO=executor, SUPEREGO=locutor: the draft is *what to say*, the tool results are *what
+        it must be grounded in*. The draft used to reach the voice only as a fallback inside
+        :meth:`_tool_payload` (``"\\n".join(parts) or draft``) — so ANY tool output at all
+        discarded it. That is not a rare path: ``resolve_date`` and the host's other essential
+        tools ride every turn for every role, so a persona that executes nothing still produces
+        a non-empty ``parts``.
+
+        Measured 2026-08-03 on the CLOSER: the EGO answered "Cogno não integra com Bling e
+        TOTVS, pois esses sistemas não estão listados", the judge APPROVED it, and the voice
+        prompt then carried two ``resolve_date`` lines and nothing else under "ground ONLY in
+        this". With no content to voice, the model returned the user's own question. The judge
+        could never have caught it: the judge reads the draft, the voice did not.
+
+        Gated on the host's ``JUDGE_CONVERSATIONAL`` signal — the same seam that already swaps
+        the judge criteria — and NOT added to execution turns. On an execution turn the draft is
+        the model's optimistic narration of what it hoped happened, and surfacing it beside the
+        tool data is a known fabrication path: a failed availability read plus a draft offering
+        "09h, 11h" gets the invented slots voiced. ``test_voice_surfaces_a_failed_read_so_it_
+        cannot_fabricate`` pins that, and caught this function's first version doing exactly it.
+
+        Omitted when the draft adds nothing (already the payload) and — importantly — when the
+        review REJECTED it: there the draft is exactly what must not be repeated, and
+        ``rejection_section`` says so.
+        """
+        if not ctx.metadata.get(mk.JUDGE_CONVERSATIONAL):
+            return ""       # execution turn: tool data is the only grounding — see above
+        draft = ((ctx.ego_result.draft if ctx.ego_result else "") or "").strip()
+        if not draft or draft in payload:
+            return ""
+        if isinstance(rejection, dict) and (rejection.get("reason") or "").strip():
+            return ""       # a rejected draft is handled by rejection_section, not re-offered
+        return ("# Executor's answer (the CONTENT to convey — rewrite it in the persona's "
+                "voice; the executor data above wins on any figure, date or outcome)\n"
+                f"{draft}\n\n")
 
     @staticmethod
     def _tool_payload(ctx: PipelineContext) -> str:
