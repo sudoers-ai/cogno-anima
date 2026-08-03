@@ -551,10 +551,17 @@ def test_judge_prompt_swaps_the_criteria_for_a_conversational_turn():
     assert "This turn has NO tool to execute" in prompt
     assert "1. GOAL↔EXECUTION" not in prompt
     # truth and limits are exactly what a consultative persona IS judged on — never relaxed
-    assert "1. TRUTH" in prompt and "SAFETY/LIMITS" in prompt
+    assert "1. FABRICATION" in prompt and "SAFETY/LIMITS" in prompt
     # the two failures that cost real turns, pinned
-    assert "IS a complete answer" in prompt        # "não consta" must be approvable
-    assert "did NOT ask anything" in prompt        # a lead ANSWERING is not a request
+    assert "fully satisfies this" in prompt        # "não consta" must be approvable
+    assert "asked NOTHING" in prompt               # a lead ANSWERING is not a request
+    # The burden must be INVERTED. Phrased as conditions to verify, criterion 3 collided with
+    # the system prompt's "do not approve what you cannot verify": the judge saw "no question
+    # was asked", called the criterion unmet, and rejected — 6 rejections / 0 approvals over
+    # two turns, with the critique saying so verbatim.
+    assert "APPROVE BY DEFAULT" in prompt
+    assert "REJECT only if one of these is TRUE" in prompt
+    assert "DOES NOT APPLY" in prompt
 
 
 def test_voice_drops_an_unverified_claim_instead_of_revoicing_it():

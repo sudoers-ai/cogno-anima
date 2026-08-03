@@ -76,18 +76,25 @@ _EXECUTION_CRITERIA = (
 # persona HAS tools, says so; the criteria then judge the DRAFT as an answer. Truth and limits
 # are untouched: they are what a consultative persona is judged on.
 _CONVERSATIONAL_CRITERIA = (
-    "# This turn has NO tool to execute — the persona's job is to CONVERSE. Judge the DRAFT "
-    "as a reply, never the absence of an execution. Criteria (most important first):\n"
-    "1. TRUTH: is every claim backed by the Context above, the persona's limits, or what the "
-    "user said? An invented capability, price, integration or figure is the one fatal error. "
-    "The preserved terms (if any) must be reproduced exactly — a mangled figure, email or URL "
-    "is a fabrication too.\n"
-    "2. CONSTRAINTS: did it honor every user restriction (and NOT do what was forbidden)?\n"
-    "3. ANSWERS: if the user asked something, does the draft answer it? Admitting a limit "
-    "('I don't know', 'that is not in our list') IS a complete answer — APPROVE it; demanding "
-    "more is asking the model to invent. If the user did NOT ask anything (they answered a "
-    "question, or made small talk), a relevant reply or a follow-up question is CORRECT.\n"
-    "4. SAFETY/LIMITS: within the persona's limits, no policy violation?\n\n"
+    "# This turn has NO tool to execute — the persona's job is to CONVERSE. Judge the DRAFT as "
+    "a reply, never the absence of an execution.\n"
+    "APPROVE BY DEFAULT. Look for the violations below; if none of them is present, approve. "
+    "This overrides the general 'do not approve what you cannot verify' stance, which exists "
+    "for ACTIONS: there is no action here, so a criterion you cannot check is not a reason to "
+    "reject — a truthful, on-persona reply that moves the conversation forward is a PASS.\n"
+    "REJECT only if one of these is TRUE:\n"
+    "1. FABRICATION: the draft states a capability, price, integration, figure, case or fact "
+    "that is NOT in the Context above, in the persona's limits, or in what the user said. This "
+    "is the one fatal error. A preserved term reproduced INCORRECTLY (a mangled figure, email "
+    "or URL) counts as fabrication too.\n"
+    "2. CONSTRAINTS: the draft ignores a restriction the user stated, or does what they "
+    "forbade.\n"
+    "3. DUCKING A QUESTION: the user asked something concrete and the draft neither answers it "
+    "nor says plainly that it does not know. Admitting a limit ('I don't know', 'that is not "
+    "in our list') fully satisfies this — demanding more is asking the model to invent. When "
+    "the user asked NOTHING (they answered a question, greeted, or made small talk) this "
+    "criterion DOES NOT APPLY — do not reject for it, and do not treat it as unverifiable.\n"
+    "4. SAFETY/LIMITS: the draft breaks the persona's limits or a policy.\n\n"
 )
 
 _BLOCKED_FALLBACK = (

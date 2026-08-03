@@ -26,6 +26,12 @@ EGO_CORRECTION = "ego_correction"              # correction loop: {reason, attem
 # ── SUPEREGO (locutor) — soma/host write, voice reads ────────────────────────
 VOICE_CORRECTION = "voice_correction"          # judge's final rejection: {reason}
 JUDGE_CONVERSATIONAL = "judge_conversational"  # host: this turn has NO tool to execute
+# The judge's FINAL verdict + how many EGO attempts it took: {"approved": bool, "attempts": int}.
+# Written by the orchestrator so the outcome is countable. Only rejections were ever logged (at
+# WARNING; approvals at INFO, which the deployment's handlers may drop), so "no approvals in the
+# log" was indistinguishable from "the judge approves nothing" — and a whole day was spent
+# chasing the wrong one. A rate needs a denominator.
+JUDGE_VERDICT = "judge_verdict"
 
 # ── ID / NER / NOUMENO — cross-turn carry-over (soma writes, stages read) ─────
 ID_STATE = "id_state"                          # serializable IDStage state
