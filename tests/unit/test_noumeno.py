@@ -112,6 +112,11 @@ class TestNoumenoStage:
         """Must return a PipelineContext with populated NoumenoResult and all expected fields."""
         noumeno = make_noumeno()
         ctx = PipelineContext(user_input="olá, como vai você?")
+        # History, so `context_turn` survives and this stays a test of the RESULT SHAPE. Without
+        # it the field is now cleared on purpose (a model cannot know prior context that was
+        # never in its prompt — see the fabricated-context test below), and this case would be
+        # asserting the no-history rule instead of the shape it is named for.
+        ctx.metadata["last_rewritten"] = "Hello there."
         ctx = await noumeno.process(ctx, StubBackend(
             response='{"rewritten": "Hello, how are you?", "context_turn": "greeting", "confidence": 0.99, "changed": true, "preserved_terms": ["Bitcoin"], "rewrite_warnings": ["ambiguity"]}'
         ))
@@ -261,6 +266,29 @@ class TestNoumenoStage:
         assert ctx.noumeno.change_subject is True
         assert ctx.noumeno.subject_similarity == 0.3
         assert ctx.noumeno.context_turn == ""        # Cleared because change_subject
+        assert ctx.noumeno.context_used is False
+
+    async def test_a_fabricated_context_turn_is_dropped_on_a_first_turn(self):
+        """No history → no context, whatever the model claims.
+
+        The prompt only carries a "Last Query" block when `last_rewritten` exists, but a model
+        asked to produce `context_turn` fills it anyway. Measured against a real model on turn
+        ONE with no history: it returned "The user is asking about cryptocurrency prices." — a
+        summary of the CURRENT turn dressed as prior context — and the pipeline recorded
+        `context_used=True` on a first contact.
+
+        Same class as trusting the model's own PII verdict: the host knows whether history
+        exists, so the host decides. Only an Ollama-backed integration test covered this, and
+        CI skips those, so it reached main invisibly.
+        """
+        noumeno = make_noumeno()
+        ctx = PipelineContext(user_input="Qual o preço do bitcoin?")   # no last_rewritten
+        ctx = await noumeno.process(ctx, StubBackend(
+            response='{"rewritten": "What is the price of Bitcoin?", "context_turn": "The user '
+                     'is asking about cryptocurrency prices.", "confidence": 0.95, '
+                     '"changed": true, "preserved_terms": [], "rewrite_warnings": []}'
+        ))
+        assert ctx.noumeno.context_turn == ""
         assert ctx.noumeno.context_used is False
 
     async def test_no_history_skips_subject_check(self):
