@@ -104,10 +104,11 @@ async def run_noumeno(
                 checks.append(("changed", str(case.expect_changed), str(n.changed),
                                n.changed == case.expect_changed))
             # Short-reply resolution: the question's content must be merged into
-            # the rewrite (a bare "Yes."/"WhatsApp" fails these).
+            # the rewrite (a bare "Yes."/"WhatsApp" fails these). "|" separates
+            # accepted alternatives ("20|twenty").
             for term in case.expect_in_rewrite:
-                checks.append((f"resolved:{term}", term, n.rewritten[:40],
-                               term.lower() in n.rewritten.lower()))
+                hit = any(alt.lower() in n.rewritten.lower() for alt in term.split("|"))
+                checks.append((f"resolved:{term}", term, n.rewritten[:40], hit))
 
             for field, expected, actual, correct in checks:
                 dim.checks.append(CheckResult(case.id, field, expected, actual, correct))
