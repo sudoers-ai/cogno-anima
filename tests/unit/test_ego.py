@@ -676,3 +676,33 @@ def test_sequential_adds_order_hint_to_task_context():
 def test_non_sequential_has_no_order_hint():
     ctx = _ctx()
     assert "Execution order" not in EgoStage()._task_context(ctx)
+
+
+@pytest.mark.asyncio
+async def test_conversational_turn_never_forces_a_tool():
+    """A persona with nothing to execute still carries the always-merged escape hatches
+    (handoff, notify, registration). "required" would force the model to call ONE OF THOSE,
+    which is never right for a turn meant to be answered. (This did not cure the live
+    over-escalation it was written for — the model picks the tool unprompted — so the rule
+    stands on its own merit, not as that fix.)"""
+    backend = ScriptedToolCallingBackend([{"content": "Quantos atendimentos por dia?"}])
+    disp = StubDispatcher.with_tools("human_handoff")
+    ctx = _ctx(intent_class="ACTION_REQUEST")
+    ctx.metadata[mk.JUDGE_CONVERSATIONAL] = True
+    await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+    assert backend.calls[0]["tool_choice"] is None
+
+
+@pytest.mark.asyncio
+async def test_explicit_force_tool_still_wins_over_the_conversational_signal():
+    """EGO_FORCE_TOOL is the host deliberately demanding a call (gate-B completion, a plan
+    step). The conversational signal is an inference about the tool list — it must not
+    override an explicit instruction."""
+    backend = ScriptedToolCallingBackend([_tool_turn("add_income", {"amount": 1}),
+                                          {"content": "ok"}])
+    disp = StubDispatcher.with_tools("add_income")
+    ctx = _ctx(intent_class="INFORMATION_REQUEST")
+    ctx.metadata[mk.JUDGE_CONVERSATIONAL] = True
+    ctx.metadata[mk.EGO_FORCE_TOOL] = True
+    await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+    assert backend.calls[0]["tool_choice"] == "required"

@@ -116,7 +116,17 @@ class EgoStage:
         # rewriting the NER's intent_class (the perception record stays honest;
         # the routing decision rides here instead).
         force_tool = bool(ctx.metadata.get(mk.EGO_FORCE_TOOL))
-        force_first = (ctx.intent.intent_class == "ACTION_REQUEST" or force_tool) and not readonly
+        # …and never when the host says this turn has no tool to execute (a persona whose only
+        # entries are the always-merged escape hatches — handoff, notify, registration).
+        # "required" would force the model to call one of THOSE, which is never the right
+        # outcome for a turn that is meant to be answered. NOTE: this did NOT fix the live
+        # over-escalation it was written for (a seller reaching for human_handoff on ordinary
+        # questions) — that turned out to be the model choosing the tool unprompted, and the
+        # bench moved 9 → 15 across runs, which is model noise. Kept on its own merit, not as
+        # a fix. An explicit EGO_FORCE_TOOL still wins: that is the host demanding a call.
+        conversational = bool(ctx.metadata.get(mk.JUDGE_CONVERSATIONAL)) and not force_tool
+        force_first = ((ctx.intent.intent_class == "ACTION_REQUEST" or force_tool)
+                       and not readonly and not conversational)
 
         system = self._build_system(ctx, system_prompt, use_native, tools)
         task = ctx.noumeno.rewritten or ctx.user_input
