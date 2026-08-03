@@ -28,7 +28,8 @@ class NoumenoCase:
     conversation: str = ""              # verbatim transcript fed as conversation_history
     expect_in_rewrite: tuple[str, ...] = field(default_factory=tuple)
     # ^ case-insensitive substrings the resolved rewrite must contain (short-reply
-    #   resolution: the question's content must be merged into the answer)
+    #   resolution: the question's content must be merged into the answer). Each
+    #   entry may hold "|"-separated alternatives ("20|twenty"): any one satisfies.
 
 
 NOUMENO_CASES: list[NoumenoCase] = [
@@ -57,7 +58,7 @@ NOUMENO_CASES: list[NoumenoCase] = [
                 input="20",
                 conversation=("User: Meus clientes chegam pelo WhatsApp.\n"
                               "Assistant: Quantos clientes chegam até você por dia?"),
-                expect_in_rewrite=("20", "client")),
+                expect_in_rewrite=("20|twenty", "client")),
     NoumenoCase(id="noumeno_short_hedge",
                 input="Talvez",
                 conversation=("User: Entendi como funciona.\n"
