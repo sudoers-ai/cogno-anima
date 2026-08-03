@@ -623,3 +623,65 @@ async def test_noumeno_context_used_consistency():
             f"Scenario B: Subject changed but context_turn={res_b.context_turn!r} (should be empty)"
         )
 
+
+
+# ────────────────────────────────────────────────────────────────────
+#  10. Short-reply resolution — bare answers to the assistant's question
+#      (regression: real CLOSER session where bare "Sim" wiped the goal
+#       and the agent restarted its arc — see PR #52)
+# ────────────────────────────────────────────────────────────────────
+
+SHORT_REPLY_CASES = [
+    {
+        "desc": "bare_sim_confirms_offer",
+        "conversation": ("User: Por hoje eu me cadastro no Cogno.\n"
+                         "Assistant: Você gostaria de conhecer mais sobre o Cogno?"),
+        "input": "Sim",
+        # resolved: must carry the question's content, not a bare "Yes."
+        "must_contain": [["cogno", "know more", "learn more"]],
+    },
+    {
+        "desc": "bare_channel_answer",
+        "conversation": ("User: Quero melhorar meu atendimento.\n"
+                         "Assistant: Por onde os seus clientes chegam até você?"),
+        "input": "WhatsApp",
+        "must_contain": [["whatsapp"], ["client", "reach", "through", "contact"]],
+    },
+    {
+        "desc": "hedge_preserves_uncertainty",
+        "conversation": ("User: Entendi como funciona.\n"
+                         "Assistant: Quer marcar uma conversa curta com o nosso time?"),
+        "input": "Talvez",
+        # the hedge must stay a hedge (needs_confirmation downstream depends on it)
+        "must_contain": [["maybe", "perhaps"]],
+    },
+]
+
+
+@pytest.mark.parametrize("case", SHORT_REPLY_CASES, ids=[c["desc"] for c in SHORT_REPLY_CASES])
+async def test_noumeno_short_reply_resolution(case):
+    """A bare short answer ("Sim", "WhatsApp") to the assistant's pending question must be
+    resolved into a full statement carrying the question's content — the context-blind NER
+    downstream cannot recover from a bare "Yes." (it classifies SOCIAL and the GoalManager
+    wipes the goal)."""
+    if not await is_ollama_available():
+        pytest.skip("Local Ollama server (http://localhost:11434) is not running.")
+
+    noumeno, llm = _make_real_noumeno()
+
+    ctx = PipelineContext(user_input=case["input"], force_language="pt-BR")
+    ctx.metadata["conversation_history"] = case["conversation"]
+    ctx = await noumeno.process(ctx, llm)
+    res = ctx.noumeno
+
+    _assert_valid_noumeno_result(res, case["input"], llm.model)
+
+    rewritten_lower = res.rewritten.lower()
+    for alternatives in case["must_contain"]:
+        assert any(alt.lower() in rewritten_lower for alt in alternatives), (
+            f"Short reply not resolved against the assistant's question!\n"
+            f"  Input:        {case['input']!r}\n"
+            f"  Conversation: {case['conversation']!r}\n"
+            f"  Rewritten:    {res.rewritten!r}\n"
+            f"  Expected one of: {alternatives!r}"
+        )
