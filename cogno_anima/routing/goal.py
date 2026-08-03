@@ -110,6 +110,7 @@ class GoalManager:
         domains: Optional[list[str]] = None,
         pii_session_hint: bool = False,
         context_dependent: bool = False,
+        ellipsis_reply: bool = False,
     ) -> tuple[str, Optional[str], float]:
         """
         Process a turn; return (goal_status, active_goal, goal_similarity).
@@ -118,13 +119,26 @@ class GoalManager:
         (first turn, fast-paths, no-goal carry-over, completion) and the computed
         value when Stage 2 runs. The caller feeds it to drift.compute_situational
         and surfaces it on IdResult.
+
+        ellipsis_reply marks a bare short answer to the assistant's pending
+        question ("Sim", "WhatsApp", "20") — computed deterministically by the
+        caller (the ID stage). The context-blind NER often classifies such a
+        turn SOCIAL, which Rule 1 would read as goal completion.
         """
         current_domains = set(domains or [])
         prior_active = self._active_goal
         prior_status = self._goal_status
 
         # Rule 1: SOCIAL intent after an active goal → COMPLETED.
+        # Guard: a SOCIAL that is actually an elliptical ANSWER (the assistant
+        # asked, the user replied in a few tokens) must not complete the goal —
+        # erasing it restarts the conversation. Fail-safe: keep it ONGOING; a
+        # genuine farewell mislabeled this way merely keeps the goal one turn
+        # longer, while the inverse error wipes a live goal.
         if intent_class in _COMPLETION_INTENTS and prior_active is not None:
+            if ellipsis_reply:
+                self._goal_status = "ONGOING"
+                return self._goal_status, self._active_goal, 1.0
             self._goal_status = "COMPLETED"
             self._active_goal = None
             self._goal_tokens = set()

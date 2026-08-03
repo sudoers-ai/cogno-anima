@@ -334,3 +334,71 @@ async def test_goal_state_persists_across_turns():
     out2 = await stage.process(ctx2, PlainEmbedder())
     assert out2.id_result.goal_status == "ONGOING"
     assert out2.id_result.active_goal == "configure docker"   # goal persisted
+
+
+# ── Elliptical-reply guard (short answer to the assistant's pending question) ──
+
+_PENDING_QUESTION_HISTORY = (
+    "User: Por hoje eu me cadastro no Cogno.\n"
+    "Assistant: Você gostaria de saber mais sobre como configurar isso?"
+)
+
+
+async def test_ellipsis_reply_social_keeps_goal_ongoing():
+    # Real regression (CLOSER session, turn 51): assistant asked a question, user said "Sim",
+    # NER (context-blind) classified SOCIAL → Rule 1 completed and WIPED the live goal, and
+    # the agent restarted its arc. With the guard the goal must survive as ONGOING.
+    stage = IDStage()
+    ctx1 = make_ctx(_intent(goal="learn how to configure Cogno",
+                            intent_class="INFORMATION_REQUEST", domains=["GENERAL"]))
+    out1 = await stage.process(ctx1, PlainEmbedder())
+
+    ctx2 = PipelineContext(user_input="Sim")
+    ctx2.noumeno = make_noumeno_result("Sim", "Yes.")
+    ctx2.intent = _intent(intent_class="SOCIAL", goal=None)
+    ctx2.metadata["id_state"] = out1.metadata["id_state"]
+    ctx2.metadata["conversation_history"] = _PENDING_QUESTION_HISTORY
+    out2 = await stage.process(ctx2, PlainEmbedder())
+    assert out2.id_result.goal_status == "ONGOING"
+    assert out2.id_result.active_goal == "learn how to configure Cogno"
+
+
+async def test_long_farewell_after_question_still_completes():
+    # The CLOSER ends nearly every reply with a question — a LONG genuine goodbye must still
+    # complete the goal (condition 2 of the guard: input ≤ 3 tokens).
+    stage = IDStage()
+    ctx1 = make_ctx(_intent(goal="learn how to configure Cogno",
+                            intent_class="INFORMATION_REQUEST", domains=["GENERAL"]))
+    out1 = await stage.process(ctx1, PlainEmbedder())
+
+    ctx2 = PipelineContext(user_input="Gostei muito de conversar com você, obrigado pelo papo!")
+    ctx2.noumeno = make_noumeno_result("...", "I really enjoyed talking to you, thanks!")
+    ctx2.intent = _intent(intent_class="SOCIAL", goal=None)
+    ctx2.metadata["id_state"] = out1.metadata["id_state"]
+    ctx2.metadata["conversation_history"] = _PENDING_QUESTION_HISTORY
+    out2 = await stage.process(ctx2, PlainEmbedder())
+    assert out2.id_result.goal_status == "COMPLETED"
+    assert out2.id_result.active_goal is None
+
+
+@pytest.mark.parametrize("user_input,history,expected", [
+    # bare answer + pending question → elliptical
+    ("Sim", _PENDING_QUESTION_HISTORY, True),
+    ("WhatsApp", _PENDING_QUESTION_HISTORY, True),
+    ("Qualquer um deles", _PENDING_QUESTION_HISTORY, True),
+    # trailing emoji/markdown after the "?" is tolerated
+    ("Sim", "Assistant: Quer saber mais? 😊", True),
+    ("Sim", "Assistant: **Quer saber mais?**", True),
+    # 4+ words → carries enough signal on its own
+    ("entre 10 e 20 por dia", _PENDING_QUESTION_HISTORY, False),
+    # assistant's last utterance was not a question
+    ("Sim", "User: oi\nAssistant: Entendi, vou registrar isso.", False),
+    # no transcript at all (first turn / long gap outside the burst)
+    ("Sim", "", False),
+    # transcript without an assistant line
+    ("Sim", "User: oi", False),
+])
+async def test_is_ellipsis_reply_detector(user_input, history, expected):
+    ctx = PipelineContext(user_input=user_input)
+    ctx.metadata["conversation_history"] = history
+    assert IDStage._is_ellipsis_reply(ctx) is expected
