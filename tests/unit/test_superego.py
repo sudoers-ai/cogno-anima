@@ -436,6 +436,56 @@ async def test_voice_surfaces_a_failed_read_so_it_cannot_fabricate():
 
 
 @pytest.mark.asyncio
+async def test_voice_receives_the_draft_on_a_conversational_turn():
+    """EGO=executor, SUPEREGO=locutor — but the voice never actually got the executor's answer.
+
+    The draft reached the voice only as a fallback inside `_tool_payload`
+    (`"\\n".join(parts) or draft`), so ANY tool output discarded it. `resolve_date` and the
+    host's other essential tools ride EVERY turn for every role, so a persona that executes
+    nothing still fills `parts`.
+
+    Measured 2026-08-03 on the CLOSER: the EGO answered "Cogno não integra com Bling e TOTVS",
+    the judge APPROVED it, and the voice prompt then carried two `resolve_date` lines under
+    "ground ONLY in this" — with no content to voice, the model returned the user's own
+    question. Sharpening the judge could never have fixed it: the judge reads the draft, the
+    voice did not."""
+    ctx = _ctx()
+    ctx.metadata[mk.JUDGE_CONVERSATIONAL] = True
+    ctx.ego_result = EgoResult(steps=[EgoStep(
+        index=0, path="native", assistant_text="Cogno não integra com Bling e TOTVS.",
+        tool_calls=[ToolExecution(tool="resolve_date", arguments={}, result="2026-08-03",
+                                  ok=True, side_effect=False, error="")],
+    )], metrics=_m("ego"))
+    b = ScriptedBackend(["resposta"])
+    await SuperegoStage().voice(ctx, b, voice_prompt="x")
+    prompt = b.calls[0]["prompt"]
+    assert "Cogno não integra com Bling e TOTVS." in prompt
+    assert "Executor's answer" in prompt
+    # the tool data still outranks it — the draft is content, not grounding
+    assert "the executor data above wins" in prompt
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_draft_is_not_re_offered_as_content():
+    """The rejection section exists to make the voice DROP the draft; handing it back under
+    'here is the content' would undo that in the same prompt."""
+    ctx = _ctx()
+    ctx.metadata[mk.JUDGE_CONVERSATIONAL] = True
+    ctx.metadata[mk.VOICE_CORRECTION] = {"reason": "claims an integration that does not exist",
+                                         "kind": "unverified_claim"}
+    ctx.ego_result = EgoResult(steps=[EgoStep(
+        index=0, path="native", assistant_text="Sim, o Cogno integra com o Bling!",
+        tool_calls=[ToolExecution(tool="resolve_date", arguments={}, result="2026-08-03",
+                                  ok=True, side_effect=False, error="")],
+    )], metrics=_m("ego"))
+    b = ScriptedBackend(["resposta"])
+    await SuperegoStage().voice(ctx, b, voice_prompt="x")
+    prompt = b.calls[0]["prompt"]
+    assert "Executor's answer" not in prompt
+    assert "UNVERIFIED" in prompt
+
+
+@pytest.mark.asyncio
 async def test_voice_propagates_backend_error():
     with pytest.raises(ConnectionError):
         await SuperegoStage().voice(_ctx(), RaisingBackend(), voice_prompt="x")
@@ -562,6 +612,25 @@ def test_judge_prompt_swaps_the_criteria_for_a_conversational_turn():
     assert "APPROVE BY DEFAULT" in prompt
     assert "REJECT only if one of these is TRUE" in prompt
     assert "DOES NOT APPLY" in prompt
+
+
+def test_conversational_criteria_name_the_echo_and_spare_the_confirmation():
+    """Measured on the local model (closer_bench, qwen3:8b): 3 of ~20 turns answered a direct
+    question by handing the question back — "Você integra com o Bling e com o TOTVS?" — and the
+    judge approved all three. Ducking was already criterion 3; an echo reads like engagement,
+    so it has to be named.
+
+    A deterministic backstop was measured and rejected instead of shipped: token containment put
+    the real echoes at 0.72-0.85 and a legitimate booking confirmation ("Confirmando: quinta às
+    15h?") at 0.75 — overlapping distributions, so the code version would reject confirmations
+    in the flow that books appointments. Naming both sides for the judge is the honest fix."""
+    ctx = _ctx()
+    ctx.metadata[mk.JUDGE_CONVERSATIONAL] = True
+    prompt = SuperegoStage()._build_judge_prompt(ctx, "")
+    assert "Restating the user's own question" in prompt
+    assert "reads like engagement" in prompt
+    # the exemption has to travel with the rule, or the SECRETARY's confirmations start failing
+    assert "CONFIRM" in prompt and "is NOT ducking" in prompt
 
 
 def test_voice_drops_an_unverified_claim_instead_of_revoicing_it():
