@@ -59,6 +59,37 @@ _JUDGE_SYSTEM = (
     "JSON only. Default to NOT approving when you cannot verify the criteria."
 )
 
+_EXECUTION_CRITERIA = (
+    "# Judge the EXECUTION against these criteria (most important first):\n"
+    "1. GOAL↔EXECUTION: did it do exactly what was asked (X, not Y)?\n"
+    "2. CONSTRAINTS: did it honor every user restriction (and NOT do what was forbidden)?\n"
+    "3. COMPLETENESS: was the goal fully met (not partial)?\n"
+    "4. GROUNDING: is everything backed by the tool results (no invented data), "
+    "and are the preserved terms (if any) reproduced exactly?\n"
+    "5. SAFETY/LIMITS: within the persona's limits, no policy violation?\n\n"
+)
+
+# A persona with no tools (a seller, an SDR, a support agent) executes NOTHING by design, so
+# criteria 1 and 3 above are unsatisfiable: measured live, the judge rejected 100% of turns —
+# including replies that were correct and honest — and the retry loop then delivered a handoff
+# message instead of the answer. The host, which is the only layer that knows whether the
+# persona HAS tools, says so; the criteria then judge the DRAFT as an answer. Truth and limits
+# are untouched: they are what a consultative persona is judged on.
+_CONVERSATIONAL_CRITERIA = (
+    "# This turn has NO tool to execute — the persona's job is to CONVERSE. Judge the DRAFT "
+    "as a reply, never the absence of an execution. Criteria (most important first):\n"
+    "1. TRUTH: is every claim backed by the Context above, the persona's limits, or what the "
+    "user said? An invented capability, price, integration or figure is the one fatal error. "
+    "The preserved terms (if any) must be reproduced exactly — a mangled figure, email or URL "
+    "is a fabrication too.\n"
+    "2. CONSTRAINTS: did it honor every user restriction (and NOT do what was forbidden)?\n"
+    "3. ANSWERS: if the user asked something, does the draft answer it? Admitting a limit "
+    "('I don't know', 'that is not in our list') IS a complete answer — APPROVE it; demanding "
+    "more is asking the model to invent. If the user did NOT ask anything (they answered a "
+    "question, or made small talk), a relevant reply or a follow-up question is CORRECT.\n"
+    "4. SAFETY/LIMITS: within the persona's limits, no policy violation?\n\n"
+)
+
 _BLOCKED_FALLBACK = (
     "I detected sensitive personal information in your message and can't process "
     "it as-is. Please rephrase without including personal data."
@@ -266,6 +297,8 @@ class SuperegoStage:
         # valid turn in a handoff.
         injected = ctx.metadata.get(mk.EGO_CONTEXT)
         context = f"# Context (authoritative — clock/memories/history)\n{str(injected).strip()}\n\n" if injected else ""
+        criteria = (_CONVERSATIONAL_CRITERIA
+                    if ctx.metadata.get(mk.JUDGE_CONVERSATIONAL) else _EXECUTION_CRITERIA)
         return (
             f'# User request\n"{ctx.user_input}"\n\n'
             f"{context}"
@@ -275,13 +308,7 @@ class SuperegoStage:
             f"{limits}\n"
             f"# What the EGO executed\n{executed}\n\n"
             f"# EGO draft\n{draft}\n\n"
-            "# Judge the EXECUTION against these criteria (most important first):\n"
-            "1. GOAL↔EXECUTION: did it do exactly what was asked (X, not Y)?\n"
-            "2. CONSTRAINTS: did it honor every user restriction (and NOT do what was forbidden)?\n"
-            "3. COMPLETENESS: was the goal fully met (not partial)?\n"
-            "4. GROUNDING: is everything backed by the tool results (no invented data), "
-            "and are the preserved terms (if any) reproduced exactly?\n"
-            "5. SAFETY/LIMITS: within the persona's limits, no policy violation?\n\n"
+            f"{criteria}"
             "TRUST THE TOOLS: values a tool returned — resolved dates, ids, availability, "
             "figures — are AUTHORITATIVE. Do NOT re-derive them from your own reasoning or "
             "reject them as wrong (e.g. do not second-guess a resolved calendar date against "
@@ -445,15 +472,36 @@ class SuperegoStage:
         rejection = ctx.metadata.get(mk.VOICE_CORRECTION)
         rejection_section = ""
         if isinstance(rejection, dict) and (rejection.get("reason") or "").strip():
-            rejection_section = (
-                "# Execution verdict (HARD RULE)\n"
-                "The execution of this turn was REJECTED by review and NOTHING was committed — "
-                "no action was performed.\n"
-                f"Reviewer critique: {str(rejection['reason']).strip()}\n"
-                "You MUST NOT claim, imply or narrate that any action was performed or completed "
-                "this turn. Either state truthfully what was found in the executor data, or ask "
-                "the user ONE clarifying question to move forward.\n\n"
-            )
+            reason = str(rejection["reason"]).strip()
+            # Two kinds of final rejection, and the wording above only ever covered the first.
+            # When NOTHING executed (a conversational persona), the verdict is about what the
+            # draft CLAIMS, not about an action it never took — so "do not say you did it" is
+            # obeyed trivially while the rejected claim goes straight to the user. Measured
+            # live: the judge rejected "Sim, o Cogno integra com o Bling" twice and the lead
+            # was told exactly that. The draft is UNVERIFIED CONTENT here; it must be dropped,
+            # not re-voiced.
+            if (rejection.get("kind") or "") == "unverified_claim":
+                rejection_section = (
+                    "# Review verdict (HARD RULE)\n"
+                    "The draft below was REJECTED by review as UNVERIFIED — nothing was "
+                    "executed this turn, so the draft is a claim, not a result.\n"
+                    f"Reviewer critique: {reason}\n"
+                    "You MUST NOT repeat the rejected claim, or any softened version of it. "
+                    "Say ONLY what the Context above supports; when it supports nothing, say "
+                    "plainly that you do not have that information — admitting a limit is a "
+                    "COMPLETE answer and is always preferable to repeating an unverified one. "
+                    "You may then ask ONE question to move forward.\n\n"
+                )
+            else:
+                rejection_section = (
+                    "# Execution verdict (HARD RULE)\n"
+                    "The execution of this turn was REJECTED by review and NOTHING was "
+                    "committed — no action was performed.\n"
+                    f"Reviewer critique: {reason}\n"
+                    "You MUST NOT claim, imply or narrate that any action was performed or "
+                    "completed this turn. Either state truthfully what was found in the "
+                    "executor data, or ask the user ONE clarifying question to move forward.\n\n"
+                )
         # The reply language is a HARD instruction (leading the Task), not a soft signal —
         # a small model otherwise drifts into another language when the user's turn is short
         # (e.g. a bare "sim"). Empty language → no directive (let the model match the input).

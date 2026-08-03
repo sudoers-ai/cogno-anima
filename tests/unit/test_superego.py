@@ -2,6 +2,7 @@
 
 import pytest
 
+from cogno_anima import metakeys as mk
 from cogno_anima.stages.superego import SuperegoStage
 from cogno_anima.stages.drift import DriftCalculator
 from cogno_anima.types import (
@@ -527,3 +528,54 @@ def test_retry_metrics_accumulate_judge_calls():
     ctx.retry_metrics.append(StageMetrics(stage="superego_scope", elapsed_ms=1.0,
                                           tokens_in=1, tokens_out=1, model="t"))
     assert ctx.total_tokens == 7
+
+
+# ── conversational turns: no tool to execute (host signal) ───────────
+
+def test_judge_prompt_defaults_to_the_execution_criteria():
+    prompt = SuperegoStage()._build_judge_prompt(_ctx(), "")
+    assert "# Judge the EXECUTION against these criteria" in prompt
+    assert "1. GOAL↔EXECUTION" in prompt
+    assert "This turn has NO tool to execute" not in prompt
+
+
+def test_judge_prompt_swaps_the_criteria_for_a_conversational_turn():
+    """A persona with no tools (a seller, an SDR) executes nothing BY DESIGN, so
+    "GOAL↔EXECUTION: did it do what was asked?" can never be satisfied. Measured live on the
+    CLOSER: the judge rejected 100% of turns — including honest, correct replies — and the
+    retry loop then delivered the tenant's handoff text instead of the answer, on 4 of 12
+    turns. The host (the only layer that knows whether a tool was offered) says so."""
+    ctx = _ctx()
+    ctx.metadata[mk.JUDGE_CONVERSATIONAL] = True
+    prompt = SuperegoStage()._build_judge_prompt(ctx, "")
+    assert "This turn has NO tool to execute" in prompt
+    assert "1. GOAL↔EXECUTION" not in prompt
+    # truth and limits are exactly what a consultative persona IS judged on — never relaxed
+    assert "1. TRUTH" in prompt and "SAFETY/LIMITS" in prompt
+    # the two failures that cost real turns, pinned
+    assert "IS a complete answer" in prompt        # "não consta" must be approvable
+    assert "did NOT ask anything" in prompt        # a lead ANSWERING is not a request
+
+
+def test_voice_drops_an_unverified_claim_instead_of_revoicing_it():
+    """The rejection section only ever spoke about ACTIONS ("nothing was committed", "do not
+    claim you did it"). On a persona with no tools the verdict is about what the draft CLAIMS,
+    so those rules are satisfied trivially and the refused claim shipped: live, the judge
+    rejected "Sim, o Cogno integra com o Bling" twice and the lead was told exactly that."""
+    ctx = _ctx()
+    ctx.metadata[mk.VOICE_CORRECTION] = {"reason": "claims an integration that does not exist",
+                                         "kind": "unverified_claim"}
+    prompt = SuperegoStage()._build_voice_prompt(ctx, "", [])
+    assert "MUST NOT repeat the rejected claim" in prompt
+    assert "admitting a limit is a COMPLETE answer" in prompt.replace("\n", " ")
+    # the action wording would be a no-op here — it must not be what this turn gets
+    assert "no action was performed" not in prompt
+
+
+def test_voice_keeps_the_action_wording_when_tools_ran():
+    ctx = _ctx()
+    ctx.metadata[mk.VOICE_CORRECTION] = {"reason": "booked the wrong day",
+                                         "kind": "not_executed"}
+    prompt = SuperegoStage()._build_voice_prompt(ctx, "", [])
+    assert "no action was performed" in prompt
+    assert "MUST NOT repeat the rejected claim" not in prompt
