@@ -86,7 +86,9 @@ async def run_noumeno(
     dim = DimensionResult(name="noumeno")
     for case in cases:
         try:
-            ctx = await pipe.run(case.input, force_language=language, stop_after="noumeno")
+            metadata = {"conversation_history": case.conversation} if case.conversation else None
+            ctx = await pipe.run(case.input, force_language=language,
+                                 stop_after="noumeno", metadata=metadata)
             n = ctx.noumeno
             checks: list[tuple[str, str, str, bool]] = []
 
@@ -101,6 +103,11 @@ async def run_noumeno(
             if case.expect_changed is not None:
                 checks.append(("changed", str(case.expect_changed), str(n.changed),
                                n.changed == case.expect_changed))
+            # Short-reply resolution: the question's content must be merged into
+            # the rewrite (a bare "Yes."/"WhatsApp" fails these).
+            for term in case.expect_in_rewrite:
+                checks.append((f"resolved:{term}", term, n.rewritten[:40],
+                               term.lower() in n.rewritten.lower()))
 
             for field, expected, actual, correct in checks:
                 dim.checks.append(CheckResult(case.id, field, expected, actual, correct))
