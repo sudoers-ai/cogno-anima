@@ -32,7 +32,8 @@ from cogno_anima.stages.ner import (
 )
 from cogno_anima.security.pii import PII_RISK_LEVELS
 
-MODEL = os.environ.get("COGNO_NER_MODEL", "mistral:latest")
+MODEL = os.environ.get("COGNO_NER_MODEL",
+                       os.environ.get("COGNO_TEST_MODEL", "mistral:latest"))
 LANGUAGE = "pt-BR"
 
 

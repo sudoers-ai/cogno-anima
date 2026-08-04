@@ -332,7 +332,7 @@ async def test_noumeno_mocked_ollama_integration(monkeypatch):
 
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
 
-    llm = OllamaBackend(model="llama3")
+    llm = OllamaBackend(model="llama3")   # mocked below — never pulled
     embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text"))
     noumeno = Noumeno(embedder=embedder, prompts_dir=PROMPTS_DIR, slangs=SLANGS)
 
@@ -547,7 +547,7 @@ async def test_noumeno_drift_reconciliation(monkeypatch):
 
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
 
-    llm = OllamaBackend(model="llama3")
+    llm = OllamaBackend(model="llama3")   # mocked below — never pulled
     embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text"))
     noumeno = Noumeno(embedder=embedder, prompts_dir=PROMPTS_DIR, slangs=SLANGS)
 
