@@ -23,7 +23,6 @@ propagated (the EGO never guesses recoverability). Budget/convergence bounds
 
 from __future__ import annotations
 
-import re
 import time
 import json
 import hashlib
