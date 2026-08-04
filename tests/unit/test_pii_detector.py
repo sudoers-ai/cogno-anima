@@ -140,3 +140,56 @@ async def test_ner_pii_detector_runs_on_original_not_rewrite():
     )
     result = await analyzer.analyze(noumeno)
     assert "CREDIT_CARD" in result.pii
+
+
+# ── checksum veto: an LLM claim contradicted by the validator is dropped ──
+
+def test_checksum_rejected_flags_invalid_shapes(det):
+    # CPF-shaped but checksum-invalid → positively rejected
+    assert "NATIONAL_ID" in det.checksum_rejected("protocolo 123.456.789-00")
+    # card-shaped but Luhn-invalid → positively rejected
+    assert "CREDIT_CARD" in det.checksum_rejected("nota fiscal 1234 5678 9012 3456")
+
+
+def test_checksum_rejected_spares_valid_and_absent(det):
+    # a VALID instance anywhere → the type is never vetoed
+    assert "NATIONAL_ID" not in det.checksum_rejected("meu CPF é 529.982.247-25")
+    # no shape at all → no counter-evidence → nothing rejected
+    assert det.checksum_rejected("olá, tudo bem?") == set()
+    # shape-only types (no validator) are never vetoed
+    assert "EMAIL" not in det.checksum_rejected("a@b.com")
+
+
+@pytest.mark.asyncio
+async def test_ner_vetoes_llm_claim_contradicted_by_checksum():
+    """The LLM tags any CPF-shaped number as NATIONAL_ID; the checksum says otherwise and
+    the checksum is authoritative — without the veto, a protocol/order number inflates
+    pii_risk to HIGH and the ID detours the turn away from the tool gateway (the
+    agent-dumb-pii-misroute class, caught live by the safety bench on gpt-4o-mini)."""
+    payload = dict(PERFECT_JSON)
+    payload["pii"] = ["NATIONAL_ID"]                  # the LLM's (wrong) claim
+    backend = StubBackend(response=json.dumps(payload))
+    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
+    noumeno = make_noumeno_result(
+        original="O protocolo do pedido é 123.456.789-00",   # fails the CPF checksum
+        rewritten="The order protocol is 123.456.789-00",
+    )
+    result = await analyzer.analyze(noumeno)
+    assert "NATIONAL_ID" not in result.pii
+    assert result.pii_risk == "NONE"
+
+
+@pytest.mark.asyncio
+async def test_ner_keeps_llm_claim_without_counter_evidence():
+    """A spelled-out document (no digit shape in the text) leaves the detector with no
+    counter-evidence — the LLM's claim survives (absence is not rejection)."""
+    payload = dict(PERFECT_JSON)
+    payload["pii"] = ["NATIONAL_ID"]
+    backend = StubBackend(response=json.dumps(payload))
+    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
+    noumeno = make_noumeno_result(
+        original="meu CPF é cinco dois nove, nove oito dois, dois quatro sete, dois cinco",
+        rewritten="my CPF is five two nine ...",
+    )
+    result = await analyzer.analyze(noumeno)
+    assert "NATIONAL_ID" in result.pii and result.pii_risk == "HIGH"
