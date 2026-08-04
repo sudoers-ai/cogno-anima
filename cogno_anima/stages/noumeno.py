@@ -163,7 +163,14 @@ class Noumeno:
         ctx.noumeno = NoumenoResult(
             original=user_input,
             rewritten=rewritten,
-            context_turn=context_turn if not change_subject else "",
+            # Cleared when there is nothing to reference. The prompt only carries a "Last Query"
+            # block when `last_rewritten` exists, yet a model asked for `context_turn` will often
+            # fill it anyway — measured against a real model on turn ONE, with no history at all,
+            # it answered "The user is asking about cryptocurrency prices." That is a summary of
+            # the CURRENT turn dressed as prior context. Trusting it set `context_used=True` on a
+            # first contact, which is the same class of mistake as trusting the model's own PII
+            # verdict: the host knows whether history exists, so the host decides.
+            context_turn=context_turn if (not change_subject and last_rewritten) else "",
             language=detected_lang,
             canonical_language="en",
             drift_score=drift_score,
@@ -172,7 +179,7 @@ class Noumeno:
             confidence=confidence,
             change_subject=change_subject,
             subject_similarity=subject_similarity,
-            context_used=bool(context_turn) and not change_subject,
+            context_used=bool(context_turn) and not change_subject and bool(last_rewritten),
             preserved_terms=preserved_terms,
             rewrite_warnings=rewrite_warnings,
             metrics=metrics
