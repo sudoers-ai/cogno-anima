@@ -9,6 +9,9 @@ hallucinated tool dispatch, safety gates) are enforced on every model —
 the numbers below are the model-dependent quality on top of those guarantees.
 
 > Reproduce any cell: `python3 cognobench.py --only <dimension> --model <model>`
+>
+> Picking a model for ONE stage? See **[Choosing a model per slot](#choosing-a-model-per-slot)** —
+> production routes each stage independently, and the best model differs by slot.
 
 ## Scoreboard — quality by cognitive function × local model
 
@@ -70,6 +73,50 @@ Full per-case analyses: [`cognobench/EGO_BENCH_RESULTS.md`](cognobench/EGO_BENCH
 [`CONVERSATION_BENCH_RESULTS.md`](cognobench/CONVERSATION_BENCH_RESULTS.md) ·
 [`BOOKKEEPER_BENCH_RESULTS.md`](cognobench/BOOKKEEPER_BENCH_RESULTS.md) ·
 persona routing: [`ROUTING_BENCH_RESULTS.md`](https://github.com/sudoers-ai/cogno-persona/blob/main/cognobench/ROUTING_BENCH_RESULTS.md).
+
+## Choosing a model PER SLOT
+
+Production routes each stage independently (`tenant.settings["model_routing"]` →
+the `TurnConfig` slots), so "the best model" is the wrong question. The right one
+is *the best model for this slot*, and the answer differs by slot.
+
+**Which dimension measures which slot:**
+
+| dimension | slot it measures |
+|---|---|
+| `noumeno` | `noumeno_model` |
+| `ner` | `ner_model` |
+| `ego` | `ego_model` |
+| `superego` | `scope_model` · `judge_model` · `voice_model` |
+| `conversations` | end to end — all of them together |
+| `id` · `drift` | **none.** Heuristic, no LLM: a model change cannot move them |
+
+Sweep one slot with `--only <dimension> --model <provider:model>`. Sweeping the
+FULL suite per model is usually *cheaper* than dimension-by-dimension, because
+cost is dominated by input tokens and each separate invocation re-sends them.
+
+### NER slot — measured 2026-08-04, `--only ner` (127 checks)
+
+| model | score | PII miss? | $/sweep | ~$/1k turns¹ |
+|---|---|---|---|---|
+| **openai:gpt-4.1-mini** | **96.1%** (122/127) | no | $0.133 | $1.05 |
+| openai:gpt-4o-mini | 92.1% (117/127) | no | $0.049 | $0.39 |
+| qwen3:8b (local) | 90.6% (115/127) | no | free | free |
+| openai:gpt-4.1-nano | 88.2% (112/127) | **yes** | $0.033 | $0.26 |
+
+¹ the NER is **one** call per turn (the EGO is 3-8), so this slot is the cheapest
+in the pipeline to upgrade.
+
+**`gpt-4.1-nano` is the worst of the four — below the free local model — and the
+only one that misses PII** (`ner_pii_address`: risk `MEDIUM` read as `NONE`).
+PII feeds safety routing (CRITICAL blocks, HIGH goes to the SUPEREGO), so
+under-reading it is the dangerous direction. Do not route NER to nano.
+
+`gpt-4.1-mini` clears 8 of the local model's 12 misses — modality, negation,
+constraint, comparative, `parole`. Of its 5 remaining, **one is the instrument**:
+`intent_info_request` demands `NEUTRAL` for *"o que é machine learning?"* and the
+model answered `CURIOUS`, which is in the closed vocabulary and defensible for a
+question. Effective 96.9%.
 
 ## Where small models break (and where they don't)
 
