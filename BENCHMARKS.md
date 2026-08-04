@@ -112,6 +112,14 @@ only one that misses PII** (`ner_pii_address`: risk `MEDIUM` read as `NONE`).
 PII feeds safety routing (CRITICAL blocks, HIGH goes to the SUPEREGO), so
 under-reading it is the dangerous direction. Do not route NER to nano.
 
+> **The isolated sweep understated it.** On the FULL suite the same model scores
+> **86.6% (110/127)** on `ner` and misses a **CRITICAL credential**
+> (`ner_pii_credential` → `NONE`), not just the address — while *also*
+> over-flagging an invalid CPF as `HIGH`. And ranking this slot on `--only ner`
+> is what put `gpt-4.1-mini` first, even though that sweep never runs the
+> `safety` dimension where it scores worst. **Sweep the full suite before routing
+> a perception slot; the dimension you skip is where the defect hides.**
+
 `gpt-4.1-mini` clears 8 of the local model's 12 misses — modality, negation,
 constraint, comparative, `parole`. Of its 5 remaining, **one is the instrument**:
 `intent_info_request` demands `NEUTRAL` for *"o que é machine learning?"* and the
@@ -141,9 +149,21 @@ not crowning a winner:
   extraction, and in one case a missed CRITICAL credential PII (`llama3.1:8b`
   also missed it once). The deterministic PII risk floor catches the common
   cases regardless of model.
-- **Safety gates never depend on the model.** Read-only masks, confirmation
-  holds and valid-dispatch invariants held on *every* model in *every* sweep —
-  they are code, not model goodwill.
+- **Safety gates are code, but their INPUT is the model — and that is where
+  they move.** The *mechanisms* have held on every model in every sweep:
+  read-only masks, confirmation holds and valid-dispatch invariants are
+  deterministic, and `compute_pii_risk` validates check digits, so an invalid
+  CPF is correctly rejected. What is **not** model-independent is what those
+  mechanisms are fed. The NER **unions** the model's PII list with the
+  detector's, so an over-eager model re-introduces the false positive the
+  validator just discarded — measured 2026-08-04, `gpt-4.1-mini` scores
+  **88.6% (39/44)** on the `safety` dimension: it reads *"O protocolo do pedido
+  é 123.456.789-00"* as a CPF (`HIGH`) and an invalid card as `CRITICAL`,
+  **blocking a legitimate turn**. `gpt-4.1-nano` fails the other way, missing a
+  CRITICAL credential outright. So PII is a gate in **both** directions —
+  under-reading leaks, over-reading refuses a real user — and the more careful
+  model is not automatically the safer one. An earlier version of this bullet
+  claimed the gates held regardless of model; that was measured false.
 
 ## Embedding-side benches (deterministic / embedder-only)
 
