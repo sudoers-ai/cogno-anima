@@ -10,7 +10,7 @@ on:
     inputs:
       model:
         description: "Ollama model for the integration suite"
-        default: "qwen2.5:3b"
+        default: "qwen3:8b"
 
 jobs:
   test:
@@ -60,12 +60,17 @@ jobs:
   # + manual gives the signal without turning a red main into noise — the same shape as
   # cogno-host's `ollama-e2e` canary.
   #
-  # A CANARY, not the whole suite, and on a 3B model. The first version ran all 96 tests on
+  # A CANARY, not the whole suite. The first version ran all 96 tests on
   # `mistral:latest` and was measured, not assumed: 56 passed, **30 failed on httpx.ReadTimeout**
   # and it took 2h03. A free runner is 2 CPU cores with no GPU, and a 7B model simply does not
   # answer inside the client timeout there. A nightly that is permanently red is worse than no
   # nightly — it teaches everyone to ignore it, which is precisely how the defects this job
   # exists to catch stayed hidden.
+  #
+  # The model matches what the deployment actually runs (`qwen3:8b`), so this exercises the real
+  # configuration rather than a stand-in — worth more than a faster green. It is also BIGGER than
+  # the mistral that timed out, so the canary is deliberately one file instead of ninety-six
+  # tests; `model:` on a manual dispatch takes a smaller one if the runner cannot keep up.
   #
   # `COGNO_TEST_MODEL` is now real (the suite reads it, defaulting to mistral so local runs are
   # unchanged) — the first draft passed a model through an env var that nothing read, so every
@@ -86,7 +91,7 @@ jobs:
           curl -fsSL https://ollama.com/install.sh | sh
           ollama serve &
           for i in $(seq 1 30); do curl -sf http://localhost:11434/api/tags && break || sleep 1; done
-          ollama pull "${{ github.event.inputs.model || 'qwen2.5:3b' }}"
+          ollama pull "${{ github.event.inputs.model || 'qwen3:8b' }}"
           ollama pull nomic-embed-text:latest
       - name: Install
         run: |
@@ -94,8 +99,8 @@ jobs:
           pip install -e ".[dev]"
       - name: Canary — the contract tests, against a real model
         env:
-          COGNO_TEST_MODEL: "${{ github.event.inputs.model || 'qwen2.5:3b' }}"
-          COGNO_NER_MODEL: "${{ github.event.inputs.model || 'qwen2.5:3b' }}"
+          COGNO_TEST_MODEL: "${{ github.event.inputs.model || 'qwen3:8b' }}"
+          COGNO_NER_MODEL: "${{ github.event.inputs.model || 'qwen3:8b' }}"
         # test_noumeno carries the case that caught the `context_used` defect. Answer-quality
         # assertions live in cognobench, which is run deliberately and not on a CPU runner.
         run: pytest tests/integration/test_noumeno.py -q
