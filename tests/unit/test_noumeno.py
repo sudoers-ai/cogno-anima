@@ -288,8 +288,12 @@ class TestNoumenoStage:
                      'is asking about cryptocurrency prices.", "confidence": 0.95, '
                      '"changed": true, "preserved_terms": [], "rewrite_warnings": []}'
         ))
-        assert ctx.noumeno.context_turn == ""
         assert ctx.noumeno.context_used is False
+        # `context_turn` itself is KEPT. It is a restatement of the current turn rather than
+        # prior context, and the NER — its only consumer — measurably uses it: clearing it
+        # flipped `temporal` from MIXED to RECENT on a cognobench case, 3/3 runs either way.
+        # The defect was the flag claiming provenance, not the text being there.
+        assert ctx.noumeno.context_turn != ""
 
     async def test_no_history_skips_subject_check(self):
         """Without last_rewritten in metadata, similarity defaults to 1.0."""
