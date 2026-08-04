@@ -10,7 +10,7 @@ on:
     inputs:
       model:
         description: "Ollama model for the integration suite"
-        default: "mistral:latest"
+        default: "qwen3:8b"
 
 jobs:
   test:
@@ -60,11 +60,24 @@ jobs:
   # + manual gives the signal without turning a red main into noise — the same shape as
   # cogno-host's `ollama-e2e` canary.
   #
-  # The models are the ones the suite actually asks for, not a smaller stand-in: the cases
-  # hardcode `mistral:latest` (six files), `llama3` (two cases in test_noumeno) and
-  # `nomic-embed-text`. A first draft of this job pulled `phi3:mini` and passed it through an
-  # invented `COGNO_TEST_MODEL` that nothing reads — every test would have asked Ollama for a
-  # model that was never pulled. Cheaper to pull what the suite wants than to pretend.
+  # A CANARY, not the whole suite. The first version ran all 96 tests on
+  # `mistral:latest` and was measured, not assumed: 56 passed, **30 failed on httpx.ReadTimeout**
+  # and it took 2h03. A free runner is 2 CPU cores with no GPU, and a 7B model simply does not
+  # answer inside the client timeout there. A nightly that is permanently red is worse than no
+  # nightly — it teaches everyone to ignore it, which is precisely how the defects this job
+  # exists to catch stayed hidden.
+  #
+  # The model matches what the deployment actually runs (`qwen3:8b`), so this exercises the real
+  # configuration rather than a stand-in — worth more than a faster green. It is also BIGGER than
+  # the mistral that timed out, so the canary is deliberately one file instead of ninety-six
+  # tests; `model:` on a manual dispatch takes a smaller one if the runner cannot keep up.
+  #
+  # `COGNO_TEST_MODEL` is now real (the suite reads it, defaulting to mistral so local runs are
+  # unchanged) — the first draft passed a model through an env var that nothing read, so every
+  # test would have asked Ollama for something never pulled: green, and testing nothing.
+  #
+  # The two `llama3` sites are monkeypatched at the httpx layer and never reach Ollama, so
+  # nothing pulls that 4.7 GB.
   ollama-integration:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -78,12 +91,16 @@ jobs:
           curl -fsSL https://ollama.com/install.sh | sh
           ollama serve &
           for i in $(seq 1 30); do curl -sf http://localhost:11434/api/tags && break || sleep 1; done
-          ollama pull "${{ github.event.inputs.model || 'mistral:latest' }}"
-          ollama pull llama3
+          ollama pull "${{ github.event.inputs.model || 'qwen3:8b' }}"
           ollama pull nomic-embed-text:latest
       - name: Install
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-      - name: Integration suite (real model)
-        run: pytest tests/integration -q
+      - name: Canary — the contract tests, against a real model
+        env:
+          COGNO_TEST_MODEL: "${{ github.event.inputs.model || 'qwen3:8b' }}"
+          COGNO_NER_MODEL: "${{ github.event.inputs.model || 'qwen3:8b' }}"
+        # test_noumeno carries the case that caught the `context_used` defect. Answer-quality
+        # assertions live in cognobench, which is run deliberately and not on a CPU runner.
+        run: pytest tests/integration/test_noumeno.py -q

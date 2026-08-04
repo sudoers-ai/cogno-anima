@@ -10,6 +10,7 @@ Tool execution is delegated to an in-process ``InMemoryDispatcher`` test host (n
 DB/MCP). Auto-skipped if Ollama is unreachable. temperature=0.0 for determinism.
 """
 
+import os
 import httpx
 import pytest
 
@@ -20,7 +21,7 @@ from cogno_anima.types import (
     PipelineContext, IntentResult, NoumenoResult, StageMetrics, ToolResult,
 )
 
-MODEL = "mistral:latest"
+MODEL = os.environ.get("COGNO_TEST_MODEL", "mistral:latest")
 
 
 async def is_ollama_available() -> bool:

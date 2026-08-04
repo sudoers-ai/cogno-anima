@@ -8,6 +8,7 @@ the right tool, which routes to the source that owns it. Auto-skipped without
 Ollama. temperature=0.0 for determinism.
 """
 
+import os
 import httpx
 import pytest
 
@@ -22,7 +23,7 @@ from cogno_anima.types import (
     ToolResult,
 )
 
-MODEL = "mistral:latest"
+MODEL = os.environ.get("COGNO_TEST_MODEL", "mistral:latest")
 
 
 async def is_ollama_available() -> bool:

@@ -8,6 +8,7 @@ temperature=0.0 for determinism. Assertions are INVARIANTS (valid route, termina
 reached, no crash, no hallucinated dispatch) — never exact model wording.
 """
 
+import os
 import httpx
 import pytest
 
@@ -20,7 +21,7 @@ from cognobench.pipeline import ReferencePipeline
 from pathlib import Path
 
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "cogno_anima" / "prompt_templates"
-MODEL = "mistral:latest"
+MODEL = os.environ.get("COGNO_TEST_MODEL", "mistral:latest")
 BASE_URL = "http://localhost:11434"
 
 

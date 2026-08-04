@@ -5,6 +5,7 @@ Scope guard + judge consume JSON → use a json-constrained backend; voice write
 free text → plain backend. Auto-skipped if Ollama is unreachable. temperature=0.0.
 """
 
+import os
 import httpx
 import pytest
 
@@ -15,7 +16,7 @@ from cogno_anima.types import (
     EgoResult, EgoStep, ToolExecution,
 )
 
-MODEL = "mistral:latest"
+MODEL = os.environ.get("COGNO_TEST_MODEL", "mistral:latest")
 
 
 async def is_ollama_available() -> bool:
