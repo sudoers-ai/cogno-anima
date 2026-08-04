@@ -19,6 +19,7 @@ from cognobench.id_cases import IdCase, VALID_GOAL_STATUS, VALID_ROUTES
 from cognobench.ego_cases import (
     EgoCase, BenchDispatcher, EGO_SYSTEM, VALID_TOOLS, SIDE_EFFECT_TOOLS,
 )
+from cognobench.safety_cases import SafetyCase
 from cognobench.superego_cases import SuperegoCase
 from cognobench.conversation_cases import (
     ConversationCase, BenchDispatcher as ConvDispatcher, INHERIT_LANGUAGE,
@@ -506,6 +507,70 @@ async def run_conversations(
                     carry["active_domains"] = ctx.intent.domains
                 if ctx.noumeno:
                     history.append(ctx.noumeno.rewritten)
+        except Exception as exc:  # noqa: BLE001
+            dim.errors.append((case.id, repr(exc)))
+    return dim
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  SAFETY — PII tiers + the blocked-route gate (parent safety_cases, PII half)
+# ──────────────────────────────────────────────────────────────────────────
+
+_RISK_RANK = {"NONE": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
+
+
+async def run_safety(
+    pipe: CognitivePipeline, cases: list[SafetyCase], language: str | None = None,
+) -> DimensionResult:
+    """Run each case through NOUMENO→NER→ID and score PII risk/types + the safety gate.
+
+    Check-name convention (the smoke test keys on it): a ``hard`` case emits
+    ``*_deterministic`` fields — the regex detector decides them on the ORIGINAL text,
+    so they must hold even under a stub backend. Soft cases emit ``*_llm`` fields and
+    are only meaningful against a real model.
+    """
+    dim = DimensionResult(name="safety")
+    for case in cases:
+        try:
+            ctx = await pipe.run(case.input, force_language=language, stop_after="id")
+            intent, idr = ctx.intent, ctx.id_result
+            if intent is None or idr is None:
+                dim.errors.append((case.id, "intent/id_result is None"))
+                continue
+            suffix = "deterministic" if case.hard else "llm"
+            checks: list[tuple[str, str, str, bool]] = []
+
+            if case.max_risk:
+                # Regression pin (anima #29 class): risk must not EXCEED the ceiling —
+                # a bare appointment date inflated to HIGH detours the turn away from
+                # the tool gateway and the agent "goes dumb".
+                checks.append((f"risk_ceiling_{suffix}", f"<= {case.max_risk}",
+                               intent.pii_risk,
+                               _RISK_RANK.get(intent.pii_risk, 9)
+                               <= _RISK_RANK.get(case.max_risk, 0)))
+            else:
+                checks.append((f"risk_{suffix}", case.expect_risk, intent.pii_risk,
+                               intent.pii_risk == case.expect_risk))
+            for t in case.expect_types:
+                checks.append((f"type_{t}_{suffix}", "detected", ",".join(intent.pii),
+                               t in intent.pii))
+            for t in case.expect_absent_types:
+                # Validator pin: a checksum-failing shape-alike must NOT flag.
+                checks.append((f"absent_{t}_{suffix}", "not detected",
+                               ",".join(intent.pii), t not in intent.pii))
+            if case.expect_blocked or case.expect_risk == "CRITICAL":
+                checks.append((f"blocked_{suffix}", str(case.expect_blocked),
+                               str(idr.blocked), idr.blocked == case.expect_blocked))
+            elif case.hard:
+                # A non-critical turn must never trip the block gate (hard invariant).
+                checks.append(("not_blocked_deterministic", "False", str(idr.blocked),
+                               idr.blocked is False))
+            if case.expect_route:
+                checks.append((f"route_{suffix}", case.expect_route, idr.triad_route,
+                               idr.triad_route == case.expect_route))
+
+            for fieldname, expected, actual, correct in checks:
+                dim.checks.append(CheckResult(case.id, fieldname, expected, actual, correct))
         except Exception as exc:  # noqa: BLE001
             dim.errors.append((case.id, repr(exc)))
     return dim

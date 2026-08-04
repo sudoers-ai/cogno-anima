@@ -19,6 +19,7 @@ from cognobench.harness import (
 )
 from cognobench.dimensions import (
     run_noumeno, run_ner, run_id, run_ego, run_superego, run_drift, run_conversations,
+    run_safety,
 )
 from cognobench.types import BenchReport
 from cognobench.report import render
@@ -29,10 +30,12 @@ from cognobench.id_cases import ID_CASES
 from cognobench.ego_cases import EGO_CASES
 from cognobench.superego_cases import SUPEREGO_CASES
 from cognobench.conversation_cases import CONVERSATION_CASES
+from cognobench.safety_cases import SAFETY_CASES
 
 # Pipeline order: NOUMENO → NER → ID → EGO → SUPEREGO → Drift, then the broad
 # end-to-end conversation simulation (full pipeline, multi-turn).
-ALL_DIMENSIONS = ("noumeno", "ner", "id", "ego", "superego", "drift", "conversations")
+ALL_DIMENSIONS = ("noumeno", "ner", "id", "safety", "ego", "superego", "drift",
+                  "conversations")
 
 
 async def run_bench(
@@ -93,6 +96,8 @@ async def run_bench(
     if "id" in dims:
         report.dimensions.append(
             await run_id(pipe, cap(ID_CASES), calibrate=calibrate, language=language))
+    if "safety" in dims:
+        report.dimensions.append(await run_safety(pipe, cap(SAFETY_CASES), language=language))
     if "ego" in dims:
         # EGO needs a TEXT backend: <TOOL_CALL> fallback on Ollama, native FC on cloud.
         # In stub mode the JSON stub yields a no-tool result — enough for plumbing.
