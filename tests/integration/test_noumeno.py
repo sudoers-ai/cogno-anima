@@ -12,6 +12,7 @@ Validates:
   - Full structural validation of NoumenoResult outputs across all tests
 """
 
+import os
 import pytest
 import json
 import httpx
@@ -34,9 +35,16 @@ async def is_ollama_available() -> bool:
         return False
 
 
+# Read from the env like the sibling suites, so one variable drives the whole integration run.
+# It was hardcoded INSIDE the two helpers below, which is how a CI job that pulled a different
+# model still asked Ollama for `mistral` and got 404 on every real test — invisible locally,
+# where every model is already present.
+MODEL = os.environ.get("COGNO_TEST_MODEL", "mistral:latest")
+
+
 def _make_real_noumeno() -> tuple[Noumeno, OllamaBackend]:
     # Using temperature=0.0 to prevent hallucinations and make integration tests deterministic
-    llm = OllamaBackend(model="mistral:latest", temperature=0.0)
+    llm = OllamaBackend(model=MODEL, temperature=0.0)
     embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text:latest"))
     noumeno = Noumeno(embedder=embedder, prompts_dir=PROMPTS_DIR, slangs=SLANGS)
     return noumeno, llm
@@ -431,7 +439,7 @@ async def test_noumeno_anaphoric_reference_resolution(case):
         pytest.skip("Local Ollama server (http://localhost:11434) is not running.")
 
     # Using subject_threshold=0.40 to handle cross-lingual (PT input vs EN history) similarity
-    llm = OllamaBackend(model="mistral:latest", temperature=0.0)
+    llm = OllamaBackend(model=MODEL, temperature=0.0)
     embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text:latest"))
     noumeno = Noumeno(embedder=embedder, prompts_dir=PROMPTS_DIR, slangs=SLANGS, subject_threshold=0.40)
     spy_llm = SpyLLM(llm)
