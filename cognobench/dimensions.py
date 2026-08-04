@@ -191,8 +191,29 @@ async def run_ner(
             if case.expect_negation:
                 negs = " ".join(intent.negation or []).lower()
                 for want in case.expect_negation:
+                    # "|" separates accepted alternatives (the extraction language is the
+                    # canonical English rewrite; cases often expect pt|en variants).
                     checks.append(("negation", want, str(intent.negation or []),
-                                   want.lower() in negs))
+                                   any(alt.lower() in negs for alt in want.split("|"))))
+
+            # Enrichment/decomposition signals (parent decomposition + enrichment cases).
+            if case.expect_is_sequential is not None:
+                checks.append(("is_sequential", str(case.expect_is_sequential),
+                               str(intent.is_sequential),
+                               intent.is_sequential == case.expect_is_sequential))
+            if case.expect_causal_chain_min:
+                chain = list(intent.causal_chain or [])
+                checks.append(("causal_chain_min", f">= {case.expect_causal_chain_min}",
+                               str(len(chain)), len(chain) >= case.expect_causal_chain_min))
+            if case.expect_constraints:
+                cons = " ".join(intent.constraints or []).lower()
+                for want in case.expect_constraints:
+                    checks.append(("constraint", want, str(intent.constraints or []),
+                                   any(alt.lower() in cons for alt in want.split("|"))))
+            if case.expect_context_dependent is not None:
+                checks.append(("context_dependent", str(case.expect_context_dependent),
+                               str(intent.context_dependent),
+                               intent.context_dependent == case.expect_context_dependent))
 
             for field, expected, actual, correct in checks:
                 dim.checks.append(CheckResult(case.id, field, expected, actual, correct))
