@@ -31,6 +31,14 @@ class NERCase:
     expect_is_composite: bool | None = None
     expect_comparatives: list[str] = field(default_factory=list)
     expect_negation: list[str] = field(default_factory=list)
+    # Enrichment/decomposition signals (parent decomposition_cases + enrichment_cases):
+    # is_sequential + causal_chain drive the EGO's ordering instruction and step budget;
+    # constraints feed the executor's "must respect" block and the judge's criterion #2;
+    # context_dependent feeds the ID's anaphoric continuity fast-path (Stage 1.6).
+    expect_is_sequential: bool | None = None
+    expect_causal_chain_min: int = 0            # causal_chain must have at least N steps
+    expect_constraints: list[str] = field(default_factory=list)
+    expect_context_dependent: bool | None = None
 
 
 NER_CASES: list[NERCase] = [
@@ -149,4 +157,42 @@ NER_CASES: list[NERCase] = [
     # ── Negation ─────────────────────────────────────────────────────────
     NERCase(id="negation_explicit", input="não quero usar JavaScript, prefiro TypeScript",
             expect_negation=["JavaScript"]),
+
+    # ── Decomposition (parent decomposition_cases): composite vs sequential vs single ──
+    NERCase(id="decomp_cross_domain_composite",
+            input="me passa o resumo financeiro do mês e agenda uma reunião com o contador",
+            expect_is_composite=True, expect_intent="ACTION_REQUEST"),
+    NERCase(id="decomp_sequential_chain",
+            input="primeiro cancela a consulta de quinta e depois marca uma nova na sexta às 10h",
+            expect_is_composite=True, expect_is_sequential=True, expect_causal_chain_min=2),
+    NERCase(id="decomp_dependency_is_sequential",
+            input="verifica se o Dr. Silva tem horário na sexta e aí então remarca a minha consulta",
+            expect_is_sequential=True),
+    NERCase(id="decomp_single_not_composite",
+            input="marca uma consulta para amanhã às 10h",
+            expect_is_composite=False, expect_is_sequential=False),
+    NERCase(id="decomp_social_not_composite",
+            input="bom dia, tudo bem por aí?",
+            expect_is_composite=False, expect_intent="SOCIAL"),
+
+    # ── Enrichment (parent enrichment_cases): constraints / negation / back-reference ──
+    # Constraints/negation are extracted from the canonical ENGLISH rewrite — the
+    # expectations accept both languages ("|" separates alternatives).
+    NERCase(id="enrich_constraint_brevity",
+            input="me explica o plano premium em no máximo 3 linhas",
+            expect_constraints=["3 lin|three lin"]),
+    NERCase(id="enrich_constraint_window",
+            input="quero um horário, mas só pode ser depois das 18h",
+            expect_constraints=["18h|18:00|6 pm|6pm|after 6"]),
+    NERCase(id="enrich_negation_multi",
+            input="explica os planos, mas sem falar de preço nem de tokens",
+            expect_negation=["preço|price", "token"]),
+    # "o mesmo" is in the deterministic anaphora backstop (singular "ele" is deliberately
+    # NOT — it would mask genuine topic changes), so this holds even when the LLM misses.
+    NERCase(id="enrich_back_reference",
+            input="e o mesmo vale para o plano básico?",
+            expect_context_dependent=True),
+    NERCase(id="enrich_fresh_question_not_dependent",
+            input="qual o preço do plano básico?",
+            expect_context_dependent=False),
 ]
