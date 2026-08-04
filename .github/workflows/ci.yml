@@ -101,6 +101,26 @@ jobs:
         env:
           COGNO_TEST_MODEL: "${{ github.event.inputs.model || 'qwen3:8b' }}"
           COGNO_NER_MODEL: "${{ github.event.inputs.model || 'qwen3:8b' }}"
+          # This runner has no GPU. cogno-synapse defaults to a 120 s per-call timeout,
+          # which is right for a GPU box and short for ONE generation on an 8B model here:
+          # the 2026-08-04 nightly died on httpx.ReadTimeout with 40 of 41 tests PASSING.
+          # Nothing was wrong but the clock. Needs cogno-synapse >= 0.1.2.
+          COGNO_OLLAMA_TIMEOUT: "600"
         # test_noumeno carries the case that caught the `context_used` defect. Answer-quality
         # assertions live in cognobench, which is run deliberately and not on a CPU runner.
-        run: pytest tests/integration/test_noumeno.py -q
+        #
+        # The assert first: COGNO_OLLAMA_TIMEOUT only does anything on cogno-synapse >= 0.1.2,
+        # and pip resolving an older one would silently restore the 120 s timeout and turn this
+        # job red again for a reason the log would not name. Fail on the cause, not the symptom.
+        run: |
+          python - <<'EOF'
+          import os
+          from cogno_synapse import OllamaBackend
+          want = int(os.environ["COGNO_OLLAMA_TIMEOUT"])
+          got = OllamaBackend(model="probe").timeout
+          assert got == want, (
+              f"installed cogno-synapse ignores COGNO_OLLAMA_TIMEOUT (timeout={got}, "
+              f"expected {want}) — needs >= 0.1.2, or this job times out on a CPU runner")
+          print(f"ollama timeout = {got}s")
+          EOF
+          pytest tests/integration/test_noumeno.py -q
