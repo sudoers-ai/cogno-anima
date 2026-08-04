@@ -523,8 +523,11 @@ class EgoStage:
         # optional) → defang the brackets.
         text = re.sub(rf"\[({names})(\([^)]*\))?\]", r"(\1\2)", text)
         # Format 2: inline JSON {… "tool":"realtool" … "args":{…} …} → break the "tool" KEY so the
-        # parser's `"tool"\s*:` match misses (only when the value is a real tool name).
-        text = re.sub(rf'"tool"(\s*:\s*"(?:{names})")', r'"tool "\1', text)
+        # parser's `"tool"\s*:` match misses (only when the value is a real tool name). The
+        # optional ``functions.`` prefix MUST be covered: the parser strips that namespace
+        # hallucination before checking the name, so `"functions.cancel_appointment"` is executed
+        # just like the bare name — without this the payload sails straight through.
+        text = re.sub(rf'"tool"(\s*:\s*"(?:functions\.)?(?:{names})")', r'"tool "\1', text)
         return text
 
     @staticmethod
