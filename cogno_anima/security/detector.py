@@ -165,6 +165,30 @@ class PiiDetector:
                 break  # one hit per pattern is enough
         return found
 
+    def checksum_rejected(self, text: str) -> set[str]:
+        """Types the text POSITIVELY fails: a validated pattern (CPF/CNPJ checksum, card
+        Luhn) matched the SHAPE but every candidate failed its checksum — so the number is
+        definitely NOT that document (an order/protocol number that merely looks like one).
+
+        Used to veto an LLM's claim of the same type: the NER unions the model's ``pii``
+        list with this detector, and a model routinely tags any CPF-shaped number as
+        NATIONAL_ID — checksum says otherwise, and checksum is authoritative. Without the
+        veto the false claim inflates ``pii_risk`` to HIGH and the ID detours an actionable
+        turn away from the tool gateway (the ``agent-dumb-pii-misroute`` failure class,
+        caught by the safety bench). A type with ANY valid instance in the text is never
+        vetoed; types without a validator (shape-only patterns) are never vetoed either —
+        there is no counter-evidence, only absence."""
+        if not text:
+            return set()
+        shaped: set[str] = set()
+        for pat in self._patterns:
+            if pat.validator is None:
+                continue
+            for match in pat.pattern.findall(text):
+                shaped.add(pat.pii_type)
+                break
+        return shaped - set(self.detect(text))
+
 
 def default_detector(extra: Optional[list[PiiPattern]] = None) -> PiiDetector:
     """Default detector: Brazil + international, with optional extra country packs.

@@ -539,6 +539,14 @@ class IntentAnalyzer:
         # (run on the ORIGINAL text). pii_risk is always recomputed in-core.
         pii_llm = normalize_pii_types(data.get("pii", []))
         pii_regex = self._pii_detector.detect(original) if original else []
+        # Checksum veto: a type whose shape appears in the text but fails its checksum
+        # (invalid CPF/CNPJ, non-Luhn card) is POSITIVELY not that document — drop the
+        # LLM's claim of it, or an order/protocol number inflates pii_risk to HIGH and
+        # the ID detours the turn away from the tool gateway. An LLM claim with no
+        # shape in the text at all (a spelled-out number) is kept — there the detector
+        # has no counter-evidence, only absence.
+        vetoed = self._pii_detector.checksum_rejected(original) if original else set()
+        pii_llm = [t for t in pii_llm if t not in vetoed]
         pii = list(dict.fromkeys([*pii_llm, *pii_regex]))[:10]
         # Drop a DATE_OF_BIRTH the LLM invented from a bare/appointment date (no birth context
         # in the original) — otherwise a plain date inflates pii_risk to HIGH and the ID detours
