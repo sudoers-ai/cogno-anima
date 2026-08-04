@@ -53,6 +53,10 @@ class BenchReport:
     """Top-level report across all dimensions."""
     dimensions: list[DimensionResult] = field(default_factory=list)
     model: str = ""
+    # Prompt-variant label (``--prompts-dir``'s basename, "default" for the shipped
+    # templates). Two runs of the same model are only comparable when this matches,
+    # so it travels in the JSON for the sweep ledger.
+    prompts: str = "default"
     # Cost meter (filled by the runner's TokenTally): total LLM tokens/calls across
     # the run — multiply by the provider's price table for $ per sweep. 0 on --stub.
     tokens_in: int = 0
@@ -74,6 +78,7 @@ class BenchReport:
     def to_dict(self) -> dict:
         return {
             "model": self.model,
+            "prompts": self.prompts,
             "overall_accuracy": round(self.accuracy, 1),
             "total": self.total,
             "correct": self.correct_count,

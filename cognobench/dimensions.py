@@ -9,6 +9,7 @@ no SkillRegistry, no infra. Scoring targets cogno-anima's `IntentResult`,
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from cognobench.harness import CognitivePipeline
 from cognobench.types import CheckResult, DimensionResult
@@ -452,11 +453,17 @@ async def run_superego(
 async def run_conversations(
     gen_backend: LLMBackend, ego_backend: LLMBackend, embedder: Embedder,
     cases: list[ConversationCase], calibrate: bool = False, language: str | None = None,
+    prompts_dir: Path | None = None,
 ) -> DimensionResult:
     """Drive whole sessions through the ReferencePipeline, threading id_state +
-    history + injected memories (modelling the sessions/turns/memories tables)."""
+    history + injected memories (modelling the sessions/turns/memories tables).
+
+    This dimension builds its OWN pipeline, so it takes ``prompts_dir`` separately
+    from the shared ``CognitivePipeline`` — otherwise a ``--prompts-dir`` sweep
+    would silently score this one dimension against the baseline prompts."""
     dim = DimensionResult(name="conversations")
-    pipe = ReferencePipeline(prompts_dir=PROMPTS_DIR, embedder=embedder, slangs=SLANGS)
+    pipe = ReferencePipeline(prompts_dir=prompts_dir or PROMPTS_DIR,
+                             embedder=embedder, slangs=SLANGS)
 
     for case in cases:
         try:

@@ -222,9 +222,12 @@ async def test_pii_risk_ignores_llm_value_and_recomputes():
 #  domains: prompt ↔ code alignment, GENERAL regression
 # ────────────────────────────────────────────────────────────────────
 
-def _parse_prompt_domains() -> set[str]:
-    """Extract the closed `domains` list declared in cogno_anima/prompt_templates/ner/system.txt."""
-    text = (PROMPTS_DIR / "ner" / "system.txt").read_text(encoding="utf-8")
+def _parse_prompt_domains(root: Path = PROMPTS_DIR) -> set[str]:
+    """Extract the closed `domains` list declared in <root>/ner/system.txt.
+
+    ``root`` is a parameter so the prompt-variant suite can hold a slimmed prompt
+    to the same contract as the shipped one (see tests/unit/test_prompt_variants.py)."""
+    text = (root / "ner" / "system.txt").read_text(encoding="utf-8")
     anchor = "EXACT closed list:"
     start = text.index(anchor) + len(anchor)
     region = text[start:text.index("Do NOT invent", start)]
@@ -241,9 +244,9 @@ def test_general_domain_is_accepted():
     assert "GENERAL" in NER_KNOWLEDGE_DOMAINS
 
 
-def _parse_prompt_mandatory_tags() -> set[str]:
-    """Extract the mandatory_tags vocabulary declared in cogno_anima/prompt_templates/ner/system.txt."""
-    text = (PROMPTS_DIR / "ner" / "system.txt").read_text(encoding="utf-8")
+def _parse_prompt_mandatory_tags(root: Path = PROMPTS_DIR) -> set[str]:
+    """Extract the mandatory_tags vocabulary declared in <root>/ner/system.txt."""
+    text = (root / "ner" / "system.txt").read_text(encoding="utf-8")
     anchor = "mandatory_tags — 1 to 3 of:"
     start = text.index(anchor) + len(anchor)
     line = text[start:text.index("\n", start)]
@@ -257,11 +260,12 @@ def test_code_mandatory_tags_match_prompt_exactly():
     assert "LOGIC" not in VALID_MANDATORY
 
 
-def test_all_vocab_values_are_taught_by_the_prompt():
-    """Single-source guard: every value in cogno_anima.vocab must appear in the NER
-    prompt. Adding a value to vocab without teaching the LLM (or vice-versa) fails here."""
+def vocab_values_missing_from(text: str) -> dict[str, list[str]]:
+    """Vocabulary values the given NER prompt text fails to teach, by set name.
+
+    Public so the prompt-variant suite reuses it: a slimmed prompt that drops a
+    value the code still accepts is a contract break, not a smaller prompt."""
     from cogno_anima import vocab
-    text = (PROMPTS_DIR / "ner" / "system.txt").read_text(encoding="utf-8")
     sets = {
         "VALID_INTENTS": vocab.VALID_INTENTS,
         "VALID_SENTIMENTS": vocab.VALID_SENTIMENTS,
@@ -276,7 +280,14 @@ def test_all_vocab_values_are_taught_by_the_prompt():
     }
     missing = {name: sorted(v for v in values if v not in text)
                for name, values in sets.items()}
-    missing = {k: v for k, v in missing.items() if v}
+    return {k: v for k, v in missing.items() if v}
+
+
+def test_all_vocab_values_are_taught_by_the_prompt():
+    """Single-source guard: every value in cogno_anima.vocab must appear in the NER
+    prompt. Adding a value to vocab without teaching the LLM (or vice-versa) fails here."""
+    text = (PROMPTS_DIR / "ner" / "system.txt").read_text(encoding="utf-8")
+    missing = vocab_values_missing_from(text)
     assert not missing, f"vocab values absent from the NER prompt: {missing}"
 
 

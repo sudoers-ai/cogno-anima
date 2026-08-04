@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 from cogno_synapse import LLMBackend, Embedder, OllamaBackend, OllamaEmbedder, CachingEmbedder
+from cogno_anima.prompts import load_prompt
 from cogno_anima.stages.noumeno import Noumeno
 from cogno_anima.stages.ner import IntentAnalyzer
 from cogno_anima.stages.id import IDStage
@@ -24,6 +25,28 @@ from cogno_anima.types import PipelineContext
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "cogno_anima" / "prompt_templates"
 
 SLANGS = {"vc": "você", "pq": "porque", "blz": "beleza", "pfv": "por favor"}
+
+# Every prompt a `--prompts-dir` variant tree must supply, as (stage, filename).
+_REQUIRED_PROMPTS = (
+    ("noumeno", "system.txt"), ("noumeno", "user.txt"),
+    ("ner", "system.txt"), ("ner", "user.txt"),
+)
+
+
+def validate_prompts_dir(root: Path) -> list[str]:
+    """Return the prompts a variant tree fails to supply, empty list when sound.
+
+    ``load_prompt`` returns ``""`` for a missing file rather than raising, so a
+    typo in a variant path would otherwise hand a stage an EMPTY system prompt and
+    the bench would happily score the resulting garbage as if it were a result.
+    A whole sweep can be wasted that way, so the runner refuses to start instead.
+    Frontmatter-only files are caught too: emptiness is checked AFTER cleaning.
+    """
+    missing = []
+    for stage, name in _REQUIRED_PROMPTS:
+        if not load_prompt(stage, name, prompts_dir=root).strip():
+            missing.append(f"{stage}/{name}")
+    return missing
 
 
 @dataclass
@@ -35,11 +58,15 @@ class PipelineOutput:
 class CognitivePipeline:
     """Reference NOUMENO → NER → Drift pipeline for benchmarking."""
 
-    def __init__(self, backend: LLMBackend, embedder: Embedder) -> None:
+    def __init__(
+        self, backend: LLMBackend, embedder: Embedder,
+        prompts_dir: Optional[Path] = None,
+    ) -> None:
         self._backend = backend
         self._embedder = embedder
-        self._noumeno = Noumeno(embedder=embedder, prompts_dir=PROMPTS_DIR, slangs=SLANGS)
-        self._ner = IntentAnalyzer(prompts_dir=PROMPTS_DIR)
+        root = prompts_dir or PROMPTS_DIR
+        self._noumeno = Noumeno(embedder=embedder, prompts_dir=root, slangs=SLANGS)
+        self._ner = IntentAnalyzer(prompts_dir=root)
         self._id = IDStage()
         self._drift = DriftCalculator()
 

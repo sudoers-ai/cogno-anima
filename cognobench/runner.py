@@ -13,9 +13,11 @@ import asyncio
 import json
 import sys
 
+from pathlib import Path
+
 from cognobench.harness import (
     CognitivePipeline, TokenTally, build_cloud, build_local_embedder, build_ollama,
-    build_ollama_text, build_stub, ollama_available,
+    build_ollama_text, build_stub, ollama_available, validate_prompts_dir,
 )
 from cognobench.dimensions import (
     run_noumeno, run_ner, run_id, run_ego, run_superego, run_drift, run_conversations,
@@ -48,6 +50,7 @@ async def run_bench(
     calibrate: bool,
     language: str | None = "pt-BR",
     think: bool = False,
+    prompts_dir: Path | None = None,
 ) -> BenchReport:
     # "openai:gpt-4o-mini" etc. → cloud column (the synapse factory owns the prefix
     # registry; a bare/unknown prefix — mistral:latest, qwen3:8b — stays Ollama).
@@ -81,8 +84,9 @@ async def run_bench(
         text_backend = TokenTally(build_ollama_text(model, base_url, think=think))
         model_label = f"{model} (think)" if think else model
 
-    pipe = CognitivePipeline(backend, embedder)
-    report = BenchReport(model=model_label)
+    pipe = CognitivePipeline(backend, embedder, prompts_dir=prompts_dir)
+    report = BenchReport(model=model_label,
+                         prompts=prompts_dir.name if prompts_dir else "default")
 
     dims = [d for d in ALL_DIMENSIONS if d in only] if only else list(ALL_DIMENSIONS)
 
@@ -115,7 +119,8 @@ async def run_bench(
         # Full-pipeline multi-turn simulation: gen=JSON backend, ego/voice=text backend.
         report.dimensions.append(
             await run_conversations(backend, text_backend, embedder, cap(CONVERSATION_CASES),
-                                    calibrate=calibrate, language=language))
+                                    calibrate=calibrate, language=language,
+                                    prompts_dir=prompts_dir))
 
     # Cost meter: total LLM tokens across every backend call this run (the tallies
     # wrap both the JSON and the text paths; on cloud they are the same instance).
@@ -157,16 +162,32 @@ def main(argv: list[str] | None = None) -> int:
                         help="Enable the reasoning channel (qwen3, deepseek, …). No-op "
                              "under JSON ops (scope/judge); visible on the text path "
                              "(EGO loop, SUPEREGO voice). Use to compare accuracy×latency.")
+    parser.add_argument("--prompts-dir", type=Path, default=None, metavar="PATH",
+                        help="Run against an alternate prompt-template tree (same layout "
+                             "as cogno_anima/prompt_templates: <stage>/<file>.txt). Used to "
+                             "A/B prompt variants — the tree's directory name is recorded "
+                             "as the run's 'prompts' label. Default: the shipped templates.")
     parser.add_argument("--json", action="store_true",
                         help="Emit machine-readable JSON summary instead of the table")
     parser.add_argument("--no-failures", action="store_true",
                         help="Hide the per-failure breakdown")
     args = parser.parse_args(argv)
 
+    # Refuse to start on a broken variant tree. `load_prompt` returns "" for a
+    # missing file, so an unchecked typo would run the whole sweep with an EMPTY
+    # system prompt and score the garbage as a result — an expensive silent lie.
+    if args.prompts_dir is not None:
+        missing = validate_prompts_dir(args.prompts_dir)
+        if missing:
+            print(f"✗ --prompts-dir {args.prompts_dir} is missing or empty: "
+                  f"{', '.join(missing)}", file=sys.stderr)
+            return 2
+
     report = asyncio.run(run_bench(
         model=args.model, embed_model=args.embed_model, base_url=args.base_url,
         only=args.only, stub=args.stub, limit=args.limit, calibrate=args.calibrate,
         language=None if args.detect else args.language, think=args.think,
+        prompts_dir=args.prompts_dir,
     ))
 
     if args.json:

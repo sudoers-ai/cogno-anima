@@ -1,0 +1,5 @@
+History:
+{history}
+
+Current input:
+{input}
