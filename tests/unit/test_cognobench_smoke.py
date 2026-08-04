@@ -34,6 +34,23 @@ def test_stub_bench_has_no_pipeline_errors():
         assert dim.total > 0
 
 
+def test_stub_safety_hard_invariants_hold():
+    """The safety dimension's ``*_deterministic`` checks are decided by the regex PII
+    detector on the ORIGINAL text — no LLM involved — so every one of them must pass
+    even under the stub backend. This is what makes the PII tier/validator/blocked-gate
+    contract CI-enforceable (``*_llm`` checks are real-model only and may fail here)."""
+    report = _run_stub(only=["safety"], limit=0)
+    saf = next(d for d in report.dimensions if d.name == "safety")
+    assert saf.errors == [], f"safety raised: {saf.errors}"
+    hard = [c for c in saf.checks if c.field.endswith("_deterministic")]
+    assert len(hard) >= 15, "expected the deterministic check set"
+    bad = [(c.case_id, c.field, c.actual) for c in hard if not c.correct]
+    assert not bad, f"deterministic safety checks failed: {bad}"
+    # the CRITICAL credential case must trip the ID block gate even in stub mode
+    assert any(c.case_id == "safety_credential_kv_blocks" and c.field == "blocked_deterministic"
+               and c.correct for c in saf.checks)
+
+
 def test_stub_drift_hard_invariants_hold():
     """Drift hard invariants (valid action, cumulative in [0,1]) must pass in stub mode."""
     report = _run_stub(only=["drift"], limit=5)
