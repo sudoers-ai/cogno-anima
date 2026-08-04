@@ -63,3 +63,26 @@ def test_the_prompts_the_stages_load_are_actually_there():
             f = TEMPLATES / stage / f"{slot}.txt"
             assert f.is_file(), f"{stage}/{slot}.txt is missing"
             assert f.read_text().strip(), f"{stage}/{slot}.txt is EMPTY"
+
+
+# ── the integration suite must be steerable by one env var ────────────────────────────────
+#
+# Every real-model site has to read COGNO_TEST_MODEL, or a CI job that pulls one model still
+# asks Ollama for another. That happened on 2026-08-04: the canary pulled qwen3:8b, two helpers
+# in test_noumeno.py still said "mistral:latest", and all 39 real tests died on 404 — invisible
+# locally, where every model is already pulled. Lives in the unit suite so CI enforces it.
+
+def test_no_integration_test_hardcodes_a_real_model():
+    import re
+
+    offenders = []
+    for f in (ROOT / "tests" / "integration").glob("*.py"):
+        for i, line in enumerate(f.read_text().splitlines(), 1):
+            m = re.search(r'OllamaBackend\(\s*model\s*=\s*"([^"]+)"', line)
+            # A mocked site never reaches Ollama, so its name is a label, not a pull.
+            if m and "mocked" not in line:
+                offenders.append(f"{f.name}:{i} -> {m.group(1)}")
+    assert not offenders, (
+        "these build a real backend with a hardcoded model, so COGNO_TEST_MODEL cannot steer "
+        f"them and a CI job that pulls a different model gets 404: {offenders}"
+    )
