@@ -9,7 +9,8 @@ from typing import Optional
 from cogno_anima import metakeys as mk
 from cogno_anima.types import PipelineContext, NoumenoResult, StageMetrics
 from cogno_synapse import LLMBackend, Embedder
-from cogno_anima.utils import expand_slangs, parse_json_object
+from cogno_anima.utils import (expand_slangs, generate_json_resilient,
+                               parse_json_object)
 from cogno_anima.prompts import load_prompt
 from cogno_anima.errors import StageParseError
 
@@ -122,11 +123,12 @@ class Noumeno:
 
         prompt = self._user_tpl.format(history=history_str, input=normalized_input)
 
-        # 5. Call LLM
-        raw_response, tokens_in, tokens_out = await llm.generate(self._system, prompt)
-
-        # 6. Parse JSON Response
-        data = self._parse_json(raw_response)
+        # 5. Call LLM  +  6. Parse JSON Response
+        # A response cut mid-stream is transient and buys exactly one more attempt; anything
+        # else still raises on the first. Tokens are summed across attempts so a retry shows
+        # up in metering instead of being billed invisibly.
+        data, tokens_in, tokens_out = await generate_json_resilient(
+            llm, self._system, prompt, self._parse_json, stage=STAGE_NAME)
         rewritten = data.get("rewritten", "").strip() or user_input
         context_turn = data.get("context_turn", "").strip()
         confidence = float(data.get("confidence", 1.0))
