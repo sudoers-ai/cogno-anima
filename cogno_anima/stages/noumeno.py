@@ -176,7 +176,30 @@ class Noumeno:
             # LIE is `context_used` below, which claimed prior context had been used on a first
             # contact. Removing a working input to fix a mislabelled flag would have traded real
             # accuracy for tidiness.
-            context_turn=context_turn if not change_subject else "",
+            # `context_turn` survives a subject change; the THREAD's continuity does not.
+            #
+            # `change_subject` is a cosine against LAST_REWRITTEN, so when the previous turn was
+            # a short reply its rewrite carries no content ("Claro" -> "Sure.") and everything
+            # after it reads as a topic change: measured firing on 8 of 10 real CLOSER turns,
+            # and 15 of 15 on the sequence that produced the live defect (cosine 0.522). The
+            # transcript is already injected UNCONDITIONALLY for exactly that reason (anima
+            # #52); this field was left gated on the same boolean that fix declared unreliable.
+            #
+            # And it is the only channel carrying the conversational frame to the NER. On the
+            # turn that broke live, the model wrote the answer and the code dropped it one line
+            # later: "The user is PROVIDING INFORMATION about the average volume of daily
+            # customer service calls received." The NER, without it, read a lead ANSWERING a
+            # discovery question as one ASKING for an arithmetic mean.
+            #
+            # The distinction that makes this safe: `context_turn` describes THIS utterance in
+            # light of what was just said — even a topic-changing message is interpreted against
+            # the assistant's last question. The thread's continuity (prior_goal,
+            # active_domains) is a different thing and still drops; see ner.py.
+            #
+            # Measured, gpt-4o-mini, real embedder: goal naming its referent 2/15 -> 8/15
+            # (p=0.050). SECRETARY suite 42/45 -> 41/45 — one check, on a holiday scenario,
+            # inside the run-to-run spread; reschedule/cancel/long_meander/troll all identical.
+            context_turn=context_turn if (not change_subject or conversation) else "",
             language=detected_lang,
             canonical_language="en",
             drift_score=drift_score,

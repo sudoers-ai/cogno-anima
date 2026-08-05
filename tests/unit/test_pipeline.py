@@ -179,8 +179,13 @@ async def test_change_subject_false_uses_context():
 
 
 @pytest.mark.asyncio
-async def test_change_subject_true_clears_context():
-    """change_subject=True → all prior context is stripped before prompting."""
+async def test_change_subject_true_clears_the_THREADs_continuity():
+    """change_subject=True → what the conversation WAS about is stripped before prompting.
+
+    Prior goal, active domains and turn number describe the thread. On a genuine topic change
+    they are noise at best and misdirection at worst, so they go. `context_turn` does not —
+    see the test below; that split is the point.
+    """
     from tests.unit.test_ner import make_noumeno_result
     backend = _PromptCapture(response=NER_JSON)
     analyzer = _ner_stage()
@@ -190,10 +195,42 @@ async def test_change_subject_true_clears_context():
         noumeno, prior_goal="keep-the-car-clean",
         active_domains=["LOGISTICS"], turn_number=7, llm=backend,
     )
-    assert "car washing" not in backend.generated_prompt
     assert "keep-the-car-clean" not in backend.generated_prompt
     assert "LOGISTICS" not in backend.generated_prompt
     assert "TURN: 7" not in backend.generated_prompt
+
+
+@pytest.mark.asyncio
+async def test_change_subject_true_KEEPS_the_frame_for_this_utterance():
+    """`context_turn` survives, and this half is a deliberate change of contract.
+
+    It used to be stripped with everything else. `change_subject` is a cosine against
+    LAST_REWRITTEN, so after a short reply ("Claro" -> "Sure.") the anchor carries no content
+    and everything said next reads as a topic change — measured firing on 8 of 10 real CLOSER
+    turns, and 15 of 15 on the sequence that broke live (cosine 0.522). The transcript is
+    already injected unconditionally for exactly that reason (anima #52); this field was left
+    gated on the same boolean that fix declared unreliable.
+
+    What it costs to drop it is concrete. On the live turn the model wrote "The user is
+    PROVIDING INFORMATION about the average volume of daily customer service calls received"
+    and the code discarded it one line later; the NER then read a lead ANSWERING a discovery
+    question as one ASKING for an arithmetic mean, and the agent replied with 8,5.
+
+    The distinction that makes keeping it safe: `context_turn` describes THIS utterance in
+    light of what the assistant just said. Even a topic-changing message is interpreted
+    against that. The thread's continuity is a different thing and still drops (test above).
+
+    Measured, gpt-4o-mini + real embedder: goal naming its referent 2/15 -> 8/15 (p=0.050);
+    SECRETARY suite 42/45 -> 41/45, one check on a holiday scenario, inside the run-to-run
+    spread, with reschedule/cancel/long_meander/troll identical in both arms.
+    """
+    from tests.unit.test_ner import make_noumeno_result
+    backend = _PromptCapture(response=NER_JSON)
+    analyzer = _ner_stage()
+
+    noumeno = make_noumeno_result(change_subject=True, context_turn="car washing")
+    await analyzer.analyze(noumeno, prior_goal="keep-the-car-clean", llm=backend)
+    assert "car washing" in backend.generated_prompt
 
 
 # ────────────────────────────────────────────────────────────────────

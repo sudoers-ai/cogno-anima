@@ -184,7 +184,13 @@ class IntentAnalyzer:
             prior_goal_line = ""
             domain_context_line = ""
             turn_context_line = ""
-            context_turn = ""
+            # The THREAD's continuity — prior goal, active domains, turn number — is rightly
+            # dropped on a subject change: those describe what the conversation WAS about.
+            # `context_turn` is not about the thread. It describes THIS utterance in light of
+            # what the assistant just said, and even a topic-changing message is read against
+            # that. Dropping it here was the second of two discards (NOUMENO does the first),
+            # and it is what left the NER interpreting a bare sentence with no anchor.
+            context_turn = noumeno.context_turn
         else:
             context_turn = noumeno.context_turn
             prior_goal_line = f"PRIOR GOAL: {prior_goal}" if prior_goal else ""
