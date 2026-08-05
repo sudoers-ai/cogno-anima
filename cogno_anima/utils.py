@@ -6,6 +6,20 @@ from typing import Any, Callable, Iterable
 
 _logger = logging.getLogger("cogno_anima.utils")
 
+# What a stage records when the model OMITS its `confidence` key. Shared on purpose: the ID
+# derives `confidence_divergence` from |noumeno.confidence - intent.confidence|, and the two
+# stages defaulted to DIFFERENT values (1.0 and 0.5). A model that dropped the key at BOTH
+# ends therefore produced |1.0 - 0.5| = 0.50, clearing the 0.4 threshold exactly — so the
+# signal fired on ABSENCE OF INFORMATION, the precise inverse of the disagreement it exists
+# to detect. Verified live: it fired on a turn whose only anomaly was a missing JSON key.
+#
+# 0.5 rather than 1.0 because "the model said nothing" is neutral, never certain. The absolute
+# value is consumed by nothing (the divergence reads a DIFFERENCE; one trace line displays
+# it), so the only property that matters is that both ends agree — which makes a missing key
+# mean "no signal" instead of "maximum signal".
+DEFAULT_CONFIDENCE = 0.5
+
+
 def cosine_similarity(v1: list[float], v2: list[float]) -> float:
     """Calculates cosine similarity between two vector lists in pure Python."""
     if not v1 or not v2 or len(v1) != len(v2):
