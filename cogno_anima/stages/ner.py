@@ -11,7 +11,7 @@ from cogno_anima import metakeys as mk
 from cogno_anima.types import PipelineContext, NoumenoResult, IntentResult, StageMetrics
 from cogno_synapse import LLMBackend
 from cogno_anima.prompts import load_prompt
-from cogno_anima.utils import parse_json_object
+from cogno_anima.utils import generate_json_resilient, parse_json_object
 from cogno_anima.security.pii import (
     compute_pii_risk,
     filter_uncontextualized_dob,
@@ -201,9 +201,18 @@ class IntentAnalyzer:
             turn_context_line=turn_context_line,
         )
 
-        # 3. Execute the LLM call
+        # 3. Execute the LLM call. A response cut mid-stream buys exactly one more attempt
+        #    (see generate_json_resilient); anything else raises on the first, as before.
         t0 = time.perf_counter()
-        raw_response, tokens_in, tokens_out = await backend.generate(self._system, prompt)
+        raw_response = ""
+
+        def _decode_capturing(raw: str) -> dict:
+            nonlocal raw_response
+            raw_response = raw
+            return self._decode(raw)
+
+        data, tokens_in, tokens_out = await generate_json_resilient(
+            backend, self._system, prompt, _decode_capturing, stage=STAGE_NAME)
         elapsed_ms = (time.perf_counter() - t0) * 1000
 
         metrics = StageMetrics(
@@ -216,13 +225,17 @@ class IntentAnalyzer:
 
         # 4. Parse the response. Language is inherited from NOUMENO, never the LLM.
         #    PII is detected on the ORIGINAL text (not the rewrite, which may mask it).
-        return self._parse(raw_response, metrics, language=noumeno.language,
+        return self._build(data, raw_response, metrics, language=noumeno.language,
                            original=noumeno.original, rewritten=noumeno.rewritten)
 
-    def _parse(self, raw: str, metrics: StageMetrics, language: Optional[str] = None,
-               original: str = "", rewritten: str = "") -> IntentResult:
-        """
-        Decode and sanitize the fields of the JSON produced by the LLM.
+    def _decode(self, raw: str) -> dict:
+        """Raw model text → a JSON object, or ``StageParseError``.
+
+        Split out of ``_parse`` so the retry wrapper has something to call: it needs a step
+        that can FAIL on a truncated response before any IntentResult exists (the result
+        needs StageMetrics, which needs the token totals the retry is still accumulating).
+        Also mirrors NOUMENO, which has had ``_parse_json`` separate from the field logic
+        all along.
         """
         cleaned = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
         if cleaned.startswith("```"):
@@ -245,11 +258,28 @@ class IntentAnalyzer:
             except ValueError:
                 raise StageParseError(STAGE_NAME, raw, exc) from exc
         # Valid JSON that is not an object (e.g. "5", "[]") would crash the field
-        # coercion below with a raw AttributeError — treat it as a parse failure
+        # coercion downstream with a raw AttributeError — treat it as a parse failure
         # so the contract stays "valid IntentResult OR StageParseError".
         if not isinstance(data, dict):
             raise StageParseError(STAGE_NAME, raw, TypeError("JSON is not an object"))
+        return data
 
+    def _parse(self, raw: str, metrics: StageMetrics, language: Optional[str] = None,
+               original: str = "", rewritten: str = "") -> IntentResult:
+        """Raw model text → IntentResult, or StageParseError. The stage's parsing contract.
+
+        Kept as the single entry point (``_decode`` + ``_build``) so the property tests keep
+        exercising the whole contract on arbitrary input; ``process`` calls the two halves
+        separately only because the retry has to fail on a truncated response before any
+        StageMetrics exists.
+        """
+        return self._build(self._decode(raw), raw, metrics, language=language,
+                           original=original, rewritten=rewritten)
+
+    def _build(self, data: dict, raw: str, metrics: StageMetrics,
+               language: Optional[str] = None,
+               original: str = "", rewritten: str = "") -> IntentResult:
+        """Sanitize the decoded fields into an IntentResult. Decoding is ``_decode``."""
         # intent_class
         llm_intent_class = str(data.get("intent_class", "UNKNOWN")).upper()
         intent_class = llm_intent_class

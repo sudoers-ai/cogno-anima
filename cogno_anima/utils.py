@@ -1,7 +1,10 @@
+import logging
 import re
 import math
 import string
-from typing import Iterable
+from typing import Any, Callable, Iterable
+
+_logger = logging.getLogger("cogno_anima.utils")
 
 def cosine_similarity(v1: list[float], v2: list[float]) -> float:
     """Calculates cosine similarity between two vector lists in pure Python."""
@@ -155,3 +158,95 @@ def parse_json_object(cleaned: str) -> "dict":
     if not objects:
         raise ValueError("no JSON object found in model response")
     return max(objects, key=len)
+
+
+def looks_truncated(raw: str) -> bool:
+    """Was this response CUT MID-FLIGHT, rather than merely malformed?
+
+    The distinction is the whole point: a model that answers prose instead of JSON is a
+    prompt problem and retrying it wastes a call; a response whose last string is left open
+    was severed in transport, which is transient and worth exactly one more try.
+
+    Observed live (2026-08-04, gpt-4o-mini, NOUMENO): the payload ended
+    ``"context_turn":"The user is providing information about the volume of c`` — a string
+    opened and never closed, 211 characters in, with ``max_tokens=4096`` nowhere near
+    reached. Nothing upstream noticed: the OpenAI backend does not inspect ``finish_reason``,
+    so a cut stream arrives looking like an ordinary answer and only fails at the parser.
+
+    Heuristic and deliberately narrow — it must never call a genuinely malformed reply
+    "truncated" and buy it a retry it cannot use. Both tests must agree that something is
+    left OPEN: an odd number of unescaped quotes AND/OR more ``{``/``[`` than closers.
+    """
+    body = raw.strip()
+    if not body:
+        return False
+    quotes = 0
+    depth = 0
+    in_string = False
+    escaped = False
+    for ch in body:
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\":
+            escaped = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            quotes += 1
+            continue
+        if in_string:
+            continue
+        if ch in "{[":
+            depth += 1
+        elif ch in "}]":
+            depth -= 1
+    return in_string or depth > 0
+
+
+async def generate_json_resilient(
+    llm: "Any",
+    system: str,
+    prompt: str,
+    parse: "Callable[[str], dict]",
+    *,
+    stage: str,
+    attempts: int = 2,
+) -> "tuple[dict, int, int]":
+    """``llm.generate`` + parse, retrying ONLY a response that arrived truncated.
+
+    Returns ``(data, tokens_in, tokens_out)`` with the token counts **summed across every
+    attempt**. A retry that bills silently would understate the turn in metering, and the
+    stages fold these numbers straight into ``StageMetrics``.
+
+    The retry is deliberately narrow. ``looks_truncated`` separates a severed stream (worth
+    one more call — the next one usually completes) from a model that answered prose or the
+    wrong shape (a prompt problem: retrying it buys a second identical failure plus latency
+    and cost). Anything that is not truncated raises on the first attempt, exactly as before.
+
+    Why this exists: on 2026-08-04 a cut NOUMENO response raised ``StageParseError`` and the
+    turn died. Nothing along the path was equipped to notice — the OpenAI backend never reads
+    ``finish_reason``, and neither cogno-host nor cogno-soma catches ``StageParseError``, so a
+    provider cutting a stream reached the user as a dead turn diagnosed as "bad JSON".
+
+    Failure is still LOUD: after the last attempt the original error propagates. No silent
+    degradation — a NOUMENO that quietly fell back to pass-through would hand the NER
+    un-rewritten text and lose the rewrite without anyone knowing.
+    """
+    total_in = total_out = 0
+    for index in range(max(1, attempts)):
+        raw, tokens_in, tokens_out = await llm.generate(system, prompt)
+        total_in += tokens_in
+        total_out += tokens_out
+        try:
+            return parse(raw), total_in, total_out
+        except Exception:  # noqa: BLE001 — re-raised unless this is a retryable truncation
+            if index + 1 >= max(1, attempts) or not looks_truncated(raw):
+                raise
+            _logger.warning(
+                "stage=%s event=truncated_response attempt=%d/%d chars=%d retrying; tail=%r",
+                stage, index + 1, attempts, len(raw), raw[-60:],
+            )
+    # Unreachable: the loop's last iteration always re-raises. Kept explicit so a future
+    # edit to the bounds fails loudly instead of returning None into a caller expecting a dict.
+    raise AssertionError(f"{stage}: retry loop ended without a result or an error")
