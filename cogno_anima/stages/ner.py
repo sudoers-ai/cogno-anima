@@ -253,12 +253,13 @@ class IntentAnalyzer:
         # intent_class
         llm_intent_class = str(data.get("intent_class", "UNKNOWN")).upper()
         intent_class = llm_intent_class
-        if intent_class not in VALID_INTENTS or intent_class == "UNKNOWN":
-            raw_ic = str(data.get("raw_intent_class", "UNKNOWN")).upper()
-            if raw_ic in VALID_INTENTS:
-                intent_class = raw_ic
-            else:
-                intent_class = "UNKNOWN"
+        if intent_class not in VALID_INTENTS:
+            # The raw_intent_class fallback that used to sit here was a measured no-op: the
+            # model classifies the ORIGINAL text twice (18/18 identical across two models,
+            # including the prompt's own poisoned Example 3), so when intent_class is UNKNOWN
+            # so is raw. Production logs show it firing and coercing UNKNOWN -> UNKNOWN. The
+            # mandatory_tags heuristic below is the fallback that actually recovers anything.
+            intent_class = "UNKNOWN"
 
         # Structural safeguard coercion
         if intent_class == "UNKNOWN":
@@ -319,39 +320,8 @@ class IntentAnalyzer:
             "yo": "I", "tú": "you", "él": "he",
             "ella": "she", "nosotros": "we", "ellos": "they",
         }
-        _POSSESSIVE_NORM: dict[str, str] = {
-            "meu": "my", "minha": "my", "meus": "my", "minhas": "my",
-            "seu": "your", "sua": "your", "seus": "your", "suas": "your",
-            "nosso": "our", "nossa": "our", "nossos": "our", "nossas": "our",
-            "dele": "his", "dela": "her", "deles": "their", "delas": "their",
-            "mi": "my", "tu": "your", "su": "his",
-        }
-        _POSSESSIVE_WORDS = set(_POSSESSIVE_NORM.keys()) | {
-            "my", "your", "his", "her", "its", "our", "their",
-        }
-
-        def _normalize_pronouns(items: list[str]) -> list[str]:
-            result = []
-            for w in items:
-                lower = w.lower()
-                if lower in _POSSESSIVE_WORDS:
-                    continue
-                normalized = _PRONOUN_NORM.get(lower, w)
-                if normalized not in result:
-                    result.append(normalized)
-            return result
-
-        def _normalize_possessives(items: list[str]) -> list[str]:
-            result = []
-            for w in items:
-                normalized = _POSSESSIVE_NORM.get(w.lower(), w.lower())
-                if normalized not in result:
-                    result.append(normalized)
-            return result
 
         entities_people      = _clean_list(ent.get("people",      []))
-        entities_pronouns    = _normalize_pronouns(_clean_list(ent.get("pronouns",    [])))
-        entities_possessives = _normalize_possessives(_clean_list(ent.get("possessives", [])))
         entities_objects     = _clean_list(ent.get("objects",     []))
         entities_concepts    = _clean_list(ent.get("concepts",    []))
 
@@ -390,16 +360,6 @@ class IntentAnalyzer:
             mandatory = [make_tag("NER", "UNKNOWN")]
         mandatory = mandatory[:3]
 
-        # abstract_tags
-        abstract = []
-        for t in data.get("abstract_tags", []):
-            if not isinstance(t, str):
-                continue
-            short_name = t.upper().split(".")[-1].replace(' ', '_')
-            clean = re.sub(r'[^A-Z0-9_]', '', short_name)[:30]
-            if clean:
-                abstract.append(make_tag("NER", clean))
-        abstract = abstract[:5]
 
         # aristotelian
         aristo_raw = data.get("aristotelian") or {}
@@ -528,12 +488,6 @@ class IntentAnalyzer:
         if not is_composite:
             is_sequential = False
 
-        # comparatives
-        comp_raw = data.get("comparatives", [])
-        comparatives: list[str] = []
-        if isinstance(comp_raw, list):
-            comparatives = [str(x).strip()[:60] for x in comp_raw
-                            if isinstance(x, str) and str(x).strip()][:4]
 
         # pii & pii_risk — union of the LLM's list with the deterministic detector
         # (run on the ORIGINAL text). pii_risk is always recomputed in-core.
@@ -554,21 +508,6 @@ class IntentAnalyzer:
         pii = filter_uncontextualized_dob(pii, original)
         pii_risk = compute_pii_risk(pii)
 
-        # raw fields
-        raw_intent_raw = data.get("raw_intent_class")
-        raw_intent_class: Optional[str] = None
-        if raw_intent_raw and isinstance(raw_intent_raw, str):
-            ric = raw_intent_raw.upper().strip()
-            raw_intent_class = ric if ric in VALID_INTENTS else None
-
-        raw_domains = _canonical_domains(data.get("raw_domains", []))
-
-        raw_goal_raw = data.get("raw_goal")
-        raw_goal: Optional[str] = (
-            str(raw_goal_raw).strip()[:80]
-            if raw_goal_raw and isinstance(raw_goal_raw, str) and raw_goal_raw.strip()
-            else None
-        )
 
         return IntentResult(
             intent_class=intent_class,
@@ -577,13 +516,10 @@ class IntentAnalyzer:
             temporal_class=temporal_class,
             triad_signal=triad_signal,
             entities_people=entities_people,
-            entities_pronouns=entities_pronouns,
-            entities_possessives=entities_possessives,
             entities_objects=entities_objects,
             entities_concepts=entities_concepts,
             location=location,
             mandatory_tags=mandatory,
-            abstract_tags=abstract,
             aristotelian=aristotelian,
             domains=domains,
             goal=goal,
@@ -598,12 +534,8 @@ class IntentAnalyzer:
             context_dependent=context_dependent,
             is_composite=is_composite,
             is_sequential=is_sequential,
-            comparatives=comparatives,
             pii=pii,
             pii_risk=pii_risk,
-            raw_intent_class=raw_intent_class,
-            raw_domains=raw_domains,
-            raw_goal=raw_goal,
             metrics=metrics,
             raw_response=raw,
         )

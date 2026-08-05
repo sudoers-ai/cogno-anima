@@ -181,13 +181,10 @@ class DriftCalculator:
         extend_strings(ner_text_parts, getattr(intent, "entities_people", []))
         extend_strings(ner_text_parts, getattr(intent, "entities_objects", []))
         extend_strings(ner_text_parts, getattr(intent, "entities_concepts", []))
-        extend_strings(ner_text_parts, getattr(intent, "entities_possessives", []))
         extend_strings(ner_text_parts, getattr(intent, "domains", []))
         extend_strings(ner_text_parts, getattr(intent, "verbs", []))
         extend_strings(ner_text_parts, getattr(intent, "constraints", []))
-        extend_strings(ner_text_parts, getattr(intent, "comparatives", []))
         extend_strings(ner_text_parts, getattr(intent, "causal_chain", []))
-        extend_strings(ner_text_parts, getattr(intent, "abstract_tags", []))
         extend_strings(ner_text_parts, getattr(intent, "mandatory_tags", []))
 
         location = getattr(intent, "location", None)

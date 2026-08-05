@@ -43,11 +43,10 @@ NER_JSON = json.dumps({
     "confidence": 0.95,
     "temporal_class": "TIMELESS",
     "triad_signal": "EGO",
-    "entities": {"people": [], "pronouns": [], "possessives": ["my"],
+    "entities": {"people": [],
                  "objects": ["car"], "concepts": ["car washing"]},
     "location": None,
     "mandatory_tags": ["SYSTEM"],
-    "abstract_tags": ["CAR_WASH"],
     "aristotelian": {"ACTION": "WASH_CAR | wash the car"},
     "goal": "wash the car",
     "causal_chain": ["user wants car washed"],
@@ -62,12 +61,8 @@ NER_JSON = json.dumps({
     "is_sequential": False,
     "verbs": ["wash"],
     "context_dependent": False,
-    "comparatives": [],
     "pii": [],
     "pii_risk": "NONE",
-    "raw_intent_class": "ACTION_REQUEST",
-    "raw_domains": ["LOGISTICS"],
-    "raw_goal": "wash the car",
 })
 
 

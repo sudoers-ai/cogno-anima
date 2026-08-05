@@ -182,12 +182,6 @@ async def run_ner(
                     checks.append(("verb", want, str(verbs[:5]),
                                    any(want.lower() in v for v in verbs)))
 
-            if case.expect_comparatives:
-                comps = " ".join(intent.comparatives or []).lower()
-                for want in case.expect_comparatives:
-                    checks.append(("comparative", want, str(intent.comparatives or []),
-                                   want.lower() in comps))
-
             if case.expect_negation:
                 negs = " ".join(intent.negation or []).lower()
                 for want in case.expect_negation:

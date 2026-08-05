@@ -11,8 +11,8 @@ Two tiers, by design:
     DETERMINISTIC PII detector (model-independent) and structural validity.
     These MUST pass on the baseline.
   • NUANCED tests (xfail, strict=False) exercise the model-dependent fields
-    (sentiment subtleties, temporal MIXED, modality, speech_act, is_composite,
-    comparatives). Small/weak models miss these; they are reported, not fatal.
+    (sentiment subtleties, temporal MIXED, modality, speech_act, is_composite).
+    Small/weak models miss these; they are reported, not fatal.
 
 Run: pytest tests/integration/test_ner.py
      COGNO_NER_MODEL=qwen2.5:7b pytest tests/integration/test_ner.py -k pii
@@ -181,7 +181,7 @@ def test_structural_validity(ner, text):
     # speech act
     ("vou implementar isso amanhã no servidor", "speech_act", "COMMISSIVE"),
     ("qual a diferença entre TCP e UDP?", "speech_act", "INTERROGATIVE"),
-    # composite / comparatives
+    # composite
     ("busca o relatório, analisa os dados e gera um gráfico", "is_composite", True),
     ("crie um evento e mande um email pro cliente", "is_composite", True),
 ])

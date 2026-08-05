@@ -197,9 +197,7 @@ triad_signal — which pipeline layer benefits most:
   BALANCED = full pipeline needed.
 
 entities.people     — proper names of REAL individuals. [] if none.
-entities.pronouns   — THIRD PERSON and REFERENTIAL pronouns ONLY. Normalize to English.
                       EXCLUDE generic I/me/you/we. [] if none.
-entities.possessives — my, your, his, her, its, our, their. Normalize to English. [] if none.
 entities.objects    — physical or digital objects, systems, products, technologies.
                       Include specific named entities: "Bitcoin", "Docker", "Nginx".
                       Do NOT include generic discourse nouns. Max 5. [] if none.
@@ -212,7 +210,6 @@ mandatory_tags — 1 to 3 of: SYSTEM | ANALYSIS | MATH | CREATIVE | LINGUISTIC |
   → Choose the MOST SPECIFIC tag. ANALYSIS is the LAST RESORT.
   → Prefixed with "NER." automatically (return short form).
 
-abstract_tags — 2 to 5 topic-specific tags in UPPERCASE_SNAKE_CASE.
 
 aristotelian — include ONLY relevant categories (not all 10 required):
   SUBSTANCE | QUANTITY | QUALITY | RELATION | PLACE | TIME | POSITION | STATE | ACTION | PASSION
@@ -248,7 +245,6 @@ verbs — main action verbs from ORIGINAL, normalized to English infinitive. Max
 is_composite — true if MULTIPLE distinct actions/requests. false if single action.
 is_sequential — true if actions DEPEND on each other chronologically. false if parallel.
 context_dependent — true if query back-references prior conversational context.
-comparatives — explicit comparative expressions. Max 4, each max 60 chars. [] if none.
 
 pii — PII categories from ORIGINAL input. Use ONLY:
   NATIONAL_ID | TAX_ID | EMAIL | PHONE | CREDIT_CARD | BANK_ACCOUNT |
@@ -263,22 +259,6 @@ pii_risk — EXACTLY one of: NONE | LOW | MEDIUM | HIGH | CRITICAL
   → HIGH   → NATIONAL_ID, TAX_ID, PASSPORT, CREDIT_CARD, BANK_ACCOUNT, DATE_OF_BIRTH
   → CRITICAL → HEALTH_DATA, CREDENTIAL, BIOMETRIC
 
-=== RAW CLASSIFICATION (Session Splitting Support) ===
-Additionally, classify the ORIGINAL input IN ISOLATION — as if no NOUMENO rewrite
-or conversational context existed. This detects when history biases the main classification.
-
-raw_intent_class — apply the SAME rules as intent_class, but analyze ONLY the ORIGINAL text.
-  → EXACTLY one of: INFORMATION_REQUEST | ACTION_REQUEST | CLARIFICATION | CREATIVE_TASK | SOCIAL | UNKNOWN
-  → If the ORIGINAL is ambiguous without context, use UNKNOWN.
-
-raw_domains — apply the SAME rules as domains, but analyze ONLY the ORIGINAL text.
-  → MUST use the same closed list above. Empty [] if too vague to determine.
-
-raw_goal — apply the SAME rules as goal, but analyze ONLY the ORIGINAL text.
-  → null if no clear goal detectable from the original alone.
-
-IMPORTANT: These raw_* fields MUST reflect the ORIGINAL text analyzed independently.
-Do NOT copy the values from the contextual fields — they may legitimately differ.
 
 === OUTPUT ===
 Return ONLY the JSON object. No markdown, no explanation, no code blocks.

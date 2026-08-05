@@ -5,7 +5,7 @@ Tests the accuracy of the NER stage's semantic analysis against cogno-anima's
 `IntentResult` contract:
   - intent classification, sentiment, temporal class
   - entity extraction, language (inherited from NOUMENO), PII risk
-  - speech act, modality, parole, verbs, composite/comparatives/negation
+  - speech act, modality, parole, verbs, composite/negation
 """
 
 from __future__ import annotations
@@ -29,7 +29,6 @@ class NERCase:
     expect_parole: str = ""
     expect_verbs: list[str] = field(default_factory=list)
     expect_is_composite: bool | None = None
-    expect_comparatives: list[str] = field(default_factory=list)
     expect_negation: list[str] = field(default_factory=list)
     # Enrichment/decomposition signals (parent decomposition_cases + enrichment_cases):
     # is_sequential + causal_chain drive the EGO's ordering instruction and step budget;
@@ -152,7 +151,7 @@ NER_CASES: list[NERCase] = [
     NERCase(id="composite_multi_request", input="crie um evento no calendário e mande um email pro cliente",
             expect_is_composite=True, expect_intent="ACTION_REQUEST"),
     NERCase(id="comparative_tech", input="compare Python com Rust para programação de sistemas",
-            expect_comparatives=["Python", "Rust"], expect_entities=["Python", "Rust"]),
+            expect_entities=["Python", "Rust"]),
 
     # ── Negation ─────────────────────────────────────────────────────────
     NERCase(id="negation_explicit", input="não quero usar JavaScript, prefiro TypeScript",
