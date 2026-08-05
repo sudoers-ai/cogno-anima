@@ -47,14 +47,11 @@ PERFECT_JSON = {
     "triad_signal": "EGO",
     "entities": {
         "people": ["Copernicus"],
-        "pronouns": ["ele"],
-        "possessives": ["meu"],
         "objects": ["carro"],
         "concepts": ["cleaning"]
     },
     "location": "São Paulo",
     "mandatory_tags": ["SYSTEM"],
-    "abstract_tags": ["CAR_WASH", "CLEANING_SERVICE"],
     "aristotelian": {
         "SUBSTANCE": "USER_CAR | User's car needing cleaning",
         "ACTION": "WASH_CAR | Wash the car"
@@ -71,11 +68,7 @@ PERFECT_JSON = {
     "context_dependent": True,
     "is_composite": False,
     "is_sequential": False,
-    "comparatives": ["walk vs drive"],
     "pii": ["EMAIL", "CPF"],
-    "raw_intent_class": "ACTION_REQUEST",
-    "raw_domains": ["LOGISTICS"],
-    "raw_goal": "wash the car",
     "domains": ["LOGISTICS"]
 }
 
@@ -90,11 +83,8 @@ async def test_perfect_payload():
     result = await analyzer.analyze(noumeno)
 
     assert result.intent_class == "ACTION_REQUEST"
-    assert result.entities_pronouns == ["he"]
-    assert result.entities_possessives == ["my"]
     assert result.location == "São Paulo"
     assert result.mandatory_tags == ["NER.SYSTEM"]
-    assert result.abstract_tags == ["NER.CAR_WASH", "NER.CLEANING_SERVICE"]
     assert "SUBSTANCE" in result.aristotelian
     assert result.pii == ["EMAIL", "NATIONAL_ID"]
     assert result.pii_risk == "HIGH"
@@ -110,35 +100,6 @@ async def test_think_tag_stripping():
     assert result.intent_class == "ACTION_REQUEST"
 
 
-@pytest.mark.asyncio
-async def test_pronoun_normalization():
-    """3. Pronoun conversion and normalization (e.g. eu -> I, ele -> he)."""
-    payload = PERFECT_JSON.copy()
-    payload["entities"] = PERFECT_JSON["entities"].copy()
-    payload["entities"]["pronouns"] = ["eu", "você", "ele", "ela", "nós", "eles"]
-    backend = StubBackend(response=json.dumps(payload))
-    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
-    result = await analyzer.analyze(make_noumeno_result())
-    assert "I" in result.entities_pronouns
-    assert "you" in result.entities_pronouns
-    assert "he" in result.entities_pronouns
-    assert "she" in result.entities_pronouns
-    assert "we" in result.entities_pronouns
-    assert "they" in result.entities_pronouns
-
-
-@pytest.mark.asyncio
-async def test_possessive_normalization():
-    """4. Possessive conversion and normalization (e.g. meu -> my, nosso -> our)."""
-    payload = PERFECT_JSON.copy()
-    payload["entities"] = PERFECT_JSON["entities"].copy()
-    payload["entities"]["possessives"] = ["meu", "minha", "seu", "sua", "nosso", "nossa"]
-    backend = StubBackend(response=json.dumps(payload))
-    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
-    result = await analyzer.analyze(make_noumeno_result())
-    assert "my" in result.entities_possessives
-    assert "your" in result.entities_possessives
-    assert "our" in result.entities_possessives
 
 
 @pytest.mark.asyncio
@@ -172,18 +133,6 @@ async def test_domain_aliases():
     assert "CRYPTO" not in result.domains
     assert "MATH" not in result.domains
 
-
-@pytest.mark.asyncio
-async def test_abstract_tags_sanitization():
-    """7. Sanitization of abstract_tags to UPPER_SNAKE_CASE."""
-    payload = PERFECT_JSON.copy()
-    payload["abstract_tags"] = ["car wash!", "clean_service#1", "INVALID-TAG@"]
-    backend = StubBackend(response=json.dumps(payload))
-    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
-    result = await analyzer.analyze(make_noumeno_result())
-    assert "NER.CAR_WASH" in result.abstract_tags
-    assert "NER.CLEAN_SERVICE1" in result.abstract_tags
-    assert "NER.INVALIDTAG" in result.abstract_tags
 
 
 @pytest.mark.asyncio
@@ -296,7 +245,6 @@ async def test_composite_sequential_comparatives():
     result = await analyzer.analyze(make_noumeno_result())
     assert result.is_composite is True
     assert result.is_sequential is True
-    assert result.comparatives == ["Python vs Rust"]
 
 
 @pytest.mark.asyncio
@@ -503,21 +451,30 @@ async def test_context_dependent_accepts_string_boolean():
     assert (await _analyze(payload)).context_dependent is False
 
 
-@pytest.mark.asyncio
-async def test_raw_intent_class_invalid_becomes_none():
-    payload = PERFECT_JSON.copy()
-    payload["raw_intent_class"] = "GIBBERISH"
-    assert (await _analyze(payload)).raw_intent_class is None
-
 
 @pytest.mark.asyncio
-async def test_intent_class_falls_back_to_raw_when_unknown():
-    """UNKNOWN intent_class is recovered from a valid raw_intent_class."""
+async def test_unknown_intent_class_stays_unknown_without_a_tag_to_coerce_from():
+    """The raw_intent_class fallback was removed; this pins what happens in its place.
+
+    It recovered nothing: the model classifies the ORIGINAL text twice (18/18 identical
+    across gpt-4o-mini and gpt-4.1-mini, including the prompt's own deliberately poisoned
+    Example 3), so whenever intent_class was UNKNOWN raw was UNKNOWN too — production logs
+    show it firing and coercing UNKNOWN -> UNKNOWN. With no MATH/SYSTEM/CREATIVE/ANALYSIS
+    tag to coerce from, UNKNOWN is the honest answer and the ID routes on it.
+    """
     payload = PERFECT_JSON.copy()
     payload["intent_class"] = "UNKNOWN"
     payload["mandatory_tags"] = ["LINGUISTIC"]   # no MATH/SYSTEM/CREATIVE/ANALYSIS coercion
-    payload["raw_intent_class"] = "SOCIAL"
-    assert (await _analyze(payload)).intent_class == "SOCIAL"
+    assert (await _analyze(payload)).intent_class == "UNKNOWN"
+
+
+@pytest.mark.asyncio
+async def test_mandatory_tags_still_recover_an_unknown_intent_class():
+    """The fallback that DOES work, unchanged — this is what the removal leans on."""
+    payload = PERFECT_JSON.copy()
+    payload["intent_class"] = "UNKNOWN"
+    payload["mandatory_tags"] = ["MATH"]
+    assert (await _analyze(payload)).intent_class == "ACTION_REQUEST"
 
 
 @pytest.mark.asyncio

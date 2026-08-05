@@ -66,8 +66,6 @@ class IntentResult(BaseModel):
 
     # ── Named entities ────────────────────────────────────
     entities_people: list[str] = Field(default_factory=list)
-    entities_pronouns: list[str] = Field(default_factory=list)
-    entities_possessives: list[str] = Field(default_factory=list)
     entities_objects: list[str] = Field(default_factory=list)
     entities_concepts: list[str] = Field(default_factory=list)
 
@@ -76,7 +74,6 @@ class IntentResult(BaseModel):
 
     # ── Cognitive tags ────────────────────────────────────
     mandatory_tags: list[str] = Field(default_factory=list) # NER.SYSTEM, NER.MATH...
-    abstract_tags: list[str] = Field(default_factory=list)  # NER.XXX
     aristotelian: dict[str, str] = Field(default_factory=dict)
     domains: list[str] = Field(default_factory=list)
 
@@ -99,16 +96,11 @@ class IntentResult(BaseModel):
     context_dependent: bool = False
     is_composite: bool = False
     is_sequential: bool = False
-    comparatives: list[str] = Field(default_factory=list)
 
     # ── Personally identifiable information (PII) ─────────
     pii: list[str] = Field(default_factory=list)
     pii_risk: str = "NONE"
 
-    # ── Raw classification (original in isolation) ────────
-    raw_intent_class: Optional[str] = None
-    raw_domains: list[str] = Field(default_factory=list)
-    raw_goal: Optional[str] = None
 
     # ── Telemetry ─────────────────────────────────────────
     metrics: StageMetrics

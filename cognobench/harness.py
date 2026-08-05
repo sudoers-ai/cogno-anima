@@ -209,15 +209,12 @@ _STUB_NOUMENO = json.dumps({
 _STUB_NER = json.dumps({
     "intent_class": "INFORMATION_REQUEST", "sentiment": "NEUTRAL", "confidence": 0.9,
     "temporal_class": "TIMELESS", "triad_signal": "EGO",
-    "entities": {"people": [], "pronouns": [], "possessives": [], "objects": [], "concepts": []},
-    "location": None, "mandatory_tags": ["ANALYSIS"], "abstract_tags": ["SMOKE"],
-    "aristotelian": {}, "goal": None, "causal_chain": [], "parole": "COLOQUIAL",
+    "entities": {"people": [], "objects": [], "concepts": []},
+    "location": None, "mandatory_tags": ["ANALYSIS"], "aristotelian": {}, "goal": None, "causal_chain": [], "parole": "COLOQUIAL",
     "negation": [], "constraints": [], "domains": ["GENERAL"], "modality": "CERTAIN",
     "speech_act": "INTERROGATIVE", "is_composite": False, "is_sequential": False,
-    "verbs": [], "context_dependent": False, "comparatives": [], "pii": [],
-    "pii_risk": "NONE", "raw_intent_class": "INFORMATION_REQUEST",
-    "raw_domains": ["GENERAL"], "raw_goal": None,
-})
+    "verbs": [], "context_dependent": False, "pii": [],
+    "pii_risk": "NONE", })
 
 
 class _StubBackend:
