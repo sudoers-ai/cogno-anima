@@ -11,7 +11,8 @@ from cogno_anima import metakeys as mk
 from cogno_anima.types import PipelineContext, NoumenoResult, IntentResult, StageMetrics
 from cogno_synapse import LLMBackend
 from cogno_anima.prompts import load_prompt
-from cogno_anima.utils import generate_json_resilient, parse_json_object
+from cogno_anima.utils import (DEFAULT_CONFIDENCE, generate_json_resilient,
+                               parse_json_object)
 from cogno_anima.security.pii import (
     compute_pii_risk,
     filter_uncontextualized_dob,
@@ -322,10 +323,10 @@ class IntentAnalyzer:
 
         # confidence
         try:
-            confidence = float(data.get("confidence", 0.5))
+            confidence = float(data.get("confidence", DEFAULT_CONFIDENCE))
             confidence = max(0.0, min(1.0, confidence))
         except (TypeError, ValueError):
-            confidence = 0.5
+            confidence = DEFAULT_CONFIDENCE
 
         # temporal_class
         temporal_class = str(data.get("temporal_class", "TIMELESS")).upper()

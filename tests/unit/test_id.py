@@ -402,3 +402,54 @@ async def test_is_ellipsis_reply_detector(user_input, history, expected):
     ctx = PipelineContext(user_input=user_input)
     ctx.metadata["conversation_history"] = history
     assert IDStage._is_ellipsis_reply(ctx) is expected
+
+
+# ── confidence_divergence must measure DISAGREEMENT, never absence ─────────────────────────
+
+@pytest.mark.asyncio
+async def test_a_missing_confidence_key_at_both_ends_is_not_a_divergence():
+    """The two stages used to default to DIFFERENT values — 1.0 in NOUMENO, 0.5 in NER — so a
+    model that dropped `confidence` at both ends produced |1.0 - 0.5| = 0.50, clearing the 0.4
+    threshold exactly. The signal fired on ABSENCE OF INFORMATION, the inverse of what it
+    exists to detect, and it was verified firing live on a turn whose only anomaly was the
+    missing key.
+    """
+    from cogno_anima.stages.ner import IntentAnalyzer
+    from cogno_anima.stages.noumeno import Noumeno
+
+    class _Emb:
+        async def embed(self, text):        # noqa: ANN001
+            return [1.0, 0.0, 0.0]
+
+        async def similarity(self, a, b):   # noqa: ANN001
+            return 1.0
+
+    class _Backend:
+        model = "scripted"
+
+        def __init__(self, payload: str) -> None:
+            self._payload = payload
+
+        async def generate(self, system, prompt):   # noqa: ANN001
+            return self._payload, 10, 5
+
+    ctx = PipelineContext(user_input="dez por dia")
+    # BOTH payloads omit `confidence` — the exact shape that produced a false signal.
+    await Noumeno(_Emb()).process(ctx, _Backend('{"rewritten":"Ten a day.","context_turn":""}'))
+    await IntentAnalyzer().process(ctx, _Backend(
+        '{"intent_class":"INFORMATION_REQUEST","sentiment":"NEUTRAL","domains":["GENERAL"]}'))
+
+    assert ctx.noumeno is not None and ctx.intent is not None
+    assert ctx.noumeno.confidence == ctx.intent.confidence   # the property that matters
+    out = await IDStage(confidence_divergence_threshold=0.4).process(ctx, _Emb())
+    assert out.id_result.confidence_divergence is False
+
+
+@pytest.mark.asyncio
+async def test_a_real_disagreement_still_flags():
+    """Contraprova: aligning the defaults must not disarm the signal it exists for."""
+    stage = IDStage(confidence_divergence_threshold=0.4)
+    ctx = make_ctx(_intent())
+    ctx.noumeno.confidence, ctx.intent.confidence = 0.95, 0.30
+    out = await stage.process(ctx, PlainEmbedder())
+    assert out.id_result.confidence_divergence is True

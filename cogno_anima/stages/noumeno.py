@@ -9,8 +9,8 @@ from typing import Optional
 from cogno_anima import metakeys as mk
 from cogno_anima.types import PipelineContext, NoumenoResult, StageMetrics
 from cogno_synapse import LLMBackend, Embedder
-from cogno_anima.utils import (expand_slangs, generate_json_resilient,
-                               parse_json_object)
+from cogno_anima.utils import (DEFAULT_CONFIDENCE, expand_slangs,
+                               generate_json_resilient, parse_json_object)
 from cogno_anima.prompts import load_prompt
 from cogno_anima.errors import StageParseError
 
@@ -131,7 +131,7 @@ class Noumeno:
             llm, self._system, prompt, self._parse_json, stage=STAGE_NAME)
         rewritten = data.get("rewritten", "").strip() or user_input
         context_turn = data.get("context_turn", "").strip()
-        confidence = float(data.get("confidence", 1.0))
+        confidence = float(data.get("confidence", DEFAULT_CONFIDENCE))
         changed = bool(data.get("changed", False))
         preserved_terms = list(data.get("preserved_terms", []))
         rewrite_warnings = list(data.get("rewrite_warnings", []))
