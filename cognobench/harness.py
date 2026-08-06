@@ -33,10 +33,17 @@ class PipelineOutput:
 
 
 class CognitivePipeline:
-    """Reference NOUMENO → NER → Drift pipeline for benchmarking."""
+    """Reference NOUMENO → NER → Drift pipeline for benchmarking.
 
-    def __init__(self, backend: LLMBackend, embedder: Embedder) -> None:
+    ``ner_backend`` (plan 0.10) lets a slot sweep vary ONE stage's model while
+    the other is pinned — with a single backend, "the NER score of model X" is
+    really "NER given X's own NOUMENO rewrite", a contaminated measurement.
+    Default None = same backend for both (the classic single-model run)."""
+
+    def __init__(self, backend: LLMBackend, embedder: Embedder,
+                 ner_backend: LLMBackend | None = None) -> None:
         self._backend = backend
+        self._ner_backend = ner_backend or backend
         self._embedder = embedder
         self._noumeno = Noumeno(embedder=embedder, prompts_dir=PROMPTS_DIR, slangs=SLANGS)
         self._ner = IntentAnalyzer(prompts_dir=PROMPTS_DIR)
@@ -73,7 +80,7 @@ class CognitivePipeline:
         if stop_after == "noumeno":
             return ctx
 
-        ctx = await self._ner.process(ctx, self._backend)
+        ctx = await self._ner.process(ctx, self._ner_backend)
         if stop_after == "ner":
             return ctx
 
@@ -239,3 +246,101 @@ class _StubEmbedder:
 def build_stub() -> tuple[LLMBackend, Embedder]:
     """Deterministic stub — proves the harness/report plumbing without a model."""
     return _StubBackend(), _StubEmbedder()
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  Sabotage stubs (plan 0.8, mutations M1/M3) — each breaks ONE stage on
+#  purpose. A case whose checks stay green while its stage is sabotaged does
+#  not observe that stage: it is dead weight, not a guard. Slot routing places
+#  the sabotage exactly (no prompt sniffing): the sabotaged backend IS the slot.
+# ──────────────────────────────────────────────────────────────────────────
+
+_SABOTAGE_PAYLOADS = {
+    # NOUMENO echoes nothing useful: constant rewrite, never marks a change —
+    # every expect_in_rewrite / expect_changed=True check must flip red.
+    "noumeno_echo": json.dumps({
+        "rewritten": "unchanged input", "context_turn": "", "confidence": 0.1,
+        "changed": False, "preserved_terms": [], "rewrite_warnings": [],
+    }),
+    # NER classifies nothing: UNKNOWN class, empty extractions. The DETERMINISTIC
+    # safety checks must SURVIVE this (regex on the original text) — that
+    # asymmetry is exactly what the mutation report shows.
+    "ner_unknown": json.dumps({
+        "intent_class": "UNKNOWN", "sentiment": "NEUTRAL", "confidence": 0.0,
+        "temporal_class": "TIMELESS", "triad_signal": "BALANCED",
+        "entities": {"people": [], "objects": [], "concepts": []}, "location": None,
+        "mandatory_tags": [], "aristotelian": {}, "goal": None, "causal_chain": [],
+        "parole": "COLOQUIAL", "negation": [], "constraints": [], "domains": [],
+        "modality": "CERTAIN", "speech_act": "DECLARATIVE", "is_composite": False,
+        "is_sequential": False, "verbs": [], "context_dependent": False,
+        "pii": [], "pii_risk": "NONE",
+    }),
+    # Scope guard waves everything through — every must-block case flips.
+    "scope_allow": json.dumps({"blocked": False, "refusal_message": ""}),
+    # Judge approves everything with an empty critique — the exact failure mode
+    # measured on mistral:latest (3/3 false approvals); must-reject cases flip.
+    "judge_approve": json.dumps({"approved": True, "critique": ""}),
+    # EGO emits no tool call ever — tool_selected/order checks flip.
+    "ego_none": "I will not use any tool.",
+    # Voice says nothing — response_nonempty flips.
+    "voice_empty": "",
+    # M3: garbage that is not JSON — must surface as scored model-fault failures
+    # (StageParseError → 0.3 classification), never a silent pass.
+    "garbage": "!!! not json at all {{{",
+}
+
+SABOTAGE_TARGET_SLOT = {
+    "noumeno_echo": "noumeno", "ner_unknown": "ner", "scope_allow": "scope",
+    "judge_approve": "judge", "ego_none": "ego", "voice_empty": "voice",
+    "garbage": "ner",
+}
+
+
+class _SabotageBackend:
+    """Returns one fixed payload for every call — placed into a single slot."""
+
+    def __init__(self, mode: str) -> None:
+        self.model = f"sabotage:{mode}"
+        self._payload = _SABOTAGE_PAYLOADS[mode]
+
+    async def generate(self, system: str, prompt: str) -> tuple[str, int, int]:
+        return self._payload, 1, 1
+
+
+def build_sabotage_stub(mode: str) -> LLMBackend:
+    return _SabotageBackend(mode)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  Preflight (plan 0.11) — a disarmed instrument scores a lying green.
+# ──────────────────────────────────────────────────────────────────────────
+
+async def preflight_embedder(embedder: Embedder) -> tuple[bool, float]:
+    """The embedder must DISCRIMINATE. A constant-similarity embedder silently
+    disabled change_subject for an entire bench's history (the closer stub
+    incident) — assert two unrelated sentences do not read as near-identical."""
+    sim = await embedder.similarity(
+        "quero agendar uma consulta para quinta-feira",
+        "the quarterly financial report shows increased revenue",
+    )
+    return sim < 0.95, sim
+
+
+async def preflight_local_toks(model: str, base_url: str) -> float:
+    """Measured tok/s of a short real generation. Ollama loses CUDA per-process
+    and silently degrades to CPU (~10-20× slower) — a run started in that state
+    produces timeouts and truncations that masquerade as model failures. The
+    caller compares against a threshold and refuses to score below it."""
+    import time
+    import httpx
+    t0 = time.monotonic()
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(f"{base_url}/api/generate", json={
+            "model": model, "prompt": "Count: 1 2 3 4 5 6 7 8 9 10",
+            "stream": False, "think": False, "options": {"num_predict": 40},
+        })
+        resp.raise_for_status()
+        data = resp.json()
+    elapsed = time.monotonic() - t0
+    tokens = data.get("eval_count") or 0
+    return (tokens / elapsed) if elapsed > 0 else 0.0

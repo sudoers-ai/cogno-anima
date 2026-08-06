@@ -25,7 +25,8 @@ from pathlib import Path
 
 from cognobench.harness import (
     CognitivePipeline, TokenTally, build_cloud, build_local_embedder, build_ollama,
-    build_ollama_text, build_stub, ollama_available,
+    build_ollama_text, build_sabotage_stub, build_stub, ollama_available,
+    preflight_embedder, preflight_local_toks, SABOTAGE_TARGET_SLOT,
 )
 from cognobench.dimensions import (
     run_noumeno, run_ner, run_id, run_ego, run_superego, run_drift, run_conversations,
@@ -75,6 +76,18 @@ class _FallbackCounter(logging.Handler):
         return dict(self.counts)
 
 
+def _build_one(spec: str, base_url: str, think: bool, *, text: bool = False):
+    """One backend for one slot spec ('qwen3:8b' → Ollama, 'openai:…' → cloud)."""
+    from cogno_synapse.factory import parse_model_string
+    provider, _ = parse_model_string(spec)
+    if provider != "ollama":
+        return TokenTally(build_cloud(spec))
+    if text:
+        return TokenTally(build_ollama_text(spec, base_url, think=think))
+    json_be, _ = build_ollama(spec, "nomic-embed-text", base_url, think=think)
+    return TokenTally(json_be)
+
+
 async def run_bench(
     model: str,
     embed_model: str,
@@ -85,18 +98,25 @@ async def run_bench(
     calibrate: bool,
     language: str | None = "pt-BR",
     think: bool = False,
+    slot_models: dict[str, str] | None = None,
+    mutate: str | None = None,
+    preflight: bool = False,
+    min_toks: float = 10.0,
 ) -> BenchReport:
     # "openai:gpt-4o-mini" etc. → cloud column (the synapse factory owns the prefix
     # registry; a bare/unknown prefix — mistral:latest, qwen3:8b — stays Ollama).
     from cogno_synapse.factory import parse_model_string
     provider, _ = parse_model_string(model)
     cloud = not stub and provider != "ollama"
+    slot_models = slot_models or {}
 
     text_backend: object  # the EGO/voice path (no JSON constraint)
-    if stub:
+    if stub or mutate:
+        # --mutate implies the stub base (M1/M3 are deterministic by design: the
+        # sabotage must be the only variable, not model noise on top of it).
         backend, embedder = build_stub()
         text_backend = backend
-        model_label = "stub"
+        model_label = f"stub+mutate:{mutate}" if mutate else "stub"
     elif cloud:
         # Embeddings stay LOCAL Ollama even on a cloud run (free; not the model
         # under test) — so Ollama must still be up for the embedder.
@@ -118,8 +138,44 @@ async def run_bench(
         text_backend = TokenTally(build_ollama_text(model, base_url, think=think))
         model_label = f"{model} (think)" if think else model
 
-    pipe = CognitivePipeline(backend, embedder)
     report = BenchReport(model=model_label)
+
+    # ── Preflight (plan 0.11): a disarmed instrument scores a lying green ──
+    if not stub and not mutate:
+        emb_ok, emb_sim = await preflight_embedder(embedder)
+        report.meta["preflight_embedder_similarity"] = round(emb_sim, 4)
+        if not emb_ok:
+            print(f"✗ preflight: embedder does not discriminate (unrelated-sentence "
+                  f"similarity {emb_sim:.3f} ≥ 0.95) — run INVALID.", file=sys.stderr)
+            sys.exit(3)
+        if preflight and not cloud:
+            toks = await preflight_local_toks(model, base_url)
+            report.meta["preflight_toks_per_s"] = round(toks, 1)
+            if toks < min_toks:
+                print(f"✗ preflight: {model} at {toks:.1f} tok/s < {min_toks} — Ollama "
+                      f"has likely lost the GPU (restart the service). Run INVALID.",
+                      file=sys.stderr)
+                sys.exit(3)
+
+    # ── Slot routing (plan 0.10) ──
+    # A slot sweep varies ONE stage's model and pins the rest — with a single
+    # --model, "the NER score of X" is really "NER given X's own NOUMENO".
+    # --mutate places a sabotage backend into exactly one slot (plan 0.8).
+    slots: dict[str, object] = {}
+    for name, spec in slot_models.items():
+        slots[name] = _build_one(spec, base_url, think,
+                                 text=name in ("ego", "voice"))
+    if mutate:
+        slots[SABOTAGE_TARGET_SLOT[mutate]] = build_sabotage_stub(mutate)
+
+    pipe = CognitivePipeline(slots.get("noumeno", backend), embedder,
+                             ner_backend=slots.get("ner"))
+    ego_be = slots.get("ego", text_backend)
+    scope_be = slots.get("scope", backend)
+    judge_be = slots.get("judge", backend)
+    voice_be = slots.get("voice", text_backend)
+    if slots:
+        report.config["slots"] = {k: getattr(v, "model", "?") for k, v in slots.items()}
 
     dims = [d for d in ALL_DIMENSIONS if d in only] if only else list(ALL_DIMENSIONS)
 
@@ -164,14 +220,15 @@ async def run_bench(
             # cloud. In stub mode the JSON stub yields a no-tool result — enough for
             # plumbing.
             before = counter.snapshot()
-            _add(await run_ego(text_backend, cap(EGO_CASES), calibrate=calibrate,
+            _add(await run_ego(ego_be, cap(EGO_CASES), calibrate=calibrate,
                                language=language), before)
         if "superego" in dims:
             # scope/judge consume JSON (json backend); voice needs free text.
             # Three scored sub-dimensions from one suite (plan 0.5).
             before = counter.snapshot()
-            for sub in await run_superego(backend, text_backend, cap(SUPEREGO_CASES),
-                                          calibrate=calibrate, language=language):
+            for sub in await run_superego(judge_be, voice_be, cap(SUPEREGO_CASES),
+                                          calibrate=calibrate, language=language,
+                                          scope_backend=scope_be):
                 report.dimensions.append(sub)
         if "drift" in dims:
             before = counter.snapshot()
@@ -180,9 +237,11 @@ async def run_bench(
         if "conversations" in dims:
             # Full-pipeline multi-turn simulation: gen=JSON, ego/voice=text backend.
             before = counter.snapshot()
-            _add(await run_conversations(backend, text_backend, embedder,
+            _add(await run_conversations(backend, ego_be, embedder,
                                          cap(CONVERSATION_CASES),
-                                         calibrate=calibrate, language=language), before)
+                                         calibrate=calibrate, language=language,
+                                         slots={k: v for k, v in slots.items()
+                                                if k != "ego"} or None), before)
     finally:
         ner_logger.removeHandler(counter)
         ner_logger.setLevel(prev_level)
@@ -190,8 +249,9 @@ async def run_bench(
     report.meta["ner_fallbacks_total"] = counter.snapshot()
 
     # Cost meter: total LLM tokens across every backend call this run (the tallies
-    # wrap both the JSON and the text paths; on cloud they are the same instance).
-    tallies = {id(b): b for b in (backend, text_backend) if isinstance(b, TokenTally)}
+    # wrap the JSON, text and slot paths; on cloud json/text are the same instance).
+    tallies = {id(b): b for b in (backend, text_backend, *slots.values())
+               if isinstance(b, TokenTally)}
     report.tokens_in = sum(t.tokens_in for t in tallies.values())
     report.tokens_out = sum(t.tokens_out for t in tallies.values())
     report.llm_calls = sum(t.calls for t in tallies.values())
@@ -212,13 +272,14 @@ def _stamp_metadata(report: BenchReport, args: argparse.Namespace, repeat_index:
     # Slug from the run's LABEL (model_label), not args.model — a --stub run must
     # say "stub", never wear the default model's name.
     report.run_id = f"{now.strftime('%Y%m%dT%H%M%S')}-{_slug(report.model)}-r{repeat_index}"
-    report.config = {
+    # update(), not assignment — run_bench may have recorded config["slots"].
+    report.config.update({
         "model": args.model, "embed_model": args.embed_model,
         "language": None if args.detect else args.language,
         "only": args.only, "limit": args.limit, "stub": args.stub,
-        "calibrate": args.calibrate, "think": args.think,
+        "calibrate": args.calibrate, "think": args.think, "mutate": args.mutate,
         "repeat_index": repeat_index, "repeat_total": args.repeat,
-    }
+    })
     registry = suite_registry.registry()
     for dim, info in registry.items():
         if dim not in dims:
@@ -271,6 +332,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repeat", type=int, default=1, metavar="N",
                         help="Run the whole selection N times and report the stable "
                              "score + noise floor (plan 0.2; N=3 for model screening)")
+    for slot in ("noumeno", "ner", "ego", "scope", "judge", "voice"):
+        parser.add_argument(f"--{slot}-model", metavar="SPEC", default=None,
+                            help=f"Model for the {slot} slot only (plan 0.10) — the "
+                                 f"other slots stay on --model. A slot sweep varies "
+                                 f"ONE stage and pins the rest.")
+    parser.add_argument("--mutate", choices=sorted(SABOTAGE_TARGET_SLOT), default=None,
+                        help="Sabotage ONE stage over the stub base (plan 0.8, "
+                             "M1/M3): a case whose checks stay green under its "
+                             "stage's sabotage does not observe that stage.")
+    parser.add_argument("--preflight", action="store_true",
+                        help="Before scoring a local model, probe tok/s and refuse "
+                             "to run below --min-toks (Ollama silently loses the "
+                             "GPU; a CPU run masquerades as model failures)")
+    parser.add_argument("--min-toks", type=float, default=10.0,
+                        help="Minimum tok/s for the local preflight (default 10)")
     parser.add_argument("--out", type=Path, default=None, metavar="DIR",
                         help="Persist one JSON per run (full per-check results + run "
                              "metadata) into DIR — the input to compare.py and the "
@@ -284,12 +360,17 @@ def main(argv: list[str] | None = None) -> int:
     dims = [d for d in ALL_DIMENSIONS if d in args.only] if args.only \
         else list(ALL_DIMENSIONS)
 
+    slot_models = {s: v for s in ("noumeno", "ner", "ego", "scope", "judge", "voice")
+                   if (v := getattr(args, f"{s}_model")) is not None}
+
     reports: list[BenchReport] = []
     for i in range(1, max(1, args.repeat) + 1):
         report = asyncio.run(run_bench(
             model=args.model, embed_model=args.embed_model, base_url=args.base_url,
             only=args.only, stub=args.stub, limit=args.limit, calibrate=args.calibrate,
             language=None if args.detect else args.language, think=args.think,
+            slot_models=slot_models, mutate=args.mutate,
+            preflight=args.preflight, min_toks=args.min_toks,
         ))
         _stamp_metadata(report, args, i, dims)
         if args.out:

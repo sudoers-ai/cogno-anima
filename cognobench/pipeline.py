@@ -49,15 +49,26 @@ class ReferencePipeline:
         limits_prompt: str = "",
         voice_prompt: str = "",
         voice_backend: Optional[LLMBackend] = None,
+        # Per-slot overrides (plan 0.10) — production routes each stage
+        # independently (tenant model_routing), so the e2e must be able to run a
+        # per-slot combination; every one defaults to gen_backend.
+        noumeno_backend: Optional[LLMBackend] = None,
+        ner_backend: Optional[LLMBackend] = None,
+        scope_backend: Optional[LLMBackend] = None,
+        judge_backend: Optional[LLMBackend] = None,
         max_corrections: int = 2,
         on_rollback: Optional[Callable[[PipelineContext], None]] = None,
         on_commit: Optional[Callable[[PipelineContext], None]] = None,
     ) -> PipelineContext:
         voice_backend = voice_backend or ego_backend
+        noumeno_backend = noumeno_backend or gen_backend
+        ner_backend = ner_backend or gen_backend
+        scope_backend = scope_backend or gen_backend
+        judge_backend = judge_backend or gen_backend
 
         # ── perception + routing ──────────────────────────────────────
-        ctx = await self._noumeno.process(ctx, gen_backend)
-        ctx = await self._ner.process(ctx, gen_backend)
+        ctx = await self._noumeno.process(ctx, noumeno_backend)
+        ctx = await self._ner.process(ctx, ner_backend)
         ctx = await self._id.process(ctx, self._embedder)
 
         # ── PII-CRITICAL gate (from ID) ───────────────────────────────
@@ -68,7 +79,7 @@ class ReferencePipeline:
 
         # ── Early scope guard (optional) ──────────────────────────────
         if scope_prompt:
-            scope = await self._superego.check_input_scope(ctx, gen_backend, scope_prompt=scope_prompt)
+            scope = await self._superego.check_input_scope(ctx, scope_backend, scope_prompt=scope_prompt)
             ctx.retry_metrics.append(scope.metrics)
             if scope.blocked:
                 ctx.superego_result = SuperegoResult(
@@ -84,7 +95,7 @@ class ReferencePipeline:
             judge = None
             while True:
                 ctx = await self._ego.process(ctx, ego_backend, dispatcher, system_prompt=ego_prompt)
-                judge = await self._superego.evaluate(ctx, gen_backend, limits_prompt=limits_prompt)
+                judge = await self._superego.evaluate(ctx, judge_backend, limits_prompt=limits_prompt)
                 ctx.retry_metrics.append(judge.metrics)   # judge never the "main" superego (voice is)
                 if judge.approved or attempt >= max_corrections:
                     break

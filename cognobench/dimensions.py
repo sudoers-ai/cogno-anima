@@ -452,6 +452,7 @@ def _superego_ctx(case: SuperegoCase) -> PipelineContext:
 async def run_superego(
     judge_backend: LLMBackend, voice_backend: LLMBackend, cases: list[SuperegoCase],
     calibrate: bool = False, language: str | None = None,
+    scope_backend: LLMBackend | None = None,
 ) -> list[DimensionResult]:
     """Score the SUPEREGO — THREE DimensionResults, one per op (plan 0.5).
 
@@ -463,6 +464,7 @@ async def run_superego(
     judge_backend should be JSON-constrained (scope/judge parse JSON); voice
     needs a plain text backend.
     """
+    scope_backend = scope_backend or judge_backend
     dims = {kind: DimensionResult(name=f"superego_{kind}")
             for kind in ("scope", "judge", "voice")}
     stage = SuperegoStage()
@@ -473,7 +475,7 @@ async def run_superego(
         try:
             ctx = _superego_ctx(case)
             if case.kind == "scope":
-                r = await stage.check_input_scope(ctx, judge_backend, scope_prompt=case.scope_prompt)
+                r = await stage.check_input_scope(ctx, scope_backend, scope_prompt=case.scope_prompt)
                 dim.checks.append(CheckResult(case.id, "blocked_is_bool", "bool",
                                               str(r.blocked), isinstance(r.blocked, bool)))
                 if case.expect_blocked is not None:
@@ -515,6 +517,7 @@ async def run_superego(
 async def run_conversations(
     gen_backend: LLMBackend, ego_backend: LLMBackend, embedder: Embedder,
     cases: list[ConversationCase], calibrate: bool = False, language: str | None = None,
+    slots: dict[str, LLMBackend] | None = None,
 ) -> DimensionResult:
     """Drive whole sessions through the ReferencePipeline, threading id_state +
     history + injected memories (modelling the sessions/turns/memories tables)."""
@@ -543,10 +546,14 @@ async def run_conversations(
                     ctx.metadata["ego_context"] = "[MEMORIES]\n" + "\n".join(turn.memories)
 
                 disp = ConvDispatcher()
+                slot = slots or {}
                 ctx = await pipe.run_turn(
                     ctx, gen_backend=gen_backend, ego_backend=ego_backend, dispatcher=disp,
                     ego_prompt=EGO_PROMPT, scope_prompt=case.scope_prompt,
-                    limits_prompt=LIMITS_PROMPT, voice_prompt=VOICE_PROMPT)
+                    limits_prompt=LIMITS_PROMPT, voice_prompt=VOICE_PROMPT,
+                    noumeno_backend=slot.get("noumeno"), ner_backend=slot.get("ner"),
+                    scope_backend=slot.get("scope"), judge_backend=slot.get("judge"),
+                    voice_backend=slot.get("voice"))
 
                 tag = f"{case.id}.t{idx}"
                 route = ctx.id_result.triad_route if ctx.id_result else "?"
