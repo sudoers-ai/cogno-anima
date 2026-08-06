@@ -64,6 +64,11 @@ BENCH_TOOLS: list[dict] = [
         "parameters": {"type": "object", "properties": {}}}},
 ]
 
+# Suite version (plan 0.6): bump on ANY case addition/removal/edit, then
+# re-record with `python -m cognobench.suites --update`. Published numbers
+# cite this id; different versions never share a table.
+SUITE_ID = "ego-v1"
+
 VALID_TOOLS = {t["function"]["name"] for t in BENCH_TOOLS}
 
 # Mutating = writes / side effects (drives the read-only mask). Destructive =

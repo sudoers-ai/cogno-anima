@@ -38,6 +38,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+# Suite version (plan 0.6): bump on ANY case addition/removal/edit, then
+# re-record with `python -m cognobench.suites --update`. Published numbers
+# cite this id; different versions never share a table.
+SUITE_ID = "id-v1"
+
 VALID_GOAL_STATUS = {"NEW", "ONGOING", "COMPLETED", "ABANDONED"}
 VALID_ROUTES = {"ID", "EGO", "SUPEREGO", "BALANCED"}
 

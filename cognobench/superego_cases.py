@@ -16,6 +16,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+# Suite version (plan 0.6): bump on ANY case addition/removal/edit, then
+# re-record with `python -m cognobench.suites --update`. Published numbers
+# cite this id; different versions never share a table.
+SUITE_ID = "superego-v1"
+
 FINANCE_SCOPE = (
     "You are a personal finance assistant. You help ONLY with money, expenses, "
     "income, budgets, balances and financial summaries."

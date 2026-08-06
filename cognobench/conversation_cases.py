@@ -56,6 +56,11 @@ BENCH_TOOLS: list[dict] = [
             "required": ["date"]}}},
 ]
 
+# Suite version (plan 0.6): bump on ANY case addition/removal/edit, then
+# re-record with `python -m cognobench.suites --update`. Published numbers
+# cite this id; different versions never share a table.
+SUITE_ID = "conversations-v1"
+
 VALID_TOOLS = {t["function"]["name"] for t in BENCH_TOOLS}
 SIDE_EFFECT_TOOLS = {"record_expense", "record_income", "book_appointment", "cancel_appointment"}
 

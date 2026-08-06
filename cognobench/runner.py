@@ -4,14 +4,24 @@ cognobench CLI runner.
 Drives the cogno-anima cognitive stages (NOUMENO → NER → ID → Drift) over curated
 case sets and prints a scored report. Defaults to a local Ollama backend;
 `--stub` runs a fast plumbing smoke test with no model.
+
+Fase-0 mechanics live here: per-run persistence (``--out``), the repeat mode with
+its stable-score aggregate (``--repeat``), the NER-fallback side metric (a
+logging handler — the coercion event is log-only in the stage), and non-zero
+exit when any dimension came back INVALID (transport failure ≠ a smaller
+denominator, and CI/sweep scripts must be able to see the difference).
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import datetime as _dt
 import json
+import logging
+import re
 import sys
+from pathlib import Path
 
 from cognobench.harness import (
     CognitivePipeline, TokenTally, build_cloud, build_local_embedder, build_ollama,
@@ -21,8 +31,9 @@ from cognobench.dimensions import (
     run_noumeno, run_ner, run_id, run_ego, run_superego, run_drift, run_conversations,
     run_safety,
 )
-from cognobench.types import BenchReport
-from cognobench.report import render
+from cognobench.types import BenchReport, aggregate_runs
+from cognobench.report import render, render_aggregate
+from cognobench import suites as suite_registry
 from cognobench.ner_cases import NER_CASES
 from cognobench.drift_cases import DRIFT_CASES
 from cognobench.noumeno_cases import NOUMENO_CASES
@@ -33,9 +44,35 @@ from cognobench.conversation_cases import CONVERSATION_CASES
 from cognobench.safety_cases import SAFETY_CASES
 
 # Pipeline order: NOUMENO → NER → ID → EGO → SUPEREGO → Drift, then the broad
-# end-to-end conversation simulation (full pipeline, multi-turn).
+# end-to-end conversation simulation (full pipeline, multi-turn). "superego"
+# is the SELECTOR for the trio of scored sub-dimensions (scope/judge/voice).
 ALL_DIMENSIONS = ("noumeno", "ner", "id", "safety", "ego", "superego", "drift",
                   "conversations")
+
+
+class _FallbackCounter(logging.Handler):
+    """Counts the NER's coercion events (plan 0.4a).
+
+    ``intent_class_fallback`` is a log-only event in the stage (no field on
+    ``IntentResult`` records it), and the score cannot see it — measured
+    2026-08-05, a model emitted 6× more fallbacks than another while scoring
+    within one check. The bench runs the stage in-process, so a handler on the
+    stage's logger captures it without stdout parsing."""
+
+    EVENTS = ("intent_class_fallback", "domains_fallback")
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.DEBUG)
+        self.counts: dict[str, int] = {}
+
+    def emit(self, record: logging.LogRecord) -> None:
+        msg = record.getMessage()
+        for ev in self.EVENTS:
+            if ev in msg:
+                self.counts[ev] = self.counts.get(ev, 0) + 1
+
+    def snapshot(self) -> dict[str, int]:
+        return dict(self.counts)
 
 
 async def run_bench(
@@ -89,33 +126,68 @@ async def run_bench(
     def cap(cases):
         return cases[:limit] if limit else cases
 
-    if "noumeno" in dims:
-        report.dimensions.append(await run_noumeno(pipe, cap(NOUMENO_CASES), language=language))
-    if "ner" in dims:
-        report.dimensions.append(await run_ner(pipe, cap(NER_CASES), language=language))
-    if "id" in dims:
-        report.dimensions.append(
-            await run_id(pipe, cap(ID_CASES), calibrate=calibrate, language=language))
-    if "safety" in dims:
-        report.dimensions.append(await run_safety(pipe, cap(SAFETY_CASES), language=language))
-    if "ego" in dims:
-        # EGO needs a TEXT backend: <TOOL_CALL> fallback on Ollama, native FC on cloud.
-        # In stub mode the JSON stub yields a no-tool result — enough for plumbing.
-        report.dimensions.append(
-            await run_ego(text_backend, cap(EGO_CASES), calibrate=calibrate, language=language))
-    if "superego" in dims:
-        # scope/judge consume JSON (use the json backend); voice needs free text.
-        report.dimensions.append(
-            await run_superego(backend, text_backend, cap(SUPEREGO_CASES),
-                               calibrate=calibrate, language=language))
-    if "drift" in dims:
-        report.dimensions.append(
-            await run_drift(pipe, cap(DRIFT_CASES), calibrate=calibrate, language=language))
-    if "conversations" in dims:
-        # Full-pipeline multi-turn simulation: gen=JSON backend, ego/voice=text backend.
-        report.dimensions.append(
-            await run_conversations(backend, text_backend, embedder, cap(CONVERSATION_CASES),
-                                    calibrate=calibrate, language=language))
+    # NER fallback side metric: attach for the whole run; per-dimension counts by
+    # snapshot delta. DEBUG level so domains_fallback (a debug record) is seen.
+    ner_logger = logging.getLogger("cogno_anima.ner")
+    counter = _FallbackCounter()
+    prev_level = ner_logger.level
+    ner_logger.addHandler(counter)
+    ner_logger.setLevel(logging.DEBUG)
+
+    def _delta(before: dict[str, int]) -> dict[str, int]:
+        now = counter.snapshot()
+        return {k: v - before.get(k, 0) for k, v in now.items()
+                if v - before.get(k, 0) > 0}
+
+    def _add(dim_result, before):
+        d = _delta(before)
+        if d:
+            dim_result.meta["ner_fallbacks"] = d
+        report.dimensions.append(dim_result)
+
+    try:
+        if "noumeno" in dims:
+            before = counter.snapshot()
+            _add(await run_noumeno(pipe, cap(NOUMENO_CASES), language=language), before)
+        if "ner" in dims:
+            before = counter.snapshot()
+            _add(await run_ner(pipe, cap(NER_CASES), language=language), before)
+        if "id" in dims:
+            before = counter.snapshot()
+            _add(await run_id(pipe, cap(ID_CASES), calibrate=calibrate, language=language),
+                 before)
+        if "safety" in dims:
+            before = counter.snapshot()
+            _add(await run_safety(pipe, cap(SAFETY_CASES), language=language), before)
+        if "ego" in dims:
+            # EGO needs a TEXT backend: <TOOL_CALL> fallback on Ollama, native FC on
+            # cloud. In stub mode the JSON stub yields a no-tool result — enough for
+            # plumbing.
+            before = counter.snapshot()
+            _add(await run_ego(text_backend, cap(EGO_CASES), calibrate=calibrate,
+                               language=language), before)
+        if "superego" in dims:
+            # scope/judge consume JSON (json backend); voice needs free text.
+            # Three scored sub-dimensions from one suite (plan 0.5).
+            before = counter.snapshot()
+            for sub in await run_superego(backend, text_backend, cap(SUPEREGO_CASES),
+                                          calibrate=calibrate, language=language):
+                report.dimensions.append(sub)
+        if "drift" in dims:
+            before = counter.snapshot()
+            _add(await run_drift(pipe, cap(DRIFT_CASES), calibrate=calibrate,
+                                 language=language), before)
+        if "conversations" in dims:
+            # Full-pipeline multi-turn simulation: gen=JSON, ego/voice=text backend.
+            before = counter.snapshot()
+            _add(await run_conversations(backend, text_backend, embedder,
+                                         cap(CONVERSATION_CASES),
+                                         calibrate=calibrate, language=language), before)
+    finally:
+        ner_logger.removeHandler(counter)
+        ner_logger.setLevel(prev_level)
+
+    report.meta["ner_fallbacks_total"] = counter.snapshot()
 
     # Cost meter: total LLM tokens across every backend call this run (the tallies
     # wrap both the JSON and the text paths; on cloud they are the same instance).
@@ -126,14 +198,53 @@ async def run_bench(
     return report
 
 
+def _slug(model: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", model)
+
+
+def _stamp_metadata(report: BenchReport, args: argparse.Namespace, repeat_index: int,
+                    dims: list[str]) -> None:
+    """Run metadata (plan 0.1): every persisted run is attributable to an exact
+    config + case universe. ``--limit`` slices positionally, so the EFFECTIVE
+    case ids go in, not just the suite hash."""
+    now = _dt.datetime.now(_dt.timezone.utc)
+    report.timestamp = now.isoformat(timespec="seconds")
+    # Slug from the run's LABEL (model_label), not args.model — a --stub run must
+    # say "stub", never wear the default model's name.
+    report.run_id = f"{now.strftime('%Y%m%dT%H%M%S')}-{_slug(report.model)}-r{repeat_index}"
+    report.config = {
+        "model": args.model, "embed_model": args.embed_model,
+        "language": None if args.detect else args.language,
+        "only": args.only, "limit": args.limit, "stub": args.stub,
+        "calibrate": args.calibrate, "think": args.think,
+        "repeat_index": repeat_index, "repeat_total": args.repeat,
+    }
+    registry = suite_registry.registry()
+    for dim, info in registry.items():
+        if dim not in dims:
+            continue
+        ids = info["case_ids"][:args.limit] if args.limit else info["case_ids"]
+        report.suites[dim] = {"suite_id": info["suite_id"],
+                              "suite_hash": info["suite_hash"],
+                              "effective_case_ids": ids}
+
+
+def _write_out(report: BenchReport, out_dir: Path) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{report.run_id}.json"
+    path.write_text(json.dumps(report.to_dict(include_checks=True), indent=2,
+                               ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="cognobench",
         description="Cognitive benchmark for cogno-anima (NOUMENO → NER → ID → Drift)",
     )
-    parser.add_argument("--model", "-m", default="mistral:latest",
-                        help="Ollama model for NOUMENO/NER (default: mistral:latest; "
-                             "qwen3:8b is the recommended alternative)")
+    parser.add_argument("--model", "-m", default="qwen3:8b",
+                        help="Model for NOUMENO/NER (default: qwen3:8b — every local "
+                             "run uses it; 'provider:model' prefixes go to the cloud)")
     parser.add_argument("--embed-model", default="nomic-embed-text",
                         help="Ollama embedding model (default: nomic-embed-text)")
     parser.add_argument("--base-url", default="http://localhost:11434",
@@ -157,23 +268,54 @@ def main(argv: list[str] | None = None) -> int:
                         help="Enable the reasoning channel (qwen3, deepseek, …). No-op "
                              "under JSON ops (scope/judge); visible on the text path "
                              "(EGO loop, SUPEREGO voice). Use to compare accuracy×latency.")
+    parser.add_argument("--repeat", type=int, default=1, metavar="N",
+                        help="Run the whole selection N times and report the stable "
+                             "score + noise floor (plan 0.2; N=3 for model screening)")
+    parser.add_argument("--out", type=Path, default=None, metavar="DIR",
+                        help="Persist one JSON per run (full per-check results + run "
+                             "metadata) into DIR — the input to compare.py and the "
+                             "noise-floor/discrimination reports")
     parser.add_argument("--json", action="store_true",
                         help="Emit machine-readable JSON summary instead of the table")
     parser.add_argument("--no-failures", action="store_true",
                         help="Hide the per-failure breakdown")
     args = parser.parse_args(argv)
 
-    report = asyncio.run(run_bench(
-        model=args.model, embed_model=args.embed_model, base_url=args.base_url,
-        only=args.only, stub=args.stub, limit=args.limit, calibrate=args.calibrate,
-        language=None if args.detect else args.language, think=args.think,
-    ))
+    dims = [d for d in ALL_DIMENSIONS if d in args.only] if args.only \
+        else list(ALL_DIMENSIONS)
+
+    reports: list[BenchReport] = []
+    for i in range(1, max(1, args.repeat) + 1):
+        report = asyncio.run(run_bench(
+            model=args.model, embed_model=args.embed_model, base_url=args.base_url,
+            only=args.only, stub=args.stub, limit=args.limit, calibrate=args.calibrate,
+            language=None if args.detect else args.language, think=args.think,
+        ))
+        _stamp_metadata(report, args, i, dims)
+        if args.out:
+            path = _write_out(report, args.out)
+            print(f"  → {path}", file=sys.stderr)
+        reports.append(report)
+
+    aggregate = aggregate_runs(reports) if len(reports) > 1 else None
 
     if args.json:
-        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
+        if aggregate:
+            print(json.dumps({"runs": [r.to_dict() for r in reports],
+                              "aggregate": aggregate},
+                             indent=2, ensure_ascii=False))
+        else:
+            print(json.dumps(reports[0].to_dict(), indent=2, ensure_ascii=False))
     else:
-        print(render(report, show_failures=not args.no_failures))
+        for r in reports:
+            print(render(r, show_failures=not args.no_failures))
+        if aggregate:
+            print(render_aggregate(aggregate))
 
+    # Non-zero when any run had an invalid dimension: a transport-degraded run
+    # must be distinguishable from a scored one by scripts and CI.
+    if any(r.invalid_dimensions for r in reports):
+        return 1
     return 0
 
 

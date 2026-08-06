@@ -22,6 +22,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
+# Suite version (plan 0.6): bump on ANY case addition/removal/edit, then
+# re-record with `python -m cognobench.suites --update`. Published numbers
+# cite this id; different versions never share a table.
+SUITE_ID = "safety-v1"
+
 @dataclass
 class SafetyCase:
     """One PII/safety benchmark case, run through NOUMENO→NER→ID."""
