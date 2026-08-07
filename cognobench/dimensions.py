@@ -57,6 +57,10 @@ def _note_error(dim: DimensionResult, case_id: str, exc: Exception) -> bool:
     """
     dim.errors.append((case_id, repr(exc)))
     if isinstance(exc, (StageParseError, ValidationError)):
+        # One failed check UNDER-weights a garbled case vs answering all its
+        # checks wrong (accepted: the planned per-field set is not knowable
+        # here); compare.py rebalances cross-run by voting FAIL on the case's
+        # known keys.
         dim.checks.append(CheckResult(case_id, "case_error", "no exception",
                                       repr(exc)[:90], False))
         return False
@@ -206,12 +210,15 @@ async def run_ner(
                 ) if e]
                 for want in case.expect_entities:
                     found = any(want.lower() in e for e in pool)
-                    checks.append(("entity", want, str(pool[:4]), found))
+                    # field carries the expected value: (case_id, field) is the
+                    # cross-run join key, and repeated bare "entity" keys collapse
+                    # distinct checks in aggregate_runs/compare (review finding).
+                    checks.append((f"entity:{want}", want, str(pool[:4]), found))
 
             if case.expect_verbs:
                 verbs = [v.lower() for v in (intent.verbs or [])]
                 for want in case.expect_verbs:
-                    checks.append(("verb", want, str(verbs[:5]),
+                    checks.append((f"verb:{want}", want, str(verbs[:5]),
                                    any(want.lower() in v for v in verbs)))
 
             if case.expect_negation:
@@ -219,7 +226,7 @@ async def run_ner(
                 for want in case.expect_negation:
                     # "|" separates accepted alternatives (the extraction language is the
                     # canonical English rewrite; cases often expect pt|en variants).
-                    checks.append(("negation", want, str(intent.negation or []),
+                    checks.append((f"negation:{want}", want, str(intent.negation or []),
                                    any(alt.lower() in negs for alt in want.split("|"))))
 
             # Enrichment/decomposition signals (parent decomposition + enrichment cases).
@@ -234,7 +241,7 @@ async def run_ner(
             if case.expect_constraints:
                 cons = " ".join(intent.constraints or []).lower()
                 for want in case.expect_constraints:
-                    checks.append(("constraint", want, str(intent.constraints or []),
+                    checks.append((f"constraint:{want}", want, str(intent.constraints or []),
                                    any(alt.lower() in cons for alt in want.split("|"))))
             if case.expect_context_dependent is not None:
                 checks.append(("context_dependent", str(case.expect_context_dependent),
@@ -355,9 +362,9 @@ async def run_ego(
     tool_failures: dict[str, int] = {}
     steps_total = 0
     for case in cases:
+        ctx = _ego_ctx(case)           # harness/case-data bugs crash loudly here
+        disp = BenchDispatcher()
         try:
-            ctx = _ego_ctx(case)
-            disp = BenchDispatcher()
             ctx = await stage.process(ctx, backend, disp, system_prompt=EGO_SYSTEM)
             res = ctx.ego_result
             if res is None:
@@ -467,13 +474,33 @@ async def run_superego(
     scope_backend = scope_backend or judge_backend
     dims = {kind: DimensionResult(name=f"superego_{kind}")
             for kind in ("scope", "judge", "voice")}
+    kind_backend = {"scope": scope_backend, "judge": judge_backend,
+                    "voice": voice_backend}
     stage = SuperegoStage()
+
+    # Transport probe (review finding): the scope op is fail-OPEN and the judge
+    # fail-CLOSED, so both SWALLOW a dead backend internally — a full outage
+    # scores as plausible-looking valid results. Probe each distinct backend
+    # before and after the case loop; a transport failure invalidates every
+    # sub-dimension served by that backend (never a silent green).
+    async def _probe() -> None:
+        for be in {id(b): b for b in kind_backend.values()}.values():
+            try:
+                await be.generate("probe", "probe")
+            except (StageParseError, ValidationError):
+                pass                                    # garbage is a result
+            except Exception as exc:  # noqa: BLE001 — transport/unknown
+                for kind, kb in kind_backend.items():
+                    if kb is be and dims[kind].invalid_reason is None:
+                        dims[kind].invalid_reason = f"transport probe: {exc!r}"
+
+    await _probe()
     for case in cases:
         dim = dims[case.kind]
-        if any(d.invalid_reason for d in dims.values()):
-            break                      # one transport failure invalidates the trio
+        if dim.invalid_reason is not None:
+            continue                   # this op's backend is dead; others may live
+        ctx = _superego_ctx(case)      # harness/case-data bugs crash loudly here
         try:
-            ctx = _superego_ctx(case)
             if case.kind == "scope":
                 r = await stage.check_input_scope(ctx, scope_backend, scope_prompt=case.scope_prompt)
                 dim.checks.append(CheckResult(case.id, "blocked_is_bool", "bool",
@@ -500,13 +527,13 @@ async def run_superego(
                                                   r.response[:60], True if calibrate else ok))
         except Exception as exc:  # noqa: BLE001
             if _note_error(dim, case.id, exc):
-                # transport: mirror the invalidity onto the sibling ops — they run
-                # on the same backends, and a partially-valid trio would compare
-                # sub-suites measured under different conditions.
-                for other in dims.values():
-                    if other.invalid_reason is None:
-                        other.invalid_reason = dim.invalid_reason
-                break
+                # Transport: mirror the invalidity ONLY onto sibling ops served
+                # by the SAME backend instance — with per-slot routing, a local
+                # hiccup must not discard a fully-measured cloud sub-dim.
+                for kind, kb in kind_backend.items():
+                    if kb is kind_backend[case.kind] and dims[kind].invalid_reason is None:
+                        dims[kind].invalid_reason = dim.invalid_reason
+    await _probe()                     # a mid-run death the ops swallowed
     return list(dims.values())
 
 

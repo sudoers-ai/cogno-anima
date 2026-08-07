@@ -88,9 +88,26 @@ def recorded() -> dict[str, dict]:
 
 
 def update_pins() -> dict[str, dict]:
+    """Re-record the pins — REFUSING a hash change under an unchanged SUITE_ID.
+
+    Without this guard the red pin test's own error message ("run --update")
+    walked a contributor straight into laundering a silent suite mutation:
+    edit a case, run --update, ship — published tables keep citing the old
+    version while the case universe changed (the 127→125 incident)."""
+    pinned = recorded()
     live = {dim: {"suite_id": info["suite_id"], "suite_hash": info["suite_hash"],
                   "cases": info["cases"]}
             for dim, info in registry().items()}
+    laundered = [dim for dim, info in live.items()
+                 if dim in pinned
+                 and pinned[dim]["suite_hash"] != info["suite_hash"]
+                 and pinned[dim]["suite_id"] == info["suite_id"]]
+    if laundered:
+        raise SystemExit(
+            f"refusing to re-record {laundered}: case data changed but SUITE_ID "
+            f"did not. Bump the SUITE_ID in the cases file first — a version "
+            f"bump is what tells every published table its numbers went stale."
+        )
     _PIN_FILE.write_text(json.dumps(live, indent=2, ensure_ascii=False) + "\n",
                          encoding="utf-8")
     return live

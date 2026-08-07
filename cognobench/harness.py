@@ -224,14 +224,39 @@ _STUB_NER = json.dumps({
     "pii_risk": "NONE", })
 
 
+_STUB_EGO_CALL = '<TOOL_CALL>{"tool": "get_balance", "args": {}}</TOOL_CALL>'
+
+
 class _StubBackend:
     model = "stub"
 
     async def generate(self, system: str, prompt: str) -> tuple[str, int, int]:
         # Route by which stage prompt this is: the NER user prompt contains "NOUMENO:".
+        # An EGO fallback prompt renders the tool list + <TOOL_CALL> mechanics —
+        # emit ONE read-only call so the ego_none sabotage has a measurable drop
+        # (a stub that never calls tools is behaviorally identical to the
+        # sabotage, which made that mutation dead machinery — review finding).
+        # The duplicate-call guard terminates the loop on the repeat.
+        blob = system + "\n" + prompt      # the EGO renders tools into SYSTEM
+        if "<TOOL_CALL>" in blob and "get_balance" in blob:
+            return _STUB_EGO_CALL, 10, 10
         if "NOUMENO:" in prompt or "ORIGINAL:" in prompt:
             return _STUB_NER, 10, 10
         return _STUB_NOUMENO, 10, 10
+
+
+class _StubScopeBlock:
+    """Stub for the SCOPE slot only: blocks everything. The plain stub's scope
+    verdict is fail-open blocked=False — behaviorally identical to the
+    scope_allow sabotage, which made that mutation unfalsifiable (review
+    finding). A blocking baseline gives scope_allow a real directional flip,
+    while conversations keep the plain stub (their plumbing needs the full
+    EGO⇄judge loop, which an always-block scope would skip)."""
+
+    model = "stub-scope-block"
+
+    async def generate(self, system: str, prompt: str) -> tuple[str, int, int]:
+        return json.dumps({"blocked": True, "refusal_message": "stub-blocked"}), 5, 5
 
 
 class _StubEmbedder:
@@ -327,20 +352,26 @@ async def preflight_embedder(embedder: Embedder) -> tuple[bool, float]:
 
 
 async def preflight_local_toks(model: str, base_url: str) -> float:
-    """Measured tok/s of a short real generation. Ollama loses CUDA per-process
-    and silently degrades to CPU (~10-20× slower) — a run started in that state
-    produces timeouts and truncations that masquerade as model failures. The
-    caller compares against a threshold and refuses to score below it."""
-    import time
+    """Measured GENERATION tok/s of a short real run. Ollama loses CUDA
+    per-process and silently degrades to CPU (~10-20× slower) — a run started in
+    that state produces timeouts and truncations that masquerade as model
+    failures. The caller compares against a threshold and refuses to score below.
+
+    Uses Ollama's ``eval_count/eval_duration`` (generation only), NOT wall-clock:
+    wall-clock includes model LOAD, so a cold healthy model measured 0.4 tok/s
+    and false-failed the probe — and the error's advice (restart) made it
+    colder. Any transport failure returns 0.0 (the threshold then refuses)."""
     import httpx
-    t0 = time.monotonic()
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(f"{base_url}/api/generate", json={
-            "model": model, "prompt": "Count: 1 2 3 4 5 6 7 8 9 10",
-            "stream": False, "think": False, "options": {"num_predict": 40},
-        })
-        resp.raise_for_status()
-        data = resp.json()
-    elapsed = time.monotonic() - t0
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            resp = await client.post(f"{base_url}/api/generate", json={
+                "model": model, "prompt": "Count: 1 2 3 4 5 6 7 8 9 10",
+                "stream": False, "think": False, "options": {"num_predict": 40},
+            })
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception:  # noqa: BLE001 — unreachable/timeout = cannot certify
+        return 0.0
     tokens = data.get("eval_count") or 0
-    return (tokens / elapsed) if elapsed > 0 else 0.0
+    dur_ns = data.get("eval_duration") or 0
+    return (tokens / (dur_ns / 1e9)) if dur_ns > 0 else 0.0

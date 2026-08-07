@@ -26,6 +26,11 @@ def render(report: BenchReport, show_failures: bool = True) -> str:
             # not a smaller denominator (plan 0.3).
             lines.append(f"  {dim.name:<15} {'▓' * 24} INVALID — {dim.invalid_reason}")
             continue
+        if dim.total == 0 and not dim.errors:
+            # "0.0% (0/0)" reads as a catastrophic score for a dimension that was
+            # never exercised (a --limit slice) — say what it is instead.
+            lines.append(f"  {dim.name:<15} {'·' * 24} (no cases)")
+            continue
         fb = dim.meta.get("ner_fallbacks", {})
         fb_note = f"  fallbacks={sum(fb.values())}" if fb else ""
         lines.append(

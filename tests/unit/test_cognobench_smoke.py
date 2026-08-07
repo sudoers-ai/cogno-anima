@@ -172,7 +172,8 @@ def test_transport_error_invalidates_model_error_scores():
 
 
 def test_aggregate_runs_stable_score_and_noise_floor():
-    """Plan 0.2: unstable = diverges across runs; stable = majority; floor =
+    """Plan 0.2: unstable = diverges across runs; stable = STRICT majority
+    (a tie is fail — conservative and order-independent); floor =
     max(unstable, 2)."""
     from cognobench.types import BenchReport, DimensionResult, CheckResult, aggregate_runs
 
@@ -189,3 +190,49 @@ def test_aggregate_runs_stable_score_and_noise_floor():
     assert d["stable_correct"] == 2          # c1 always; c2 passes 2/3 (majority)
     assert d["noise_floor"] == 2             # max(1 unstable, conservative 2)
     assert d["correct_min"] == 1 and d["correct_max"] == 2
+
+
+def test_aggregate_tie_is_fail_and_order_independent():
+    """Review finding: Counter-based tie-break let run ORDER decide a 1-of-2
+    split (and diverged from compare.py). Strict majority: [T,F] == [F,T] == fail."""
+    from cognobench.types import BenchReport, DimensionResult, CheckResult, aggregate_runs
+
+    def run(ok: bool):
+        return BenchReport(dimensions=[DimensionResult(name="d", checks=[
+            CheckResult("c1", "f", "e", "x", ok)])])
+
+    for order in ([True, False], [False, True]):
+        agg = aggregate_runs([run(order[0]), run(order[1])])
+        assert agg["d"]["stable_correct"] == 0, f"tie must fail (order {order})"
+        assert agg["d"]["unstable_checks"] == 1
+
+
+def test_compare_roundtrip_excludes_calibrate_and_expands_case_errors(tmp_path):
+    """--out → compare round trip (review finding: zero tests). Two things must
+    hold: a --calibrate artifact never joins, and a run where a case garbled
+    (case_error) votes FAIL on that case's keys from the sibling run."""
+    import json as _json
+    from cognobench import compare
+
+    def write(name, model, checks, calibrate=False):
+        (tmp_path / name).write_text(_json.dumps({
+            "model": model, "config": {"calibrate": calibrate, "limit": None},
+            "suites": {"ner": {"suite_id": "ner-v1", "suite_hash": "abc"}},
+            "dimensions": [{"dimension": "ner", "valid": True, "checks": checks}],
+        }))
+
+    ok = {"case_id": "c1", "field": "intent_class", "expected": "X", "actual": "X",
+          "correct": True}
+    err = {"case_id": "c1", "field": "case_error", "expected": "no exception",
+           "actual": "StageParseError", "correct": False}
+
+    write("r1.json", "m", [ok])                       # run 1: c1 passes
+    write("r2.json", "m", [err])                      # run 2: c1 garbles
+    write("r3.json", "m", [ok], calibrate=True)       # calibrate: must not join
+    by_model = compare._index(compare.load_runs([tmp_path]))
+    votes = by_model["m"]["dims"]["ner"][("c1", "intent_class")]
+    assert votes == [True, False], (
+        f"expected the garbled run to vote FAIL on the sibling's key and the "
+        f"calibrate run to be excluded; got {votes}"
+    )
+    assert compare._stable(votes) is False            # tie → fail, both tools agree

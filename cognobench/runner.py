@@ -26,7 +26,7 @@ from pathlib import Path
 from cognobench.harness import (
     CognitivePipeline, TokenTally, build_cloud, build_local_embedder, build_ollama,
     build_ollama_text, build_sabotage_stub, build_stub, ollama_available,
-    preflight_embedder, preflight_local_toks, SABOTAGE_TARGET_SLOT,
+    preflight_embedder, preflight_local_toks, SABOTAGE_TARGET_SLOT, _StubScopeBlock,
 )
 from cognobench.dimensions import (
     run_noumeno, run_ner, run_id, run_ego, run_superego, run_drift, run_conversations,
@@ -169,13 +169,23 @@ async def run_bench(
         slots[SABOTAGE_TARGET_SLOT[mutate]] = build_sabotage_stub(mutate)
 
     pipe = CognitivePipeline(slots.get("noumeno", backend), embedder,
-                             ner_backend=slots.get("ner"))
+                             ner_backend=slots.get("ner", backend))
     ego_be = slots.get("ego", text_backend)
-    scope_be = slots.get("scope", backend)
+    # Stub scope baseline blocks (harness._StubScopeBlock) so the scope_allow
+    # sabotage is falsifiable; conversations keep the plain stub via `slots`.
+    scope_default = _StubScopeBlock() if (stub or mutate) else backend
+    scope_be = slots.get("scope", scope_default)
     judge_be = slots.get("judge", backend)
     voice_be = slots.get("voice", text_backend)
     if slots:
         report.config["slots"] = {k: getattr(v, "model", "?") for k, v in slots.items()}
+    if slot_models:
+        # The label is compare.py's join key: a slot-swept run pooled with a
+        # pure run of the same base model would average two instruments.
+        report.model = model_label + "[" + ",".join(
+            f"{k}={v}" for k, v in sorted(slot_models.items())) + "]"
+    else:
+        report.model = model_label
 
     dims = [d for d in ALL_DIMENSIONS if d in only] if only else list(ALL_DIMENSIONS)
 
@@ -226,7 +236,12 @@ async def run_bench(
             # scope/judge consume JSON (json backend); voice needs free text.
             # Three scored sub-dimensions from one suite (plan 0.5).
             before = counter.snapshot()
-            for sub in await run_superego(judge_be, voice_be, cap(SUPEREGO_CASES),
+            # Positional --limit sliced whole sub-dimensions away (the first
+            # cases are all scope-kind) — cap per kind instead.
+            se_cases = SUPEREGO_CASES if not limit else [
+                c for kind in ("scope", "judge", "voice")
+                for c in [x for x in SUPEREGO_CASES if x.kind == kind][:limit]]
+            for sub in await run_superego(judge_be, voice_be, se_cases,
                                           calibrate=calibrate, language=language,
                                           scope_backend=scope_be):
                 report.dimensions.append(sub)
@@ -271,7 +286,8 @@ def _stamp_metadata(report: BenchReport, args: argparse.Namespace, repeat_index:
     report.timestamp = now.isoformat(timespec="seconds")
     # Slug from the run's LABEL (model_label), not args.model — a --stub run must
     # say "stub", never wear the default model's name.
-    report.run_id = f"{now.strftime('%Y%m%dT%H%M%S')}-{_slug(report.model)}-r{repeat_index}"
+    report.run_id = (f"{now.strftime('%Y%m%dT%H%M%S%f')}-{_slug(report.model)}"
+                 f"-r{repeat_index}")
     # update(), not assignment — run_bench may have recorded config["slots"].
     report.config.update({
         "model": args.model, "embed_model": args.embed_model,
@@ -302,6 +318,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="cognobench",
         description="Cognitive benchmark for cogno-anima (NOUMENO → NER → ID → Drift)",
+        epilog="Exit codes: 0 = scored clean; 1 = scored but ≥1 dimension INVALID "
+               "(transport failure — artifacts persisted, totals exclude it); "
+               "2 = environment/config (Ollama unreachable, missing API key, usage); "
+               "3 = preflight refused (embedder does not discriminate / tok/s below "
+               "threshold).",
     )
     parser.add_argument("--model", "-m", default="qwen3:8b",
                         help="Model for NOUMENO/NER (default: qwen3:8b — every local "
@@ -357,21 +378,34 @@ def main(argv: list[str] | None = None) -> int:
                         help="Hide the per-failure breakdown")
     args = parser.parse_args(argv)
 
+    _user_slots = [s for s in ("noumeno", "ner", "ego", "scope", "judge", "voice")
+                   if getattr(args, f"{s}_model") is not None]
+    if _user_slots and (args.stub or args.mutate):
+        parser.error("--<slot>-model needs a real run: the stub/mutate base "
+                     "replaces every slot (a 'no model' smoke was silently "
+                     "making live calls through slot flags)")
+
     dims = [d for d in ALL_DIMENSIONS if d in args.only] if args.only \
         else list(ALL_DIMENSIONS)
 
     slot_models = {s: v for s in ("noumeno", "ner", "ego", "scope", "judge", "voice")
                    if (v := getattr(args, f"{s}_model")) is not None}
 
+    from cogno_synapse.errors import SynapseError
     reports: list[BenchReport] = []
     for i in range(1, max(1, args.repeat) + 1):
-        report = asyncio.run(run_bench(
+        try:
+            report = asyncio.run(run_bench(
             model=args.model, embed_model=args.embed_model, base_url=args.base_url,
             only=args.only, stub=args.stub, limit=args.limit, calibrate=args.calibrate,
             language=None if args.detect else args.language, think=args.think,
-            slot_models=slot_models, mutate=args.mutate,
-            preflight=args.preflight, min_toks=args.min_toks,
-        ))
+                slot_models=slot_models, mutate=args.mutate,
+                preflight=args.preflight, min_toks=args.min_toks,
+            ))
+        except SynapseError as exc:
+            # Missing key / provider config = environment, not a scored run.
+            print(f"✗ {exc}", file=sys.stderr)
+            return 2
         _stamp_metadata(report, args, i, dims)
         if args.out:
             path = _write_out(report, args.out)

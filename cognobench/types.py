@@ -14,7 +14,6 @@ Two invariants live here (plan Fase 0):
 
 from __future__ import annotations
 
-from collections import Counter
 from dataclasses import dataclass, field
 
 
@@ -162,6 +161,11 @@ def aggregate_runs(reports: list[BenchReport]) -> dict:
     count with a conservative default of max(observed, 2). Checks join across
     runs on (dimension, case_id, field). Invalid runs of a dimension are excluded
     from its stability math (they never scored) but are reported.
+
+    Known limit: a case that parse-fails in SOME runs contributes a
+    ``case_error`` key instead of its per-field keys, so its flakiness is
+    understated here — compare.py (the decision tool) expands case_error into
+    FAIL votes on the sibling runs' keys; this aggregate is the quick look.
     """
     dims: dict[str, dict] = {}
     for report in reports:
@@ -179,8 +183,10 @@ def aggregate_runs(reports: list[BenchReport]) -> dict:
     for name, slot in dims.items():
         results: dict = slot["results"]
         unstable = [k for k, v in results.items() if len(set(v)) > 1]
-        stable_pass = sum(1 for v in results.values()
-                          if Counter(v).most_common(1)[0][0] is True)
+        # STRICT majority: a tie is FAIL — conservative, order-independent
+        # (Counter.most_common broke ties by insertion order, so run ORDER
+        # decided a 1-of-2 split), and identical to compare.py's rule.
+        stable_pass = sum(1 for v in results.values() if sum(v) * 2 > len(v))
         n_runs = len(slot["correct"])
         out[name] = {
             "runs": n_runs,

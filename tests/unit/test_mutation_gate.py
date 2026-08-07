@@ -100,3 +100,58 @@ def test_safety_deterministic_checks_survive_ner_sabotage():
     hard = [c for c in saf.checks if c.field.endswith("_deterministic")]
     assert hard, "expected deterministic safety checks"
     assert all(c.correct for c in hard)
+
+
+def test_fallback_counter_is_wired_to_the_stage_logger():
+    """The 0.4a degradation metric is string-coupled to the stage's log surface
+    (logger 'cogno_anima.ner', event substrings) — a rename on either side would
+    zero it forever with every test green. Pin it: an all-UNKNOWN NER must
+    produce a nonzero fallback count in the dimension's meta."""
+    report = _run(mutate="ner_unknown", only=["ner"])
+    ner = next(d for d in report.dimensions if d.name == "ner")
+    counts = ner.meta.get("ner_fallbacks", {})
+    assert sum(counts.values()) > 0, (
+        "ner_unknown produced no counted fallback events — the logging handler "
+        "is no longer wired to the stage's logger/messages"
+    )
+
+
+def test_update_pins_refuses_a_hash_change_without_a_suite_id_bump(tmp_path,
+                                                                   monkeypatch):
+    """suites.update_pins must not launder a silent suite mutation: hash moved +
+    SUITE_ID unchanged → refuse (the red pin test's own error message tells the
+    contributor to run --update, so --update itself has to be the gate)."""
+    import json as _json
+    import cognobench.suites as suites
+
+    pin_file = tmp_path / "suite_hashes.json"
+    monkeypatch.setattr(suites, "_PIN_FILE", pin_file)
+    first = suites.update_pins()                     # fresh record: fine
+    assert pin_file.exists() and first
+
+    # Simulate an edited case: same ids, moved hash.
+    pinned = _json.loads(pin_file.read_text())
+    pinned["ner"]["suite_hash"] = "0" * 16
+    pin_file.write_text(_json.dumps(pinned))
+    with pytest.raises(SystemExit, match="refusing to re-record"):
+        suites.update_pins()
+
+
+def test_ego_none_flips_the_selection_the_stub_can_observe():
+    """The clean stub emits exactly one call (get_balance), so the observable
+    subset for ego_none is the tool_selected(soft) checks expecting it — the
+    AGGREGATE need not drop (a no-call stub helps every expect_no_tool case,
+    the same both-sides inversion as the judge sabotage)."""
+    def selected(report):
+        ego = next(d for d in report.dimensions if d.name == "ego")
+        return {c.case_id: c.correct for c in ego.checks
+                if c.field == "tool_selected(soft)" and c.expected == "get_balance"}
+
+    base = selected(_run(only=["ego"]))
+    sab = selected(_run(mutate="ego_none", only=["ego"]))
+    observable = [cid for cid, ok in base.items() if ok]
+    assert observable, "the stub baseline must pass at least one get_balance case"
+    assert all(not sab[cid] for cid in observable), (
+        "ego_none did not flip a get_balance selection the baseline passed — "
+        "the sabotage is not reaching the EGO slot"
+    )
