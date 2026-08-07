@@ -80,6 +80,20 @@ def registry() -> dict[str, dict]:
     }
 
 
+def _published_ids() -> set[str]:
+    """Suite ids already on origin/main — the ones whose baselines are public."""
+    import subprocess
+    try:
+        blob = subprocess.run(
+            ["git", "show", "origin/main:cognobench/suite_hashes.json"],
+            capture_output=True, text=True, cwd=str(_PIN_FILE.parent), timeout=10)
+        if blob.returncode != 0:
+            return {info["suite_id"] for info in recorded().values()}  # conservative
+        return {info["suite_id"] for info in json.loads(blob.stdout).values()}
+    except Exception:  # noqa: BLE001 — no git/no remote: be conservative
+        return {info["suite_id"] for info in recorded().values()}
+
+
 def recorded() -> dict[str, dict]:
     """The pinned {dimension: {suite_id, suite_hash}} from suite_hashes.json."""
     if not _PIN_FILE.exists():
@@ -98,10 +112,16 @@ def update_pins() -> dict[str, dict]:
     live = {dim: {"suite_id": info["suite_id"], "suite_hash": info["suite_hash"],
                   "cases": info["cases"]}
             for dim, info in registry().items()}
+    published = _published_ids()
     laundered = [dim for dim, info in live.items()
                  if dim in pinned
                  and pinned[dim]["suite_hash"] != info["suite_hash"]
-                 and pinned[dim]["suite_id"] == info["suite_id"]]
+                 and pinned[dim]["suite_id"] == info["suite_id"]
+                 # Iterating an UNRELEASED version in its own branch is legitimate:
+                 # the invariant is "never re-record a version that has PUBLISHED
+                 # baselines", and published = the id exists in origin/main's pin
+                 # file. (Third time this friction hit; the rule is now explicit.)
+                 and info["suite_id"] in published]
     if laundered:
         raise SystemExit(
             f"refusing to re-record {laundered}: case data changed but SUITE_ID "
