@@ -16,7 +16,13 @@ from cogno_anima.types import (
     EgoResult, EgoStep, ToolExecution,
 )
 
-MODEL = os.environ.get("COGNO_TEST_MODEL", "mistral:latest")
+# The judge is a reasoning role, and the model has to be able to do it. Measured on the
+# goal↔execution case below (user asked to record an EXPENSE, the EGO recorded INCOME),
+# running the real stage n=3 per model: mistral:latest APPROVED the mismatch 3/3 with an
+# empty critique; qwen3:8b rejected 3/3 with the correct critique, as did gpt-4o-mini.
+# The judge is fail-closed by design — never approve unverified — so on mistral it was the
+# exact inverse, a false-pass machine. The prompt was never at fault.
+MODEL = os.environ.get("COGNO_TEST_MODEL", "qwen3:8b")
 
 
 async def is_ollama_available() -> bool:

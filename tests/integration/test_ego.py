@@ -21,7 +21,7 @@ from cogno_anima.types import (
     PipelineContext, IntentResult, NoumenoResult, StageMetrics, ToolResult,
 )
 
-MODEL = os.environ.get("COGNO_TEST_MODEL", "mistral:latest")
+MODEL = os.environ.get("COGNO_TEST_MODEL", "qwen3:8b")
 
 
 async def is_ollama_available() -> bool:

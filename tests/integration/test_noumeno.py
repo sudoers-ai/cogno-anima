@@ -39,7 +39,7 @@ async def is_ollama_available() -> bool:
 # It was hardcoded INSIDE the two helpers below, which is how a CI job that pulled a different
 # model still asked Ollama for `mistral` and got 404 on every real test — invisible locally,
 # where every model is already present.
-MODEL = os.environ.get("COGNO_TEST_MODEL", "mistral:latest")
+MODEL = os.environ.get("COGNO_TEST_MODEL", "qwen3:8b")
 
 
 def _make_real_noumeno() -> tuple[Noumeno, OllamaBackend]:

@@ -1,9 +1,8 @@
 """
 NER integration suite — real LLM (Ollama), the critical-layer quality bar.
 
-Baseline model: env COGNO_NER_MODEL (default mistral:latest; qwen3:8b is the
-recommended alternative). Auto-skips if Ollama is unavailable. Language is forced
-to pt-BR (host/tenant-provided).
+Baseline model: env COGNO_NER_MODEL (default qwen3:8b). Auto-skips if Ollama is
+unavailable. Language is forced to pt-BR (host/tenant-provided).
 
 Two tiers, by design:
   • STRICT tests assert what the baseline reliably produces (intent_class,
@@ -33,7 +32,7 @@ from cogno_anima.stages.ner import (
 from cogno_anima.security.pii import PII_RISK_LEVELS
 
 MODEL = os.environ.get("COGNO_NER_MODEL",
-                       os.environ.get("COGNO_TEST_MODEL", "mistral:latest"))
+                       os.environ.get("COGNO_TEST_MODEL", "qwen3:8b"))
 LANGUAGE = "pt-BR"
 
 

@@ -21,7 +21,7 @@ from cognobench.pipeline import ReferencePipeline
 from pathlib import Path
 
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "cogno_anima" / "prompt_templates"
-MODEL = os.environ.get("COGNO_TEST_MODEL", "mistral:latest")
+MODEL = os.environ.get("COGNO_TEST_MODEL", "qwen3:8b")
 BASE_URL = "http://localhost:11434"
 
 
