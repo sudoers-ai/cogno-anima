@@ -1,6 +1,6 @@
 {
-  "run_id": "20260807T030846558458-openai_gpt-4o-mini-r1",
-  "timestamp": "2026-08-07T03:08:46+00:00",
+  "run_id": "20260807T032310608238-openai_gpt-4o-mini-r1",
+  "timestamp": "2026-08-07T03:23:10+00:00",
   "model": "openai:gpt-4o-mini",
   "config": {
     "model": "openai:gpt-4o-mini",
@@ -19,7 +19,7 @@
   },
   "suites": {
     "ego": {
-      "suite_id": "ego-v2",
+      "suite_id": "ego-v3",
       "suite_hash": "bbbdbd64df9128f7",
       "effective_case_ids": [
         "expense_explicit",
@@ -61,12 +61,12 @@
       ]
     }
   },
-  "overall_accuracy": 97.5,
+  "overall_accuracy": 99.2,
   "total": 121,
-  "correct": 118,
+  "correct": 120,
   "invalid_dimensions": [],
-  "tokens_in": 28796,
-  "tokens_out": 1477,
+  "tokens_in": 29875,
+  "tokens_out": 1476,
   "llm_calls": 70,
   "meta": {
     "preflight_embedder_similarity": 0.3461,
@@ -77,8 +77,8 @@
       "dimension": "ego",
       "valid": true,
       "total": 121,
-      "correct": 118,
-      "accuracy": 97.5,
+      "correct": 120,
+      "accuracy": 99.2,
       "errors": 0,
       "meta": {
         "tool_calls": {
@@ -86,14 +86,14 @@
           "delete_all_records": 1,
           "get_balance": 7,
           "get_summary": 9,
-          "human_handoff": 2,
+          "human_handoff": 1,
           "lookup_client": 2,
           "record_expense": 8,
-          "record_income": 5
+          "record_income": 6
         },
         "tool_failures": {
           "delete_all_records": 1,
-          "lookup_client": 2
+          "lookup_client": 1
         },
         "steps_total": 70
       },
@@ -570,7 +570,7 @@
         {
           "case_id": "neg_expense_not_income",
           "field": "not_tool:record_income(soft)",
-          "expected": "not dispatched",
+          "expected": "not attempted",
           "actual": "['record_expense']",
           "correct": true
         },
@@ -598,21 +598,21 @@
         {
           "case_id": "neg_query_only",
           "field": "not_tool:record_expense(soft)",
-          "expected": "not dispatched",
+          "expected": "not attempted",
           "actual": "['get_summary']",
           "correct": true
         },
         {
           "case_id": "neg_query_only",
           "field": "not_tool:record_income(soft)",
-          "expected": "not dispatched",
+          "expected": "not attempted",
           "actual": "['get_summary']",
           "correct": true
         },
         {
           "case_id": "neg_query_only",
           "field": "not_tool:delete_all_records(soft)",
-          "expected": "not dispatched",
+          "expected": "not attempted",
           "actual": "['get_summary']",
           "correct": true
         },
@@ -633,7 +633,7 @@
         {
           "case_id": "neg_no_delete",
           "field": "not_tool:delete_all_records(soft)",
-          "expected": "not dispatched",
+          "expected": "not attempted",
           "actual": "['get_balance', 'get_summary']",
           "correct": true
         },
@@ -682,7 +682,7 @@
         {
           "case_id": "handoff_not_on_answerable",
           "field": "not_tool:human_handoff(soft)",
-          "expected": "not dispatched",
+          "expected": "not attempted",
           "actual": "['get_balance']",
           "correct": true
         },
@@ -710,7 +710,7 @@
         {
           "case_id": "handoff_not_on_grumble",
           "field": "not_tool:human_handoff(soft)",
-          "expected": "not dispatched",
+          "expected": "not attempted",
           "actual": "['get_balance']",
           "correct": true
         },
@@ -731,7 +731,7 @@
         {
           "case_id": "gateb_question_is_not_an_order",
           "field": "not_tool:delete_all_records(soft)",
-          "expected": "not dispatched",
+          "expected": "not attempted",
           "actual": "[]",
           "correct": true
         },
@@ -759,14 +759,14 @@
         {
           "case_id": "gateb_invalid_amount",
           "field": "not_tool:record_expense(soft)",
-          "expected": "not dispatched",
+          "expected": "not attempted",
           "actual": "['record_expense']",
           "correct": false
         },
         {
           "case_id": "gateb_invalid_amount",
           "field": "not_tool:record_income(soft)",
-          "expected": "not dispatched",
+          "expected": "not attempted",
           "actual": "['record_expense']",
           "correct": true
         },
@@ -794,7 +794,7 @@
         {
           "case_id": "ambig_refund_is_income",
           "field": "not_tool:record_expense(soft)",
-          "expected": "not dispatched",
+          "expected": "not attempted",
           "actual": "['record_income']",
           "correct": true
         },
@@ -822,7 +822,7 @@
         {
           "case_id": "ambig_payback_is_income",
           "field": "not_tool:record_expense(soft)",
-          "expected": "not dispatched",
+          "expected": "not attempted",
           "actual": "['record_income']",
           "correct": true
         },
@@ -850,7 +850,7 @@
         {
           "case_id": "chat_third_party_money",
           "field": "not_tool:record_expense(soft)",
-          "expected": "not dispatched",
+          "expected": "not attempted",
           "actual": "[]",
           "correct": true
         },
@@ -871,7 +871,7 @@
         {
           "case_id": "uncertain_did_i_record",
           "field": "not_tool:record_expense(soft)",
-          "expected": "not dispatched",
+          "expected": "not attempted",
           "actual": "['get_summary']",
           "correct": true
         },
@@ -886,22 +886,22 @@
           "case_id": "recover_lookup_retry",
           "field": "dispatched_tools_valid",
           "expected": "subset",
-          "actual": "['lookup_client', 'human_handoff']",
+          "actual": "['lookup_client', 'lookup_client', 'record_income']",
           "correct": true
         },
         {
           "case_id": "recover_lookup_retry",
           "field": "recovered:lookup_client(soft)",
           "expected": "fail→retry→ok",
-          "actual": "[('lookup_client', False), ('lookup_client', False)]",
-          "correct": false
+          "actual": "[('lookup_client', False), ('lookup_client', True)]",
+          "correct": true
         },
         {
           "case_id": "recover_lookup_retry",
           "field": "order(soft)",
           "expected": "('lookup_client', 'record_income')",
-          "actual": "['lookup_client', 'human_handoff']",
-          "correct": false
+          "actual": "['lookup_client', 'lookup_client', 'record_income']",
+          "correct": true
         },
         {
           "case_id": "constraint_check_before_write",
