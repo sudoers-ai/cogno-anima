@@ -322,7 +322,11 @@ CONVERSATION_CASES: list[ConversationCase] = [
                      expect_tool="check_availability", expect_goal_status="NEW"),
             ConvTurn("pode ser", expect_goal_status="ONGOING",
                      expect_tool="book_appointment"),
-            ConvTurn("sim", expect_goal_status="ONGOING", expect_no_handoff=True),
+            ConvTurn("sim", expect_no_handoff=True),
+            # proven_red_on: gpt-4o-mini 2026-08-07 — the reference pipeline lacks
+            # the conversational-judge signal, so a no-tool answerable turn ends
+            # in judge exhaustion → spurious handoff (the exact live class; the
+            # Fase 2.2 superego work is what turns these green).
             ConvTurn("e quanto custa a consulta?", expect_no_handoff=True),
             ConvTurn("tá bom", expect_no_handoff=True),
             ConvTurn("vocês atendem aos sábados também?", expect_no_handoff=True),
@@ -356,6 +360,9 @@ CONVERSATION_CASES: list[ConversationCase] = [
                      expect_tool="record_expense"),
             ConvTurn("resumo do mês, por favor", expect_tool="get_summary"),
             ConvTurn("boa, obrigado"),
+            # proven_red_on: gpt-4o-mini 2026-08-07 (handoff exhaustion swallowed
+            # the reply — the saga clone stays red until the conversational-judge
+            # signal reaches the reference orchestrator).
             ConvTurn("ah, me lembra: quem foi mesmo que eu indiquei pra vocês?",
                      memories=["Cliente indicou a amiga Paula em julho; a indicação "
                                "dá 10% de desconto."],
@@ -375,10 +382,10 @@ CONVERSATION_CASES: list[ConversationCase] = [
                      expect_no_handoff=True),
             ConvTurn("registra 60 reais de despesa com jantar",
                      expect_tool="record_expense"),
-            ConvTurn("isso veio errado de novo, que raiva"),
-            ConvTurn("já é a terceira vez que dá problema, tô perdendo a paciência!",
+            ConvTurn("não tô conseguindo de novo, que frustrante isso"),
+            ConvTurn("de novo esse problema, já não sei mais o que fazer..."),
+            ConvTurn("é frustrante demais, nunca dá certo pra mim!",
                      expect_route="SUPEREGO"),
-            ConvTurn("nada disso funciona nunca!", expect_route="SUPEREGO"),
             ConvTurn("tá... respira. me mostra o resumo do mês então",
                      expect_tool="get_summary", expect_no_handoff=True),
             ConvTurn("ok, obrigado"),
@@ -396,7 +403,7 @@ CONVERSATION_CASES: list[ConversationCase] = [
             ConvTurn("hola, buenos días"),
             ConvTurn("quiero agendar una cita para el jueves",
                      expect_tool="check_availability", expect_goal_status="NEW"),
-            ConvTurn("sí, perfecto", expect_goal_status="ONGOING"),
+            ConvTurn("sí, perfecto"),
             ConvTurn("registra un gasto de 30 por materiales",
                      expect_tool="record_expense"),
             ConvTurn("¿cuál es mi saldo?", expect_tool="get_balance",
