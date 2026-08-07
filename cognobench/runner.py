@@ -30,7 +30,7 @@ from cognobench.harness import (
 )
 from cognobench.dimensions import (
     run_noumeno, run_ner, run_id, run_ego, run_superego, run_drift, run_conversations,
-    run_safety,
+    run_safety, systemic_guard,
 )
 from cognobench.types import BenchReport, aggregate_runs
 from cognobench.report import render, render_aggregate
@@ -205,7 +205,8 @@ async def run_bench(
         return {k: v - before.get(k, 0) for k, v in now.items()
                 if v - before.get(k, 0) > 0}
 
-    def _add(dim_result, before):
+    def _add(dim_result, before, planned: int = 0):
+        systemic_guard(dim_result, planned)
         d = _delta(before)
         if d:
             dim_result.meta["ner_fallbacks"] = d
@@ -214,24 +215,27 @@ async def run_bench(
     try:
         if "noumeno" in dims:
             before = counter.snapshot()
-            _add(await run_noumeno(pipe, cap(NOUMENO_CASES), language=language), before)
+            _add(await run_noumeno(pipe, cap(NOUMENO_CASES), language=language), before,
+                 planned=len(cap(NOUMENO_CASES)))
         if "ner" in dims:
             before = counter.snapshot()
-            _add(await run_ner(pipe, cap(NER_CASES), language=language), before)
+            _add(await run_ner(pipe, cap(NER_CASES), language=language), before,
+                 planned=len(cap(NER_CASES)))
         if "id" in dims:
             before = counter.snapshot()
             _add(await run_id(pipe, cap(ID_CASES), calibrate=calibrate, language=language),
-                 before)
+                 before, planned=len(cap(ID_CASES)))
         if "safety" in dims:
             before = counter.snapshot()
-            _add(await run_safety(pipe, cap(SAFETY_CASES), language=language), before)
+            _add(await run_safety(pipe, cap(SAFETY_CASES), language=language), before,
+                 planned=len(cap(SAFETY_CASES)))
         if "ego" in dims:
             # EGO needs a TEXT backend: <TOOL_CALL> fallback on Ollama, native FC on
             # cloud. In stub mode the JSON stub yields a no-tool result — enough for
             # plumbing.
             before = counter.snapshot()
             _add(await run_ego(ego_be, cap(EGO_CASES), calibrate=calibrate,
-                               language=language), before)
+                               language=language), before, planned=len(cap(EGO_CASES)))
         if "superego" in dims:
             # scope/judge consume JSON (json backend); voice needs free text.
             # Three scored sub-dimensions from one suite (plan 0.5).
@@ -241,14 +245,17 @@ async def run_bench(
             se_cases = SUPEREGO_CASES if not limit else [
                 c for kind in ("scope", "judge", "voice")
                 for c in [x for x in SUPEREGO_CASES if x.kind == kind][:limit]]
+            kind_counts = {k: sum(1 for c in se_cases if c.kind == k)
+                           for k in ("scope", "judge", "voice")}
             for sub in await run_superego(judge_be, voice_be, se_cases,
                                           calibrate=calibrate, language=language,
                                           scope_backend=scope_be):
+                systemic_guard(sub, kind_counts.get(sub.name.split("_")[1], 0))
                 report.dimensions.append(sub)
         if "drift" in dims:
             before = counter.snapshot()
             _add(await run_drift(pipe, cap(DRIFT_CASES), calibrate=calibrate,
-                                 language=language), before)
+                                 language=language), before, planned=len(cap(DRIFT_CASES)))
         if "conversations" in dims:
             # Full-pipeline multi-turn simulation: gen=JSON, ego/voice=text backend.
             before = counter.snapshot()
@@ -256,7 +263,8 @@ async def run_bench(
                                          cap(CONVERSATION_CASES),
                                          calibrate=calibrate, language=language,
                                          slots={k: v for k, v in slots.items()
-                                                if k != "ego"} or None), before)
+                                                if k != "ego"} or None), before,
+                 planned=len(cap(CONVERSATION_CASES)))
     finally:
         ner_logger.removeHandler(counter)
         ner_logger.setLevel(prev_level)

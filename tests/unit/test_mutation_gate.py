@@ -80,15 +80,31 @@ def test_scope_allow_flips_the_must_block_cases():
 
 
 def test_garbage_surfaces_as_scored_model_fault_never_silent():
-    """M3: non-JSON output must surface as failed checks in the full
-    denominator (StageParseError = the model's fault) — the run stays VALID and
-    nothing silently passes."""
+    """M3 criterion: garbage output FAILS or the run goes INVALID — it never
+    silently passes. All 55 NER cases garbling trips the SYSTEMIC breaker
+    (≥5 errored and ≥30% of planned — parse failure at that scale is the
+    provider/instrument, not model quality; the 2026-08-07 dying-machine runs
+    published 448/476 as valid before this guard)."""
     report = _run(mutate="garbage", only=["ner"])
     ner = next(d for d in report.dimensions if d.name == "ner")
-    assert ner.valid, "garbage output must not invalidate the run (it is a result)"
+    assert not ner.valid and "systemic" in ner.invalid_reason
     errs = [c for c in ner.checks if c.field == "case_error"]
     assert errs and all(not c.correct for c in errs)
-    assert ner.correct_count < ner.total
+
+
+def test_systemic_guard_thresholds():
+    """A few garbled cases score as model fault; a systemic wave invalidates."""
+    from cognobench.dimensions import systemic_guard
+    from cognobench.types import DimensionResult, CheckResult
+
+    few = DimensionResult(name="d", errors=[("c1", "x"), ("c2", "x")],
+                          checks=[CheckResult("c1", "case_error", "e", "x", False)])
+    systemic_guard(few, planned_cases=55)
+    assert few.valid, "2/55 errored cases is model fault, not systemic"
+
+    wave = DimensionResult(name="d", errors=[(f"c{i}", "x") for i in range(6)])
+    systemic_guard(wave, planned_cases=9)
+    assert not wave.valid and "systemic" in wave.invalid_reason
 
 
 def test_safety_deterministic_checks_survive_ner_sabotage():

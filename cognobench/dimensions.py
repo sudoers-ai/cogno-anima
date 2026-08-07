@@ -72,6 +72,25 @@ def _note_error(dim: DimensionResult, case_id: str, exc: Exception) -> bool:
     return True
 
 
+def systemic_guard(dim: DimensionResult, planned_cases: int) -> None:
+    """Breaker for SYSTEMIC model-fault failures (born from a real incident).
+
+    2026-08-07: a dying machine made the cloud backend return EMPTY responses
+    for 119 cases in series; every one became a per-case ``case_error`` (model
+    fault by classification) and two runs published as VALID at 448/476 and
+    121/241. Parse failures at that scale are the provider/instrument failing,
+    not model quality — score the model only when it produces scoreable output;
+    unreliability then shows honestly as an invalid-run rate. Threshold: ≥5
+    errored cases AND ≥30% of the dimension's planned cases."""
+    if not dim.valid or planned_cases <= 0:
+        return
+    errored = len(dim.errors)
+    if errored >= 5 and errored / planned_cases >= 0.30:
+        dim.invalid_reason = (
+            f"systemic: {errored}/{planned_cases} cases failed to parse — "
+            f"provider/instrument failure, not model quality")
+
+
 def _lang_prefix(value: str) -> str:
     return (value or "").lower().split("-")[0]
 
