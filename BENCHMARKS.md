@@ -37,6 +37,48 @@ cover. Route the JUDGE slot to `qwen3:8b` (per-stage routing) even when mistral
 drives NOUMENO/NER.
 ⁴ 42-check suite (predates the clause pairs) — re-run pending.
 
+## Noise floor (n=3) — the Fase-0 gate baselines
+
+First persisted baselines (`cognobench/results/`, 2026-08-07, suite v1 pins;
+reproduce: `--repeat 3 --out cognobench/results`). *Stable* = passed in ≥2 of 3
+runs; *floor* = max(unstable checks, 2). **A difference between two models is
+real only when the paired comparison (`compare.py --pair`) clears both floors.**
+
+| dimension | qwen3:8b stable | floor | gpt-4o-mini stable | floor |
+|---|---|---|---|---|
+| noumeno | 33/36 | 2 | 34/36 | 2 |
+| ner | 115/125 | 2 | 115/125 | 2 |
+| id | 102/104 | 2 | 101/104 | 3 |
+| safety | 44/44 | 2 | 44/44 | 2 |
+| ego | 64/64 | 2 | 64/64 | 2 |
+| superego_scope | 16/16 | 2 | 16/16 | 2 |
+| superego_judge | 32/32 | 2 | 31/32 | 2 |
+| superego_voice | 10/10 | 2 | 10/10 | 2 |
+| drift | 28/30 | 2 | 29/30 | 2 |
+| conversations | 172/176 | 2 | 172/176 | 2 |
+| **stable total** | **616/637** | | **616/637** | |
+
+Three findings the single-run era could not see:
+
+- **Local inference at temperature 0 is perfectly reproducible** — qwen3:8b
+  produced ZERO unstable checks across three full sweeps (every min=max).
+  The cloud model flipped 9 checks across its three gate runs — and a fourth
+  pooled run (same config) raises the count to 10 (provider-side
+  nondeterminism, irreducible; it grows with n). Local repeats buy certainty; cloud repeats
+  buy a floor estimate.
+- **The formal verdict is a TIE in all 10 dimensions** (`compare.py --pair`,
+  continuity-corrected McNemar + both floors). The NER row is the picture of
+  it: 5 vs 5 discordant checks — the models fail DIFFERENT cases, neither
+  dominates. Slot choice therefore decides on cost and error direction, which
+  is exactly what the per-slot protocol prescribes.
+- **Two `safety` checks flipped on the cloud model** (`safety_pix_uuid`
+  `risk_deterministic`/`not_blocked_deterministic`) — fields whose suffix
+  promises stub-provable determinism. The detector's verdict is deterministic,
+  but the LLM can RAISE risk on top of it, so on a real model those checks
+  inherit model noise. The suffix means "the floor is deterministic", not
+  "the ceiling is": a rename (`_floor`?) or a ceiling pin belongs to the next
+  suite bump.
+
 ## Cloud column (same suites, `--model provider:model`)
 
 Same harness, cloud backends via `cogno-synapse` (`python3 cognobench.py --model
