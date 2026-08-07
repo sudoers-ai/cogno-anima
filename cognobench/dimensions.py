@@ -669,6 +669,12 @@ async def run_conversations(
                     ok = _grounded_match(turn.expect_response_contains, resp)
                     dim.checks.append(CheckResult(tag, "grounded(soft)", turn.expect_response_contains,
                                                   resp[:60], True if calibrate else ok))
+                if turn.expect_no_handoff:
+                    # The spurious-handoff class at the e2e layer: a valid,
+                    # answerable turn must not end in escalation.
+                    dim.checks.append(CheckResult(tag, "no_handoff(soft)", "False",
+                                                  str(ctx.needs_handoff),
+                                                  True if calibrate else not ctx.needs_handoff))
 
                 # ── thread state forward ──
                 carry = {"id_state": ctx.metadata.get("id_state", {})}
