@@ -35,8 +35,8 @@
     "cases": 10
   },
   "conversations": {
-    "suite_id": "conversations-v1",
-    "suite_hash": "6defc5458fbbf157",
-    "cases": 15
+    "suite_id": "conversations-v2",
+    "suite_hash": "a81a3bb859dbf14c",
+    "cases": 20
   }
 }
