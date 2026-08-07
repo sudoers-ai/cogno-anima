@@ -235,9 +235,15 @@ domains — KNOWLEDGE DOMAINS from this EXACT closed list:
   HISTORY | LAW | PHILOSOPHY | EDUCATION | CULTURE | NEWS | GENERAL
   → Do NOT invent domains. Use GENERAL if none fits. [] if domain-agnostic.
 
-modality — EXACTLY one of: CERTAIN | PROBABLE | POSSIBLE | UNCERTAIN | MIXED. null if undetectable.
+modality — the SPEAKER's certainty about their own statement. EXACTLY one of:
+  CERTAIN (stated as fact) | PROBABLE (hedged belief: "I think...", "acho que...") |
+  POSSIBLE ("maybe", "talvez") | UNCERTAIN (explicit doubt) | MIXED. null if undetectable.
 
-speech_act — EXACTLY one of: DIRECTIVE | EXPRESSIVE | COMMISSIVE | CONSTATIVE | INTERROGATIVE | MIXED
+speech_act — what the utterance DOES. EXACTLY one of:
+  DIRECTIVE (tells the ASSISTANT to act — includes imperative requests: "explain X", "me explica") |
+  INTERROGATIVE (question-form ask: "what is...?", "qual...?") |
+  COMMISSIVE (the SPEAKER commits to their own future action: "I will deploy...", "vou implementar" — the speaker acts, not the assistant) |
+  EXPRESSIVE (thanks, feelings) | CONSTATIVE (states a fact) | MIXED
   → null if undetectable.
 
 verbs — main action verbs from ORIGINAL, normalized to English infinitive. Max 5. [] if none.

@@ -20,9 +20,9 @@
     "cases": 16
   },
   "ego": {
-    "suite_id": "ego-v1",
-    "suite_hash": "c55afd5a2d55e19a",
-    "cases": 21
+    "suite_id": "ego-v2",
+    "suite_hash": "bbbdbd64df9128f7",
+    "cases": 36
   },
   "superego": {
     "suite_id": "superego-v1",
@@ -30,7 +30,7 @@
     "cases": 29
   },
   "drift": {
-    "suite_id": "drift-v1",
+    "suite_id": "drift-v2",
     "suite_hash": "91b14d899c0cf466",
     "cases": 10
   },

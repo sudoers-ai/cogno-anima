@@ -1,0 +1,952 @@
+{
+  "run_id": "20260807T030733858963-openai_gpt-4.1-nano-r1",
+  "timestamp": "2026-08-07T03:07:33+00:00",
+  "model": "openai:gpt-4.1-nano",
+  "config": {
+    "model": "openai:gpt-4.1-nano",
+    "embed_model": "nomic-embed-text",
+    "language": "pt-BR",
+    "only": [
+      "ego"
+    ],
+    "limit": null,
+    "stub": false,
+    "calibrate": false,
+    "think": false,
+    "mutate": null,
+    "repeat_index": 1,
+    "repeat_total": 1
+  },
+  "suites": {
+    "ego": {
+      "suite_id": "ego-v2",
+      "suite_hash": "bbbdbd64df9128f7",
+      "effective_case_ids": [
+        "expense_explicit",
+        "expense_colloquial",
+        "income_with_client",
+        "balance",
+        "summary_period",
+        "summary_fuzzy",
+        "currency",
+        "farewell",
+        "greeting",
+        "readonly_propose",
+        "destructive_needs_confirmation",
+        "sequential_convert_then_record",
+        "income_received",
+        "expense_paid_someone",
+        "balance_phrased_as_have",
+        "summary_week",
+        "currency_reverse",
+        "greeting_ptbr",
+        "readonly_record_propose",
+        "readonly_destructive_masked",
+        "composite_two_expenses",
+        "neg_expense_not_income",
+        "neg_query_only",
+        "neg_no_delete",
+        "handoff_explicit_request",
+        "handoff_not_on_answerable",
+        "handoff_not_on_grumble",
+        "gateb_question_is_not_an_order",
+        "gateb_invalid_amount",
+        "ambig_refund_is_income",
+        "ambig_payback_is_income",
+        "chat_third_party_money",
+        "uncertain_did_i_record",
+        "recover_lookup_retry",
+        "constraint_check_before_write",
+        "sequential_summary_then_convert"
+      ]
+    }
+  },
+  "overall_accuracy": 98.3,
+  "total": 121,
+  "correct": 119,
+  "invalid_dimensions": [],
+  "tokens_in": 26509,
+  "tokens_out": 1319,
+  "llm_calls": 65,
+  "meta": {
+    "preflight_embedder_similarity": 0.3461,
+    "ner_fallbacks_total": {}
+  },
+  "dimensions": [
+    {
+      "dimension": "ego",
+      "valid": true,
+      "total": 121,
+      "correct": 119,
+      "accuracy": 98.3,
+      "errors": 0,
+      "meta": {
+        "tool_calls": {
+          "convert_currency": 4,
+          "delete_all_records": 1,
+          "get_balance": 7,
+          "get_summary": 6,
+          "human_handoff": 1,
+          "lookup_client": 2,
+          "record_expense": 8,
+          "record_income": 6
+        },
+        "tool_failures": {
+          "delete_all_records": 1,
+          "lookup_client": 2
+        },
+        "steps_total": 65
+      },
+      "checks": [
+        {
+          "case_id": "expense_explicit",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "expense_explicit",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['record_expense']",
+          "correct": true
+        },
+        {
+          "case_id": "expense_explicit",
+          "field": "tool_selected(soft)",
+          "expected": "record_expense",
+          "actual": "['record_expense']",
+          "correct": true
+        },
+        {
+          "case_id": "expense_colloquial",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "expense_colloquial",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['record_expense']",
+          "correct": true
+        },
+        {
+          "case_id": "expense_colloquial",
+          "field": "tool_selected(soft)",
+          "expected": "record_expense",
+          "actual": "['record_expense']",
+          "correct": true
+        },
+        {
+          "case_id": "income_with_client",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "3",
+          "correct": true
+        },
+        {
+          "case_id": "income_with_client",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['lookup_client', 'record_income']",
+          "correct": true
+        },
+        {
+          "case_id": "income_with_client",
+          "field": "tool_selected(soft)",
+          "expected": "record_income",
+          "actual": "['lookup_client', 'record_income']",
+          "correct": true
+        },
+        {
+          "case_id": "balance",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "balance",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['get_balance']",
+          "correct": true
+        },
+        {
+          "case_id": "balance",
+          "field": "tool_selected(soft)",
+          "expected": "get_balance",
+          "actual": "['get_balance']",
+          "correct": true
+        },
+        {
+          "case_id": "summary_period",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "summary_period",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['get_summary']",
+          "correct": true
+        },
+        {
+          "case_id": "summary_period",
+          "field": "tool_selected(soft)",
+          "expected": "get_summary",
+          "actual": "['get_summary']",
+          "correct": true
+        },
+        {
+          "case_id": "summary_fuzzy",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "summary_fuzzy",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['get_summary']",
+          "correct": true
+        },
+        {
+          "case_id": "summary_fuzzy",
+          "field": "tool_selected(soft)",
+          "expected": "get_summary",
+          "actual": "['get_summary']",
+          "correct": true
+        },
+        {
+          "case_id": "currency",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "currency",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['convert_currency']",
+          "correct": true
+        },
+        {
+          "case_id": "currency",
+          "field": "tool_selected(soft)",
+          "expected": "convert_currency",
+          "actual": "['convert_currency']",
+          "correct": true
+        },
+        {
+          "case_id": "farewell",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "1",
+          "correct": true
+        },
+        {
+          "case_id": "farewell",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "[]",
+          "correct": true
+        },
+        {
+          "case_id": "farewell",
+          "field": "no_tool(soft)",
+          "expected": "[]",
+          "actual": "[]",
+          "correct": true
+        },
+        {
+          "case_id": "greeting",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "1",
+          "correct": true
+        },
+        {
+          "case_id": "greeting",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "[]",
+          "correct": true
+        },
+        {
+          "case_id": "greeting",
+          "field": "no_tool(soft)",
+          "expected": "[]",
+          "actual": "[]",
+          "correct": true
+        },
+        {
+          "case_id": "readonly_propose",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "1",
+          "correct": true
+        },
+        {
+          "case_id": "readonly_propose",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "[]",
+          "correct": true
+        },
+        {
+          "case_id": "readonly_propose",
+          "field": "no_mutation",
+          "expected": "[]",
+          "actual": "[]",
+          "correct": true
+        },
+        {
+          "case_id": "destructive_needs_confirmation",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "1",
+          "correct": true
+        },
+        {
+          "case_id": "destructive_needs_confirmation",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "[]",
+          "correct": true
+        },
+        {
+          "case_id": "destructive_needs_confirmation",
+          "field": "no_mutation",
+          "expected": "[]",
+          "actual": "[]",
+          "correct": true
+        },
+        {
+          "case_id": "destructive_needs_confirmation",
+          "field": "held_for_confirmation",
+          "expected": "delete_all_records",
+          "actual": "['delete_all_records']",
+          "correct": true
+        },
+        {
+          "case_id": "sequential_convert_then_record",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "3",
+          "correct": true
+        },
+        {
+          "case_id": "sequential_convert_then_record",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['convert_currency', 'get_balance', 'record_income']",
+          "correct": true
+        },
+        {
+          "case_id": "sequential_convert_then_record",
+          "field": "order(soft)",
+          "expected": "('convert_currency', 'record_income')",
+          "actual": "['convert_currency', 'get_balance', 'record_income']",
+          "correct": true
+        },
+        {
+          "case_id": "income_received",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "income_received",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['record_income']",
+          "correct": true
+        },
+        {
+          "case_id": "income_received",
+          "field": "tool_selected(soft)",
+          "expected": "record_income",
+          "actual": "['record_income']",
+          "correct": true
+        },
+        {
+          "case_id": "expense_paid_someone",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "expense_paid_someone",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['record_expense']",
+          "correct": true
+        },
+        {
+          "case_id": "expense_paid_someone",
+          "field": "tool_selected(soft)",
+          "expected": "record_expense",
+          "actual": "['record_expense']",
+          "correct": true
+        },
+        {
+          "case_id": "balance_phrased_as_have",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "balance_phrased_as_have",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['get_balance']",
+          "correct": true
+        },
+        {
+          "case_id": "balance_phrased_as_have",
+          "field": "tool_selected(soft)",
+          "expected": "get_balance",
+          "actual": "['get_balance']",
+          "correct": true
+        },
+        {
+          "case_id": "summary_week",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "summary_week",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['get_summary']",
+          "correct": true
+        },
+        {
+          "case_id": "summary_week",
+          "field": "tool_selected(soft)",
+          "expected": "get_summary",
+          "actual": "['get_summary']",
+          "correct": true
+        },
+        {
+          "case_id": "currency_reverse",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "currency_reverse",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['convert_currency']",
+          "correct": true
+        },
+        {
+          "case_id": "currency_reverse",
+          "field": "tool_selected(soft)",
+          "expected": "convert_currency",
+          "actual": "['convert_currency']",
+          "correct": true
+        },
+        {
+          "case_id": "greeting_ptbr",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "1",
+          "correct": true
+        },
+        {
+          "case_id": "greeting_ptbr",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "[]",
+          "correct": true
+        },
+        {
+          "case_id": "greeting_ptbr",
+          "field": "no_tool(soft)",
+          "expected": "[]",
+          "actual": "[]",
+          "correct": true
+        },
+        {
+          "case_id": "readonly_record_propose",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "1",
+          "correct": true
+        },
+        {
+          "case_id": "readonly_record_propose",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "[]",
+          "correct": true
+        },
+        {
+          "case_id": "readonly_record_propose",
+          "field": "no_mutation",
+          "expected": "[]",
+          "actual": "[]",
+          "correct": true
+        },
+        {
+          "case_id": "readonly_destructive_masked",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "1",
+          "correct": true
+        },
+        {
+          "case_id": "readonly_destructive_masked",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "[]",
+          "correct": true
+        },
+        {
+          "case_id": "readonly_destructive_masked",
+          "field": "no_mutation",
+          "expected": "[]",
+          "actual": "[]",
+          "correct": true
+        },
+        {
+          "case_id": "composite_two_expenses",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "composite_two_expenses",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['record_expense', 'record_expense']",
+          "correct": true
+        },
+        {
+          "case_id": "composite_two_expenses",
+          "field": "tool_selected(soft)",
+          "expected": "record_expense",
+          "actual": "['record_expense', 'record_expense']",
+          "correct": true
+        },
+        {
+          "case_id": "neg_expense_not_income",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "neg_expense_not_income",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['record_expense']",
+          "correct": true
+        },
+        {
+          "case_id": "neg_expense_not_income",
+          "field": "tool_selected(soft)",
+          "expected": "record_expense",
+          "actual": "['record_expense']",
+          "correct": true
+        },
+        {
+          "case_id": "neg_expense_not_income",
+          "field": "not_tool:record_income(soft)",
+          "expected": "not dispatched",
+          "actual": "['record_expense']",
+          "correct": true
+        },
+        {
+          "case_id": "neg_query_only",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "neg_query_only",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['get_summary']",
+          "correct": true
+        },
+        {
+          "case_id": "neg_query_only",
+          "field": "tool_selected(soft)",
+          "expected": "get_summary",
+          "actual": "['get_summary']",
+          "correct": true
+        },
+        {
+          "case_id": "neg_query_only",
+          "field": "not_tool:record_expense(soft)",
+          "expected": "not dispatched",
+          "actual": "['get_summary']",
+          "correct": true
+        },
+        {
+          "case_id": "neg_query_only",
+          "field": "not_tool:record_income(soft)",
+          "expected": "not dispatched",
+          "actual": "['get_summary']",
+          "correct": true
+        },
+        {
+          "case_id": "neg_query_only",
+          "field": "not_tool:delete_all_records(soft)",
+          "expected": "not dispatched",
+          "actual": "['get_summary']",
+          "correct": true
+        },
+        {
+          "case_id": "neg_no_delete",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "neg_no_delete",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['get_summary']",
+          "correct": true
+        },
+        {
+          "case_id": "neg_no_delete",
+          "field": "not_tool:delete_all_records(soft)",
+          "expected": "not dispatched",
+          "actual": "['get_summary']",
+          "correct": true
+        },
+        {
+          "case_id": "handoff_explicit_request",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "handoff_explicit_request",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['human_handoff']",
+          "correct": true
+        },
+        {
+          "case_id": "handoff_explicit_request",
+          "field": "tool_selected(soft)",
+          "expected": "human_handoff",
+          "actual": "['human_handoff']",
+          "correct": true
+        },
+        {
+          "case_id": "handoff_not_on_answerable",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "handoff_not_on_answerable",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['get_balance']",
+          "correct": true
+        },
+        {
+          "case_id": "handoff_not_on_answerable",
+          "field": "tool_selected(soft)",
+          "expected": "get_balance",
+          "actual": "['get_balance']",
+          "correct": true
+        },
+        {
+          "case_id": "handoff_not_on_answerable",
+          "field": "not_tool:human_handoff(soft)",
+          "expected": "not dispatched",
+          "actual": "['get_balance']",
+          "correct": true
+        },
+        {
+          "case_id": "handoff_not_on_grumble",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "handoff_not_on_grumble",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['get_balance']",
+          "correct": true
+        },
+        {
+          "case_id": "handoff_not_on_grumble",
+          "field": "tool_selected(soft)",
+          "expected": "get_balance",
+          "actual": "['get_balance']",
+          "correct": true
+        },
+        {
+          "case_id": "handoff_not_on_grumble",
+          "field": "not_tool:human_handoff(soft)",
+          "expected": "not dispatched",
+          "actual": "['get_balance']",
+          "correct": true
+        },
+        {
+          "case_id": "gateb_question_is_not_an_order",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "1",
+          "correct": true
+        },
+        {
+          "case_id": "gateb_question_is_not_an_order",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "[]",
+          "correct": true
+        },
+        {
+          "case_id": "gateb_question_is_not_an_order",
+          "field": "not_tool:delete_all_records(soft)",
+          "expected": "not dispatched",
+          "actual": "[]",
+          "correct": true
+        },
+        {
+          "case_id": "gateb_question_is_not_an_order",
+          "field": "no_pending(soft)",
+          "expected": "[]",
+          "actual": "[]",
+          "correct": true
+        },
+        {
+          "case_id": "gateb_invalid_amount",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "gateb_invalid_amount",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['record_expense']",
+          "correct": true
+        },
+        {
+          "case_id": "gateb_invalid_amount",
+          "field": "not_tool:record_expense(soft)",
+          "expected": "not dispatched",
+          "actual": "['record_expense']",
+          "correct": false
+        },
+        {
+          "case_id": "gateb_invalid_amount",
+          "field": "not_tool:record_income(soft)",
+          "expected": "not dispatched",
+          "actual": "['record_expense']",
+          "correct": true
+        },
+        {
+          "case_id": "ambig_refund_is_income",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "ambig_refund_is_income",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['record_income']",
+          "correct": true
+        },
+        {
+          "case_id": "ambig_refund_is_income",
+          "field": "tool_selected(soft)",
+          "expected": "record_income",
+          "actual": "['record_income']",
+          "correct": true
+        },
+        {
+          "case_id": "ambig_refund_is_income",
+          "field": "not_tool:record_expense(soft)",
+          "expected": "not dispatched",
+          "actual": "['record_income']",
+          "correct": true
+        },
+        {
+          "case_id": "ambig_payback_is_income",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "ambig_payback_is_income",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['record_income']",
+          "correct": true
+        },
+        {
+          "case_id": "ambig_payback_is_income",
+          "field": "tool_selected(soft)",
+          "expected": "record_income",
+          "actual": "['record_income']",
+          "correct": true
+        },
+        {
+          "case_id": "ambig_payback_is_income",
+          "field": "not_tool:record_expense(soft)",
+          "expected": "not dispatched",
+          "actual": "['record_income']",
+          "correct": true
+        },
+        {
+          "case_id": "chat_third_party_money",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "1",
+          "correct": true
+        },
+        {
+          "case_id": "chat_third_party_money",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "[]",
+          "correct": true
+        },
+        {
+          "case_id": "chat_third_party_money",
+          "field": "no_tool(soft)",
+          "expected": "[]",
+          "actual": "[]",
+          "correct": true
+        },
+        {
+          "case_id": "chat_third_party_money",
+          "field": "not_tool:record_expense(soft)",
+          "expected": "not dispatched",
+          "actual": "[]",
+          "correct": true
+        },
+        {
+          "case_id": "uncertain_did_i_record",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "uncertain_did_i_record",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['get_balance']",
+          "correct": true
+        },
+        {
+          "case_id": "uncertain_did_i_record",
+          "field": "not_tool:record_expense(soft)",
+          "expected": "not dispatched",
+          "actual": "['get_balance']",
+          "correct": true
+        },
+        {
+          "case_id": "recover_lookup_retry",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "recover_lookup_retry",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['lookup_client', 'record_income']",
+          "correct": true
+        },
+        {
+          "case_id": "recover_lookup_retry",
+          "field": "recovered:lookup_client(soft)",
+          "expected": "fail→retry→ok",
+          "actual": "[('lookup_client', False)]",
+          "correct": false
+        },
+        {
+          "case_id": "recover_lookup_retry",
+          "field": "order(soft)",
+          "expected": "('lookup_client', 'record_income')",
+          "actual": "['lookup_client', 'record_income']",
+          "correct": true
+        },
+        {
+          "case_id": "constraint_check_before_write",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "constraint_check_before_write",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['get_balance', 'record_expense']",
+          "correct": true
+        },
+        {
+          "case_id": "constraint_check_before_write",
+          "field": "order(soft)",
+          "expected": "('get_balance', 'record_expense')",
+          "actual": "['get_balance', 'record_expense']",
+          "correct": true
+        },
+        {
+          "case_id": "sequential_summary_then_convert",
+          "field": "steps_present",
+          "expected": ">=1",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "sequential_summary_then_convert",
+          "field": "dispatched_tools_valid",
+          "expected": "subset",
+          "actual": "['get_summary', 'convert_currency']",
+          "correct": true
+        },
+        {
+          "case_id": "sequential_summary_then_convert",
+          "field": "order(soft)",
+          "expected": "('get_summary', 'convert_currency')",
+          "actual": "['get_summary', 'convert_currency']",
+          "correct": true
+        }
+      ],
+      "error_detail": []
+    }
+  ]
+}
