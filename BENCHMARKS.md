@@ -17,8 +17,8 @@ the numbers below are the model-dependent quality on top of those guarantees.
 
 | Model (local, free) | EGO — tool selection | SUPEREGO — scope·judge·voice | ID — routing & goal continuity | Conversations — multi-turn e2e | BOOKKEEPER — financial tools |
 |---|---|---|---|---|---|
-| **mistral:latest** (7B, default) | **100%** (64/64) | 93.1% (54/58)³ | **99.0%** (103/104) | 96.0% (144/150)¹ | — |
-| **qwen3:8b** (recommended) | **100%** (64/64) | **100%** (58/58)³ | 98.1% (102/104) | 95.4% (144/151) | **100%** (16/16) |
+| **mistral:latest** (7B) | **100%** (64/64) | 93.1% (54/58)³ | **99.0%** (103/104) | 96.0% (144/150)¹ | — |
+| **qwen3:8b** (default) | **100%** (64/64) | **100%** (58/58)³ | 98.1% (102/104) | 95.4% (144/151) | **100%** (16/16) |
 | qwen3.5:8b | **100%** (64/64) | 97.6% (41/42)⁴ | **99.0%** (103/104) | — | 94% (15/16) |
 | qwen3.5:4b | **100%** (64/64) | 97.6% (41/42)⁴ | 98.1% (102/104) | 94.2% (129/137)² | — |
 | llama3.1:8b | **100%** (64/64) | 90.5% (38/42)⁴ | 94.2% (98/104) | 93.4% (141/151) | — |
@@ -91,7 +91,10 @@ is *the best model for this slot*, and the answer differs by slot.
 | `conversations` | end to end — all of them together |
 | `id` · `drift` | **none.** Heuristic, no LLM: a model change cannot move them |
 
-Sweep one slot with `--only <dimension> --model <provider:model>`. Sweeping the
+Sweep one slot with `--only <dimension> --<slot>-model <spec>` (the other slots
+stay pinned on `--model`). A bare `--model` sweep is CONTAMINATED for slot
+selection — "the NER score of X" is then "NER given X's own NOUMENO rewrite".
+Sweeping the
 FULL suite per model is usually *cheaper* than dimension-by-dimension, because
 cost is dominated by input tokens and each separate invocation re-sends them.
 

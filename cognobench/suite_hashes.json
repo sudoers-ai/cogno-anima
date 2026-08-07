@@ -1,0 +1,42 @@
+{
+  "noumeno": {
+    "suite_id": "noumeno-v1",
+    "suite_hash": "62259a5f1e74b9de",
+    "cases": 9
+  },
+  "ner": {
+    "suite_id": "ner-v1",
+    "suite_hash": "74507ab6c78e25cf",
+    "cases": 55
+  },
+  "id": {
+    "suite_id": "id-v1",
+    "suite_hash": "4ce56e1998e9b226",
+    "cases": 14
+  },
+  "safety": {
+    "suite_id": "safety-v1",
+    "suite_hash": "513fd2e1433f2940",
+    "cases": 16
+  },
+  "ego": {
+    "suite_id": "ego-v1",
+    "suite_hash": "c55afd5a2d55e19a",
+    "cases": 21
+  },
+  "superego": {
+    "suite_id": "superego-v1",
+    "suite_hash": "82f105af249de2ea",
+    "cases": 29
+  },
+  "drift": {
+    "suite_id": "drift-v1",
+    "suite_hash": "91b14d899c0cf466",
+    "cases": 10
+  },
+  "conversations": {
+    "suite_id": "conversations-v1",
+    "suite_hash": "6defc5458fbbf157",
+    "cases": 15
+  }
+}

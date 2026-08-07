@@ -148,7 +148,9 @@ python3 cognobench.py --only conversations     # broad multi-turn e2e simulation
 python3 cognobench.py --stub --limit 3         # fast plumbing smoke (no model)
 ```
 
-Dimensions: `noumeno · ner · id · ego · superego · drift · conversations`. Hard
+Dimensions: `noumeno · ner · id · safety · ego · superego · drift · conversations`
+(`superego` is a selector — it SCORES as three per-op dimensions,
+`superego_scope · superego_judge · superego_voice`). Hard
 invariants are enforced; model-dependent "soft" checks are recalibratable with
 `--calibrate`. The benchmark is **not** shipped in the wheel.
 

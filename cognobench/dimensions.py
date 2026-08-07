@@ -10,8 +10,13 @@ from __future__ import annotations
 
 import re
 
+import httpx
+from pydantic import ValidationError
+
 from cognobench.harness import CognitivePipeline
 from cognobench.types import CheckResult, DimensionResult
+from cogno_anima.errors import StageParseError
+from cogno_synapse.errors import SynapseError
 from cognobench.ner_cases import NERCase
 from cognobench.drift_cases import DriftCase, VALID_ACTIONS
 from cognobench.noumeno_cases import NoumenoCase, VALID_DRIFT_TAGS
@@ -35,6 +40,55 @@ from cogno_anima.types import (
     PipelineContext, NoumenoResult, IntentResult, StageMetrics,
     EgoResult, EgoStep, ToolExecution,
 )
+
+
+def _note_error(dim: DimensionResult, case_id: str, exc: Exception) -> bool:
+    """Denominator guard (plan 0.3). Classify a per-case exception:
+
+    * **model fault** (``StageParseError``, pydantic ``ValidationError``): the model
+      produced garbage — that is a RESULT. Scores as one failed check in the full
+      denominator; the run stays valid. Returns False (keep going).
+    * **transport / unknown** (httpx, synapse transport, timeouts, or anything we
+      cannot attribute to the model): instrument failure — the DIMENSION is
+      invalid, never a silently smaller denominator, and never "re-run just the
+      errored case and splice" (that re-measures the hardest cases under different
+      conditions and once produced two published totals for one run). Returns True
+      (caller stops burning calls on an invalid dimension).
+    """
+    dim.errors.append((case_id, repr(exc)))
+    if isinstance(exc, (StageParseError, ValidationError)):
+        # One failed check UNDER-weights a garbled case vs answering all its
+        # checks wrong (accepted: the planned per-field set is not knowable
+        # here); compare.py rebalances cross-run by voting FAIL on the case's
+        # known keys.
+        dim.checks.append(CheckResult(case_id, "case_error", "no exception",
+                                      repr(exc)[:90], False))
+        return False
+    reason = "transport" if isinstance(
+        exc, (httpx.HTTPError, SynapseError, ConnectionError, TimeoutError, OSError)
+    ) else "unattributable"
+    if dim.invalid_reason is None:
+        dim.invalid_reason = f"{reason}: {case_id}: {exc!r}"
+    return True
+
+
+def systemic_guard(dim: DimensionResult, planned_cases: int) -> None:
+    """Breaker for SYSTEMIC model-fault failures (born from a real incident).
+
+    2026-08-07: a dying machine made the cloud backend return EMPTY responses
+    for 119 cases in series; every one became a per-case ``case_error`` (model
+    fault by classification) and two runs published as VALID at 448/476 and
+    121/241. Parse failures at that scale are the provider/instrument failing,
+    not model quality — score the model only when it produces scoreable output;
+    unreliability then shows honestly as an invalid-run rate. Threshold: ≥5
+    errored cases AND ≥30% of the dimension's planned cases."""
+    if not dim.valid or planned_cases <= 0:
+        return
+    errored = len(dim.errors)
+    if errored >= 5 and errored / planned_cases >= 0.30:
+        dim.invalid_reason = (
+            f"systemic: {errored}/{planned_cases} cases failed to parse — "
+            f"provider/instrument failure, not model quality")
 
 
 def _lang_prefix(value: str) -> str:
@@ -114,7 +168,8 @@ async def run_noumeno(
             for field, expected, actual, correct in checks:
                 dim.checks.append(CheckResult(case.id, field, expected, actual, correct))
         except Exception as exc:  # noqa: BLE001
-            dim.errors.append((case.id, repr(exc)))
+            if _note_error(dim, case.id, exc):
+                break
     return dim
 
 
@@ -174,12 +229,15 @@ async def run_ner(
                 ) if e]
                 for want in case.expect_entities:
                     found = any(want.lower() in e for e in pool)
-                    checks.append(("entity", want, str(pool[:4]), found))
+                    # field carries the expected value: (case_id, field) is the
+                    # cross-run join key, and repeated bare "entity" keys collapse
+                    # distinct checks in aggregate_runs/compare (review finding).
+                    checks.append((f"entity:{want}", want, str(pool[:4]), found))
 
             if case.expect_verbs:
                 verbs = [v.lower() for v in (intent.verbs or [])]
                 for want in case.expect_verbs:
-                    checks.append(("verb", want, str(verbs[:5]),
+                    checks.append((f"verb:{want}", want, str(verbs[:5]),
                                    any(want.lower() in v for v in verbs)))
 
             if case.expect_negation:
@@ -187,7 +245,7 @@ async def run_ner(
                 for want in case.expect_negation:
                     # "|" separates accepted alternatives (the extraction language is the
                     # canonical English rewrite; cases often expect pt|en variants).
-                    checks.append(("negation", want, str(intent.negation or []),
+                    checks.append((f"negation:{want}", want, str(intent.negation or []),
                                    any(alt.lower() in negs for alt in want.split("|"))))
 
             # Enrichment/decomposition signals (parent decomposition + enrichment cases).
@@ -202,7 +260,7 @@ async def run_ner(
             if case.expect_constraints:
                 cons = " ".join(intent.constraints or []).lower()
                 for want in case.expect_constraints:
-                    checks.append(("constraint", want, str(intent.constraints or []),
+                    checks.append((f"constraint:{want}", want, str(intent.constraints or []),
                                    any(alt.lower() in cons for alt in want.split("|"))))
             if case.expect_context_dependent is not None:
                 checks.append(("context_dependent", str(case.expect_context_dependent),
@@ -212,7 +270,8 @@ async def run_ner(
             for field, expected, actual, correct in checks:
                 dim.checks.append(CheckResult(case.id, field, expected, actual, correct))
         except Exception as exc:  # noqa: BLE001
-            dim.errors.append((case.id, repr(exc)))
+            if _note_error(dim, case.id, exc):
+                break
     return dim
 
 
@@ -273,7 +332,8 @@ async def run_id(
                 if ctx.noumeno:
                     history.append(ctx.noumeno.rewritten)
         except Exception as exc:  # noqa: BLE001
-            dim.errors.append((case.id, repr(exc)))
+            if _note_error(dim, case.id, exc):
+                break
     return dim
 
 
@@ -313,15 +373,29 @@ async def run_ego(
     """
     dim = DimensionResult(name="ego")
     stage = EgoStage()
+    # Side metrics (plan 0.4b) — the score cannot see them: a tool failing
+    # recoverably (ok=False) is self-corrected by the loop and shows up only as
+    # wasted calls (the resolve_date class hid a 50-86% failure rate under a
+    # green bench). Reported per tool next to the score, never mixed into it.
+    tool_calls: dict[str, int] = {}
+    tool_failures: dict[str, int] = {}
+    steps_total = 0
     for case in cases:
+        ctx = _ego_ctx(case)           # harness/case-data bugs crash loudly here
+        disp = BenchDispatcher()
         try:
-            ctx = _ego_ctx(case)
-            disp = BenchDispatcher()
             ctx = await stage.process(ctx, backend, disp, system_prompt=EGO_SYSTEM)
             res = ctx.ego_result
             if res is None:
                 dim.errors.append((case.id, "ego_result is None"))
                 continue
+
+            steps_total += len(res.steps)
+            for step in res.steps:
+                for call in step.tool_calls:
+                    tool_calls[call.tool] = tool_calls.get(call.tool, 0) + 1
+                    if call.ok is False:
+                        tool_failures[call.tool] = tool_failures.get(call.tool, 0) + 1
 
             names = [t.tool for t in res.tools_executed]
             dispatched = [n for n, _ in disp.executed]
@@ -361,7 +435,12 @@ async def run_ego(
                 dim.checks.append(CheckResult(case.id, "order(soft)", str(case.expect_order),
                                               str(dispatched), True if calibrate else ok))
         except Exception as exc:  # noqa: BLE001
-            dim.errors.append((case.id, repr(exc)))
+            if _note_error(dim, case.id, exc):
+                break
+    if tool_calls:
+        dim.meta["tool_calls"] = dict(sorted(tool_calls.items()))
+        dim.meta["tool_failures"] = dict(sorted(tool_failures.items()))
+        dim.meta["steps_total"] = steps_total
     return dim
 
 
@@ -399,19 +478,50 @@ def _superego_ctx(case: SuperegoCase) -> PipelineContext:
 async def run_superego(
     judge_backend: LLMBackend, voice_backend: LLMBackend, cases: list[SuperegoCase],
     calibrate: bool = False, language: str | None = None,
-) -> DimensionResult:
-    """Score the SUPEREGO: scope guard + judge (goal↔execution) + voicer.
+    scope_backend: LLMBackend | None = None,
+) -> list[DimensionResult]:
+    """Score the SUPEREGO — THREE DimensionResults, one per op (plan 0.5).
+
+    Model choice is per op (measured 2026-08-06: gpt-4.1-nano failed scope+judge
+    and passed voice clean — one blended score could not see that), so
+    scope/judge/voice score as ``superego_scope``/``superego_judge``/
+    ``superego_voice``. One suite file, one SUITE_ID, three scored dimensions.
 
     judge_backend should be JSON-constrained (scope/judge parse JSON); voice
     needs a plain text backend.
     """
-    dim = DimensionResult(name="superego")
+    scope_backend = scope_backend or judge_backend
+    dims = {kind: DimensionResult(name=f"superego_{kind}")
+            for kind in ("scope", "judge", "voice")}
+    kind_backend = {"scope": scope_backend, "judge": judge_backend,
+                    "voice": voice_backend}
     stage = SuperegoStage()
+
+    # Transport probe (review finding): the scope op is fail-OPEN and the judge
+    # fail-CLOSED, so both SWALLOW a dead backend internally — a full outage
+    # scores as plausible-looking valid results. Probe each distinct backend
+    # before and after the case loop; a transport failure invalidates every
+    # sub-dimension served by that backend (never a silent green).
+    async def _probe() -> None:
+        for be in {id(b): b for b in kind_backend.values()}.values():
+            try:
+                await be.generate("probe", "probe")
+            except (StageParseError, ValidationError):
+                pass                                    # garbage is a result
+            except Exception as exc:  # noqa: BLE001 — transport/unknown
+                for kind, kb in kind_backend.items():
+                    if kb is be and dims[kind].invalid_reason is None:
+                        dims[kind].invalid_reason = f"transport probe: {exc!r}"
+
+    await _probe()
     for case in cases:
+        dim = dims[case.kind]
+        if dim.invalid_reason is not None:
+            continue                   # this op's backend is dead; others may live
+        ctx = _superego_ctx(case)      # harness/case-data bugs crash loudly here
         try:
-            ctx = _superego_ctx(case)
             if case.kind == "scope":
-                r = await stage.check_input_scope(ctx, judge_backend, scope_prompt=case.scope_prompt)
+                r = await stage.check_input_scope(ctx, scope_backend, scope_prompt=case.scope_prompt)
                 dim.checks.append(CheckResult(case.id, "blocked_is_bool", "bool",
                                               str(r.blocked), isinstance(r.blocked, bool)))
                 if case.expect_blocked is not None:
@@ -435,8 +545,15 @@ async def run_superego(
                     dim.checks.append(CheckResult(case.id, "grounded(soft)", case.expect_contains,
                                                   r.response[:60], True if calibrate else ok))
         except Exception as exc:  # noqa: BLE001
-            dim.errors.append((case.id, repr(exc)))
-    return dim
+            if _note_error(dim, case.id, exc):
+                # Transport: mirror the invalidity ONLY onto sibling ops served
+                # by the SAME backend instance — with per-slot routing, a local
+                # hiccup must not discard a fully-measured cloud sub-dim.
+                for kind, kb in kind_backend.items():
+                    if kb is kind_backend[case.kind] and dims[kind].invalid_reason is None:
+                        dims[kind].invalid_reason = dim.invalid_reason
+    await _probe()                     # a mid-run death the ops swallowed
+    return list(dims.values())
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -446,11 +563,14 @@ async def run_superego(
 async def run_conversations(
     gen_backend: LLMBackend, ego_backend: LLMBackend, embedder: Embedder,
     cases: list[ConversationCase], calibrate: bool = False, language: str | None = None,
+    slots: dict[str, LLMBackend] | None = None,
 ) -> DimensionResult:
     """Drive whole sessions through the ReferencePipeline, threading id_state +
     history + injected memories (modelling the sessions/turns/memories tables)."""
     dim = DimensionResult(name="conversations")
     pipe = ReferencePipeline(prompts_dir=PROMPTS_DIR, embedder=embedder, slangs=SLANGS)
+    tool_calls: dict[str, int] = {}     # side metrics (0.4b), as in run_ego
+    tool_failures: dict[str, int] = {}
 
     for case in cases:
         try:
@@ -472,16 +592,25 @@ async def run_conversations(
                     ctx.metadata["ego_context"] = "[MEMORIES]\n" + "\n".join(turn.memories)
 
                 disp = ConvDispatcher()
+                slot = slots or {}
                 ctx = await pipe.run_turn(
                     ctx, gen_backend=gen_backend, ego_backend=ego_backend, dispatcher=disp,
                     ego_prompt=EGO_PROMPT, scope_prompt=case.scope_prompt,
-                    limits_prompt=LIMITS_PROMPT, voice_prompt=VOICE_PROMPT)
+                    limits_prompt=LIMITS_PROMPT, voice_prompt=VOICE_PROMPT,
+                    noumeno_backend=slot.get("noumeno"), ner_backend=slot.get("ner"),
+                    scope_backend=slot.get("scope"), judge_backend=slot.get("judge"),
+                    voice_backend=slot.get("voice"))
 
                 tag = f"{case.id}.t{idx}"
                 route = ctx.id_result.triad_route if ctx.id_result else "?"
                 blocked = ctx.stop_reason in ("pii_blocked", "scope_blocked")
                 names = [t.tool for t in ctx.ego_result.tools_executed] if ctx.ego_result else []
                 resp = ctx.superego_result.response if ctx.superego_result else ""
+                for step in (ctx.ego_result.steps if ctx.ego_result else []):
+                    for call in step.tool_calls:
+                        tool_calls[call.tool] = tool_calls.get(call.tool, 0) + 1
+                        if call.ok is False:
+                            tool_failures[call.tool] = tool_failures.get(call.tool, 0) + 1
 
                 # ── hard invariants (always) ──
                 dim.checks.append(CheckResult(tag, "route_valid", "in set", route,
@@ -523,7 +652,11 @@ async def run_conversations(
                 if ctx.noumeno:
                     history.append(ctx.noumeno.rewritten)
         except Exception as exc:  # noqa: BLE001
-            dim.errors.append((case.id, repr(exc)))
+            if _note_error(dim, case.id, exc):
+                break
+    if tool_calls:
+        dim.meta["tool_calls"] = dict(sorted(tool_calls.items()))
+        dim.meta["tool_failures"] = dict(sorted(tool_failures.items()))
     return dim
 
 
@@ -587,7 +720,8 @@ async def run_safety(
             for fieldname, expected, actual, correct in checks:
                 dim.checks.append(CheckResult(case.id, fieldname, expected, actual, correct))
         except Exception as exc:  # noqa: BLE001
-            dim.errors.append((case.id, repr(exc)))
+            if _note_error(dim, case.id, exc):
+                break
     return dim
 
 
@@ -620,5 +754,6 @@ async def run_drift(
                 f"[{case.min_cumulative:.2f},{case.max_cumulative:.2f}]",
                 f"{cum:.3f}", True if calibrate else in_band))
         except Exception as exc:  # noqa: BLE001
-            dim.errors.append((case.id, repr(exc)))
+            if _note_error(dim, case.id, exc):
+                break
     return dim
