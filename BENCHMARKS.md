@@ -79,6 +79,69 @@ Three findings the single-run era could not see:
   "the ceiling is": a rename (`_floor`?) or a ceiling pin belongs to the next
   suite bump.
 
+## Slot selection — n=3 on the CURRENT suite (2026-08-08)
+
+The Fase-0 gate table above is on the **v1 pins (637 checks)**. Fase 2 took the EGO from 21
+to 36 cases and Fase 3 added five long sessions, so the denominator is now **919** and
+`compare.py` refuses to join the two (that guard is why these runs exist at all: every prior
+cloud sweep describes a suite that no longer exists).
+
+Three models, `--repeat 3 --out cognobench/results`. `gpt-5-*` deliberately excluded: measured
+reasoning tax (gpt-5-nano emits MORE output than input, ~3× wall-clock, and its trailing-text
+style broke the JSON parser 36×).
+
+| model | n | stable score | unstable checks | floor | ~$/sweep |
+|---|---|---|---|---|---|
+| qwen3:8b (local) | 2 | **893**/919 | **0** | 2 | — |
+| openai:gpt-4o-mini | 3 | 892/919 | 9 | 9 | $0.21 |
+| openai:gpt-4.1-nano | 3 | 881/919 | **20** | 20 | $0.14 |
+
+`qwen3:8b` is **n=2, deliberately**: the v1 gate above had already measured it at zero
+unstable checks over three sweeps, so two matching runs on the new suite re-confirm the ~0
+floor and a third buys nothing — 100 minutes of GPU for a number already known. It would be
+the wrong call for either cloud model, whose floors are 9 and 20.
+
+**All three tie, and the paired test says so on every dimension** (`--pair`, McNemar with
+continuity correction). The nano's 11-check deficit does not clear its own 20-check floor: it
+is not equal, it is *indistinguishable*. Resolving that would take n=10.
+
+Read the instability column, not the score: 20 checks that flip between runs **in the judge
+slot** mean the same user turn is approved or rejected non-deterministically. No accuracy
+column shows that, and it is the reason `gpt-4o-mini` is the host's recommended preset
+everywhere except the voice (`cogno-host/docs/MODEL_ROUTING.md`).
+
+### The coverage gate is met by NO slot
+
+`compare.py --discriminate` over the three models — a *discriminator* is a check that
+separates them, a *guard* is one everybody passes, a *suspect* is one everybody stably fails:
+
+| slot (dimension) | discriminators | guards | suspects |
+|---|---|---|---|
+| ner | 13 | 109 | 3 |
+| ego | 2 | 118 | 1 |
+| judge (superego_judge) | 2 | 30 | 0 |
+| noumeno | 1 | 33 | 2 |
+| scope (superego_scope) | 1 | 15 | 0 |
+| **voice (superego_voice)** | **0** | 10 | 0 |
+| *(id — not a model slot)* | 8 | 96 | 0 |
+| *(conversations — e2e, moves every slot)* | 12 | 377 | 5 |
+
+The plan's gate asks for **≥25 discriminators per slot**; the best is 13. Two consequences,
+both load-bearing:
+
+- **The voice cannot be chosen here** — 10 checks total, 0 of them discriminating. Its real
+  gate is `cogno-host/hostbench/grounding_lang_bench.py` (per-locale: a missed fabrication
+  disqualifies the model for that language). `scope` is in the same hole with no substitute yet.
+- **A wider cloud sweep would buy nothing yet.** Three of four dimensions that looked
+  *saturated* on 2026-08-07 (conversations, safety, scope) woke up the moment a third model
+  joined — it was the model pair being too alike, not the ruler being blind. Voice did not.
+  So the order to run is: give the thin slots cases FIRST, sweep after.
+
+`noumeno` is the sharpest case of thinness: its single discriminator is
+`noumeno_short_number` (resolve the anaphor to `client`, not to the literal "20"), and it is
+clean — gpt-4o-mini 3/3, gpt-4.1-nano 0/3, qwen3:8b 0/3, zero noise. A whole slot decided by
+one check is exactly what the coverage gate exists to prevent, even when the check is right.
+
 ## Cloud column (same suites, `--model provider:model`)
 
 Same harness, cloud backends via `cogno-synapse` (`python3 cognobench.py --model
