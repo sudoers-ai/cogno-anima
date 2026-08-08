@@ -30,8 +30,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
-          # Sibling transport libs (not yet on PyPI) from git so the runtime deps
-          # resolve: cogno-synapse -> cogno-homeo. Install homeo first (synapse needs it).
+          # Sibling transport libs from git: cogno-synapse -> cogno-homeo, homeo first.
+          # They ARE on PyPI (0.1.2 / 0.1.1) and git main is ahead under the same version
+          # numbers, so omitting these does not fail — pip quietly installs the old release
+          # and the log cannot tell you. Every job that installs this package needs them
+          # (tests/unit/test_ci_installs_one_chain.py holds that line).
           pip install "cogno-homeo @ git+https://github.com/sudoers-ai/cogno-homeo.git"
           pip install "cogno-synapse @ git+https://github.com/sudoers-ai/cogno-synapse.git"
           pip install -e . --no-deps
@@ -96,6 +99,14 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
+          # The SAME git chain the `test` job installs. A bare `pip install -e .` resolves the
+          # siblings from PyPI, where the published versions sit behind git main under the
+          # same numbers — so this job would test the code against releases the unit job never
+          # touched. cogno-soma spent four nightlies red on exactly that (soma #27), on a
+          # metakey its own main had; here it happens to still pass, which is worse, because
+          # nothing says when it stops.
+          pip install "cogno-homeo @ git+https://github.com/sudoers-ai/cogno-homeo.git"
+          pip install "cogno-synapse @ git+https://github.com/sudoers-ai/cogno-synapse.git"
           pip install -e ".[dev]"
       - name: Canary — the contract tests, against a real model
         env:
