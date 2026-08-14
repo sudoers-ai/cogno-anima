@@ -19,6 +19,22 @@ VALID_INTENTS: set[str] = {
     "CREATIVE_TASK", "SOCIAL", "UNKNOWN",
 }
 
+# The sentiments that mean "this conversation is going badly WITH US". A streak is counted over
+# the FAMILY, not over one repeated label: measured on a real WhatsApp conversation (2026-08), a
+# user escalated FRUSTRATED → NEGATIVE ("IA burra") and the streak RESET on the escalating turn,
+# because it demanded the same label twice. Escalation moves through labels — that is what
+# escalation IS — so a counter keyed on one label never fires exactly when it matters most.
+#
+# URGENT is deliberately OUT. It is about the user's TASK, not about us: someone writing "preciso
+# marcar hoje, é urgente" twice is in a hurry, not dissatisfied. And the cost of getting this
+# wrong is not cosmetic — `emotional_override` outranks the ACTION/INFORMATION→EGO branch in
+# `_resolve_route`, so two urgent turns would route away from the tool gateway and the booking
+# would never be dispatched, for the rest of the session. A hurried user is the LAST one who
+# should lose their tools. (`cogno_host.emotion._SOMBER_SENTIMENTS` groups the same three labels
+# for a different purpose — picking a somber TTS delivery — where urgency does belong. Sharing
+# the triple across the two would be a coincidence, not a shared meaning.)
+NEGATIVE_SENTIMENTS: frozenset[str] = frozenset({"FRUSTRATED", "NEGATIVE"})
+
 VALID_SENTIMENTS: set[str] = {
     "POSITIVE", "NEGATIVE", "NEUTRAL", "CURIOUS", "FRUSTRATED", "URGENT", "PLAYFUL",
 }

@@ -453,3 +453,58 @@ async def test_a_real_disagreement_still_flags():
     ctx.noumeno.confidence, ctx.intent.confidence = 0.95, 0.30
     out = await stage.process(ctx, PlainEmbedder())
     assert out.id_result.confidence_divergence is True
+
+
+async def test_the_streak_follows_an_escalation_ACROSS_labels():
+    """Keyed on one repeated label, the counter resets exactly when it matters most.
+
+    Measured on a real WhatsApp conversation (2026-08): the user wrote "Sugere horário porra"
+    (FRUSTRATED) and then "IA burra" (NEGATIVE). The second turn RESET the streak to zero, so
+    there was no `emotional_override`, no reroute to the SUPEREGO and no handoff — the bot
+    repeated its previous answer verbatim. Escalation moves THROUGH labels; that is what
+    escalation is, so the count runs over the NEGATIVE family.
+
+    Mutation: go back to `== "FRUSTRATED"` and this dies."""
+    stage = IDStage(frustration_threshold=2)
+    ctx1 = make_ctx(_intent(sentiment="FRUSTRATED"))
+    out1 = await stage.process(ctx1, PlainEmbedder())
+    assert out1.id_result.emotional_override is None, "one bad turn is not a streak"
+
+    ctx2 = make_ctx(_intent(sentiment="NEGATIVE", triad_signal="EGO"))
+    ctx2.metadata["id_state"] = ctx1.metadata["id_state"]
+    out2 = await stage.process(ctx2, PlainEmbedder())
+    assert out2.id_result.emotional_override == "sustained_frustration"
+    assert out2.id_result.triad_route == "SUPEREGO", "and it must actually reroute"
+
+
+async def test_a_calm_turn_still_clears_the_streak():
+    """The widening must not make the counter one-way: a user who calms down resets it, or a
+    single bad turn poisons the rest of the session."""
+    stage = IDStage(frustration_threshold=2)
+    ctx1 = make_ctx(_intent(sentiment="FRUSTRATED"))
+    out1 = await stage.process(ctx1, PlainEmbedder())
+    ctx2 = make_ctx(_intent(sentiment="POSITIVE"))
+    ctx2.metadata["id_state"] = out1.metadata["id_state"]
+    out2 = await stage.process(ctx2, PlainEmbedder())
+    ctx3 = make_ctx(_intent(sentiment="NEGATIVE"))
+    ctx3.metadata["id_state"] = out2.metadata["id_state"]
+    out3 = await stage.process(ctx3, PlainEmbedder())
+    assert out3.id_result.emotional_override is None
+    assert out3.metadata["id_state"]["frustration_streak"] == 1
+
+
+async def test_an_URGENT_user_keeps_their_TOOLS():
+    """Urgency is about the user's TASK, not about us. Counting it as frustration costs more
+    than a wrong label: `emotional_override` outranks the ACTION_REQUEST→EGO branch, so two
+    urgent turns would route away from the tool gateway and the booking would never be
+    dispatched — for the rest of the session, since the streak never falls back.
+
+    Mutation: put URGENT into NEGATIVE_SENTIMENTS and this dies."""
+    stage = IDStage(frustration_threshold=2)
+    ctx1 = make_ctx(_intent(sentiment="URGENT", intent_class="ACTION_REQUEST"))
+    out1 = await stage.process(ctx1, PlainEmbedder())
+    ctx2 = make_ctx(_intent(sentiment="URGENT", intent_class="ACTION_REQUEST"))
+    ctx2.metadata["id_state"] = out1.metadata["id_state"]
+    out2 = await stage.process(ctx2, PlainEmbedder())
+    assert out2.id_result.emotional_override is None
+    assert out2.id_result.triad_route == "EGO", "a hurried user is the last one to lose tools"
