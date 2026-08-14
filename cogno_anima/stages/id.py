@@ -30,7 +30,8 @@ from cogno_anima.types import PipelineContext, IntentResult, StageMetrics, IdRes
 from cogno_synapse import Embedder
 from cogno_anima.stages.drift import DriftCalculator
 from cogno_anima.routing import GoalManager, AttentionFilter, IntentionTracker
-from cogno_anima.vocab import VALID_TRIAD, VALID_GOAL_STATUS, VALID_COMPLEXITY
+from cogno_anima.vocab import (NEGATIVE_SENTIMENTS, VALID_TRIAD, VALID_GOAL_STATUS,
+                               VALID_COMPLEXITY)
 
 logger = logging.getLogger("cogno_anima.id")
 
@@ -98,9 +99,11 @@ class IDStage:
         intentions = IntentionTracker()
         intentions.from_dict(id_state.get("intentions"))
 
-        # Frustration streak → emotional_override (host may inject its own).
+        # Frustration streak → emotional_override (host may inject its own). Counted over the
+        # NEGATIVE family, not over a repeated "FRUSTRATED": a user who goes FRUSTRATED →
+        # NEGATIVE has escalated, and keying on one label reset the count on that very turn.
         streak = int(id_state.get("frustration_streak", 0))
-        streak = streak + 1 if intent.sentiment == "FRUSTRATED" else 0
+        streak = streak + 1 if intent.sentiment in NEGATIVE_SENTIMENTS else 0
         id_state["frustration_streak"] = streak
         emotional_override = ctx.metadata.get(mk.EMOTIONAL_OVERRIDE)
         if emotional_override is None and streak >= self._frustration_threshold:
