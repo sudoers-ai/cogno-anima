@@ -759,3 +759,61 @@ async def test_explicit_force_tool_still_wins_over_the_conversational_signal():
     ctx.metadata[mk.EGO_FORCE_TOOL] = True
     await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
     assert backend.calls[0]["tool_choice"] == "required"
+
+
+# ── the executor must see the conversation going wrong ───────────────────────────────
+def _ctx_sent(sentiment: str, override: str = ""):
+    """`_ctx` fixes NEUTRAL; these cases are about the sentiment itself."""
+    from cogno_anima.types import IdResult
+    ctx = _ctx()
+    ctx.intent.sentiment = sentiment
+    if override:
+        ctx.id_result = IdResult(triad_route="EGO", goal_status="ONGOING",
+                                 emotional_override=override, metrics=_m("id"))
+    return ctx
+
+
+def test_a_deteriorating_contact_reaches_the_TASK_context():
+    """The executor anchors on the task line, and it had no read on how the asking is GOING.
+
+    Measured on a real WhatsApp conversation (2026-08): "Sugere horário ai", "Sugere horario"
+    and "Sugere horário porra" all normalised to the same canonical "Please suggest a time.",
+    with the same intent and the same goal — so the task the executor saw was byte-identical
+    while the contact went from patient to swearing. It answered with the same sentence twice
+    and the user wrote "IA burra". The NER had classified FRUSTRATED correctly on that turn;
+    the signal simply never reached the stage that decides what to DO.
+
+    Mutation: drop the sentiment branch from `_task_context` and this dies."""
+    task = EgoStage()._task_context(_ctx_sent("FRUSTRATED"))
+    assert "FRUSTRATED" in task
+    assert "not repeat" in task.lower()
+
+
+def test_a_content_contact_gets_no_course_correction():
+    """Only the negative side is surfaced: a happy contact needs no correction, and spending
+    prompt on 'the user is pleased' would dilute the line that matters."""
+    for ok in ("NEUTRAL", "POSITIVE", "CURIOUS", "PLAYFUL"):
+        task = EgoStage()._task_context(_ctx_sent(ok))
+        assert "not repeat" not in task.lower(), ok
+
+
+def test_sustained_dissatisfaction_is_named_separately_from_one_bad_turn():
+    """One bad turn asks for a change of approach; several ask the executor to ADDRESS the
+    dissatisfaction itself — and to say plainly when it cannot, which is the answer the real
+    conversation never got.
+
+    Mutation: drop the `emotional_override` branch and this dies."""
+    one = EgoStage()._task_context(_ctx_sent("FRUSTRATED"))
+    many = EgoStage()._task_context(_ctx_sent("FRUSTRATED", override="sustained_frustration"))
+    assert "more than one turn" in many
+    assert "more than one turn" not in one
+    assert "bring in a person" in many
+
+
+def test_the_task_line_now_DIFFERS_between_two_identically_rewritten_turns():
+    """The whole point, stated as the failure it fixes: two turns whose canonical rewrite,
+    intent and goal are identical must no longer produce an identical task context when the
+    contact's state changed. Without this the executor had nothing to tell them apart."""
+    calm = EgoStage()._task_context(_ctx_sent("NEUTRAL"))
+    angry = EgoStage()._task_context(_ctx_sent("FRUSTRATED"))
+    assert calm != angry

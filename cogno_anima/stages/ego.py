@@ -60,6 +60,12 @@ _TOOL_MECHANICS = (
 )
 
 
+# Sentiments that mean the conversation is going badly WITH US, so the executor should change
+# course rather than restate. Mirrors `cogno_anima.vocab.NEGATIVE_SENTIMENTS` in meaning; kept
+# as its own name because this one is about EXECUTION, not about counting a streak.
+_DETERIORATING = frozenset({"FRUSTRATED", "NEGATIVE"})
+
+
 class EgoStage:
     """The executor. One LLM-driven agent loop; execution delegated to the host."""
 
@@ -403,6 +409,31 @@ class EgoStage:
             lines.append(f"Constraints (must respect): {', '.join(intent.constraints)}")
         if intent.negation:
             lines.append(f"Must NOT: {', '.join(intent.negation)}")
+        # HOW THE ASKING IS GOING. The executor had no read on this at all, and the task line
+        # is what it anchors on: measured on a real WhatsApp conversation (2026-08), three
+        # consecutive messages — "Sugere horário ai", "Sugere horario", "Sugere horário porra" —
+        # all normalised to the same canonical "Please suggest a time." with the same intent and
+        # the same goal, so the task the executor saw was byte-identical while the contact went
+        # from patient to swearing. It replied with the same sentence twice and the user wrote
+        # "IA burra". The NER had classified FRUSTRATED correctly on that turn; the signal simply
+        # never reached the one stage that decides what to DO.
+        #
+        # Only the negative side is surfaced, and deliberately: a happy contact needs no course
+        # correction, while a deteriorating one is precisely the case where repeating the last
+        # answer is the worst available move. The voice already gets a tone hint from the same
+        # field — this is the EXECUTION half, which is what actually changes the content.
+        if intent.sentiment in _DETERIORATING:
+            lines.append(
+                f"Contact sentiment: {intent.sentiment} — the previous answers are NOT working. "
+                "Do not repeat what you already said: change approach, bring new information, "
+                "or state plainly what you cannot do."
+            )
+        if ctx.id_result is not None and ctx.id_result.emotional_override:
+            lines.append(
+                "The contact has been dissatisfied for more than one turn. Address that "
+                "directly before anything else; if you cannot resolve it, say so and offer "
+                "to bring in a person."
+            )
         # Order-dependent multi-task request (2R-B): tell the loop the sub-tasks
         # must run in sequence and surface the user's causal chain as a supporting
         # plan (a hint — the loop still decides the real tool order).

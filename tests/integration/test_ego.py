@@ -144,3 +144,38 @@ async def test_ego_produces_draft():
     # a valid result with a draft for the SUPEREGO to voice; no crash
     assert res is not None
     assert isinstance(res.draft, str)
+
+
+@pytest.mark.asyncio
+async def test_a_real_model_stops_repeating_once_it_SEES_the_frustration():
+    """The unit tests pin the prompt TEXT; only a real model shows whether it acts on it.
+
+    Reproduces the shape of the August WhatsApp failure: the canonical rewrite, the intent and
+    the goal are byte-identical across the turns (the NOUMENO normalises "Sugere horário ai",
+    "Sugere horario" and "Sugere horário porra" to the same sentence), so the ONLY thing that
+    can tell them apart is the sentiment — which the executor did not receive. It answered with
+    the same sentence twice and the contact wrote "IA burra".
+
+    Asserts the DRAFTS DIFFER, not any particular wording: what the model says when it finally
+    sees the frustration is its business; what the pipeline owes it is a task that is no longer
+    identical. Pinning a phrase here would be pinning this model's taste.
+    """
+    if not await is_ollama_available():
+        pytest.skip("Ollama unavailable")
+    backend = OllamaBackend(model=MODEL, temperature=0.0)
+    disp = InMemoryDispatcher()
+
+    async def draft(sentiment: str) -> str:
+        ctx = _ctx("Please suggest a time.", intent_class="ACTION_REQUEST")
+        ctx.intent.sentiment = sentiment
+        ctx.intent.goal = "suggest a time"
+        out = await EgoStage().process(ctx, backend, disp,
+                                       system_prompt="You are a sales consultant. Be brief.")
+        return (out.ego_result.draft or "").strip()
+
+    calm = await draft("NEUTRAL")
+    angry = await draft("FRUSTRATED")
+    assert calm and angry, "both turns must produce a draft"
+    assert calm != angry, (
+        "same rewrite, same intent, same goal — the sentiment is the only thing left to make "
+        "the executor say something different, and it must be enough")
