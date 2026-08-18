@@ -797,31 +797,40 @@ def test_a_content_contact_gets_no_course_correction():
         assert "not repeat" not in task.lower(), ok
 
 
-def test_there_is_NO_instruction_here_for_sustained_frustration():
-    """The absence is the design, and a review had to prove it to me.
+def test_no_instruction_here_REOPENS_the_escape_hatch_a_persona_closed():
+    """Pins the absence by MUTATION-EQUIVALENCE, not by a string that never existed.
 
-    I wrote a branch keyed on `emotional_override` telling the executor to address the
-    dissatisfaction and offer a person. It is unreachable: `IDStage._resolve_route` returns
-    SUPEREGO for ANY non-None override — before the ACTION/INFORMATION→EGO branch — and soma
-    runs the EGO loop only when `triad_route == "EGO"`. The instruction was dead code on the
-    exact turn that motivated it, and my test passed only because it hand-built an
-    `IdResult(triad_route="EGO", emotional_override=...)`, a combination the ID never emits.
+    My first version asserted `"bring in a person" not in task` — a phrase absent from the
+    module entirely, so it passed against any implementation, including one that reintroduced
+    the branch with different wording. It looked like a guard and guarded nothing.
 
-    That turn is handled where it actually goes: `detect_adjustments` puts
-    `override:sustained_frustration` into the VOICE prompt.
+    What must hold is behavioural: for a contact whose sentiment is deteriorating AND whose
+    override is set, the task context must be the SAME as for the sentiment alone. Any branch
+    keyed on `emotional_override` — whatever it says — breaks that equality.
 
-    Mutation: add an `emotional_override` branch back to `_task_context` and this dies."""
+    Why the branch must not exist: on the one route where it would render (a tool-less persona,
+    force-routed to the EGO by the host), telling the model to offer a person reopens the escape
+    hatch the CLOSER prompt closes deliberately and with measurement, and the core line lands
+    AFTER the persona prompt, so it wins on recency.
+
+    Mutation: add ANY `emotional_override` branch to `_task_context` and this dies."""
     from cogno_anima.types import IdResult
 
-    ctx = _ctx_sent("FRUSTRATED")
-    ctx.id_result = IdResult(triad_route="SUPEREGO", goal_status="ONGOING",
-                             emotional_override="sustained_frustration", metrics=_m("id"))
-    assert "bring in a person" not in EgoStage()._task_context(ctx)
+    plain = _ctx_sent("FRUSTRATED")
+    with_override = _ctx_sent("FRUSTRATED")
+    with_override.id_result = IdResult(triad_route="EGO", goal_status="ONGOING",
+                                       emotional_override="sustained_frustration",
+                                       metrics=_m("id"))
+    assert EgoStage()._task_context(plain) == EgoStage()._task_context(with_override)
 
 
-def test_the_ID_really_routes_a_sustained_override_AWAY_from_the_executor():
-    """Pins the premise the test above rests on, in the stage that owns it — otherwise a
-    routing change could quietly make the absence wrong and nothing would notice."""
+def test_the_ID_routes_a_sustained_override_away_from_the_executor_BY_DEFAULT():
+    """The ID's own preference, pinned in the stage that owns it.
+
+    NOT the justification for the absence above — the host rewrites `triad_route` to EGO after
+    the ID in three places (tool-less persona, grounding repair, pending confirmation), so an
+    override turn DOES reach the executor. Claiming otherwise was my first, wrong reason for
+    deleting the branch. This pins what the ID actually decides, nothing more."""
     from cogno_anima.stages.id import IDStage
     from cogno_anima.types import IntentResult
 

@@ -428,14 +428,20 @@ class EgoStage:
                 "Do not repeat what you already said: change approach, bring new information, "
                 "or state plainly what you cannot do."
             )
-        # NÃO há ramo para `emotional_override` aqui, e a ausência é deliberada: aquele
-        # turno NUNCA chega ao executor. `IDStage._resolve_route` devolve SUPEREGO para
-        # qualquer override não-nulo — antes do ramo ACTION/INFORMATION→EGO — e o soma só roda
-        # o loop do EGO quando `triad_route == "EGO"`. Uma instrução aqui seria código morto no
-        # exato turno que a motivou. A insatisfação sustentada é tratada onde o turno de fato
-        # vai: `SuperegoStage.detect_adjustments` já injeta `override:sustained_frustration` no
-        # prompt da voz. (Escrevi esse ramo e o review o pegou; o teste passava porque montava
-        # à mão um IdResult com route=EGO E override — combinação que o ID nunca emite.)
+        # NÃO há ramo para `emotional_override` aqui, e o motivo NÃO é inalcançabilidade —
+        # essa foi a minha primeira justificativa e ela é falsa. É verdade que
+        # `IDStage._resolve_route` manda qualquer override para SUPEREGO e que o soma só roda o
+        # EGO com `triad_route == "EGO"`, mas o HOST reescreve essa rota depois do ID (persona
+        # sem tools, reparo de grounding, confirmação pendente), então o turno chega aqui.
+        #
+        # O motivo é conflito: na única rota onde renderizaria — persona SEM tools — instruir a
+        # "oferecer uma pessoa" reabre a saída de emergência que o prompt do CLOSER fecha de
+        # propósito e com medição ("não é rota de fuga": ele escapava 9-15× por rodada de bench
+        # em perguntas comuns). E a linha do core é anexada DEPOIS do prompt da persona, então
+        # venceria por recência exatamente onde a persona é mais frágil.
+        #
+        # A insatisfação sustentada é tratada onde o turno normalmente vai:
+        # `SuperegoStage.detect_adjustments` injeta `override:sustained_frustration` na voz.
         # Order-dependent multi-task request (2R-B): tell the loop the sub-tasks
         # must run in sequence and surface the user's causal chain as a supporting
         # plan (a hint — the loop still decides the real tool order).
