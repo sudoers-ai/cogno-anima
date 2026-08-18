@@ -715,3 +715,41 @@ class TestFewShotEchoBackstop:
 
         assert ctx.noumeno.rewritten == "bloop zorg fnarg"
         assert len(backend.systems) == 1
+
+    async def test_rule_illustration_parrot_without_anchor_is_flagged_not_retried(self):
+        """"Book with Dr. Vinicius Vale" lives in the RULES — the retry prompt keeps it,
+        so no retry can clear it (review finding): an unsupported match ships flagged,
+        in ONE call."""
+        backend = SeqBackend([_resp("Book with Dr. Vinicius Vale.")])
+        noumeno = make_noumeno()
+        ctx = PipelineContext(user_input="com a Ana")
+
+        await noumeno.process(ctx, backend)
+
+        assert len(backend.systems) == 1
+        assert "FEW_SHOT_ECHO" in ctx.noumeno.rewrite_warnings
+
+    async def test_rule_illustration_with_anchor_in_input_is_clean(self):
+        backend = SeqBackend([_resp("Book with Dr. Vinicius Vale.")])
+        noumeno = make_noumeno()
+        ctx = PipelineContext(user_input="com o Vinicius Vale")
+
+        await noumeno.process(ctx, backend)
+
+        assert len(backend.systems) == 1
+        assert ctx.noumeno.rewrite_warnings == []
+
+    async def test_rule_illustration_with_anchor_in_conversation_is_clean(self):
+        """"Sim" right after the assistant offered Vinicius Vale IS real resolution —
+        the anchor lives in the conversation, not the input."""
+        from cogno_anima import metakeys as mk
+        backend = SeqBackend([_resp("Book with Dr. Vinicius Vale.")])
+        noumeno = make_noumeno()
+        ctx = PipelineContext(user_input="Sim")
+        ctx.metadata[mk.CONVERSATION_HISTORY] = (
+            "Assistant: Quer que eu agende com o Vinicius Vale?")
+
+        await noumeno.process(ctx, backend)
+
+        assert len(backend.systems) == 1
+        assert ctx.noumeno.rewrite_warnings == []

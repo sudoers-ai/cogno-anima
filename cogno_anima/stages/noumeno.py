@@ -37,17 +37,35 @@ def _echo_norm(text: str) -> tuple[str, ...]:
     return tuple(re.sub(r"[^\w\s]", " ", text.lower()).split())
 
 
-def _split_examples(system: str) -> tuple[str, tuple[tuple[str, ...], ...]]:
-    """Split the system prompt at its ``Examples:`` heading and harvest every example
-    rewrite the model could parrot: the ``"rewritten"`` values of the example outputs
-    plus the inline ``… becomes "…"`` rule illustrations. Returns
-    ``(prompt_without_examples, normalized_example_rewrites)``."""
+def _context_supported(rewritten: str, context_text: str) -> bool:
+    """At least one distinctive word of the rewrite (4+ chars) appears in the given
+    context (input + conversation). Names survive translation, so a rule-illustration
+    match that is real resolution ("com o Vinicius Vale", or "sim" right after the
+    assistant offered Vinicius Vale) passes; a fabricated one has no anchor."""
+    ctx_words = set(_echo_norm(context_text))
+    return any(w in ctx_words for w in _echo_norm(rewritten) if len(w) >= 4)
+
+
+def _split_examples(system: str) -> tuple[str, tuple[tuple[str, ...], ...],
+                                          tuple[tuple[str, ...], ...]]:
+    """Split the system prompt at its ``Examples:`` heading and harvest every rewrite the
+    model could parrot — ``"rewritten"`` values and inline ``… becomes "…"`` illustrations,
+    from BOTH regions. Returns ``(prompt_without_examples, example_rewrites,
+    rule_rewrites)``: the first set lives in the Examples block, absent from the retry
+    prompt, so a retry answer is parrot-proof against it; the second is embedded in the
+    RULES ("… becomes \"Book with Dr. Vinicius Vale\""), which the retry still sees, so
+    those can never earn the retry's unconditional trust. The Examples block is assumed
+    terminal — true for the shipped prompt; a custom ``prompts_dir`` that appends rules
+    after it keeps its own risk (they would be absent from the retry prompt too)."""
     idx = system.find("\nExamples:")
     head, tail = (system, "") if idx < 0 else (system[:idx], system[idx:])
-    harvested = re.findall(r'"rewritten"\s*:\s*"([^"]*)"', tail)
-    harvested += re.findall(r'becomes\s+"([^"]+)"', head)
-    examples = tuple(_echo_norm(e) for e in harvested if e.strip())
-    return head, examples
+
+    def _harvest(text: str) -> tuple[tuple[str, ...], ...]:
+        vals = re.findall(r'"rewritten"\s*:\s*"([^"]*)"', text)
+        vals += re.findall(r'becomes\s+"([^"]+)"', text)
+        return tuple(_echo_norm(v) for v in vals if v.strip())
+
+    return head, _harvest(tail), _harvest(head)
 
 
 
@@ -91,8 +109,12 @@ class Noumeno:
         self._system = load_prompt("noumeno", "system.txt", prompts_dir=prompts_dir)
         self._user_tpl = load_prompt("noumeno", "user.txt", prompts_dir=prompts_dir)
         # Echo backstop material: the prompt minus its Examples block (the retry prompt)
-        # and the normalized example rewrites the model could copy.
-        self._system_sans_examples, self._example_rewrites = _split_examples(self._system)
+        # and the normalized rewrites the model could copy, per region. Logged so an
+        # inert backstop (custom prompt in a format the harvest misses) is visible.
+        (self._system_sans_examples, self._example_rewrites,
+         self._rule_rewrites) = _split_examples(self._system)
+        logger.info("stage=noumeno echo_backstop examples=%d rule_illustrations=%d",
+                    len(self._example_rewrites), len(self._rule_rewrites))
 
     async def process(self, ctx: PipelineContext, llm: LLMBackend) -> PipelineContext:
         """
@@ -175,7 +197,7 @@ class Noumeno:
         # resolution, not a copy. The backstop must never kill a turn the primary call
         # already served: an unparseable retry keeps the first answer but FLAGS it
         # (rewrite_warnings → the ID's clarification_suggested doubt signal).
-        if self._is_example_echo(rewritten, normalized_input):
+        if self._matches_example(rewritten, normalized_input, self._example_rewrites):
             logger.warning(
                 "stage=noumeno event=few_shot_echo rewritten=%r — retrying without the "
                 "examples block", rewritten)
@@ -197,6 +219,22 @@ class Noumeno:
                     [FEW_SHOT_ECHO] + list(data.get("rewrite_warnings", [])))[:2]
                 logger.warning("stage=noumeno event=few_shot_echo_retry_unparseable — "
                                "keeping the first answer, flagged")
+
+        # Rule-illustration echo (checked AFTER the retry so it also covers the retry's
+        # answer): the copied string lives in the RULES, which the retry prompt keeps, so
+        # no retry can clear it — and it is also exactly what a legitimate resolution
+        # looks like ("com o Vinicius Vale" → "Book with Dr. Vinicius Vale"). A match only
+        # counts as fabrication when the rewrite has no lexical support in the input or
+        # the conversation (none of its distinctive words appear there — the wrong-name
+        # case: "com a Ana" rewritten as booking Vinicius Vale). Flag, never block.
+        if (self._matches_example(rewritten, normalized_input, self._rule_rewrites)
+                and not _context_supported(rewritten, normalized_input + " " + conversation)):
+            data = dict(data)
+            data["rewrite_warnings"] = (
+                [FEW_SHOT_ECHO] + list(data.get("rewrite_warnings", [])))[:2]
+            logger.warning("stage=noumeno event=few_shot_echo_rule_illustration "
+                           "rewritten=%r — unsupported by input/conversation, flagged",
+                           rewritten)
 
         context_turn = data.get("context_turn", "").strip()
         confidence = float(data.get("confidence", DEFAULT_CONFIDENCE))
@@ -288,13 +326,15 @@ class Noumeno:
         )
         return ctx
 
-    def _is_example_echo(self, rewritten: str, normalized_input: str) -> bool:
-        """True when a SHORT reply's rewrite matches one of the prompt's own few-shot
-        outputs — exactly, or by the example's distinctive tail (a copy with a swapped
+    @staticmethod
+    def _matches_example(rewritten: str, normalized_input: str,
+                         examples: tuple[tuple[str, ...], ...]) -> bool:
+        """True when a SHORT reply's rewrite matches one of the given harvested
+        rewrites — exactly, or by the example's distinctive tail (a copy with a swapped
         head: "Yes, …" for the example's "Maybe, …"). A rewrite that merely repeats the
         input is pass-through, never a parrot; a long input is out of expansion territory
         and a match there is coincidence."""
-        if not self._example_rewrites:
+        if not examples:
             return False
         inp = _echo_norm(normalized_input)
         if len(inp) > _ECHO_MAX_INPUT_WORDS:
@@ -302,7 +342,7 @@ class Noumeno:
         rw = _echo_norm(rewritten)
         if not rw or rw == inp:
             return False
-        for ex in self._example_rewrites:
+        for ex in examples:
             if rw == ex:
                 return True
             if (len(ex) > _ECHO_TAIL_WORDS and len(rw) >= _ECHO_TAIL_WORDS
