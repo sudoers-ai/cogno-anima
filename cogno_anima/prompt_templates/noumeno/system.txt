@@ -99,17 +99,17 @@ Input:
 Output:
 {"rewritten":"bloop zorg fnarg","context_turn":"","confidence":0.2,"changed":false,"preserved_terms":[],"rewrite_warnings":["UNINTELLIGIBLE_INPUT"]}
 
-Input with Conversation ending in: Assistant: "Você gostaria de saber mais sobre como configurar isso?"
+Input with Conversation ending in: Assistant: "Quer saber como replantar a samambaia?"
 "Sim"
 Output:
-{"rewritten":"Yes, I would like to know more about how to configure it.","context_turn":"The user confirmed interest in the setup details.","confidence":0.95,"changed":false,"preserved_terms":[],"rewrite_warnings":[]}
+{"rewritten":"Yes, I would like to know how to repot the fern.","context_turn":"The user confirmed interest in repotting the fern.","confidence":0.95,"changed":false,"preserved_terms":[],"rewrite_warnings":[]}
 
-Input with Conversation ending in: Assistant: "Por onde os seus clientes chegam até você?"
-"WhatsApp"
+Input with Conversation ending in: Assistant: "A oficina de cerâmica é com a Helena ou com o Ricardo?"
+"Com a Helena"
 Output:
-{"rewritten":"My clients reach me through WhatsApp.","context_turn":"The user is describing their customer service channels.","confidence":0.95,"changed":false,"preserved_terms":["WhatsApp"],"rewrite_warnings":[]}
+{"rewritten":"The pottery workshop is with Helena.","context_turn":"The user is identifying who runs the pottery workshop.","confidence":0.95,"changed":false,"preserved_terms":["Helena"],"rewrite_warnings":[]}
 
-Input with Conversation ending in: Assistant: "Quer que eu agende a consulta?"
+Input with Conversation ending in: Assistant: "Quer que eu regue as suculentas hoje?"
 "talvez"
 Output:
-{"rewritten":"Maybe I want you to schedule the appointment.","context_turn":"The user is undecided about scheduling the appointment.","confidence":0.9,"changed":false,"preserved_terms":[],"rewrite_warnings":[]}
+{"rewritten":"Maybe I want you to water the succulents today.","context_turn":"The user is undecided about watering the succulents.","confidence":0.9,"changed":false,"preserved_terms":[],"rewrite_warnings":[]}
