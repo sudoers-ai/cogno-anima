@@ -15,7 +15,7 @@ is a stricter, more direct metric over more checks (104 vs the parent's 32).
 | Model | Score | Correct/Total | ~Wall time | Notes |
 |-------|-------|---------------|-----------|-------|
 | `mistral:latest` **(default)** | **99.0%** | 103/104 | ~17 min | Best. Only the universal `anaphoric_deep` miss. |
-| `qwen3:8b` (recommended alt) | **98.1%** | 102/104 | ~12 min | `anaphoric_deep` + `math_sequence` continuation. |
+| `qwen3:8b` (recommended alt) | **99.0%** | 103/104 | ~12 min | Re-measured 2026-08-17: only `math_sequence` (`t2_goal_status` wants ONGOING, got ABANDONED). The `anaphoric_deep` miss this row used to carry is gone — NOT attributed: several stages moved since (short-reply continuity anima #52, the frustration streak #78), and no one re-ran the dimension in between, so this is two numbers a month apart with no controlled comparison. Treat the delta as unexplained. |
 | `llama3.1:8b` | 94.2% | 98/104 | ~21 min | 4 soft continuation/farewell + **NER missed CRITICAL credential PII** (safety gate not triggered). |
 | `qwen2.5:7b-instruct` | 93.3% | 97/104 | ~14 min | Soft farewell→COMPLETED and continuation misses. |
 | `phi3:mini` | 77.9% | 81/104 | ~15 min | Small model; weakest NER goal extraction. |
