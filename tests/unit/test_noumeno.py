@@ -753,3 +753,101 @@ class TestFewShotEchoBackstop:
 
         assert len(backend.systems) == 1
         assert ctx.noumeno.rewrite_warnings == []
+
+    async def test_harvest_stays_aligned_with_the_shipped_prompt(self):
+        """The detector's material IS the prompt: harvested example count must equal an
+        independent parse (Output: blocks), the rules region must carry exactly the one
+        known illustration, and the Examples block must stay terminal (a rule bullet
+        after it would silently weaken the retry prompt)."""
+        noumeno = make_noumeno()
+        system = noumeno._system
+        tail = system[system.find("\nExamples:"):]
+        assert len(noumeno._example_rewrites) == tail.count("Output:")
+        assert len(noumeno._example_rewrites) >= 6
+        assert len(noumeno._rule_rewrites) == 1
+        assert not any(line.startswith("* ") for line in tail.splitlines())
+
+    async def test_slang_expansion_does_not_disarm_the_gate(self):
+        """The short-reply gate is measured on the RAW reply: 'sim pfv pode ser'
+        (4 words) expands past 4 words and must still be guarded."""
+        backend = SeqBackend([_resp(self.ECHO),
+                              _resp("Yes, that works for me, please.")])
+        noumeno = make_noumeno()
+        ctx = PipelineContext(user_input="sim pfv pode ser")
+
+        await noumeno.process(ctx, backend)
+
+        assert len(backend.systems) == 2
+
+    async def test_transport_error_on_retry_keeps_first_answer_flagged(self):
+        """The backstop must never kill a turn the primary call served — ANY retry
+        failure (not just parse) degrades to first-answer-plus-flag."""
+        class BoomBackend(SeqBackend):
+            async def generate(self, system, prompt):
+                if self.responses[0] == "BOOM":
+                    self.systems.append(system)
+                    raise RuntimeError("connect timeout")
+                return await super().generate(system, prompt)
+
+        backend = BoomBackend([_resp(self.ECHO), "BOOM"])
+        noumeno = make_noumeno()
+        ctx = PipelineContext(user_input="Sim")
+
+        await noumeno.process(ctx, backend)
+
+        assert ctx.noumeno.rewritten == self.ECHO
+        assert "FEW_SHOT_ECHO" in ctx.noumeno.rewrite_warnings
+
+    async def test_degenerate_retry_is_adopted_but_flagged(self):
+        """The retry is the model's uncontaminated reading — even bare ('Yes.') it
+        beats a possibly-fabricated first answer (wrong is worse than unresolved,
+        measured live: the primary call parroted the Sedex example WHOLE for
+        'WhatsApp'); the bare answer ships carrying the doubt flag."""
+        backend = SeqBackend([_resp(self.ECHO), _resp("Yes.")])
+        noumeno = make_noumeno()
+        ctx = PipelineContext(user_input="Sim")
+
+        await noumeno.process(ctx, backend)
+
+        assert ctx.noumeno.rewritten == "Yes."
+        assert "FEW_SHOT_ECHO" in ctx.noumeno.rewrite_warnings
+
+    async def test_empty_retry_keeps_first_answer_flagged(self):
+        backend = SeqBackend([_resp(self.ECHO), _resp("")])
+        noumeno = make_noumeno()
+        ctx = PipelineContext(user_input="Sim")
+
+        await noumeno.process(ctx, backend)
+
+        assert ctx.noumeno.rewritten == self.ECHO
+        assert "FEW_SHOT_ECHO" in ctx.noumeno.rewrite_warnings
+
+    async def test_rule_illustration_anchored_in_last_query_is_clean(self):
+        """The model legitimately resolves from the Last Query hint too — an anchor
+        there must count (hosts may wire last_rewritten without a transcript)."""
+        from cogno_anima import metakeys as mk
+        backend = SeqBackend([_resp("Book with Dr. Vinicius Vale.")])
+        noumeno = make_noumeno()
+        ctx = PipelineContext(user_input="Sim")
+        ctx.metadata[mk.LAST_REWRITTEN] = (
+            "Do you want to book with Dr. Vinicius Vale?")
+
+        await noumeno.process(ctx, backend)
+
+        assert len(backend.systems) == 1
+        assert ctx.noumeno.rewrite_warnings == []
+
+    async def test_a_single_stray_anchor_does_not_clear_the_flag(self):
+        """'vale' inside "vale a pena" is not an anchor for the NAME Vinicius Vale —
+        one stray common word must not launder the wrong-name fabrication."""
+        from cogno_anima import metakeys as mk
+        backend = SeqBackend([_resp("Book with Dr. Vinicius Vale.")])
+        noumeno = make_noumeno()
+        ctx = PipelineContext(user_input="com a Ana")
+        ctx.metadata[mk.CONVERSATION_HISTORY] = (
+            "Assistant: vale a pena marcar amanhã? Com qual profissional?")
+
+        await noumeno.process(ctx, backend)
+
+        assert len(backend.systems) == 1
+        assert "FEW_SHOT_ECHO" in ctx.noumeno.rewrite_warnings

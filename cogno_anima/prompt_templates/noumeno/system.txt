@@ -55,7 +55,9 @@ Rules:
   as a literal translation. Rewrite it as a complete statement by merging in the content of that
   question. E.g. after the assistant asks "with which doctor?", the input "com o Vinicius Vale"
   becomes "Book with Dr. Vinicius Vale" (carry the date/time/action already established). This
-  is context resolution, not a topic change.
+  is context resolution, not a topic change. It applies EVEN when the reply is a single brand
+  or proper noun ("WhatsApp", "Sedex"): keep the noun exactly, but still expand it into the
+  full statement the question implies — a bare proper noun is not a finished rewrite.
 * When resolving a short reply, carry ONLY what the assistant's question established — never add
   new facts, and keep the question's key terms exactly as written.
 * When resolving a short reply, preserve the degree of certainty: "sim" stays affirmative, "não"
@@ -80,19 +82,19 @@ Field rules:
 Examples:
 
 Input:
-"qual o preço do bitcoin?"
+"qual o preço do telescópio Celestron?"
 Output:
-{"rewritten":"What is the price of Bitcoin?","context_turn":"","confidence":0.98,"changed":false,"preserved_terms":["Bitcoin"],"rewrite_warnings":[]}
+{"rewritten":"What is the price of the Celestron telescope?","context_turn":"","confidence":0.98,"changed":false,"preserved_terms":["Celestron"],"rewrite_warnings":[]}
 
-Input with History about Bitcoin price:
-"e a Ethereum?"
+Input with History about telescope prices:
+"e o da Meade?"
 Output:
-{"rewritten":"What is the price of Ethereum?","context_turn":"The user is asking about cryptocurrency prices.","confidence":0.93,"changed":false,"preserved_terms":["Ethereum"],"rewrite_warnings":[]}
+{"rewritten":"What is the price of the Meade telescope?","context_turn":"The user is asking about telescope prices.","confidence":0.93,"changed":false,"preserved_terms":["Meade"],"rewrite_warnings":[]}
 
 Input:
-"vc abandonou o assunto?"
+"vc regou a samambaia?"
 Output:
-{"rewritten":"Did you abandon the topic?","context_turn":"","confidence":0.96,"changed":false,"preserved_terms":[],"rewrite_warnings":[]}
+{"rewritten":"Did you water the fern?","context_turn":"","confidence":0.96,"changed":false,"preserved_terms":[],"rewrite_warnings":[]}
 
 Input:
 "bloop zorg fnarg"
@@ -108,6 +110,11 @@ Input with Conversation ending in: Assistant: "A oficina de cerâmica é com a H
 "Com a Helena"
 Output:
 {"rewritten":"The pottery workshop is with Helena.","context_turn":"The user is identifying who runs the pottery workshop.","confidence":0.95,"changed":false,"preserved_terms":["Helena"],"rewrite_warnings":[]}
+
+Input with Conversation ending in: Assistant: "Por onde os pedidos do clube de leitura chegam até você?"
+"Sedex"
+Output:
+{"rewritten":"The book club orders reach me by Sedex.","context_turn":"The user is describing how the book club orders arrive.","confidence":0.95,"changed":false,"preserved_terms":["Sedex"],"rewrite_warnings":[]}
 
 Input with Conversation ending in: Assistant: "Quer que eu regue as suculentas hoje?"
 "talvez"

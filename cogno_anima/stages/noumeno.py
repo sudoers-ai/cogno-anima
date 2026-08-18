@@ -3,13 +3,14 @@ import time
 import json
 import asyncio
 import logging
+import unicodedata
 from pathlib import Path
 from typing import Optional
 
 from cogno_anima import metakeys as mk
 from cogno_anima.types import PipelineContext, NoumenoResult, StageMetrics
 from cogno_synapse import LLMBackend, Embedder
-from cogno_anima.utils import (DEFAULT_CONFIDENCE, expand_slangs,
+from cogno_anima.utils import (DEFAULT_CONFIDENCE, STOPWORDS, expand_slangs,
                                generate_json_resilient, parse_json_object)
 from cogno_anima.prompts import load_prompt
 from cogno_anima.errors import StageParseError
@@ -24,8 +25,12 @@ STAGE_NAME = "noumeno"
 # was about configuring), fabricating the task the whole downstream pipeline then executed.
 # The stage therefore knows its own example outputs and treats a match as suspect.
 FEW_SHOT_ECHO = "FEW_SHOT_ECHO"
-# Expansion (and therefore parroting) risk exists only on short replies; a longer input
-# matching an example is a legitimate coincidence ("qual o preço do bitcoin?").
+# Expansion (and therefore parroting) risk exists only on short replies (gauged on the
+# RAW reply, pre-slang-expansion); a longer input matching an example is coincidence.
+# The examples themselves live in deliberately implausible domains (telescopes, ferns,
+# pottery) so that a LIVE rewrite equal to one is parrot-shaped by construction — keep
+# them that way: a realistic example re-arms the invisible-fabrication defect AND makes
+# every legitimate collision pay a retry.
 _ECHO_MAX_INPUT_WORDS = 4
 # A copy with a swapped head ("Yes, …" for the example's "Maybe, …") keeps the example's
 # distinctive tail — compare the last N content words, not just the whole string.
@@ -33,17 +38,27 @@ _ECHO_TAIL_WORDS = 4
 
 
 def _echo_norm(text: str) -> tuple[str, ...]:
-    """Punctuation/case-insensitive word tuple for echo comparison."""
+    """Punctuation/case/accent-insensitive word tuple for echo comparison. Accents are
+    folded (NFD, combining marks dropped) so 'Vinícius' matches 'Vinicius' and NFD
+    input does not split accented words into fragments."""
+    text = unicodedata.normalize("NFD", text)
+    text = "".join(c for c in text if not unicodedata.combining(c))
     return tuple(re.sub(r"[^\w\s]", " ", text.lower()).split())
 
 
 def _context_supported(rewritten: str, context_text: str) -> bool:
-    """At least one distinctive word of the rewrite (4+ chars) appears in the given
-    context (input + conversation). Names survive translation, so a rule-illustration
-    match that is real resolution ("com o Vinicius Vale", or "sim" right after the
-    assistant offered Vinicius Vale) passes; a fabricated one has no anchor."""
+    """The rewrite's distinctive words (4+ chars, non-stopword) are anchored in the
+    given context. Two anchors are required when the rewrite has that many distinctive
+    words: a single stray match — 'vale' inside "vale a pena", a lone 'book' in an
+    English line — must not clear the flag. Names survive translation, so real
+    resolution ("com o Vinicius Vale", or the assistant just offered the name) anchors
+    on the name itself."""
     ctx_words = set(_echo_norm(context_text))
-    return any(w in ctx_words for w in _echo_norm(rewritten) if len(w) >= 4)
+    distinctive = {w for w in _echo_norm(rewritten)
+                   if len(w) >= 4 and w not in STOPWORDS}
+    if not distinctive:
+        return False
+    return len(distinctive & ctx_words) >= min(2, len(distinctive))
 
 
 def _split_examples(system: str) -> tuple[str, tuple[tuple[str, ...], ...],
@@ -197,7 +212,13 @@ class Noumeno:
         # resolution, not a copy. The backstop must never kill a turn the primary call
         # already served: an unparseable retry keeps the first answer but FLAGS it
         # (rewrite_warnings → the ID's clarification_suggested doubt signal).
-        if self._matches_example(rewritten, normalized_input, self._example_rewrites):
+        # The parroting risk is short-reply expansion — gauge "short" on the RAW reply:
+        # slang expansion can push a genuinely short confirm ("sim pfv, pode ser") past a
+        # gate measured after expansion.
+        short_reply = len(_echo_norm(user_input)) <= _ECHO_MAX_INPUT_WORDS
+        echo_flagged = False
+        if short_reply and self._matches_example(rewritten, normalized_input,
+                                                 self._example_rewrites):
             logger.warning(
                 "stage=noumeno event=few_shot_echo rewritten=%r — retrying without the "
                 "examples block", rewritten)
@@ -207,40 +228,64 @@ class Noumeno:
                     stage=STAGE_NAME)
                 tokens_in += t2
                 tokens_out += o2
-                retried = data2.get("rewritten", "").strip() or user_input
-                if _echo_norm(retried) == _echo_norm(rewritten):
-                    logger.info("stage=noumeno event=few_shot_echo_genuine — reproduced "
-                                "without the examples in context")
-                data = data2
-                rewritten = retried
-            except StageParseError:
-                data = dict(data)
-                data["rewrite_warnings"] = (
-                    [FEW_SHOT_ECHO] + list(data.get("rewrite_warnings", [])))[:2]
-                logger.warning("stage=noumeno event=few_shot_echo_retry_unparseable — "
-                               "keeping the first answer, flagged")
+                retried = (data2.get("rewritten") or "").strip()
+                # The retry always wins when it produced anything: it ran without the
+                # examples, so its answer is the model's uncontaminated reading. Measured
+                # live (qwen3:8b, "WhatsApp"): the primary call parroted the Sedex example
+                # WHOLE and the retry returned the honest bare input — a wrong resolution
+                # is strictly worse than an unresolved one (the Jefferson loop), so the
+                # bare answer ships and a degenerate retry (short/pass-through) is FLAGGED
+                # for the downstream doubt signal rather than discarded. Only an EMPTY
+                # retry keeps the first answer (flagged) — there is nothing to adopt.
+                if not retried:
+                    echo_flagged = True
+                    logger.warning("stage=noumeno event=few_shot_echo_retry_empty — "
+                                   "keeping the first answer, flagged")
+                else:
+                    if (len(_echo_norm(retried)) < 3
+                            or _echo_norm(retried) == _echo_norm(normalized_input)):
+                        echo_flagged = True
+                        logger.warning("stage=noumeno event=few_shot_echo_retry_degenerate "
+                                       "retried=%r — adopted (honest beats fabricated), "
+                                       "flagged", retried)
+                    elif _echo_norm(retried) == _echo_norm(rewritten):
+                        logger.info("stage=noumeno event=few_shot_echo_genuine — "
+                                    "reproduced without the examples in context")
+                    data = data2
+                    rewritten = retried
+            except Exception as exc:  # noqa: BLE001 — never kill a turn already served
+                echo_flagged = True
+                logger.warning("stage=noumeno event=few_shot_echo_retry_failed "
+                               "error=%s — keeping the first answer, flagged", exc)
 
         # Rule-illustration echo (checked AFTER the retry so it also covers the retry's
         # answer): the copied string lives in the RULES, which the retry prompt keeps, so
         # no retry can clear it — and it is also exactly what a legitimate resolution
         # looks like ("com o Vinicius Vale" → "Book with Dr. Vinicius Vale"). A match only
-        # counts as fabrication when the rewrite has no lexical support in the input or
-        # the conversation (none of its distinctive words appear there — the wrong-name
-        # case: "com a Ana" rewritten as booking Vinicius Vale). Flag, never block.
-        if (self._matches_example(rewritten, normalized_input, self._rule_rewrites)
-                and not _context_supported(rewritten, normalized_input + " " + conversation)):
-            data = dict(data)
-            data["rewrite_warnings"] = (
-                [FEW_SHOT_ECHO] + list(data.get("rewrite_warnings", [])))[:2]
+        # counts as fabrication when the rewrite has no lexical anchor in ANY channel the
+        # model legitimately resolves from — the input, the conversation, and the
+        # last-query/summary hints injected into the same prompt (the wrong-name case:
+        # "com a Ana" rewritten as booking Vinicius Vale). Flag, never block.
+        if (short_reply
+                and self._matches_example(rewritten, normalized_input, self._rule_rewrites)
+                and not _context_supported(
+                    rewritten, " ".join((normalized_input, conversation,
+                                         last_rewritten or "", last_context_turn or "")))):
+            echo_flagged = True
             logger.warning("stage=noumeno event=few_shot_echo_rule_illustration "
                            "rewritten=%r — unsupported by input/conversation, flagged",
                            rewritten)
+
+        if echo_flagged:
+            data = dict(data)
+            kept = [w for w in (data.get("rewrite_warnings") or []) if w != FEW_SHOT_ECHO]
+            data["rewrite_warnings"] = kept + [FEW_SHOT_ECHO]
 
         context_turn = data.get("context_turn", "").strip()
         confidence = float(data.get("confidence", DEFAULT_CONFIDENCE))
         changed = bool(data.get("changed", False))
         preserved_terms = list(data.get("preserved_terms", []))
-        rewrite_warnings = list(data.get("rewrite_warnings", []))
+        rewrite_warnings = list(data.get("rewrite_warnings") or [])
 
         # 7. Drift Computation (post-LLM)
         sim, t, c = await self._similarity(user_input, rewritten)
@@ -332,15 +377,13 @@ class Noumeno:
         """True when a SHORT reply's rewrite matches one of the given harvested
         rewrites — exactly, or by the example's distinctive tail (a copy with a swapped
         head: "Yes, …" for the example's "Maybe, …"). A rewrite that merely repeats the
-        input is pass-through, never a parrot; a long input is out of expansion territory
-        and a match there is coincidence."""
+        input is pass-through, never a parrot. The short-reply gate lives in the CALLER,
+        measured on the RAW user reply (slang expansion must not push a short confirm
+        past it; a long reply is out of expansion territory)."""
         if not examples:
             return False
-        inp = _echo_norm(normalized_input)
-        if len(inp) > _ECHO_MAX_INPUT_WORDS:
-            return False
         rw = _echo_norm(rewritten)
-        if not rw or rw == inp:
+        if not rw or rw == _echo_norm(normalized_input):
             return False
         for ex in examples:
             if rw == ex:
