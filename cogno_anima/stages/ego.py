@@ -428,20 +428,22 @@ class EgoStage:
                 "Do not repeat what you already said: change approach, bring new information, "
                 "or state plainly what you cannot do."
             )
-        # NÃO há ramo para `emotional_override` aqui, e o motivo NÃO é inalcançabilidade —
-        # essa foi a minha primeira justificativa e ela é falsa. É verdade que
-        # `IDStage._resolve_route` manda qualquer override para SUPEREGO e que o soma só roda o
-        # EGO com `triad_route == "EGO"`, mas o HOST reescreve essa rota depois do ID (persona
-        # sem tools, reparo de grounding, confirmação pendente), então o turno chega aqui.
+        # There is deliberately NO branch on `emotional_override` here, and the reason is
+        # NOT unreachability — that was my first justification and it is false. The ID does
+        # send every override to the SUPEREGO, and soma runs the EGO only on `triad_route ==
+        # "EGO"`, but the HOST rewrites that route after the ID (tool-less persona, grounding
+        # repair, pending confirmation), so such a turn does arrive here.
         #
-        # O motivo é conflito: na única rota onde renderizaria — persona SEM tools — instruir a
-        # "oferecer uma pessoa" reabre a saída de emergência que o prompt do CLOSER fecha de
-        # propósito e com medição ("não é rota de fuga": ele escapava 9-15× por rodada de bench
-        # em perguntas comuns). E a linha do core é anexada DEPOIS do prompt da persona, então
-        # venceria por recência exatamente onde a persona é mais frágil.
+        # The reason is CONFLICT. On the one route where it would render — a persona with no
+        # tools — telling the model to offer a person reopens the escape hatch that persona's
+        # own prompt closes deliberately and with measurement (the CLOSER's "não é rota de
+        # fuga": it fled to a handoff 9-15x per bench run on ordinary questions, ending those
+        # turns with an empty reply). A core-authored line is appended AFTER the persona
+        # prompt, so it would win on recency exactly where the persona is most fragile.
         #
-        # A insatisfação sustentada é tratada onde o turno normalmente vai:
-        # `SuperegoStage.detect_adjustments` injeta `override:sustained_frustration` na voz.
+        # Sustained dissatisfaction is handled where such a turn normally goes:
+        # `SuperegoStage.detect_adjustments` injects `override:sustained_frustration` into the
+        # voice prompt.
         # Order-dependent multi-task request (2R-B): tell the loop the sub-tasks
         # must run in sequence and surface the user's causal chain as a supporting
         # plan (a hint — the loop still decides the real tool order).
