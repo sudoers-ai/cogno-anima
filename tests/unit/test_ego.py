@@ -759,3 +759,92 @@ async def test_explicit_force_tool_still_wins_over_the_conversational_signal():
     ctx.metadata[mk.EGO_FORCE_TOOL] = True
     await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
     assert backend.calls[0]["tool_choice"] == "required"
+
+
+# ── the executor must see the conversation going wrong ───────────────────────────────
+def _ctx_sent(sentiment: str, override: str = ""):
+    """`_ctx` fixes NEUTRAL; these cases are about the sentiment itself."""
+    from cogno_anima.types import IdResult
+    ctx = _ctx()
+    ctx.intent.sentiment = sentiment
+    if override:
+        ctx.id_result = IdResult(triad_route="EGO", goal_status="ONGOING",
+                                 emotional_override=override, metrics=_m("id"))
+    return ctx
+
+
+def test_a_deteriorating_contact_reaches_the_TASK_context():
+    """The executor anchors on the task line, and it had no read on how the asking is GOING.
+
+    Measured on a real WhatsApp conversation (2026-08): "Sugere horário ai", "Sugere horario"
+    and "Sugere horário porra" all normalised to the same canonical "Please suggest a time.",
+    with the same intent and the same goal — so the task the executor saw was byte-identical
+    while the contact went from patient to swearing. It answered with the same sentence twice
+    and the user wrote "IA burra". The NER had classified FRUSTRATED correctly on that turn;
+    the signal simply never reached the stage that decides what to DO.
+
+    Mutation: drop the sentiment branch from `_task_context` and this dies."""
+    task = EgoStage()._task_context(_ctx_sent("FRUSTRATED"))
+    assert "FRUSTRATED" in task
+    assert "not repeat" in task.lower()
+
+
+def test_a_content_contact_gets_no_course_correction():
+    """Only the negative side is surfaced: a happy contact needs no correction, and spending
+    prompt on 'the user is pleased' would dilute the line that matters."""
+    for ok in ("NEUTRAL", "POSITIVE", "CURIOUS", "PLAYFUL"):
+        task = EgoStage()._task_context(_ctx_sent(ok))
+        assert "not repeat" not in task.lower(), ok
+
+
+def test_no_instruction_here_REOPENS_the_escape_hatch_a_persona_closed():
+    """Pins the absence by MUTATION-EQUIVALENCE, not by a string that never existed.
+
+    My first version asserted `"bring in a person" not in task` — a phrase absent from the
+    module entirely, so it passed against any implementation, including one that reintroduced
+    the branch with different wording. It looked like a guard and guarded nothing.
+
+    What must hold is behavioural: for a contact whose sentiment is deteriorating AND whose
+    override is set, the task context must be the SAME as for the sentiment alone. Any branch
+    keyed on `emotional_override` — whatever it says — breaks that equality.
+
+    Why the branch must not exist: on the one route where it would render (a tool-less persona,
+    force-routed to the EGO by the host), telling the model to offer a person reopens the escape
+    hatch the CLOSER prompt closes deliberately and with measurement, and the core line lands
+    AFTER the persona prompt, so it wins on recency.
+
+    Mutation: add ANY `emotional_override` branch to `_task_context` and this dies."""
+    from cogno_anima.types import IdResult
+
+    plain = _ctx_sent("FRUSTRATED")
+    with_override = _ctx_sent("FRUSTRATED")
+    with_override.id_result = IdResult(triad_route="EGO", goal_status="ONGOING",
+                                       emotional_override="sustained_frustration",
+                                       metrics=_m("id"))
+    assert EgoStage()._task_context(plain) == EgoStage()._task_context(with_override)
+
+
+def test_the_ID_routes_a_sustained_override_away_from_the_executor_BY_DEFAULT():
+    """The ID's own preference, pinned in the stage that owns it.
+
+    NOT the justification for the absence above — the host rewrites `triad_route` to EGO after
+    the ID in three places (tool-less persona, grounding repair, pending confirmation), so an
+    override turn DOES reach the executor. Claiming otherwise was my first, wrong reason for
+    deleting the branch. This pins what the ID actually decides, nothing more."""
+    from cogno_anima.stages.id import IDStage
+    from cogno_anima.types import IntentResult
+
+    intent = IntentResult(intent_class="ACTION_REQUEST", sentiment="FRUSTRATED", confidence=0.9,
+                          temporal_class="TIMELESS", triad_signal="EGO", goal="suggest a time",
+                          domains=[], metrics=_m("ner"))
+    assert IDStage._resolve_route(intent, None) == "EGO"
+    assert IDStage._resolve_route(intent, "sustained_frustration") == "SUPEREGO"
+
+
+def test_the_task_line_now_DIFFERS_between_two_identically_rewritten_turns():
+    """The whole point, stated as the failure it fixes: two turns whose canonical rewrite,
+    intent and goal are identical must no longer produce an identical task context when the
+    contact's state changed. Without this the executor had nothing to tell them apart."""
+    calm = EgoStage()._task_context(_ctx_sent("NEUTRAL"))
+    angry = EgoStage()._task_context(_ctx_sent("FRUSTRATED"))
+    assert calm != angry
