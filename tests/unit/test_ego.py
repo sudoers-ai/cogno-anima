@@ -797,17 +797,39 @@ def test_a_content_contact_gets_no_course_correction():
         assert "not repeat" not in task.lower(), ok
 
 
-def test_sustained_dissatisfaction_is_named_separately_from_one_bad_turn():
-    """One bad turn asks for a change of approach; several ask the executor to ADDRESS the
-    dissatisfaction itself — and to say plainly when it cannot, which is the answer the real
-    conversation never got.
+def test_there_is_NO_instruction_here_for_sustained_frustration():
+    """The absence is the design, and a review had to prove it to me.
 
-    Mutation: drop the `emotional_override` branch and this dies."""
-    one = EgoStage()._task_context(_ctx_sent("FRUSTRATED"))
-    many = EgoStage()._task_context(_ctx_sent("FRUSTRATED", override="sustained_frustration"))
-    assert "more than one turn" in many
-    assert "more than one turn" not in one
-    assert "bring in a person" in many
+    I wrote a branch keyed on `emotional_override` telling the executor to address the
+    dissatisfaction and offer a person. It is unreachable: `IDStage._resolve_route` returns
+    SUPEREGO for ANY non-None override — before the ACTION/INFORMATION→EGO branch — and soma
+    runs the EGO loop only when `triad_route == "EGO"`. The instruction was dead code on the
+    exact turn that motivated it, and my test passed only because it hand-built an
+    `IdResult(triad_route="EGO", emotional_override=...)`, a combination the ID never emits.
+
+    That turn is handled where it actually goes: `detect_adjustments` puts
+    `override:sustained_frustration` into the VOICE prompt.
+
+    Mutation: add an `emotional_override` branch back to `_task_context` and this dies."""
+    from cogno_anima.types import IdResult
+
+    ctx = _ctx_sent("FRUSTRATED")
+    ctx.id_result = IdResult(triad_route="SUPEREGO", goal_status="ONGOING",
+                             emotional_override="sustained_frustration", metrics=_m("id"))
+    assert "bring in a person" not in EgoStage()._task_context(ctx)
+
+
+def test_the_ID_really_routes_a_sustained_override_AWAY_from_the_executor():
+    """Pins the premise the test above rests on, in the stage that owns it — otherwise a
+    routing change could quietly make the absence wrong and nothing would notice."""
+    from cogno_anima.stages.id import IDStage
+    from cogno_anima.types import IntentResult
+
+    intent = IntentResult(intent_class="ACTION_REQUEST", sentiment="FRUSTRATED", confidence=0.9,
+                          temporal_class="TIMELESS", triad_signal="EGO", goal="suggest a time",
+                          domains=[], metrics=_m("ner"))
+    assert IDStage._resolve_route(intent, None) == "EGO"
+    assert IDStage._resolve_route(intent, "sustained_frustration") == "SUPEREGO"
 
 
 def test_the_task_line_now_DIFFERS_between_two_identically_rewritten_turns():

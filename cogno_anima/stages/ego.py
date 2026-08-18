@@ -428,12 +428,14 @@ class EgoStage:
                 "Do not repeat what you already said: change approach, bring new information, "
                 "or state plainly what you cannot do."
             )
-        if ctx.id_result is not None and ctx.id_result.emotional_override:
-            lines.append(
-                "The contact has been dissatisfied for more than one turn. Address that "
-                "directly before anything else; if you cannot resolve it, say so and offer "
-                "to bring in a person."
-            )
+        # NÃO há ramo para `emotional_override` aqui, e a ausência é deliberada: aquele
+        # turno NUNCA chega ao executor. `IDStage._resolve_route` devolve SUPEREGO para
+        # qualquer override não-nulo — antes do ramo ACTION/INFORMATION→EGO — e o soma só roda
+        # o loop do EGO quando `triad_route == "EGO"`. Uma instrução aqui seria código morto no
+        # exato turno que a motivou. A insatisfação sustentada é tratada onde o turno de fato
+        # vai: `SuperegoStage.detect_adjustments` já injeta `override:sustained_frustration` no
+        # prompt da voz. (Escrevi esse ramo e o review o pegou; o teste passava porque montava
+        # à mão um IdResult com route=EGO E override — combinação que o ID nunca emite.)
         # Order-dependent multi-task request (2R-B): tell the loop the sub-tasks
         # must run in sequence and surface the user's causal chain as a supporting
         # plan (a hint — the loop still decides the real tool order).
