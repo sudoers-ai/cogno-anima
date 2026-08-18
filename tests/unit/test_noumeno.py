@@ -599,3 +599,119 @@ class TestNoumenoStage:
 
         assert "What is quantum physics?" not in captured_prompts[0]
         assert "science discussion" not in captured_prompts[0]
+
+
+def _resp(rewritten: str, warnings: "list[str] | None" = None) -> str:
+    import json as _json
+    return _json.dumps({
+        "rewritten": rewritten, "context_turn": "", "confidence": 0.95,
+        "changed": False, "preserved_terms": [], "rewrite_warnings": warnings or []})
+
+
+class SeqBackend(StubBackend):
+    """Scripted backend: pops one response per call and records each system prompt,
+    so tests can assert the echo retry really dropped the Examples block."""
+
+    def __init__(self, responses: list[str]):
+        super().__init__()
+        self.responses = list(responses)
+        self.systems: list[str] = []
+
+    async def generate(self, system: str, prompt: str) -> tuple[str, int, int]:
+        self.systems.append(system)
+        return self.responses.pop(0), self.tokens_in, self.tokens_out
+
+
+@pytest.mark.asyncio
+class TestFewShotEchoBackstop:
+    """The stage must not ship a rewrite copied from its own few-shot examples.
+
+    Live defect (CLOSER, 2026-08-18): a bare "Sim" was rewritten as the configure-it
+    example output byte-for-byte, fabricating the task every downstream stage then
+    executed — the conversation looped on the same question for 6 turns."""
+
+    # A real example output from prompt_templates/noumeno/system.txt — the tests break
+    # if the prompt and this constant drift apart, which is the point: the detector's
+    # material IS the prompt.
+    ECHO = "Yes, I would like to know how to repot the fern."
+
+    async def test_echo_is_retried_without_examples_and_retry_wins(self):
+        backend = SeqBackend([_resp(self.ECHO),
+                              _resp("Yes, I have lost customers due to slow replies.")])
+        noumeno = make_noumeno()
+        ctx = PipelineContext(user_input="Sim")
+
+        await noumeno.process(ctx, backend)
+
+        assert ctx.noumeno.rewritten == "Yes, I have lost customers due to slow replies."
+        assert len(backend.systems) == 2
+        assert "Examples:" in backend.systems[0]
+        assert "Examples:" not in backend.systems[1]
+        assert "repot the fern" not in backend.systems[1]
+        assert ctx.noumeno.rewrite_warnings == []
+        # Both calls are billed: the retry must show up in metering.
+        assert ctx.noumeno.metrics.tokens_in == 2 * backend.tokens_in
+        assert ctx.noumeno.metrics.tokens_out == 2 * backend.tokens_out
+
+    async def test_retry_reproducing_the_sentence_is_genuine(self):
+        """The retry cannot parrot what is not in its context — same answer twice
+        means real resolution, and it ships unflagged."""
+        backend = SeqBackend([_resp(self.ECHO), _resp(self.ECHO)])
+        noumeno = make_noumeno()
+        ctx = PipelineContext(user_input="Sim")
+
+        await noumeno.process(ctx, backend)
+
+        assert ctx.noumeno.rewritten == self.ECHO
+        assert len(backend.systems) == 2
+        assert ctx.noumeno.rewrite_warnings == []
+
+    async def test_head_swapped_copy_is_detected_by_the_tail(self):
+        """"Yes, …" pasted over the example's "Maybe, …" keeps the distinctive tail —
+        observed live as "Yes, I would like you to schedule the appointment."."""
+        swapped = "Yes, I want you to water the succulents today."
+        backend = SeqBackend([_resp(swapped), _resp("Yes, water them today, please.")])
+        noumeno = make_noumeno()
+        ctx = PipelineContext(user_input="talvez")
+
+        await noumeno.process(ctx, backend)
+
+        assert ctx.noumeno.rewritten == "Yes, water them today, please."
+        assert len(backend.systems) == 2
+
+    async def test_unparseable_retry_keeps_first_answer_flagged(self):
+        """The backstop never kills a turn the primary call served: garbage on the
+        retry ships the first answer WITH the doubt flag."""
+        backend = SeqBackend([_resp(self.ECHO), "not json at all"])
+        noumeno = make_noumeno()
+        ctx = PipelineContext(user_input="Sim")
+
+        await noumeno.process(ctx, backend)
+
+        assert ctx.noumeno.rewritten == self.ECHO
+        assert "FEW_SHOT_ECHO" in ctx.noumeno.rewrite_warnings
+
+    async def test_long_input_matching_an_example_is_coincidence(self):
+        """Expansion (and parroting) risk is short-reply territory; a long input that
+        lands on an example is legitimate and must cost one call only."""
+        backend = SeqBackend([_resp(self.ECHO)])
+        noumeno = make_noumeno()
+        ctx = PipelineContext(
+            user_input="quero saber como replantar a minha samambaia grande")
+
+        await noumeno.process(ctx, backend)
+
+        assert ctx.noumeno.rewritten == self.ECHO
+        assert len(backend.systems) == 1
+
+    async def test_passthrough_of_the_input_is_never_a_parrot(self):
+        """"bloop zorg fnarg" IS an example output — but echoing the user's own words
+        is pass-through behaviour, not fabrication."""
+        backend = SeqBackend([_resp("bloop zorg fnarg")])
+        noumeno = make_noumeno()
+        ctx = PipelineContext(user_input="bloop zorg fnarg")
+
+        await noumeno.process(ctx, backend)
+
+        assert ctx.noumeno.rewritten == "bloop zorg fnarg"
+        assert len(backend.systems) == 1

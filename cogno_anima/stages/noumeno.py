@@ -18,6 +18,37 @@ logger = logging.getLogger("cogno_anima.noumeno")
 
 STAGE_NAME = "noumeno"
 
+# Few-shot echo backstop. Measured live (CLOSER, 2026-08-18): on a bare "Sim" the model
+# copied a few-shot OUTPUT byte-for-byte instead of resolving against the real conversation
+# ("Yes, I would like to know more about how to configure it." — nothing in the conversation
+# was about configuring), fabricating the task the whole downstream pipeline then executed.
+# The stage therefore knows its own example outputs and treats a match as suspect.
+FEW_SHOT_ECHO = "FEW_SHOT_ECHO"
+# Expansion (and therefore parroting) risk exists only on short replies; a longer input
+# matching an example is a legitimate coincidence ("qual o preço do bitcoin?").
+_ECHO_MAX_INPUT_WORDS = 4
+# A copy with a swapped head ("Yes, …" for the example's "Maybe, …") keeps the example's
+# distinctive tail — compare the last N content words, not just the whole string.
+_ECHO_TAIL_WORDS = 4
+
+
+def _echo_norm(text: str) -> tuple[str, ...]:
+    """Punctuation/case-insensitive word tuple for echo comparison."""
+    return tuple(re.sub(r"[^\w\s]", " ", text.lower()).split())
+
+
+def _split_examples(system: str) -> tuple[str, tuple[tuple[str, ...], ...]]:
+    """Split the system prompt at its ``Examples:`` heading and harvest every example
+    rewrite the model could parrot: the ``"rewritten"`` values of the example outputs
+    plus the inline ``… becomes "…"`` rule illustrations. Returns
+    ``(prompt_without_examples, normalized_example_rewrites)``."""
+    idx = system.find("\nExamples:")
+    head, tail = (system, "") if idx < 0 else (system[:idx], system[idx:])
+    harvested = re.findall(r'"rewritten"\s*:\s*"([^"]*)"', tail)
+    harvested += re.findall(r'becomes\s+"([^"]+)"', head)
+    examples = tuple(_echo_norm(e) for e in harvested if e.strip())
+    return head, examples
+
 
 
 def classify_drift(score: float) -> str:
@@ -59,6 +90,9 @@ class Noumeno:
         # Load prompts
         self._system = load_prompt("noumeno", "system.txt", prompts_dir=prompts_dir)
         self._user_tpl = load_prompt("noumeno", "user.txt", prompts_dir=prompts_dir)
+        # Echo backstop material: the prompt minus its Examples block (the retry prompt)
+        # and the normalized example rewrites the model could copy.
+        self._system_sans_examples, self._example_rewrites = _split_examples(self._system)
 
     async def process(self, ctx: PipelineContext, llm: LLMBackend) -> PipelineContext:
         """
@@ -130,6 +164,40 @@ class Noumeno:
         data, tokens_in, tokens_out = await generate_json_resilient(
             llm, self._system, prompt, self._parse_json, stage=STAGE_NAME)
         rewritten = data.get("rewritten", "").strip() or user_input
+
+        # ── Few-shot echo backstop ────────────────────────────────────
+        # The rewrite of a short reply matches one of the prompt's own example outputs —
+        # the model may have copied the example instead of resolving against the real
+        # conversation (observed live: "Sim" → the configure-it example, verbatim, in a
+        # conversation about nothing of the sort). Retry ONCE without the Examples block:
+        # the retry cannot parrot what is not in its context, so its answer is trusted
+        # unconditionally — if it reproduces the same sentence, the match was genuine
+        # resolution, not a copy. The backstop must never kill a turn the primary call
+        # already served: an unparseable retry keeps the first answer but FLAGS it
+        # (rewrite_warnings → the ID's clarification_suggested doubt signal).
+        if self._is_example_echo(rewritten, normalized_input):
+            logger.warning(
+                "stage=noumeno event=few_shot_echo rewritten=%r — retrying without the "
+                "examples block", rewritten)
+            try:
+                data2, t2, o2 = await generate_json_resilient(
+                    llm, self._system_sans_examples, prompt, self._parse_json,
+                    stage=STAGE_NAME)
+                tokens_in += t2
+                tokens_out += o2
+                retried = data2.get("rewritten", "").strip() or user_input
+                if _echo_norm(retried) == _echo_norm(rewritten):
+                    logger.info("stage=noumeno event=few_shot_echo_genuine — reproduced "
+                                "without the examples in context")
+                data = data2
+                rewritten = retried
+            except StageParseError:
+                data = dict(data)
+                data["rewrite_warnings"] = (
+                    [FEW_SHOT_ECHO] + list(data.get("rewrite_warnings", [])))[:2]
+                logger.warning("stage=noumeno event=few_shot_echo_retry_unparseable — "
+                               "keeping the first answer, flagged")
+
         context_turn = data.get("context_turn", "").strip()
         confidence = float(data.get("confidence", DEFAULT_CONFIDENCE))
         changed = bool(data.get("changed", False))
@@ -219,6 +287,28 @@ class Noumeno:
             detected_lang, drift_score, drift_tag, changed, change_subject,
         )
         return ctx
+
+    def _is_example_echo(self, rewritten: str, normalized_input: str) -> bool:
+        """True when a SHORT reply's rewrite matches one of the prompt's own few-shot
+        outputs — exactly, or by the example's distinctive tail (a copy with a swapped
+        head: "Yes, …" for the example's "Maybe, …"). A rewrite that merely repeats the
+        input is pass-through, never a parrot; a long input is out of expansion territory
+        and a match there is coincidence."""
+        if not self._example_rewrites:
+            return False
+        inp = _echo_norm(normalized_input)
+        if len(inp) > _ECHO_MAX_INPUT_WORDS:
+            return False
+        rw = _echo_norm(rewritten)
+        if not rw or rw == inp:
+            return False
+        for ex in self._example_rewrites:
+            if rw == ex:
+                return True
+            if (len(ex) > _ECHO_TAIL_WORDS and len(rw) >= _ECHO_TAIL_WORDS
+                    and rw[-_ECHO_TAIL_WORDS:] == ex[-_ECHO_TAIL_WORDS:]):
+                return True
+        return False
 
     async def _similarity(self, a: str, b: str) -> tuple[float, int, int]:
         """Cosine similarity plus embedding cost ``(similarity, tokens, calls)``.
