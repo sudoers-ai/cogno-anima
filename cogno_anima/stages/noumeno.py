@@ -229,22 +229,30 @@ class Noumeno:
                 tokens_in += t2
                 tokens_out += o2
                 retried = (data2.get("rewritten") or "").strip()
-                # Floor: the retry runs without the short-reply demonstrations, so it can
-                # come back degenerate — bare ("Yes."), empty, or the unresolved input.
-                # A degenerate retry must not replace the (possibly genuine) first
-                # answer; ship the first answer flagged instead.
-                if (len(_echo_norm(retried)) >= 3
-                        and _echo_norm(retried) != _echo_norm(normalized_input)):
-                    if _echo_norm(retried) == _echo_norm(rewritten):
+                # The retry always wins when it produced anything: it ran without the
+                # examples, so its answer is the model's uncontaminated reading. Measured
+                # live (qwen3:8b, "WhatsApp"): the primary call parroted the Sedex example
+                # WHOLE and the retry returned the honest bare input — a wrong resolution
+                # is strictly worse than an unresolved one (the Jefferson loop), so the
+                # bare answer ships and a degenerate retry (short/pass-through) is FLAGGED
+                # for the downstream doubt signal rather than discarded. Only an EMPTY
+                # retry keeps the first answer (flagged) — there is nothing to adopt.
+                if not retried:
+                    echo_flagged = True
+                    logger.warning("stage=noumeno event=few_shot_echo_retry_empty — "
+                                   "keeping the first answer, flagged")
+                else:
+                    if (len(_echo_norm(retried)) < 3
+                            or _echo_norm(retried) == _echo_norm(normalized_input)):
+                        echo_flagged = True
+                        logger.warning("stage=noumeno event=few_shot_echo_retry_degenerate "
+                                       "retried=%r — adopted (honest beats fabricated), "
+                                       "flagged", retried)
+                    elif _echo_norm(retried) == _echo_norm(rewritten):
                         logger.info("stage=noumeno event=few_shot_echo_genuine — "
                                     "reproduced without the examples in context")
                     data = data2
                     rewritten = retried
-                else:
-                    echo_flagged = True
-                    logger.warning("stage=noumeno event=few_shot_echo_retry_degenerate "
-                                   "retried=%r — keeping the first answer, flagged",
-                                   retried)
             except Exception as exc:  # noqa: BLE001 — never kill a turn already served
                 echo_flagged = True
                 logger.warning("stage=noumeno event=few_shot_echo_retry_failed "

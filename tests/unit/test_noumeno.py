@@ -798,10 +798,22 @@ class TestFewShotEchoBackstop:
         assert ctx.noumeno.rewritten == self.ECHO
         assert "FEW_SHOT_ECHO" in ctx.noumeno.rewrite_warnings
 
-    async def test_degenerate_retry_does_not_replace_the_first_answer(self):
-        """A retry without the demonstrations can come back bare ('Yes.') — that must
-        not overwrite a full resolution; the first answer ships flagged."""
+    async def test_degenerate_retry_is_adopted_but_flagged(self):
+        """The retry is the model's uncontaminated reading — even bare ('Yes.') it
+        beats a possibly-fabricated first answer (wrong is worse than unresolved,
+        measured live: the primary call parroted the Sedex example WHOLE for
+        'WhatsApp'); the bare answer ships carrying the doubt flag."""
         backend = SeqBackend([_resp(self.ECHO), _resp("Yes.")])
+        noumeno = make_noumeno()
+        ctx = PipelineContext(user_input="Sim")
+
+        await noumeno.process(ctx, backend)
+
+        assert ctx.noumeno.rewritten == "Yes."
+        assert "FEW_SHOT_ECHO" in ctx.noumeno.rewrite_warnings
+
+    async def test_empty_retry_keeps_first_answer_flagged(self):
+        backend = SeqBackend([_resp(self.ECHO), _resp("")])
         noumeno = make_noumeno()
         ctx = PipelineContext(user_input="Sim")
 

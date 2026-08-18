@@ -649,11 +649,20 @@ SHORT_REPLY_CASES = [
         "must_contain": [["cogno", "know more", "learn more"]],
     },
     {
+        # Measured 2026-08-18 (qwen3:8b, temp 0): the old stronger expectation
+        # (["client","reach","through","contact"]) was only ever satisfied by the model
+        # PARROTING the in-domain WhatsApp few-shot — the example was the answer. With
+        # out-of-domain examples the model either passes the bare noun through (honest,
+        # echo-backstop may flag it) or parrots the analogous example (fabrication the
+        # backstop now catches and replaces). The achievable contract for a bare proper
+        # noun is: the term SURVIVES and nothing is fabricated — downstream, the goal
+        # guard (anima #52 Rule 1) keeps continuity over an unexpanded short reply.
         "desc": "bare_channel_answer",
         "conversation": ("User: Quero melhorar meu atendimento.\n"
                          "Assistant: Por onde os seus clientes chegam até você?"),
         "input": "WhatsApp",
-        "must_contain": [["whatsapp"], ["client", "reach", "through", "contact"]],
+        "must_contain": [["whatsapp"]],
+        "must_not_contain": ["sedex", "book club", "orders"],
     },
     {
         "desc": "hedge_preserves_uncertainty",
@@ -685,6 +694,13 @@ async def test_noumeno_short_reply_resolution(case):
     _assert_valid_noumeno_result(res, case["input"], llm.model)
 
     rewritten_lower = res.rewritten.lower()
+    for forbidden in case.get("must_not_contain", []):
+        assert forbidden not in rewritten_lower, (
+            f"Fabricated content from a few-shot example leaked into the rewrite!\n"
+            f"  Input:     {case['input']!r}\n"
+            f"  Rewritten: {res.rewritten!r}\n"
+            f"  Forbidden: {forbidden!r}"
+        )
     for alternatives in case["must_contain"]:
         assert any(alt.lower() in rewritten_lower for alt in alternatives), (
             f"Short reply not resolved against the assistant's question!\n"
