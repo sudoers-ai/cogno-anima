@@ -216,3 +216,104 @@ def test_helpers():
     assert _jaccard({"a"}, set()) == 0.0
     assert _jaccard({"a", "b"}, {"a"}) == pytest.approx(0.5)
     assert _tokenize("Olá, Docker-99!") == {"olá", "docker", "99"}
+
+
+# ── o que a similaridade do Stage 2 realmente entrega ─────────────────────────────────
+#
+# Os 14 pares rotulados de `cognobench/id_cases.py`, com a similaridade MEDIDA sob
+# `nomic-embed-text` (o embedder para o qual o 0.75 foi calibrado) em 2026-08-19. Gravados
+# como dado, e não recomputados, porque o ponto é o CONTRATO: enquanto estes números forem os
+# do produto, o Stage 2 não sustenta continuidade — e o dia em que sustentar, os testes abaixo
+# quebram e mandam reler a docstring da GoalManager.
+#
+# Coletados forçando o Stage 2 em todo par (`~/cogno-harvest-anon/stage2-*`), então medem a
+# similaridade, não quem decidiu primeiro.
+_GOAL_PAIRS_NOMIC: tuple[tuple[str, str, float], ...] = (
+    ("interrupted_goal:t2", "ABANDONED", 0.6305),
+    ("multi_topic_chain:t4", "ABANDONED", 0.6049),
+    ("topic_switch:t2", "ABANDONED", 0.5356),
+    ("multi_topic_chain:t3", "ABANDONED", 0.4263),
+    ("multi_topic_chain:t2", "ABANDONED", 0.3854),
+    ("correction_goal:t2", "ONGOING", 0.9263),
+    ("market_continuation:t2", "ONGOING", 0.6866),
+    ("implicit_continuation:t2", "ONGOING", 0.5884),
+    ("full_lifecycle:t2", "ONGOING", 0.5615),
+    ("long_chain:t3", "ONGOING", 0.5277),
+    ("long_chain:t4", "ONGOING", 0.5027),
+    ("math_sequence:t2", "ONGOING", 0.4877),
+    ("long_chain:t2", "ONGOING", 0.4649),
+    ("anaphoric_deep:t2", "ONGOING", 0.345),
+)
+
+_TURN_PAIRS_NOMIC: tuple[tuple[str, str, float], ...] = (
+    ("interrupted_goal:t2", "ABANDONED", 0.6503),
+    ("topic_switch:t2", "ABANDONED", 0.5582),
+    ("multi_topic_chain:t3", "ABANDONED", 0.5408),
+    ("multi_topic_chain:t4", "ABANDONED", 0.5287),
+    ("multi_topic_chain:t2", "ABANDONED", 0.5171),
+    ("correction_goal:t2", "ONGOING", 0.7198),
+    ("anaphoric_deep:t2", "ONGOING", 0.5981),
+    ("implicit_continuation:t2", "ONGOING", 0.5775),
+    ("market_continuation:t2", "ONGOING", 0.564),
+    ("full_lifecycle:t2", "ONGOING", 0.558),
+    ("long_chain:t3", "ONGOING", 0.549),
+    ("math_sequence:t2", "ONGOING", 0.4827),
+    ("long_chain:t2", "ONGOING", 0.4721),
+    ("long_chain:t4", "ONGOING", 0.3297),
+)
+
+def _accuracy(pairs, cut: float) -> float:
+    """Fração de pares que um corte em ``cut`` classificaria certo."""
+    return sum((sim >= cut) == (want == "ONGOING") for _, want, sim in pairs) / len(pairs)
+
+
+def _best_cut(pairs) -> "tuple[float, float]":
+    cuts = sorted({round(sim, 3) for _, _, sim in pairs} | {0.0, 1.0})
+    return max(((c, _accuracy(pairs, c)) for c in cuts), key=lambda x: x[1])
+
+
+def _baseline(pairs) -> float:
+    """Sempre responder ONGOING, sem olhar a similaridade."""
+    return sum(want == "ONGOING" for _, want, _ in pairs) / len(pairs)
+
+
+def test_stage2_does_not_carry_continuity_at_the_shipped_threshold():
+    """O Stage 2 é desempate, não portão — e isto é o contrato, não uma observação.
+
+    A ordem dos estágios sugere "atalhos, depois a comparação semântica de verdade". Medido,
+    é o contrário: os atalhos SÃO o mecanismo. Sob o embedder de produção, o 0.75 é alcançado
+    por 1 dos 14 pares, e classifica PIOR que responder ONGOING sempre.
+
+    Isto já custou caro uma vez: remover o match por catch-all do Stage 1 (#84) parecia
+    apertar um atalho frouxo e na verdade tirou a escora — o `long_chain` perdeu o goal em
+    três turnos seguidos, porque tudo que caía ia parar num estágio que estruturalmente não
+    consegue dizer ONGOING.
+
+    **Se este teste falhar, a notícia é boa**: quer dizer que o Stage 2 passou a valer a
+    pena (outro embedder, outro sinal, outro limiar). Releia a docstring da `GoalManager`,
+    re-meça, e promova-o de desempate a portão — de propósito, não por acidente."""
+    from cogno_anima.routing.goal import GoalManager
+
+    shipped = GoalManager()._threshold
+    for name, pairs in (("goal", _GOAL_PAIRS_NOMIC), ("turn", _TURN_PAIRS_NOMIC)):
+        above = [n for n, _, sim in pairs if sim >= shipped]
+        assert len(above) <= 1, f"{name}: {above} alcançam {shipped} — o Stage 2 acordou"
+        assert _accuracy(pairs, shipped) <= _baseline(pairs), (
+            f"{name}: o limiar embarcado agora bate o baseline "
+            f"({_accuracy(pairs, shipped):.0%} > {_baseline(pairs):.0%}) — promova o estágio")
+
+
+def test_no_threshold_separates_the_two_populations():
+    """Não é que o número esteja errado: não existe número.
+
+    As duas distribuições SE SOBREPÕEM sob nomic, nos dois sinais, então nenhum corte as
+    separa. É por isso que "recalibrar o limiar" não é o próximo passo — e por isso nenhum
+    valor ajustado a estes 14 pontos deve ser embarcado como se fosse calibração."""
+    for name, pairs in (("goal", _GOAL_PAIRS_NOMIC), ("turn", _TURN_PAIRS_NOMIC)):
+        ong = [s for _, w, s in pairs if w == "ONGOING"]
+        aba = [s for _, w, s in pairs if w == "ABANDONED"]
+        assert min(ong) < max(aba), f"{name}: as populações separaram — re-meça e recalibre"
+        cut, acc = _best_cut(pairs)
+        assert acc <= _baseline(pairs) + 1e-9, (
+            f"{name}: existe corte ({cut:.3f}) que bate o baseline com {acc:.0%} — "
+            f"a similaridade virou sinal utilizável, promova o estágio")
