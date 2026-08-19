@@ -861,8 +861,8 @@ def test_a_CIRCLING_conversation_reaches_the_task_context_even_when_the_contact_
 
     Mutation: drop the circling branch from `_task_context` and this dies."""
     task = EgoStage()._task_context(_ctx(**{mk.CIRCLING_STREAK: 2}))
-    assert "CIRCLING" in task
-    assert "already heard" in task and "ADVANCE" in task
+    assert "arrived at the same answer" in task
+    assert "already been asked" in task and "advance" in task
     # …and it is reached with a perfectly content contact: the two roads are independent
     assert "Contact sentiment" not in task
 
@@ -871,9 +871,9 @@ def test_one_firing_is_not_a_circle():
     """A single repeat is a stumble the host's repair usually fixes on the same turn; telling
     the executor then would fight that repair. Only a STREAK means the conversation keeps
     arriving at the same answer."""
-    assert "CIRCLING" not in EgoStage()._task_context(_ctx(**{mk.CIRCLING_STREAK: 1}))
-    assert "CIRCLING" not in EgoStage()._task_context(_ctx())          # absent key
-    assert "CIRCLING" not in EgoStage()._task_context(_ctx(**{mk.CIRCLING_STREAK: 0}))
+    assert "arrived at the same answer" not in EgoStage()._task_context(_ctx(**{mk.CIRCLING_STREAK: 1}))
+    assert "arrived at the same answer" not in EgoStage()._task_context(_ctx())          # absent key
+    assert "arrived at the same answer" not in EgoStage()._task_context(_ctx(**{mk.CIRCLING_STREAK: 0}))
 
 
 def test_the_two_warnings_can_arrive_together():
@@ -882,4 +882,90 @@ def test_the_two_warnings_can_arrive_together():
     ctx = _ctx_sent("FRUSTRATED")
     ctx.metadata[mk.CIRCLING_STREAK] = 3
     task = EgoStage()._task_context(ctx)
-    assert "FRUSTRATED" in task and "CIRCLING" in task
+    assert "FRUSTRATED" in task and "arrived at the same answer" in task
+
+
+def test_an_unusable_streak_never_kills_the_turn():
+    """The hint is ADVISORY, and it runs inside `_task_context` → `_build_system` → `process`,
+    all unguarded — so `int()` raising on a host value would abort the turn (no tools, no
+    draft, no EgoResult) over a line the model may ignore. Signals, not exceptions.
+
+    A bool is refused rather than counted as 1, on purpose: a host filling a COUNT slot with a
+    flag would otherwise get a feature that is dead but green (1 never reaches the threshold)."""
+    for junk in ({"count": 3}, ["3"], "n/a", None, True, False, -5, object()):
+        task = EgoStage()._task_context(_ctx(**{mk.CIRCLING_STREAK: junk}))
+        assert "arrived at the same answer" not in task, junk      # …and no exception
+
+    # A bool must be REFUSED, not coerced. At the default threshold both behaviours look the
+    # same (int(True) == 1 < 2), so the assertion above cannot tell them apart — a threshold of
+    # 1 is where "refused" and "counted as 1" finally disagree. Without this, dropping the bool
+    # guard leaves the suite green (measured: it did).
+    class _Eager(EgoStage):
+        CIRCLING_MIN = 1
+
+    assert "arrived at the same answer" not in _Eager()._task_context(
+        _ctx(**{mk.CIRCLING_STREAK: True}))
+    assert "arrived at the same answer" in _Eager()._task_context(
+        _ctx(**{mk.CIRCLING_STREAK: 1}))          # …a real 1 still fires there
+
+
+def test_a_numeric_string_still_counts():
+    """A JSON/DB round-trip turns 3 into "3"; refusing that would make the feature depend on
+    the host's serializer."""
+    assert "arrived at the same answer" in EgoStage()._task_context(
+        _ctx(**{mk.CIRCLING_STREAK: "3"}))
+
+
+def test_the_threshold_is_tunable_and_zero_disables_it():
+    """Class attribute like every other bound in this stage: a persona that legitimately
+    re-asks (an intake flow) may want it higher, or off."""
+    class _Patient(EgoStage):
+        CIRCLING_MIN = 4
+
+    class _Off(EgoStage):
+        CIRCLING_MIN = 0
+
+    ctx3 = _ctx(**{mk.CIRCLING_STREAK: 3})
+    assert "arrived at the same answer" not in _Patient()._task_context(ctx3)
+    assert "arrived at the same answer" in _Patient()._task_context(
+        _ctx(**{mk.CIRCLING_STREAK: 4}))
+    assert "arrived at the same answer" not in _Off()._task_context(
+        _ctx(**{mk.CIRCLING_STREAK: 99}))
+
+
+def test_the_line_claims_only_what_the_counter_establishes():
+    """The host counts turns its guard ACTED on — and it repairs most of them, so the contact
+    often never saw a repeat. Telling the model "your last N answers repeated themselves" is a
+    fact it cannot verify and may apologise for; the SUPEREGO voices that draft, so the invented
+    premise would ship to the contact."""
+    task = EgoStage()._task_context(_ctx(**{mk.CIRCLING_STREAK: 3}))
+    assert "answers repeated themselves" not in task
+    assert "had to be corrected" in task
+    assert "Do not apologise" in task and "do not mention this note" in task
+    # …and it must not hand a conversational persona a licence to bail (see the CLOSER note
+    # further down this file): no "what you cannot do" escape hatch in THIS line.
+    circling_line = [ln for ln in task.splitlines() if "arrived at the same answer" in ln][0]
+    assert "cannot do" not in circling_line
+
+
+@pytest.mark.asyncio
+async def test_the_task_context_actually_reaches_the_prompt_the_backend_receives():
+    """Every task-context test in this file calls the private helper. Review showed what that
+    costs: delete the `task_ctx` append in `_build_system` and the WHOLE block — constraints,
+    negation, the sentiment line, the circling line, the force-tool directive, PROPOSE mode —
+    stops reaching any model, while the entire suite stays green. Form verified, effect not.
+
+    This pins the seam once, with the signals that matter riding on it."""
+    backend = ScriptedToolCallingBackend([{"content": "Recorded."}], native=False)
+    ctx = _ctx(**{mk.CIRCLING_STREAK: 3})
+    ctx.intent.sentiment = "FRUSTRATED"
+    ctx.intent.constraints = ["não ligar depois das 18h"]
+
+    await EgoStage().process(ctx, backend, StubDispatcher.with_tools("add_income"),
+                             system_prompt=SYS)
+
+    system = backend.calls[0]["system"]
+    assert "# Task context" in system
+    assert "arrived at the same answer" in system          # the circling hint
+    assert "FRUSTRATED" in system                           # the sentiment hint
+    assert "não ligar depois das 18h" in system             # the user's own constraint
