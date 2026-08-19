@@ -36,6 +36,15 @@ JUDGE_CONVERSATIONAL = "judge_conversational"  # host: this turn has NO tool to 
 # log" was indistinguishable from "the judge approves nothing" — and a whole day was spent
 # chasing the wrong one. A rate needs a denominator.
 JUDGE_VERDICT = "judge_verdict"
+# Every judge verdict of the turn, in order: [{"attempt": int, "approved": bool,
+# "critique": str}]. JUDGE_VERDICT above counts; this one says WHY, which is the half that
+# was missing. The rejected attempts' critiques were consumed by the correction loop
+# (EGO_CORRECTION.reason, overwritten each attempt) and then dropped, so the only way to
+# read them after the fact was to attach a debugger to the judge — done twice in one day,
+# and three wrong hypotheses were built before it. A score you cannot explain is a score you
+# cannot act on. The critique is TRUNCATED by the writer: this rides in metadata that the
+# host persists, and a full critique per attempt is unbounded text.
+JUDGE_ATTEMPTS = "judge_attempts"
 
 # ── ID / NER / NOUMENO — cross-turn carry-over (soma writes, stages read) ─────
 ID_STATE = "id_state"                          # serializable IDStage state
