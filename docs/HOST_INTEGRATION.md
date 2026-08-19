@@ -156,6 +156,7 @@ the core reads/writes:
 | `pii_session_hint` | host may inject | a known-PII session, tightens goal continuity |
 | `ego_correction` | host sets in the loop | `{reason, attempt}` fed back to the EGO on retry |
 | `ego_max_steps` | host may set | EGO agent-loop bound (default 5) |
+| `circling_streak` | host may inject | how many CONSECUTIVE turns the host's anti-repeat guard fired (an int, counted by the host, **reset to 0 on a clean turn**) → from 2, the EGO tells the executor it keeps arriving at the same answer. A stale value keeps warning forever, so it must be recomputed every turn, like the core does for `id_state`'s frustration streak |
 
 Minimal threading between turns:
 

@@ -30,6 +30,7 @@ import logging
 from typing import Optional
 
 from cogno_anima import metakeys as mk
+from cogno_anima.vocab import NEGATIVE_SENTIMENTS
 from cogno_anima.types import (
     PipelineContext,
     StageMetrics,
@@ -61,13 +62,40 @@ _TOOL_MECHANICS = (
 
 
 # Sentiments that mean the conversation is going badly WITH US, so the executor should change
-# course rather than restate. Mirrors `cogno_anima.vocab.NEGATIVE_SENTIMENTS` in meaning; kept
-# as its own name because this one is about EXECUTION, not about counting a streak.
-_DETERIORATING = frozenset({"FRUSTRATED", "NEGATIVE"})
+# course rather than restate. It IS the ID's negative family — the two were byte-identical
+# copies, and a copy drifts: add a label in vocab and the ID would escalate while this line
+# stayed silent, the split-brain #78 was written to close, one stage over.
+_DETERIORATING = NEGATIVE_SENTIMENTS
 # One firing of the host's guard is a stumble the repair usually fixes; TWO in a row is a
 # conversation that keeps arriving at the same answer, which is the shape the executor has to
-# be told about — telling it on the first would fight the repair for the same turn.
-_CIRCLING_MIN = 2
+# be told about — telling it on the first would fight the repair for the same turn. Injectable
+# like the ID's ``frustration_threshold``: an intake flow that legitimately re-asks may want it
+# higher, or off (0 disables).
+DEFAULT_CIRCLING_MIN = 2
+
+
+def _as_streak(value: object) -> int:
+    """A host counter coerced to int — 0 for anything unusable, never an exception.
+
+    ``int(value)`` on a dict/list/``"n/a"`` raises, and this runs inside ``_task_context`` →
+    ``_build_system`` → ``process``, all unguarded: an ADVISORY prompt hint would abort the
+    turn (no tools, no draft, no ``EgoResult``) over a value the model may well ignore. The
+    stage's contract is signals, not exceptions.
+
+    ``True`` is refused rather than counted as 1, on purpose: a host whose guard returns a
+    bool is filling a COUNT slot with a flag, and reading it as 1 would leave the feature
+    dead-but-green (1 never reaches the threshold). Returning 0 and logging says so out loud."""
+    if isinstance(value, bool) or value is None:
+        return 0
+    # Narrowed rather than wrapped in try alone: ``int(object)`` does not type-check, and being
+    # explicit about what a counter may arrive as is the point of the function.
+    if isinstance(value, (int, float, str)):
+        try:
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            pass
+    logger.warning("stage=ego event=circling_streak_unusable value=%r — hint skipped", value)
+    return 0
 
 
 class EgoStage:
@@ -79,6 +107,10 @@ class EgoStage:
     MAX_STEPS_COMPOSITE = 8        # multi-task request (intent.is_composite) → more loop budget
     MAX_DUPLICATE_CALLS = 2        # same (tool,args) seen this many times → block + warn
     MAX_CONSECUTIVE_BLOCKS = 2     # this many all-blocked steps in a row → abort the loop
+    # Turns of host-detected circling before the executor is warned. A class attribute like the
+    # bounds above (this stage has no __init__), so a host can raise it for a persona that
+    # legitimately re-asks — or set 0 to disable the line entirely.
+    CIRCLING_MIN = DEFAULT_CIRCLING_MIN
 
     async def process(
         self,
@@ -439,14 +471,19 @@ class EgoStage:
         # above could fire. The host's anti-repeat guard DID see it, on almost every one of
         # those turns — and that knowledge died with the turn: the next one started clean and
         # earned the same repeat again. A streak here is the guard's memory, carried forward.
-        circling = int(ctx.metadata.get(mk.CIRCLING_STREAK) or 0)
-        if circling >= _CIRCLING_MIN:
+        circling = _as_streak(ctx.metadata.get(mk.CIRCLING_STREAK))
+        if self.CIRCLING_MIN and circling >= self.CIRCLING_MIN:
+            # What the counter actually establishes is that the ANSWER YOU WERE ABOUT TO GIVE
+            # has been arrived at before — the guard counts turns it had to act on, and it
+            # repairs most of them, so the contact often never saw a repeat. Telling the model
+            # "your last N answers repeated themselves" would be a fact it cannot verify and
+            # may apologise for; the SUPEREGO voices that draft, so the invented premise ships.
             lines.append(
-                f"This conversation is CIRCLING: the last {circling} answers repeated "
-                "themselves and the contact is still on the same point. Whatever you were "
-                "about to say, they have already heard. Use what they have already told you "
-                "to ADVANCE — answer, conclude, or propose the concrete next step; if there is "
-                "no advance to make, say plainly what is missing or what you cannot do."
+                f"You have arrived at the same answer on the last {circling} turns and it had "
+                "to be corrected each time. Whatever you were about to say, this contact has "
+                "already been asked it. Use what they have ALREADY told you to advance — "
+                "answer, conclude, or propose the concrete next step. Do not apologise for "
+                "repeating yourself and do not mention this note."
             )
         # There is deliberately NO branch on `emotional_override` here, and the reason is
         # NOT unreachability — that was my first justification and it is false. The ID does
