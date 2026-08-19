@@ -49,6 +49,11 @@ _COMPLETION_INTENTS = {"SOCIAL"}
 # Intents that can create or continue goals.
 _GOAL_INTENTS = {"ACTION_REQUEST", "INFORMATION_REQUEST", "CREATIVE_TASK", "CLARIFICATION"}
 
+# Domains that carry NO information about what the turn is about. `GENERAL` is the NER's
+# catch-all — and `OTHER` is aliased onto it (`stages/ner.py`), so it is where every turn the
+# classifier could not place ends up. Two turns sharing it share nothing.
+_UNINFORMATIVE_DOMAINS = frozenset({"GENERAL", "OTHER"})
+
 SimilarityFn = Callable[[str, str], Awaitable[float]]
 
 
@@ -231,9 +236,27 @@ class GoalManager:
         if intent_class == "CLARIFICATION":
             return True, 1.0
 
-        # Stage 1: domain intersection signal.
+        # Stage 1: domain intersection signal — over INFORMATIVE domains only.
+        #
+        # Sharing the catch-all is not sharing a subject. Measured on a harvested conversation
+        # (2026-08-19): from turn 15 the goal was "organize finances, issue invoices…", every
+        # later turn came back `['GENERAL']`, and the user spent five turns asking for a time
+        # slot before giving up. `{GENERAL} & {FINANCE, GENERAL}` is non-empty, so this
+        # returned (ONGOING, 1.0) on all eight of them and the semantic comparison in Stage 2
+        # never ran once. A similarity of 1.00 between "Quais horários vc tem?" and "organize
+        # finances" is not a measurement — it is a shortcut reporting itself as one.
+        #
+        # And it compounds: Rule 3 does `_goal_domains |= current_domains` on every ONGOING,
+        # so each verdict widened the set that produced the next one. GENERAL rides along on
+        # nearly every turn, so the loop had no exit.
+        #
+        # The intent was already written down ten lines below, in Stage 1.5: "GENERAL is a real
+        # domain for new questions — kept out of this path". Same rule, one stage short.
+        # Falling through is not the same as breaking the goal: Stages 1.5/1.6 still catch an
+        # anaphoric or elliptical turn, and Stage 2 then MEASURES instead of assuming.
         if self._require_domain_match and current_domains and self._goal_domains:
-            if (current_domains & self._goal_domains) and intent_class in _GOAL_INTENTS:
+            shared = (current_domains & self._goal_domains) - _UNINFORMATIVE_DOMAINS
+            if shared and intent_class in _GOAL_INTENTS:
                 return True, 1.0
 
         # Stage 1.5: anaphoric fast-path with pii_session_hint (no embedding).

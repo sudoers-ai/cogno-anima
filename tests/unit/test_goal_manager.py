@@ -65,6 +65,59 @@ async def test_stage1_domain_match_is_ongoing():
     assert sim_fn.calls == []
 
 
+async def test_stage1_does_not_match_on_the_CATCH_ALL_domain():
+    """Sharing GENERAL is not sharing a subject — it is sharing "unclassified".
+
+    Measured on a harvested conversation (2026-08-19): from turn 15 the goal was "organize
+    finances, issue invoices…", every later turn came back ``['GENERAL']``, and the user spent
+    five turns asking for a time slot before giving up on the agent. ``{GENERAL} & {FINANCE,
+    GENERAL}`` is non-empty, so Stage 1 answered (ONGOING, 1.0) on all eight of them and Stage 2
+    never ran once. Replayed through the ID stage, the goal was ONE across those eight turns;
+    with this rule it is three, and the middle one is the time slot the user was asking for.
+
+    It compounded, too: ``update`` widens ``_goal_domains`` on every ONGOING, so each verdict
+    made the next one easier — and GENERAL rides along on nearly every turn."""
+    sim_fn = _SimRecorder(0.0)
+    gm = GoalManager(similarity_fn=sim_fn)
+    await gm.update("organize the finances", "ACTION_REQUEST", domains=["FINANCE", "GENERAL"])
+    status, _, sim = await gm.update("what times do you have?", "INFORMATION_REQUEST",
+                                     domains=["GENERAL"])
+    assert sim_fn.calls, "the catch-all must fall through to the semantic comparison"
+    assert status == "ABANDONED" and sim == 0.0
+
+
+async def test_stage1_still_matches_on_a_REAL_shared_domain():
+    """The control arm: only the catch-all is disqualified, not the signal.
+
+    A goal carrying GENERAL alongside a real domain still matches on the real one."""
+    sim_fn = _SimRecorder(0.0)
+    gm = GoalManager(similarity_fn=sim_fn)
+    await gm.update("organize the finances", "ACTION_REQUEST", domains=["FINANCE", "GENERAL"])
+    status, _, sim = await gm.update("and the invoices?", "ACTION_REQUEST",
+                                     domains=["FINANCE", "GENERAL"])
+    assert status == "ONGOING" and sim == 1.0
+    assert sim_fn.calls == []          # FINANCE carried it; Stage 2 never needed
+
+
+async def test_a_short_reply_still_keeps_its_goal_when_the_domain_is_the_catch_all():
+    """The risk direction, pinned. Tightening continuity must not restart the conversation.
+
+    "Sim" / "WhatsApp" answering the agent's own question is the failure this stage order
+    exists to prevent, and those turns are exactly the ones the NER labels GENERAL. They are
+    kept by Stages 0/1.5/1.6 — all of which run REGARDLESS of Stage 1 — so disqualifying the
+    catch-all in Stage 1 cannot reach them. Asserted rather than reasoned, because the inverse
+    error (a live goal wiped) is the more expensive one."""
+    for intent, kwargs in (("CLARIFICATION", {}),
+                           ("ACTION_REQUEST", {"context_dependent": True}),
+                           ("INFORMATION_REQUEST", {"pii_session_hint": True})):
+        sim_fn = _SimRecorder(0.0)
+        gm = GoalManager(similarity_fn=sim_fn)
+        await gm.update("book an appointment", "ACTION_REQUEST", domains=["GENERAL"])
+        status, _, sim = await gm.update("sim", intent, domains=[], **kwargs)
+        assert status == "ONGOING", f"{intent} lost its goal"
+        assert sim == 1.0 and sim_fn.calls == []
+
+
 async def test_stage15_anaphoric_pii_is_ongoing():
     sim_fn = _SimRecorder(0.0)
     gm = GoalManager(similarity_fn=sim_fn)
