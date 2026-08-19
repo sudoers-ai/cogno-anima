@@ -87,12 +87,15 @@ def _as_streak(value: object) -> int:
     dead-but-green (1 never reaches the threshold). Returning 0 and logging says so out loud."""
     if isinstance(value, bool) or value is None:
         return 0
-    try:
-        return max(0, int(value))
-    except (TypeError, ValueError):
-        logger.warning("stage=ego event=circling_streak_unusable value=%r — hint skipped",
-                       value)
-        return 0
+    # Narrowed rather than wrapped in try alone: ``int(object)`` does not type-check, and being
+    # explicit about what a counter may arrive as is the point of the function.
+    if isinstance(value, (int, float, str)):
+        try:
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            pass
+    logger.warning("stage=ego event=circling_streak_unusable value=%r — hint skipped", value)
+    return 0
 
 
 class EgoStage:
