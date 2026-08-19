@@ -473,6 +473,12 @@ class EgoStage:
         # earned the same repeat again. A streak here is the guard's memory, carried forward.
         circling = _as_streak(ctx.metadata.get(mk.CIRCLING_STREAK))
         if self.CIRCLING_MIN and circling >= self.CIRCLING_MIN:
+            # A rate needs a denominator: without this line there is no way to tell "the host
+            # never wires the key" from "conversations never circle" — and the two call for
+            # opposite fixes. Measured on the replay of the live CLOSER loop, where the guard
+            # fired six times and five repeats still shipped: the log could not say whether the
+            # executor had been warned at all.
+            logger.info("stage=ego event=circling_warned streak=%d", circling)
             # What the counter actually establishes is that the ANSWER YOU WERE ABOUT TO GIVE
             # has been arrived at before — the guard counts turns it had to act on, and it
             # repairs most of them, so the contact often never saw a repeat. Telling the model
