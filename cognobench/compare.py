@@ -63,9 +63,18 @@ def _stable(results: list[bool]) -> bool | None:
 
 
 def _label(run: dict) -> str:
-    """Join label: model + limit. Slot overrides are already folded into the
-    model label by the runner; --limit changes the case universe."""
+    """Join label: model + embedder + limit. Two runs join only if all three match.
+
+    The embedder joined the label when it stopped being fixed (`--embed-model` accepts a
+    `provider:model` spec now). Before that it was always local Ollama, so leaving it out was
+    safe; after it, the same LLM under two embedders pooled into ONE label and `_stable()`
+    majority-voted across them. Drift and goal-similarity read the embedder directly, so a
+    deliberate configuration change was laundered into "unstable" — a real difference reported
+    as noise, which is the one thing a comparison tool must never do."""
     label = run.get("model", "?")
+    embed = run.get("config", {}).get("embed_model") or run.get("embed_model")
+    if embed:
+        label += f" +{embed}"
     limit = run.get("config", {}).get("limit")
     if limit:
         label += f" (limit={limit})"

@@ -19,7 +19,6 @@ from cogno_synapse import (
     Embedder,
     LLMBackend,
     OllamaBackend,
-    OllamaEmbedder,
     create_embedder,
 )
 from cogno_anima.stages.noumeno import Noumeno
@@ -122,8 +121,12 @@ def build_ollama(
     """
     backend = OllamaBackend(model=model, base_url=base_url, temperature=0.0,
                             format="json", think=think)
-    embedder = CachingEmbedder(OllamaEmbedder(model=embed_model, base_url=base_url))
-    return backend, embedder
+    # Through `build_embedder`, not a second construction: the `--embed-model` grammar has to
+    # hold on BOTH branches. Hardcoding it here meant `--model qwen3:8b --embed-model
+    # openai:text-embedding-3-small` silently became `OllamaEmbedder(model="openai:text-...")`
+    # and 404'd on the first embed — while the flag's own help promised the grammar
+    # unconditionally.
+    return backend, build_embedder(embed_model, base_url)
 
 
 def build_ollama_text(
@@ -153,9 +156,19 @@ def build_cloud(spec: str) -> LLMBackend:
 
 
 def embedder_is_local(embed_model: str) -> bool:
-    """Does this spec resolve to Ollama? Bare or unknown prefix does, like the factory."""
-    provider, _, _rest = embed_model.partition(":")
-    return not _rest or provider.lower() == "ollama"
+    """Does this spec resolve to Ollama? ASKS the factory instead of re-deciding.
+
+    It used to re-implement the parse, and got it wrong on the form this project actually
+    documents: `partition(":")` reads `nomic-embed-text:latest` as provider `nomic-embed-text`
+    and answers False, while the factory maps an unknown prefix straight back to Ollama. So a
+    cloud-LLM run with the tagged local embedder — the exact spec named in CLAUDE.md — skipped
+    the friendly preflight, built an OllamaEmbedder anyway, and died on the first embed with a
+    raw transport error, after the cloud model had already been billed.
+    Mirroring a rule is how it drifts; asking is how it cannot."""
+    from cogno_synapse.factory import parse_model_string
+
+    provider, _model = parse_model_string(embed_model)
+    return provider == "ollama"
 
 
 def build_embedder(
