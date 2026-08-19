@@ -22,6 +22,10 @@ EGO_FORCE_TOOL = "ego_force_tool"              # host: this turn REQUIRES a tool
 EGO_CONFIRMED = "ego_confirmed"                # gate B: True | collection of tool names
 EGO_CONFIRMED_CALLS = "ego_confirmed_calls"    # gate B: approved calls to execute
 EGO_CORRECTION = "ego_correction"              # correction loop: {reason, attempt}
+# How many CONSECUTIVE turns the host's anti-repeat guard has fired on this session (repaired
+# or shipped). The guard already knows the conversation is circling; before this key, only the
+# turn it fired on knew — the NEXT turn started with a clean slate and re-earned the repeat.
+CIRCLING_STREAK = "circling_streak"
 
 # ── SUPEREGO (locutor) — soma/host write, voice reads ────────────────────────
 VOICE_CORRECTION = "voice_correction"          # judge's final rejection: {reason}

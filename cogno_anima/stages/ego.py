@@ -64,6 +64,10 @@ _TOOL_MECHANICS = (
 # course rather than restate. Mirrors `cogno_anima.vocab.NEGATIVE_SENTIMENTS` in meaning; kept
 # as its own name because this one is about EXECUTION, not about counting a streak.
 _DETERIORATING = frozenset({"FRUSTRATED", "NEGATIVE"})
+# One firing of the host's guard is a stumble the repair usually fixes; TWO in a row is a
+# conversation that keeps arriving at the same answer, which is the shape the executor has to
+# be told about — telling it on the first would fight the repair for the same turn.
+_CIRCLING_MIN = 2
 
 
 class EgoStage:
@@ -427,6 +431,22 @@ class EgoStage:
                 f"Contact sentiment: {intent.sentiment} — the previous answers are NOT working. "
                 "Do not repeat what you already said: change approach, bring new information, "
                 "or state plainly what you cannot do."
+            )
+        # The same warning, reached by the OTHER road. Sentiment catches the contact who is
+        # visibly losing patience; this catches the one who is not — measured live (CLOSER,
+        # 2026-08-18): a lead answered "Sim", "Com certeza", "Claro" to the SAME question six
+        # turns running, POSITIVE or NEUTRAL every time, so nothing in the sentiment branch
+        # above could fire. The host's anti-repeat guard DID see it, on almost every one of
+        # those turns — and that knowledge died with the turn: the next one started clean and
+        # earned the same repeat again. A streak here is the guard's memory, carried forward.
+        circling = int(ctx.metadata.get(mk.CIRCLING_STREAK) or 0)
+        if circling >= _CIRCLING_MIN:
+            lines.append(
+                f"This conversation is CIRCLING: the last {circling} answers repeated "
+                "themselves and the contact is still on the same point. Whatever you were "
+                "about to say, they have already heard. Use what they have already told you "
+                "to ADVANCE — answer, conclude, or propose the concrete next step; if there is "
+                "no advance to make, say plainly what is missing or what you cannot do."
             )
         # There is deliberately NO branch on `emotional_override` here, and the reason is
         # NOT unreachability — that was my first justification and it is false. The ID does

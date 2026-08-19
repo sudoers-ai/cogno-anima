@@ -848,3 +848,38 @@ def test_the_task_line_now_DIFFERS_between_two_identically_rewritten_turns():
     calm = EgoStage()._task_context(_ctx_sent("NEUTRAL"))
     angry = EgoStage()._task_context(_ctx_sent("FRUSTRATED"))
     assert calm != angry
+
+
+def test_a_CIRCLING_conversation_reaches_the_task_context_even_when_the_contact_is_happy():
+    """The sentiment branch above catches the contact who is visibly losing patience. This one
+    catches the contact who is NOT — and that is the case that cost a real conversation.
+
+    Measured live (CLOSER, session 87a26cb7, 2026-08-18): a lead answered "Sim", "Com certeza",
+    "Claro" to the SAME question six turns running. Every one of those turns was POSITIVE or
+    NEUTRAL, so nothing in the sentiment branch could fire, while the host's anti-repeat guard
+    saw the repeat on almost all of them — and that knowledge died with the turn.
+
+    Mutation: drop the circling branch from `_task_context` and this dies."""
+    task = EgoStage()._task_context(_ctx(**{mk.CIRCLING_STREAK: 2}))
+    assert "CIRCLING" in task
+    assert "already heard" in task and "ADVANCE" in task
+    # …and it is reached with a perfectly content contact: the two roads are independent
+    assert "Contact sentiment" not in task
+
+
+def test_one_firing_is_not_a_circle():
+    """A single repeat is a stumble the host's repair usually fixes on the same turn; telling
+    the executor then would fight that repair. Only a STREAK means the conversation keeps
+    arriving at the same answer."""
+    assert "CIRCLING" not in EgoStage()._task_context(_ctx(**{mk.CIRCLING_STREAK: 1}))
+    assert "CIRCLING" not in EgoStage()._task_context(_ctx())          # absent key
+    assert "CIRCLING" not in EgoStage()._task_context(_ctx(**{mk.CIRCLING_STREAK: 0}))
+
+
+def test_the_two_warnings_can_arrive_together():
+    """A frustrated contact in a circling conversation gets both lines — they say different
+    things (WHY it is failing vs WHAT is being repeated) and neither replaces the other."""
+    ctx = _ctx_sent("FRUSTRATED")
+    ctx.metadata[mk.CIRCLING_STREAK] = 3
+    task = EgoStage()._task_context(ctx)
+    assert "FRUSTRATED" in task and "CIRCLING" in task
