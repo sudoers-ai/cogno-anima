@@ -224,6 +224,30 @@ def test_judge_prompt_accepts_a_mid_flow_turn():
     assert "MID-FLOW is a VALID outcome" in prompt
 
 
+def test_judge_prompt_accepts_a_turn_that_correctly_had_NOTHING_to_do():
+    """The most-missed valid outcome, and the one with a measured cost.
+
+    A turn asking to "confirm everything pending" when nothing is pending has no write to
+    make, so a fail-CLOSED judge reads the absence of one as an incomplete goal. Measured
+    2026-08-19 against gpt-4o-mini, 3 votes per shape: the correct execution was rejected
+    0/3, TWICE in the same turn, with CONTRADICTORY critiques — first for listing the rows,
+    then for not listing them — and the retry loop exhausted into a handoff on a turn where
+    nothing was wrong. With this clause the same shapes approve 3/3, and the fabrication
+    controls (a draft claiming a write that never ran; a draft inventing a fourth row) still
+    reject 0/3.
+
+    The no-op tool result is the specific trap: "was ALREADY CONFIRMED — no change was made"
+    is written to tell the MODEL it acted on a stale id, and the judge was reading it as
+    evidence the execution failed."""
+    prompt = SuperegoStage()._build_judge_prompt(_ctx(), "")
+    assert "NOTHING TO DO is a VALID outcome" in prompt
+    # the no-op result named explicitly — a rule the judge cannot apply is not a rule
+    assert "no change was made" in prompt
+    assert "EVIDENCE FOR this outcome" in prompt
+    # …and it must not license the opposite: the fabrication rules stay
+    assert "must trace to a successful tool result" in prompt
+
+
 def test_judge_prompt_carries_the_clock_context_and_trusts_tools():
     # Without the [TODAY] anchor the judge re-derives dates and wrongly rejects a
     # correct tool resolution → handoff. It must see the host context and be told
