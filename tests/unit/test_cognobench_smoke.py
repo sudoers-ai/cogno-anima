@@ -251,8 +251,37 @@ def test_embedder_spec_decides_whether_ollama_is_required():
 
     assert embedder_is_local("nomic-embed-text")             # bare → Ollama, the default
     assert embedder_is_local("ollama:nomic-embed-text")
+    # The TAGGED local form, which is what CLAUDE.md actually names and what a first version
+    # got WRONG: a hand-rolled `partition(":")` read "nomic-embed-text" as the provider and
+    # answered False, so the documented spec skipped the preflight and died mid-run. This
+    # answer comes from the factory now, so the two cannot drift.
+    assert embedder_is_local("nomic-embed-text:latest")
+    assert embedder_is_local("mxbai-embed-large:335m")
     assert not embedder_is_local("openai:text-embedding-3-small")
     assert not embedder_is_local("gemini:text-embedding-004")
+
+
+def test_the_local_LLM_branch_honours_the_embedder_spec_too():
+    """The grammar has to hold on BOTH branches, because the flag's help promises it flatly.
+
+    `build_ollama` used to construct its own `OllamaEmbedder(model=embed_model)`, so
+    `--model qwen3:8b --embed-model openai:text-embedding-3-small` became an Ollama model
+    named "openai:text-embedding-3-small" and 404'd on the first embed — after the preflight
+    had already passed."""
+    import os
+
+    import pytest
+    from cogno_synapse.errors import MissingAPIKeyError
+
+    from cognobench.harness import build_ollama
+
+    saved = os.environ.pop("OPENAI_API_KEY", None)
+    try:
+        with pytest.raises(MissingAPIKeyError):
+            build_ollama("qwen3:8b", "openai:text-embedding-3-small")
+    finally:
+        if saved is not None:
+            os.environ["OPENAI_API_KEY"] = saved
 
 
 def test_the_local_embedder_is_still_the_default_and_needs_no_network_to_build():

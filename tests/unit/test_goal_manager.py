@@ -218,16 +218,18 @@ def test_helpers():
     assert _tokenize("Olá, Docker-99!") == {"olá", "docker", "99"}
 
 
-# ── o que a similaridade do Stage 2 realmente entrega ─────────────────────────────────
+# ── what Stage 2's similarity actually delivers ───────────────────────────────────────
 #
-# Os 14 pares rotulados de `cognobench/id_cases.py`, com a similaridade MEDIDA sob
-# `nomic-embed-text` (o embedder para o qual o 0.75 foi calibrado) em 2026-08-19. Gravados
-# como dado, e não recomputados, porque o ponto é o CONTRATO: enquanto estes números forem os
-# do produto, o Stage 2 não sustenta continuidade — e o dia em que sustentar, os testes abaixo
-# quebram e mandam reler a docstring da GoalManager.
+# The 14 labelled pairs of `cognobench/id_cases.py`, with similarity MEASURED under
+# `nomic-embed-text` (the embedder 0.75 was calibrated for) on 2026-08-19. Recorded as data
+# rather than recomputed, because the point is the CONTRACT: while these are the product's
+# numbers, Stage 2 does not carry continuity — and the day it does, the tests below fail and
+# send the reader back to the GoalManager docstring.
 #
-# Coletados forçando o Stage 2 em todo par (`~/cogno-harvest-anon/stage2-*`), então medem a
-# similaridade, não quem decidiu primeiro.
+# Collected by forcing Stage 2 on every pair (`~/cogno-harvest-anon/stage2-*`), so they
+# measure the similarity, not which stage happened to decide first.
+_MEASURED_UNDER = "nomic-embed-text"
+
 _GOAL_PAIRS_NOMIC: tuple[tuple[str, str, float], ...] = (
     ("interrupted_goal:t2", "ABANDONED", 0.6305),
     ("multi_topic_chain:t4", "ABANDONED", 0.6049),
@@ -244,7 +246,6 @@ _GOAL_PAIRS_NOMIC: tuple[tuple[str, str, float], ...] = (
     ("long_chain:t2", "ONGOING", 0.4649),
     ("anaphoric_deep:t2", "ONGOING", 0.345),
 )
-
 _TURN_PAIRS_NOMIC: tuple[tuple[str, str, float], ...] = (
     ("interrupted_goal:t2", "ABANDONED", 0.6503),
     ("topic_switch:t2", "ABANDONED", 0.5582),
@@ -262,8 +263,9 @@ _TURN_PAIRS_NOMIC: tuple[tuple[str, str, float], ...] = (
     ("long_chain:t4", "ONGOING", 0.3297),
 )
 
+
 def _accuracy(pairs, cut: float) -> float:
-    """Fração de pares que um corte em ``cut`` classificaria certo."""
+    """Fraction of pairs a cut at ``cut`` would classify correctly."""
     return sum((sim >= cut) == (want == "ONGOING") for _, want, sim in pairs) / len(pairs)
 
 
@@ -273,47 +275,71 @@ def _best_cut(pairs) -> "tuple[float, float]":
 
 
 def _baseline(pairs) -> float:
-    """Sempre responder ONGOING, sem olhar a similaridade."""
+    """Answering ONGOING every time, never looking at the similarity."""
     return sum(want == "ONGOING" for _, want, _ in pairs) / len(pairs)
 
 
+def test_the_recorded_pairs_still_describe_the_shipped_embedder():
+    """The pairs are frozen numbers for ONE embedder. Say which, and check it is still it.
+
+    Without this, swapping the default embedder leaves both tests below green while the claim
+    they pin has quietly become false — the docstring's own table shows the best cut reaching
+    86% under `openai:text-embedding-3-small` against a 64% baseline, i.e. exactly the
+    situation the tests exist to catch, invisible to them. A frozen dataset needs its
+    provenance asserted or it silently starts describing something else."""
+    from cognobench.harness import build_embedder  # noqa: F401  (import guards the name)
+
+    from cogno_anima.stages.ner import NER_KNOWLEDGE_DOMAINS  # noqa: F401
+
+    default = "nomic-embed-text"          # cognobench's --embed-model default
+    assert _MEASURED_UNDER == default, (
+        f"the pairs were measured under {_MEASURED_UNDER!r} but the bench now defaults to "
+        f"{default!r} — re-measure (~/cogno-harvest-anon/stage2-*) before trusting the tests "
+        f"below, because their numbers describe the old embedder")
+
+
 def test_stage2_does_not_carry_continuity_at_the_shipped_threshold():
-    """O Stage 2 é desempate, não portão — e isto é o contrato, não uma observação.
+    """Stage 2 is a tie-breaker, not the gate — and that is the contract, not an observation.
 
-    A ordem dos estágios sugere "atalhos, depois a comparação semântica de verdade". Medido,
-    é o contrário: os atalhos SÃO o mecanismo. Sob o embedder de produção, o 0.75 é alcançado
-    por 1 dos 14 pares, e classifica PIOR que responder ONGOING sempre.
+    The stage order suggests "fast paths, then the real semantic comparison". Measured, it is
+    the other way round: the fast paths ARE the mechanism. Under the shipped embedder the 0.75
+    is reached by 1 of the 14 pairs and classifies WORSE than answering ONGOING every time.
 
-    Isto já custou caro uma vez: remover o match por catch-all do Stage 1 (#84) parecia
-    apertar um atalho frouxo e na verdade tirou a escora — o `long_chain` perdeu o goal em
-    três turnos seguidos, porque tudo que caía ia parar num estágio que estruturalmente não
-    consegue dizer ONGOING.
+    This has already cost once: removing the Stage 1 catch-all match (#84) looked like
+    tightening a lax fast path and instead pulled the prop out — `long_chain` lost its goal
+    three turns running, because everything that fell through landed in a stage that
+    structurally cannot say ONGOING.
 
-    **Se este teste falhar, a notícia é boa**: quer dizer que o Stage 2 passou a valer a
-    pena (outro embedder, outro sinal, outro limiar). Releia a docstring da `GoalManager`,
-    re-meça, e promova-o de desempate a portão — de propósito, não por acidente."""
+    **If this test fails, the news is good**: Stage 2 started earning its place. Re-read the
+    GoalManager docstring, re-measure, and promote it from tie-breaker to gate deliberately
+    rather than by accident.
+
+    The assertion is on ACCURACY, not on how many pairs clear the bar. An earlier version
+    failed on `len(above) <= 1`, which fires for any recalibration downward — including one
+    that makes Stage 2 *worse* (a 0.55 cut scores 50% against a 64% baseline) while telling
+    the reader to "promote the stage". A failure message that hands the next maintainer a
+    false conclusion is worse than no test."""
     from cogno_anima.routing.goal import GoalManager
 
     shipped = GoalManager()._threshold
     for name, pairs in (("goal", _GOAL_PAIRS_NOMIC), ("turn", _TURN_PAIRS_NOMIC)):
-        above = [n for n, _, sim in pairs if sim >= shipped]
-        assert len(above) <= 1, f"{name}: {above} alcançam {shipped} — o Stage 2 acordou"
         assert _accuracy(pairs, shipped) <= _baseline(pairs), (
-            f"{name}: o limiar embarcado agora bate o baseline "
-            f"({_accuracy(pairs, shipped):.0%} > {_baseline(pairs):.0%}) — promova o estágio")
+            f"{name}: the shipped threshold now beats the always-ONGOING baseline "
+            f"({_accuracy(pairs, shipped):.0%} > {_baseline(pairs):.0%}) — Stage 2 is "
+            f"carrying weight; promote it deliberately and re-read the docstring")
 
 
 def test_no_threshold_separates_the_two_populations():
-    """Não é que o número esteja errado: não existe número.
+    """It is not that the number is wrong: there is no number.
 
-    As duas distribuições SE SOBREPÕEM sob nomic, nos dois sinais, então nenhum corte as
-    separa. É por isso que "recalibrar o limiar" não é o próximo passo — e por isso nenhum
-    valor ajustado a estes 14 pontos deve ser embarcado como se fosse calibração."""
+    The two distributions OVERLAP under the shipped embedder, on both signals, so no cut
+    separates them. That is why "recalibrate the threshold" is not the next step — and why no
+    value fitted to these 14 points should ship as if it were a calibration."""
     for name, pairs in (("goal", _GOAL_PAIRS_NOMIC), ("turn", _TURN_PAIRS_NOMIC)):
         ong = [s for _, w, s in pairs if w == "ONGOING"]
         aba = [s for _, w, s in pairs if w == "ABANDONED"]
-        assert min(ong) < max(aba), f"{name}: as populações separaram — re-meça e recalibre"
+        assert min(ong) < max(aba), f"{name}: the populations separated — re-measure, recalibrate"
         cut, acc = _best_cut(pairs)
         assert acc <= _baseline(pairs) + 1e-9, (
-            f"{name}: existe corte ({cut:.3f}) que bate o baseline com {acc:.0%} — "
-            f"a similaridade virou sinal utilizável, promova o estágio")
+            f"{name}: a cut at {cut:.3f} now beats the baseline with {acc:.0%} — similarity "
+            f"became a usable signal; promote the stage")
