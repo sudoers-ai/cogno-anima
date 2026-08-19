@@ -56,9 +56,43 @@ class GoalManager:
     """
     Tracks the active conversation goal across turns using staged continuity.
 
+    **What actually carries continuity, measured (2026-08-19).** The staged checks read as
+    "fast paths, then the real semantic comparison". They are not: the fast paths ARE the
+    mechanism, and Stage 2 decides almost nothing. Over the 14 labelled goal pairs of
+    `cognobench/id_cases.py`:
+
+        signal            embedder                  best cut   accuracy   baseline
+        goal text         nomic-embed-text             0.000       64%       64%
+        goal text         openai:text-embedding-3-s    0.176       79%       64%
+        raw user turn     openai:text-embedding-3-s    0.266       86%       64%
+        raw user turn     nomic-embed-text             0.000       64%       64%
+
+    ("baseline" = answering ONGOING every time and never looking at similarity.) Under
+    `nomic-embed-text` — the embedder the 0.75 was calibrated for — the best possible cut is
+    ZERO for both signals: no threshold beats ignoring the score. And 0.75 itself is reached
+    by 1 of 14 pairs there, 0 of 14 on the cloud embedder.
+
+    So Stage 2 is a TIE-BREAKER, not the gate, and this docstring says so because the code's
+    shape suggests the opposite. That misreading has a cost on record: removing the Stage 1
+    catch-all match (PR #84) looked like tightening a lax fast path, and instead pulled the
+    prop out from under continuity — `long_chain` lost its goal three turns running, because
+    everything that fell through landed in a stage that structurally cannot say ONGOING.
+
+    Two things follow for anyone changing this. The threshold is not a knob to tune: the
+    ONGOING and ABANDONED distributions OVERLAP under both embedders, so no cut separates
+    them, and any number fitted to these 14 points is a direction, not a calibration. And if
+    semantic continuity is ever meant to carry weight, the measurement says compare the raw
+    USER TURN rather than the goal text — the goal is an LLM paraphrase re-minted every turn,
+    describing the step and not the task, which is why one arithmetic chain produces three
+    unrelated goal strings.
+
+    `test_stage2_does_not_carry_continuity_at_the_shipped_threshold` pins the claim on the
+    recorded pairs, and is written to FAIL if it ever stops being true.
+
     Args:
         similarity_threshold:     Min similarity for ONGOING at Stage 2 (default 0.75,
-                                  calibrated for cosine). Jaccard fallback is well
+                                  calibrated for cosine). See the note above: it is a
+                                  tie-breaker, not the gate. Jaccard fallback is well
                                   calibrated lower; the ID stage picks the threshold
                                   per mode.
         pii_similarity_threshold: Lenient threshold when pii_session_hint=True
@@ -247,7 +281,11 @@ class GoalManager:
         if context_dependent and intent_class in _GOAL_INTENTS:
             return True, 1.0
 
-        # Stage 2: contextual semantic similarity.
+        # Stage 2: contextual semantic similarity — the TIE-BREAKER, not the gate.
+        # Measured: no threshold here beats "always ONGOING" on the bench's labelled pairs
+        # under the production embedder, and 0.75 is reached by 1 of 14 of them. Anything
+        # that reaches this line is, in practice, being abandoned. See the class docstring
+        # for the table and for what the measurement says to do instead.
         threshold = self._pii_threshold if pii_session_hint else self._threshold
         sim = await self._compute_similarity(new_goal)
         return sim >= threshold, sim
