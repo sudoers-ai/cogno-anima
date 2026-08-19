@@ -24,7 +24,8 @@ import sys
 from pathlib import Path
 
 from cognobench.harness import (
-    CognitivePipeline, TokenTally, build_cloud, build_local_embedder, build_ollama,
+    CognitivePipeline, TokenTally, build_cloud, build_embedder,
+    build_ollama, embedder_is_local,
     build_ollama_text, build_sabotage_stub, build_stub, ollama_available,
     preflight_embedder, preflight_local_toks, SABOTAGE_TARGET_SLOT, _StubScopeBlock,
 )
@@ -118,15 +119,21 @@ async def run_bench(
         text_backend = backend
         model_label = f"stub+mutate:{mutate}" if mutate else "stub"
     elif cloud:
-        # Embeddings stay LOCAL Ollama even on a cloud run (free; not the model
-        # under test) — so Ollama must still be up for the embedder.
-        if not await ollama_available(base_url):
-            print(f"✗ Ollama not reachable at {base_url} (the embedder is local even "
-                  f"on a cloud run). Start it, or run with --stub.", file=sys.stderr)
+        # Ollama is required only if the EMBEDDER is still Ollama — which it is by default,
+        # since a local embedder is free and deterministic and is not the model under test.
+        # It used to be required unconditionally, so a fully cloud run refused to start on a
+        # machine whose GPU was busy with something else: the embedder alone pinned the suite
+        # to local hardware. Pass `--embed-model openai:text-embedding-3-small` (any
+        # `provider:model`, same grammar as `--model`) for a run with no local anything.
+        if embedder_is_local(embed_model) and not await ollama_available(base_url):
+            print(f"✗ Ollama not reachable at {base_url} — the LLM is cloud but the embedder "
+                  f"({embed_model}) is local. Start it, pass --embed-model with a "
+                  f"provider:model spec (e.g. openai:text-embedding-3-small), or --stub.",
+                  file=sys.stderr)
             sys.exit(2)
         backend = TokenTally(build_cloud(model))
         text_backend = backend           # cloud backends serve JSON and text alike
-        embedder = build_local_embedder(embed_model, base_url)
+        embedder = build_embedder(embed_model, base_url)
         model_label = model
     else:
         if not await ollama_available(base_url):
@@ -336,7 +343,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="Model for NOUMENO/NER (default: qwen3:8b — every local "
                              "run uses it; 'provider:model' prefixes go to the cloud)")
     parser.add_argument("--embed-model", default="nomic-embed-text",
-                        help="Ollama embedding model (default: nomic-embed-text)")
+                        help="embedding model as 'provider:model' (default: nomic-embed-text "
+                             "= local Ollama). Use e.g. openai:text-embedding-3-small for a "
+                             "run that touches no local service")
     parser.add_argument("--base-url", default="http://localhost:11434",
                         help="Ollama base URL")
     parser.add_argument("--language", "-l", default="pt-BR",

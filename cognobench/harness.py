@@ -14,7 +14,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from cogno_synapse import LLMBackend, Embedder, OllamaBackend, OllamaEmbedder, CachingEmbedder
+from cogno_synapse import (
+    CachingEmbedder,
+    Embedder,
+    LLMBackend,
+    OllamaBackend,
+    OllamaEmbedder,
+    create_embedder,
+)
 from cogno_anima.stages.noumeno import Noumeno
 from cogno_anima.stages.ner import IntentAnalyzer
 from cogno_anima.stages.id import IDStage
@@ -145,12 +152,29 @@ def build_cloud(spec: str) -> LLMBackend:
     return create_backend(spec, temperature=0.0)
 
 
-def build_local_embedder(
+def embedder_is_local(embed_model: str) -> bool:
+    """Does this spec resolve to Ollama? Bare or unknown prefix does, like the factory."""
+    provider, _, _rest = embed_model.partition(":")
+    return not _rest or provider.lower() == "ollama"
+
+
+def build_embedder(
     embed_model: str = "nomic-embed-text", base_url: str = "http://localhost:11434",
 ) -> Embedder:
-    """The bench's embedder is ALWAYS local Ollama (free, deterministic), even on a
-    cloud-LLM run — embedding drift/similarity is not the model under test."""
-    return CachingEmbedder(OllamaEmbedder(model=embed_model, base_url=base_url))
+    """The bench's embedder, from a ``provider:model`` spec — same grammar as ``--model``.
+
+    Local Ollama stays the DEFAULT and is still the better control: it is free and
+    deterministic, and embedding similarity is not the model under test, so holding it
+    fixed keeps an A/B measuring the one thing that changed.
+
+    It is no longer the only option, because "free" stopped being the only cost. The
+    machine that runs this bench also runs other GPU work, and a cloud LLM run was still
+    refusing to start without Ollama up — the embedder alone pinned the whole suite to a
+    busy GPU. A run can now be cloud end to end.
+
+    Caching wraps whatever comes back: the LRU is what keeps a repeated goal comparison
+    from being billed twice on a cloud embedder."""
+    return CachingEmbedder(create_embedder(embed_model, base_url=base_url))
 
 
 class TokenTally:

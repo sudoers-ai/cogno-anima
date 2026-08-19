@@ -236,3 +236,52 @@ def test_compare_roundtrip_excludes_calibrate_and_expands_case_errors(tmp_path):
         f"calibrate run to be excluded; got {votes}"
     )
     assert compare._stable(votes) is False            # tie → fail, both tools agree
+
+
+# ── the bench can run with nothing local ──────────────────────────────────────────────
+def test_embedder_spec_decides_whether_ollama_is_required():
+    """The gate that lets a cloud run start on a machine with no Ollama.
+
+    A cloud-LLM run used to refuse to start unless Ollama was up, because the EMBEDDER was
+    hardcoded local — so the one component that was never the model under test pinned the
+    whole suite to local hardware. It is a real cost on a box whose GPU is doing something
+    else. The spec now decides, with the same `provider:model` grammar as `--model`, and a
+    bare or unknown prefix still means Ollama (the factory's rule, mirrored here)."""
+    from cognobench.harness import embedder_is_local
+
+    assert embedder_is_local("nomic-embed-text")             # bare → Ollama, the default
+    assert embedder_is_local("ollama:nomic-embed-text")
+    assert not embedder_is_local("openai:text-embedding-3-small")
+    assert not embedder_is_local("gemini:text-embedding-004")
+
+
+def test_the_local_embedder_is_still_the_default_and_needs_no_network_to_build():
+    """Local stays the default on purpose: free, deterministic, and — being held fixed — the
+    better control variable when an A/B is measuring something else."""
+    from cogno_synapse import CachingEmbedder
+
+    from cognobench.harness import build_embedder
+
+    assert isinstance(build_embedder(), CachingEmbedder)     # constructed, not connected
+
+
+def test_a_cloud_embedder_without_a_key_fails_LOUDLY():
+    """The factory's contract, asserted here because this is where a user meets it.
+
+    Silently falling back to Ollama would be worse than the error: the run would start,
+    finish, and report a score for a configuration nobody asked for — on a machine the user
+    just said not to touch."""
+    import os
+
+    import pytest
+    from cogno_synapse.errors import MissingAPIKeyError
+
+    from cognobench.harness import build_embedder
+
+    saved = os.environ.pop("OPENAI_API_KEY", None)
+    try:
+        with pytest.raises(MissingAPIKeyError):
+            build_embedder("openai:text-embedding-3-small")
+    finally:
+        if saved is not None:
+            os.environ["OPENAI_API_KEY"] = saved
