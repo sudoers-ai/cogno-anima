@@ -793,3 +793,52 @@ def test_voice_keeps_the_action_wording_when_tools_ran():
     prompt = SuperegoStage()._build_voice_prompt(ctx, "", [])
     assert "no action was performed" in prompt
     assert "MUST NOT repeat the rejected claim" not in prompt
+
+
+# ── the voice has to be told the reply was already sent ───────────────────────────────
+
+def test_voice_is_told_when_the_reply_was_ALREADY_SENT():
+    """The anti-repeat guard's critique reached the EXECUTOR and not the voice.
+
+    Measured 2026-08-20 on the CLOSER (`apressado_sem_paciencia`, gpt-4o-mini, the bench's own
+    per-turn attribution): the guard fired, the EGO's draft CHANGED between the two attempts —
+    so the executor did obey `mk.EGO_CORRECTION` — and the voiced reply came out byte-identical
+    anyway. The service then ships the repetition by design (`repeat_shipped`). The voice was
+    never told, and it is the voice that writes the text.
+
+    `VOICE_CORRECTION` already existed for the judge's final rejection; this is a third kind on
+    the same channel."""
+    se = SuperegoStage()
+    ctx = _ctx()
+    ctx.metadata[mk.VOICE_CORRECTION] = {
+        "kind": "repeated_reply",
+        "reason": "Já enviada: \"Como você recebe os contatos por dia?\"",
+    }
+    prompt = se._build_voice_prompt(ctx, "data", [])
+    assert "ALREADY SENT" in prompt
+    assert "Como você recebe os contatos" in prompt          # the offending text reaches it
+    assert "reworded version" in prompt                      # a paraphrase is a repeat too
+
+
+def test_the_repeat_kind_does_not_borrow_the_not_executed_wording():
+    """Falling through to the generic branch would tell the voice that NOTHING was executed and
+    that claiming an action is forbidden — on a turn where the tools may well have run. A
+    repetition is about the TEXT, not about whether work happened; borrowing that wording would
+    make the reply deny actions that did occur."""
+    se = SuperegoStage()
+    ctx = _ctx()
+    ctx.metadata[mk.VOICE_CORRECTION] = {"kind": "repeated_reply", "reason": "x"}
+    prompt = se._build_voice_prompt(ctx, "data", [])
+    assert "NOTHING was committed" not in prompt
+    assert "UNVERIFIED" not in prompt
+
+
+def test_the_other_kinds_still_render():
+    """The new branch sits ahead of them; neither may be shadowed."""
+    se = SuperegoStage()
+    for kind, marker in (("unverified_claim", "UNVERIFIED"),
+                         ("not_executed", "Execution verdict")):
+        ctx = _ctx()
+        ctx.metadata[mk.VOICE_CORRECTION] = {"kind": kind, "reason": "porque sim"}
+        prompt = se._build_voice_prompt(ctx, "data", [])
+        assert marker in prompt, f"kind={kind} deixou de renderizar"

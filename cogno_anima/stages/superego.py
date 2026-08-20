@@ -569,7 +569,24 @@ class SuperegoStage:
             # live: the judge rejected "Sim, o Cogno integra com o Bling" twice and the lead
             # was told exactly that. The draft is UNVERIFIED CONTENT here; it must be dropped,
             # not re-voiced.
-            if (rejection.get("kind") or "") == "unverified_claim":
+            if (rejection.get("kind") or "") == "repeated_reply":
+                # The host's anti-repeat guard re-stepped because THIS reply had already been
+                # said. Measured 2026-08-20 on the CLOSER (`apressado_sem_paciencia`,
+                # gpt-4o-mini): the critique rides mk.EGO_CORRECTION, the executor obeyed it —
+                # its draft CHANGED between attempts — and the voice collapsed the new draft
+                # back to a byte-identical reply. The guard then ships the repetition by design.
+                # So the executor was never the problem: the voice simply did not know.
+                rejection_section = (
+                    "# Already said (HARD RULE)\n"
+                    "The reply you are about to write was ALREADY SENT earlier in this "
+                    "conversation. The contact read it and moved on; sending it again — or any "
+                    "reworded version of the same content — reads as not listening.\n"
+                    f"{reason}\n"
+                    "Write something the contact has NOT received yet: use what they just told "
+                    "you to move forward, or state plainly what is missing or what you cannot "
+                    "do. Do NOT re-ask a question they already answered.\n\n"
+                )
+            elif (rejection.get("kind") or "") == "unverified_claim":
                 rejection_section = (
                     "# Review verdict (HARD RULE)\n"
                     "The draft below was REJECTED by review as UNVERIFIED — nothing was "
