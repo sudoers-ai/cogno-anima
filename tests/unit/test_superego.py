@@ -248,6 +248,76 @@ def test_judge_prompt_accepts_a_turn_that_correctly_had_NOTHING_to_do():
     assert "must trace to a successful tool result" in prompt
 
 
+def test_a_read_that_FAILED_is_not_evidence_there_was_nothing_to_do():
+    """The hole the clause left open, and the ONLY one this change closes.
+
+    It said a result meaning "nothing changed" is evidence for the outcome "never evidence of
+    failure" — an absolute that outranked the REJECT-on-ERROR rule above it. A read that
+    errored tells you nothing about the world, only that the read failed, so a draft reporting
+    "you have nothing pending" on the strength of one is claiming success it does not have.
+
+    DELIBERATELY NOT CLAIMED HERE: the empty-but-SUCCESSFUL read. A listing called with the
+    wrong scope key returns ``ok=True`` with zero rows — the dominant scope-split shape in this
+    codebase — and the clause still approves it, by design, because that is indistinguishable
+    from a genuinely empty list at this layer. Naming it would be a docstring the test cannot
+    back."""
+    prompt = SuperegoStage()._build_judge_prompt(_ctx(), "")
+    assert "What it CANNOT come from is a call marked ERROR" in prompt
+    assert "Read the no-op evidence only off calls marked OK" in prompt
+
+
+def test_the_no_op_licence_does_NOT_try_to_decide_by_the_marker_alone():
+    """A rule the judge cannot apply is worse than no rule.
+
+    My first version said "decide this from the OK/ERROR marker, never from the wording". But
+    the marker is ``'OK' if t.ok else 'ERROR'`` and a no-op comes back ok=True — measured in
+    cogno-host's own contract test: "Appointment a1 was ALREADY CONFIRMED — no change was made"
+    returns ok=True, side_effect=True, and that test's conclusion is that the result TEXT is the
+    disambiguator. So the marker cannot establish "already satisfied"; only the wording can.
+    Saying otherwise left the clause naming the phrase as evidence AND declaring it proves
+    nothing, with no way to break the tie — and a fail-CLOSED judge breaks ties by REJECTING,
+    which is the 0/3-and-handoff outcome the clause was written to stop.
+
+    (The prompt-injection concern that motivated the sentence is REAL and is NOT solved here:
+    planted text arrives inside a successful result, where the marker gives no discrimination.
+    It needs a different mechanism than a prompt rule.)"""
+    prompt = SuperegoStage()._build_judge_prompt(_ctx(), "")
+    assert "never from the wording" not in prompt
+    assert "proves nothing on its own" not in prompt
+    # the phrase stays usable as evidence — that is what makes the clause applicable at all
+    assert "no change was made" in prompt and "EVIDENCE FOR this outcome" in prompt
+
+
+def test_completeness_is_reasserted_only_where_completeness_EXISTS():
+    """The relaxation says detail is a matter of voice; that is true only of the no-op turn.
+
+    Reasserting completeness in the unconditional tail leaks it into the conversational branch,
+    whose criteria are APPROVE-BY-DEFAULT over a CLOSED list with no completeness item at all —
+    dropped there because keeping it made the judge reject 100% of turns (52/0 across 12) and
+    ship handoffs. So the reminder belongs to the execution criteria, and must be ABSENT from
+    the other branch."""
+    exec_prompt = SuperegoStage()._build_judge_prompt(_ctx(), "")
+    assert "Where a write DID happen, COMPLETENESS applies in full" in exec_prompt
+
+    conv = _ctx()
+    conv.metadata[mk.JUDGE_CONVERSATIONAL] = True
+    conv_prompt = SuperegoStage()._build_judge_prompt(conv, "")
+    assert "COMPLETENESS applies in full" not in conv_prompt, (
+        "completeness leaked into the APPROVE-BY-DEFAULT branch — the 52/0 regression")
+
+
+def test_the_nothing_to_do_clause_itself_reaches_both_branches():
+    """The APPROVAL half is right for both: a conversational turn can also correctly have
+    nothing to do. Only the completeness reminder is execution-only (above)."""
+    for conversational in (False, True):
+        ctx = _ctx()
+        if conversational:
+            ctx.metadata[mk.JUDGE_CONVERSATIONAL] = True
+        prompt = SuperegoStage()._build_judge_prompt(ctx, "")
+        assert "NOTHING TO DO is a VALID outcome" in prompt
+        assert "What it CANNOT come from is a call marked ERROR" in prompt
+
+
 def test_judge_prompt_carries_the_clock_context_and_trusts_tools():
     # Without the [TODAY] anchor the judge re-derives dates and wrongly rejects a
     # correct tool resolution → handoff. It must see the host context and be told
