@@ -36,8 +36,21 @@ JUDGE_CONVERSATIONAL = "judge_conversational"  # host: this turn has NO tool to 
 # log" was indistinguishable from "the judge approves nothing" — and a whole day was spent
 # chasing the wrong one. A rate needs a denominator.
 JUDGE_VERDICT = "judge_verdict"
-# Every judge verdict of the turn, in order: [{"attempt": int, "approved": bool,
-# "critique": str}]. JUDGE_VERDICT above counts; this one says WHY, which is the half that
+# The FINAL verdict of each judged attempt, in order: [{"attempt": int, "approved": bool,
+# "critique": str, "tools": [{"tool", "args", "ok", "side_effect", "result"}]
+# (+ "tools_dropped"/"tools_error" when the writer capped or degraded)}].
+# "tools" is what THAT attempt executed (args/result stringified and truncated by the writer):
+# the orchestrator REPLACES ctx.ego_result on every retry, so a write made by a rejected
+# attempt used to vanish from everything downstream while the write itself had committed —
+# THIS LAYER does not undo it (a host may wire on_rollback; the entry is written before that
+# hook fires, so it cannot know). Visibility only.
+# Two documented holes, so a reader does not infer more than the writer records:
+#  * a gate-B hold (pending_confirmation) skips the judge AND the append — a rejected-then-
+#    held turn ends its ledger on approved=false while JUDGE_VERDICT says approved=true; the
+#    held attempt is the final one, so its executions survive on ctx.ego_result itself;
+#  * with a two-tier judge, a fast-screen REJECTION that escalated to an approving strong
+#    judge is not itemized — the entry carries the verdict that stood, not the bet's cost.
+# JUDGE_VERDICT above counts; this one says WHY, which is the half that
 # was missing. The rejected attempts' critiques were consumed by the correction loop
 # (EGO_CORRECTION.reason, overwritten each attempt) and then dropped, so the only way to
 # read them after the fact was to attach a debugger to the judge — done twice in one day,
