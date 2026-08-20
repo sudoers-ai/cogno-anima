@@ -12,6 +12,7 @@ except PackageNotFoundError:  # source tree without an installed dist (e.g. vend
 
 
 from cogno_anima.types import (
+    committed_this_turn,
     StageMetrics,
     NoumenoResult,
     IntentResult,
@@ -61,6 +62,7 @@ from cogno_anima.stages.superego import SuperegoStage
 from cogno_anima.stages.drift import DriftCalculator, DriftThresholds
 
 __all__ = [
+    "committed_this_turn",
     "StageMetrics",
     "NoumenoResult",
     "IntentResult",

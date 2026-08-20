@@ -37,8 +37,13 @@ JUDGE_CONVERSATIONAL = "judge_conversational"  # host: this turn has NO tool to 
 # chasing the wrong one. A rate needs a denominator.
 JUDGE_VERDICT = "judge_verdict"
 # The FINAL verdict of each judged attempt, in order: [{"attempt": int, "approved": bool,
-# "critique": str, "tools": [{"tool", "args", "ok", "side_effect", "result"}]
+# "critique": str, "committed": bool,
+# "tools": [{"tool", "args", "ok", "side_effect", "result"}]
 # (+ "tools_dropped"/"tools_error" when the writer capped or degraded)}].
+# `committed` — did THIS attempt successfully call a mutating tool — is the one field the
+# orchestrator ROUTES on (a write no judge approved must reach a human), so it is computed
+# over the full execution list and never inherits the display path's cap/truncation/failure.
+# Everything else here is diagnostics.
 # "tools" is what THAT attempt executed (args/result stringified and truncated by the writer):
 # the orchestrator REPLACES ctx.ego_result on every retry, so a write made by a rejected
 # attempt used to vanish from everything downstream while the write itself had committed —

@@ -530,7 +530,11 @@ class SuperegoStage:
         injected = ctx.metadata.get(mk.EGO_CONTEXT)
         context_section = f"# Context (memories/history)\n{str(injected).strip()}\n\n" if injected else ""
         # Judge's final rejection (orchestrator → ctx.metadata["voice_correction"]): the
-        # execution did NOT meet the goal and NOTHING was committed. Without this section
+        # execution did NOT meet the goal and NOTHING was committed — the orchestrator owns
+        # that guarantee and it must hold across EVERY attempt of the turn, not just the last
+        # one. It did not, until 2026-08-20: a write from a rejected attempt vanished with the
+        # replaced ego_result, and this section then told the user, as a HARD RULE, that no
+        # action had been performed while the rows had changed. Without this section
         # the voice only sees the successful reads + the optimistic draft and narrates the
         # goal as done ("All set! confirmed") — HARD RULE: claiming an executed action is
         # forbidden; report what was found or ask ONE clarifying question.

@@ -350,6 +350,30 @@ class SuperegoResult(BaseModel):
     metrics: StageMetrics
 
 
+def committed_this_turn(ctx: "PipelineContext") -> bool:
+    """Did this turn SUCCESSFULLY run a mutating tool, on any attempt?
+
+    `ok` is required: a mutation that FAILED (the slot was taken between propose and commit)
+    changed nothing. `side_effect` is a host hint set per tool NAME, so a no-op ("already
+    confirmed — no change was made") answers True here; that is the fail-CLOSED direction on
+    purpose — a needless human check is recoverable, telling a user "nothing happened" over a
+    row that changed is not.
+
+    Falls back to `ego_result` for a turn whose orchestrator does not accumulate (a single-shot
+    pipeline, or a host that reconstructs a context).
+
+    Read with `getattr`, deliberately: this is a POLICY predicate on the hot path of hosts that
+    pass duck-typed carriers (test doubles, replayed traces, a leaner context of their own). It
+    must answer "did anything change?" for those too, and an AttributeError raised here would
+    kill a turn whose reply was already produced — the failure mode is the opposite of the
+    conservatism it exists to provide."""
+    execs = getattr(ctx, "turn_executions", None)
+    if not execs:
+        ego = getattr(ctx, "ego_result", None)
+        execs = getattr(ego, "tools_executed", None) or []
+    return any(getattr(t, "side_effect", False) and getattr(t, "ok", False) for t in execs)
+
+
 class PipelineContext(BaseModel):
     """Carrier object that flows through the entire pipeline carrying intermediate results."""
     user_input: str
@@ -362,6 +386,19 @@ class PipelineContext(BaseModel):
     ego_result: Optional[EgoResult] = None
     superego_result: Optional[SuperegoResult] = None
     drift: Optional[DriftMetrics] = None
+    # EVERY tool this turn executed, across every correction attempt — `ego_result` holds only
+    # the attempt that SURVIVED (an orchestrator replaces it on each retry), and a write does
+    # not un-happen because a later attempt only read. Six consumers were reading the survivor
+    # as if it were the turn (measured 2026-08-20): the fail-closed handoff, the response
+    # cache, the host's two double-commit guards, the reminder/notification producers and the
+    # anti-fabrication backstop — so a write from a judge-rejected attempt could be committed
+    # a SECOND time, cached as a read, left without its reminder, and have the truthful reply
+    # that mentioned it rewritten into a denial.
+    #
+    # The orchestrator appends; stages never read this (they see their own `ego_result`). Use
+    # `committed_this_turn(ctx)` for the "did anything change?" question — the definition of
+    # a commit lives in ONE place because three repos must agree on it.
+    turn_executions: list[ToolExecution] = Field(default_factory=list)
     
     # Custom metadata for the host to pass/read business or infra context
     metadata: dict[str, Any] = Field(default_factory=dict)
