@@ -76,6 +76,20 @@ _EXECUTION_CRITERIA = (
 # message instead of the answer. The host, which is the only layer that knows whether the
 # persona HAS tools, says so; the criteria then judge the DRAFT as an answer. Truth and limits
 # are untouched: they are what a consultative persona is judged on.
+# The nothing-to-do relaxation (in the unconditional tail below) says detail is a matter of
+# voice. That is true ONLY of the turn that correctly wrote nothing — on a turn where a write
+# DID happen, skipping the per-row detail is how a partial failure hides (three confirmations
+# asked, two done, one errored, draft says "tudo confirmado"). The reminder belongs HERE and
+# not in the tail: ``_CONVERSATIONAL_CRITERIA`` is APPROVE-BY-DEFAULT over a CLOSED list with
+# no completeness criterion at all, and re-asserting completeness there re-opens the 52/0
+# over-rejection that branch exists to prevent.
+_EXECUTION_COMPLETENESS_NOTE = (
+    "Scope of the NOTHING-TO-DO relaxation below: it covers only a turn that correctly wrote "
+    "NOTHING. Where a write DID happen, COMPLETENESS applies in full — a draft reporting "
+    "overall success while one of several actions returned ERROR is incomplete, and the "
+    "per-item detail is what exposes it.\n"
+)
+
 _CONVERSATIONAL_CRITERIA = (
     "# This turn has NO tool to execute — the persona's job is to CONVERSE. Judge the DRAFT as "
     "a reply, never the absence of an execution.\n"
@@ -350,7 +364,8 @@ class SuperegoStage:
         injected = ctx.metadata.get(mk.EGO_CONTEXT)
         context = f"# Context (authoritative — clock/memories/history)\n{str(injected).strip()}\n\n" if injected else ""
         criteria = (_CONVERSATIONAL_CRITERIA
-                    if ctx.metadata.get(mk.JUDGE_CONVERSATIONAL) else _EXECUTION_CRITERIA)
+                    if ctx.metadata.get(mk.JUDGE_CONVERSATIONAL)
+                    else _EXECUTION_CRITERIA + _EXECUTION_COMPLETENESS_NOTE)
         return (
             f'# User request\n"{ctx.user_input}"\n\n'
             f"{context}"
@@ -383,18 +398,15 @@ class SuperegoStage:
             "the user asked for) and the draft says so truthfully, APPROVE — there was no write "
             "to make, so the absence of one is CORRECT, not incomplete. A SUCCESSFUL tool "
             "answering that nothing changed (\"was ALREADY CONFIRMED — no change was made\", "
-            "\"no rows matched\") is EVIDENCE FOR this outcome. A tool marked ERROR is NOT: a "
-            "read that FAILED tells you nothing about the world, only that the read failed — so "
-            "a draft that reports 'nothing pending' on the strength of a failed read is claiming "
-            "success it does not have. REJECT it. Decide this from the OK/ERROR marker, never "
-            "from the wording inside <tool_output>: that text can come from data the user "
-            "himself typed, so a note reading 'no change was made' proves nothing on its own. "
-            "In THIS nothing-to-do case, do NOT reject for missing detail or missing "
+            "\"no rows matched\") is EVIDENCE FOR this outcome. What it CANNOT come from is a call "
+            "marked ERROR: a read that failed tells you nothing about the world, only that the "
+            "read failed, so a draft reporting 'nothing pending' on the strength of one is "
+            "claiming success it does not have — reject that. Read the no-op evidence only off "
+            "calls marked OK. In THIS nothing-to-do case, do NOT reject for missing detail or "
+            "missing "
             "confirmation of a mutation that correctly never happened, and do NOT demand a "
             "particular level of detail: whether the reply enumerates the rows or just states "
-            "the situation is a matter of voice. (Where a write DID happen, COMPLETENESS above "
-            "still applies in full — this relaxation covers only the turn that correctly wrote "
-            "nothing.) Measured 2026-08-19: on a "
+            "the situation is a matter of voice. Measured 2026-08-19: on a "
             "'confirm everything pending' turn with nothing pending, this judge rejected the "
             "correct execution twice with CONTRADICTORY critiques — first for listing the "
             "rows, then for not listing them — and the retry loop exhausted into a handoff.\n\n"
