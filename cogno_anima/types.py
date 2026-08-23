@@ -345,7 +345,11 @@ class SuperegoResult(BaseModel):
     approved: bool = True           # JUDGE verdict; False → host retries the EGO with `critique`
     critique: Optional[str] = None  # why execution failed → fed back as ego_correction.reason
     blocked: bool = False           # PII-CRITICAL / scope block → response is a protection message
-    adjustments: list[str] = Field(default_factory=list)  # deterministic tone hints applied (voice)
+    # The voice's audit trail: the per-turn tone hints (`tone:*`/`style:*`/`register:*`/`pii:*`/
+    # `override:*`, or the `general:review` sentinel), then the persona's declared traits that
+    # were actually rendered (`trait:*`, appended after the prompt), then any output backstop flag
+    # (`pii:flagged_in_output`, `preserved:mutated_in_output`).
+    adjustments: list[str] = Field(default_factory=list)
     cot_stripped: bool = False      # a <think> block was removed
     metrics: StageMetrics
 
