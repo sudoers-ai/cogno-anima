@@ -14,6 +14,8 @@ will fail until both agree.
 
 from __future__ import annotations
 
+from typing import Any
+
 VALID_INTENTS: set[str] = {
     "INFORMATION_REQUEST", "ACTION_REQUEST", "CLARIFICATION",
     "CREATIVE_TASK", "SOCIAL", "UNKNOWN",
@@ -94,6 +96,55 @@ VOICE_TRAIT_CONFLICTS: frozenset[frozenset[str]] = frozenset({
 # Cap on rendered traits. Beyond a handful the directives stop being a personality and become a
 # second voice prompt — the tenant has `custom_rules` for that. Extra values are dropped in order.
 MAX_VOICE_TRAITS: int = 4
+
+
+def sanitize_voice_traits(raw: object) -> tuple[list[str], list[str]]:
+    """Sanitize a persona-traits carrier against the closed vocabulary → ``(kept, dropped)``.
+
+    PURE: no logging, no I/O, never raises — the SUPEREGO logs what it drops (truncated), the
+    host's admin API refuses at save time exactly what this would drop at voice time. One rule,
+    two ends of the wire.
+
+    Accepts a list/tuple (declaration order) or a comma-separated string (a plain text column);
+    a set/frozenset has no declared order, so it is SORTED first — otherwise the cap below would
+    keep a different four per worker (hash randomization), a non-reproducible voice. Lowercases
+    and strips; drops unknown values and non-strings; folds duplicates in order; drops BOTH sides
+    of a contradicting axis (``VOICE_TRAIT_CONFLICTS`` — a coin-flip instruction is worse than
+    none) BEFORE the cap, so a contradiction can never be hidden by truncation; caps at
+    ``MAX_VOICE_TRAITS`` (first declared wins). Only ``,`` separates: ``"warm; direct"`` is one
+    unknown value, not two traits. Anything unusable → ``([], [repr-ish])``.
+    """
+    if isinstance(raw, str):
+        items: list[Any] = raw.split(",")
+    elif isinstance(raw, (list, tuple)):
+        items = list(raw)
+    elif isinstance(raw, (set, frozenset)):
+        items = sorted(raw, key=str)
+    elif raw is None:
+        return [], []
+    else:
+        return [], [type(raw).__name__]
+    kept: list[str] = []
+    dropped: list[str] = []
+    for item in items:
+        if not isinstance(item, str):
+            dropped.append(repr(item)[:40])
+            continue
+        t = item.strip().lower()
+        if not t:
+            continue
+        if t not in VALID_VOICE_TRAITS:
+            dropped.append(t[:40])
+        elif t not in kept:
+            kept.append(t)
+    for pair in VOICE_TRAIT_CONFLICTS:
+        if pair <= set(kept):
+            dropped += sorted(pair)
+            kept = [t for t in kept if t not in pair]
+    if len(kept) > MAX_VOICE_TRAITS:
+        dropped += kept[MAX_VOICE_TRAITS:]
+        kept = kept[:MAX_VOICE_TRAITS]
+    return kept, dropped
 
 VALID_MODALITY: set[str] = {"CERTAIN", "PROBABLE", "POSSIBLE", "UNCERTAIN", "MIXED"}
 

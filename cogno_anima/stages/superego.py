@@ -15,7 +15,9 @@ host injects whichever backend it wants for each; they may differ):
     deterministic PII backstop, and feeds synthesis drift.
 
 Plus deterministic, dependency-free utilities (``strip_cot``,
-``detect_adjustments``) and ``_blocked_response`` (PII-CRITICAL protection).
+``detect_adjustments`` — incl. the persona's DECLARED traits from ``mk.VOICE_TRAITS``,
+rendered as their own voice-prompt section) and ``_blocked_response`` (PII-CRITICAL
+protection).
 
 Host concerns (NOT here): the persona scope/limits/voice prompt text, the retry
 LOOP orchestration + ``max_corrections``, billing, and the actual human handoff
@@ -74,51 +76,6 @@ _TRAIT_DIRECTIVES: dict[str, str] = {
                    "understood what it means for them."),
 }
 
-
-def sanitize_voice_traits(raw: Any) -> list[str]:
-    """Sanitize a persona-traits carrier against the closed vocabulary. Pure; never raises.
-
-    Accepts a list/tuple/set or a comma-separated string (a plain text column hands over the
-    latter); lowercases and strips; drops unknown values and non-strings; folds duplicates in
-    declaration order; drops BOTH sides of a contradicting axis (``vocab.VOICE_TRAIT_CONFLICTS``
-    — a coin-flip instruction is worse than none); caps at ``vocab.MAX_VOICE_TRAITS`` (first
-    declared wins). Every drop is logged, so a trait that "does not work" is diagnosable from
-    the log instead of from the reply. Shared with the host, whose admin API refuses at save
-    time exactly what this would drop at voice time — one rule, two ends of the wire.
-    """
-    if raw is None or raw == "" or raw == []:
-        return []
-    if isinstance(raw, str):
-        items: list[Any] = raw.split(",")
-    elif isinstance(raw, (list, tuple, set, frozenset)):
-        items = list(raw)
-    else:
-        logger.warning("stage=superego event=voice_traits_unusable type=%s", type(raw).__name__)
-        return []
-    seen: list[str] = []
-    dropped: list[str] = []
-    for item in items:
-        if not isinstance(item, str):
-            dropped.append(repr(item))
-            continue
-        t = item.strip().lower()
-        if not t:
-            continue
-        if t not in vocab.VALID_VOICE_TRAITS:
-            dropped.append(t)
-        elif t not in seen:
-            seen.append(t)
-    for pair in vocab.VOICE_TRAIT_CONFLICTS:
-        if pair <= set(seen):
-            logger.warning("stage=superego event=voice_traits_conflict traits=%s", sorted(pair))
-            seen = [t for t in seen if t not in pair]
-    if len(seen) > vocab.MAX_VOICE_TRAITS:
-        dropped += seen[vocab.MAX_VOICE_TRAITS:]
-        seen = seen[:vocab.MAX_VOICE_TRAITS]
-    if dropped:
-        logger.warning("stage=superego event=voice_traits_dropped dropped=%s kept=%s",
-                       dropped, seen)
-    return seen
 
 _SCOPE_SYSTEM = (
     "You are a scope classifier for a business AI assistant. Detect ONLY clearly "
@@ -244,11 +201,17 @@ class SuperegoStage:
         """The persona's DECLARED traits for this turn (``mk.VOICE_TRAITS``), sanitized.
 
         Never trust the carrier: the value is host-stamped from a stored configuration, and
-        "the dashboard saved it" is not "the core can render it". See
-        :func:`sanitize_voice_traits` for the rules; anything unusable degrades to ``[]`` — a
-        voice hint must never abort a turn.
+        "the dashboard saved it" is not "the core can render it". The rule is
+        :func:`cogno_anima.vocab.sanitize_voice_traits` (pure); this is where the drops get
+        LOGGED (values truncated by the sanitizer), so a trait that "does not work" is
+        diagnosable from the log instead of from the reply. Anything unusable degrades to
+        ``[]`` — a voice hint must never abort a turn.
         """
-        return sanitize_voice_traits(ctx.metadata.get(mk.VOICE_TRAITS))
+        kept, dropped = vocab.sanitize_voice_traits(ctx.metadata.get(mk.VOICE_TRAITS))
+        if dropped:
+            logger.warning("stage=superego event=voice_traits_dropped dropped=%s kept=%s",
+                           dropped, kept)
+        return kept
 
     @staticmethod
     def _parole_to_register(parole: Optional[str]) -> Optional[str]:
@@ -622,15 +585,21 @@ class SuperegoStage:
         # Register accommodation (sibling of Reply language): match the user's
         # formality where it does not conflict with the persona — the persona's
         # voice/limits always win.
+        traits = [a.split(":", 1)[1] for a in adjustments if a.startswith("trait:")]
+        traits_section = self._traits_section(traits)
         register = next((a for a in adjustments if a.startswith("register:")), None)
         if register:
             signals.append(
                 f"User register: {register.split(':', 1)[1]} — match it where it does "
-                "not conflict with the persona voice/limits/traits (persona takes precedence)"
+                f"not conflict with the persona voice/limits{'/traits' if traits else ''} "
+                "(persona takes precedence)"
             )
-        signals.append(f"Tone hints: {', '.join(adjustments)}")
-        traits_section = self._traits_section(
-            [a.split(":", 1)[1] for a in adjustments if a.startswith("trait:")])
+        # The rendered hints are the CONTACT's per-turn signals; the persona's traits have a
+        # section of their own above, so they do not ride this line too (one comma list would
+        # put the two axes side by side with no rule between them). ``adjustments`` itself —
+        # the audit trail on SuperegoResult — keeps every token.
+        per_turn = [a for a in adjustments if not a.startswith("trait:")]
+        signals.append(f"Tone hints: {', '.join(per_turn) if per_turn else 'none'}")
         # Host-injected context (retrieved memories / history / clock) — the same
         # block the EGO sees; included so memories can ground the final reply.
         injected = ctx.metadata.get(mk.EGO_CONTEXT)
@@ -722,8 +691,9 @@ class SuperegoStage:
         instruction and has to reach the voice as one (the same lesson the host learned
         for its opening/arc blocks: a directive that arrives as context loses to the
         persona's continuation rule). Framed as delivery-only so a trait can never be read
-        as licence to soften a limit or round a figure. Empty input → no section, so a persona
-        with no traits gets a byte-identical prompt to before this feature.
+        as licence to soften a limit or round a figure. Empty input → no section, and the
+        register line does not mention traits either, so a persona with no traits gets a
+        byte-identical prompt to before this feature (a test renders both and compares).
         """
         lines = [_TRAIT_DIRECTIVES[t] for t in traits if t in _TRAIT_DIRECTIVES]
         if not lines:
@@ -731,7 +701,8 @@ class SuperegoStage:
         return (
             "# Persona traits (configured for this persona — obey)\n"
             "These shape HOW you say it, never WHAT: figures, dates, limits and refusals stay "
-            "exactly as grounded. They outrank the user's register hint below.\n"
+            "exactly as grounded. They outrank the per-turn signals below — the user's register "
+            "and the tone hints — except a PII or de-escalation signal, which always wins.\n"
             + "\n".join(f"- {line}" for line in lines) + "\n\n"
         )
 

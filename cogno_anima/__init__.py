@@ -60,8 +60,10 @@ from cogno_anima.stages.id import IDStage
 from cogno_anima.stages.ego import EgoStage
 from cogno_anima.stages.superego import SuperegoStage
 from cogno_anima.stages.drift import DriftCalculator, DriftThresholds
+from cogno_anima.vocab import sanitize_voice_traits
 
 __all__ = [
+    "sanitize_voice_traits",
     "committed_this_turn",
     "StageMetrics",
     "NoumenoResult",
