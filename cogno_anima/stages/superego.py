@@ -31,6 +31,7 @@ import logging
 from typing import Any, Optional
 
 from cogno_anima import metakeys as mk
+from cogno_anima import vocab
 from cogno_anima.types import (
     PipelineContext, StageMetrics, SuperegoResult, ScopeCheckResult,
 )
@@ -47,6 +48,31 @@ _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 # figure or is an email/URL — altering one of these silently corrupts the answer.
 _NUM_RE = re.compile(r"\d[\d.,]*\d|\d")
 _CRITICAL_TERM_RE = re.compile(r"\d|@|https?://", re.IGNORECASE)
+
+# One rendered instruction per `vocab.VALID_VOICE_TRAITS` value (a test pins the alignment).
+# Written as directives about DELIVERY only — none of them may loosen grounding or limits,
+# and the humorous one says so itself, because that is the trait a model over-applies.
+_TRAIT_DIRECTIVES: dict[str, str] = {
+    "warm": ("Warm: sound genuinely glad to help — acknowledge the person, close kindly; "
+             "a human presence, not a form letter."),
+    "reserved": ("Reserved: courteous and even; no exclamation marks, no effusiveness, "
+                 "no small talk."),
+    "direct": ("Direct: the first sentence IS the answer or the decision — no preamble, "
+               "no warm-up, no hedging filler."),
+    "formal": ("Formal: polished wording and full sentences; no slang, no emoji; keep a "
+               "respectful distance."),
+    "casual": ("Casual: relaxed, everyday wording, as to someone you know; a light emoji "
+               "is fine where the persona already uses them."),
+    "humorous": ("Humorous: a light touch of humor is welcome — at most one tasteful remark, "
+                 "and NONE on bad news, refusals, sensitive data, or when the user is "
+                 "frustrated."),
+    "concise": ("Concise: the shortest reply that fully answers — pleasantries in one line "
+                "at most, and never a recap of what the user just said."),
+    "detailed": ("Detailed: give the full picture — relevant context, the options and the "
+                 "next steps, structured when that helps reading."),
+    "empathetic": ("Empathetic: name the user's situation before the answer, showing you "
+                   "understood what it means for them."),
+}
 
 _SCOPE_SYSTEM = (
     "You are a scope classifier for a business AI assistant. Detect ONLY clearly "
@@ -164,7 +190,58 @@ class SuperegoStage:
                 adj.append(register)
         if ctx.id_result and ctx.id_result.emotional_override:
             adj.append(f"override:{ctx.id_result.emotional_override}")
+        adj += [f"trait:{t}" for t in SuperegoStage.persona_traits(ctx)]
         return adj or ["general:review"]
+
+    @staticmethod
+    def persona_traits(ctx: PipelineContext) -> list[str]:
+        """The persona's DECLARED traits for this turn, sanitized (``mk.VOICE_TRAITS``).
+
+        Never trust the carrier: the value is host-stamped from a stored configuration, and
+        "the dashboard saved it" is not "the core can render it" (the value may be a stale
+        vocabulary, a comma string from a plain text column, or garbage). So: accept a list/
+        tuple/set or a comma-separated string, lowercase, drop unknowns, dedupe in order, drop
+        BOTH sides of a contradicting axis (``vocab.VOICE_TRAIT_CONFLICTS``), cap at
+        ``vocab.MAX_VOICE_TRAITS``. Anything unusable degrades to ``[]`` — a voice hint must
+        never abort a turn. Every drop is logged, so a trait that "does not work" is
+        diagnosable from the log instead of from the reply.
+        """
+        raw = ctx.metadata.get(mk.VOICE_TRAITS)
+        if raw is None or raw == "" or raw == []:
+            return []
+        if isinstance(raw, str):
+            items: list[Any] = raw.split(",")
+        elif isinstance(raw, (list, tuple, set, frozenset)):
+            items = list(raw)
+        else:
+            logger.warning("stage=superego event=voice_traits_unusable type=%s",
+                           type(raw).__name__)
+            return []
+        seen: list[str] = []
+        dropped: list[str] = []
+        for item in items:
+            if not isinstance(item, str):
+                dropped.append(repr(item))
+                continue
+            t = item.strip().lower()
+            if not t:
+                continue
+            if t not in vocab.VALID_VOICE_TRAITS:
+                dropped.append(t)
+            elif t not in seen:
+                seen.append(t)
+        for pair in vocab.VOICE_TRAIT_CONFLICTS:
+            if pair <= set(seen):
+                logger.warning("stage=superego event=voice_traits_conflict traits=%s",
+                               sorted(pair))
+                seen = [t for t in seen if t not in pair]
+        if len(seen) > vocab.MAX_VOICE_TRAITS:
+            dropped += seen[vocab.MAX_VOICE_TRAITS:]
+            seen = seen[:vocab.MAX_VOICE_TRAITS]
+        if dropped:
+            logger.warning("stage=superego event=voice_traits_dropped dropped=%s kept=%s",
+                           dropped, seen)
+        return seen
 
     @staticmethod
     def _parole_to_register(parole: Optional[str]) -> Optional[str]:
@@ -542,9 +619,11 @@ class SuperegoStage:
         if register:
             signals.append(
                 f"User register: {register.split(':', 1)[1]} — match it where it does "
-                "not conflict with the persona voice/limits (persona takes precedence)"
+                "not conflict with the persona voice/limits/traits (persona takes precedence)"
             )
         signals.append(f"Tone hints: {', '.join(adjustments)}")
+        traits_section = self._traits_section(
+            [a.split(":", 1)[1] for a in adjustments if a.startswith("trait:")])
         # Host-injected context (retrieved memories / history / clock) — the same
         # block the EGO sees; included so memories can ground the final reply.
         injected = ctx.metadata.get(mk.EGO_CONTEXT)
@@ -619,11 +698,34 @@ class SuperegoStage:
             f"# Data gathered by the executor (ground figures/dates ONLY in this)\n{payload}\n\n"
             f"{self._draft_section(ctx, payload, rejection)}"
             f"{rejection_section}"
+            f"{traits_section}"
             f"# Signals\n" + "\n".join(signals) + "\n\n"
             f"# Task\n{lang_rule}Write the final reply to the user in the persona's voice and "
             "within its limits. Use the context for background, but keep exact "
             "figures/dates verbatim from the executor data — do not invent or alter "
             "them. Reply with the message text only."
+        )
+
+    @staticmethod
+    def _traits_section(traits: list[str]) -> str:
+        """Render the persona's declared traits as a section of their own.
+
+        A section, not one more token in ``Tone hints:`` — the hints are the CONTACT's
+        per-turn signals and read as background; a trait is the persona's standing
+        instruction and has to reach the voice as one (the same lesson the host learned
+        for its opening/arc blocks: a directive that arrives as context loses to the
+        persona's continuation rule). Framed as delivery-only so a trait can never be read
+        as licence to soften a limit or round a figure. Empty input → no section, so a persona
+        with no traits gets a byte-identical prompt to before this feature.
+        """
+        lines = [_TRAIT_DIRECTIVES[t] for t in traits if t in _TRAIT_DIRECTIVES]
+        if not lines:
+            return ""
+        return (
+            "# Persona traits (configured for this persona — obey)\n"
+            "These shape HOW you say it, never WHAT: figures, dates, limits and refusals stay "
+            "exactly as grounded. They outrank the user's register hint below.\n"
+            + "\n".join(f"- {line}" for line in lines) + "\n\n"
         )
 
     @staticmethod

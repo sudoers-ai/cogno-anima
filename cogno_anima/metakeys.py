@@ -30,6 +30,16 @@ CIRCLING_STREAK = "circling_streak"
 # ── SUPEREGO (locutor) — soma/host write, voice reads ────────────────────────
 VOICE_CORRECTION = "voice_correction"          # judge's final rejection: {reason}
 JUDGE_CONVERSATIONAL = "judge_conversational"  # host: this turn has NO tool to execute
+# The persona's DECLARED personality traits for this turn — a list of `vocab.VALID_VOICE_TRAITS`
+# values (a comma-separated string is tolerated). Written by the host from the persona's stored
+# configuration (the tenant chose them in the dashboard); read by `SuperegoStage.voice`, which
+# sanitizes against the closed vocabulary, emits `trait:*` adjustments and renders a
+# `# Persona traits` section in the voice prompt. DECLARED, never inferred: the parent's
+# alternative — an LLM profiling the contact and rewriting rules on its own — was rejected
+# (no human in the loop, no restoring force on a wrong profile, automated profiling of an
+# identified person). The EGO never reads this key: traits change how the reply is SAID, and
+# the executor's tools stay neutral.
+VOICE_TRAITS = "voice_traits"
 # The judge's FINAL verdict + how many EGO attempts it took: {"approved": bool, "attempts": int}.
 # Written by the orchestrator so the outcome is countable. Only rejections were ever logged (at
 # WARNING; approvals at INFO, which the deployment's handlers may drop), so "no approvals in the

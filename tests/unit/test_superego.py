@@ -122,6 +122,118 @@ def test_voice_prompt_surfaces_register_with_persona_precedence():
     assert "User register:" not in prompt2
 
 
+# ── persona traits (declared by the persona, host-stamped mk.VOICE_TRAITS) ──
+
+def test_trait_directives_cover_the_vocabulary_exactly():
+    # one rendered instruction per closed-vocab value — a trait the vocab admits but the
+    # voicer cannot render would be accepted by the sanitizer and silently dropped at render
+    from cogno_anima import vocab
+    from cogno_anima.stages.superego import _TRAIT_DIRECTIVES
+    assert set(_TRAIT_DIRECTIVES) == vocab.VALID_VOICE_TRAITS
+    for pair in vocab.VOICE_TRAIT_CONFLICTS:
+        assert pair <= vocab.VALID_VOICE_TRAITS
+
+
+def test_persona_traits_sanitizes_the_carrier():
+    f = SuperegoStage.persona_traits
+    ctx = _ctx()
+    assert f(ctx) == []                                   # key absent
+    ctx.metadata[mk.VOICE_TRAITS] = None
+    assert f(ctx) == []
+    ctx.metadata[mk.VOICE_TRAITS] = ["warm", "direct"]
+    assert f(ctx) == ["warm", "direct"]
+    # a plain-text column hands over a comma string; case/whitespace are not the tenant's problem
+    ctx.metadata[mk.VOICE_TRAITS] = " Warm, DIRECT ,, "
+    assert f(ctx) == ["warm", "direct"]
+    # unknown values and non-strings are dropped, never raised; order preserved, duplicates folded
+    ctx.metadata[mk.VOICE_TRAITS] = ["sassy", 42, "direct", None, "warm", "direct"]
+    assert f(ctx) == ["direct", "warm"]
+    # an unusable carrier degrades to nothing
+    ctx.metadata[mk.VOICE_TRAITS] = {"warm": True}
+    assert f(ctx) == []
+    ctx.metadata[mk.VOICE_TRAITS] = object()
+    assert f(ctx) == []
+
+
+def test_persona_traits_drops_both_sides_of_a_contradiction():
+    ctx = _ctx()
+    ctx.metadata[mk.VOICE_TRAITS] = ["formal", "warm", "casual"]
+    # formal+casual contradict → BOTH go (a coin-flip instruction is worse than none); warm stays
+    assert SuperegoStage.persona_traits(ctx) == ["warm"]
+    ctx.metadata[mk.VOICE_TRAITS] = ["concise", "detailed", "reserved", "warm"]
+    assert SuperegoStage.persona_traits(ctx) == []
+
+
+def test_persona_traits_caps_the_count():
+    from cogno_anima import vocab
+    ctx = _ctx()
+    ctx.metadata[mk.VOICE_TRAITS] = ["warm", "direct", "formal", "humorous", "concise", "empathetic"]
+    kept = SuperegoStage.persona_traits(ctx)
+    assert len(kept) == vocab.MAX_VOICE_TRAITS
+    assert kept == ["warm", "direct", "formal", "humorous"]      # first-declared wins
+
+
+def test_detect_adjustments_emits_trait_hints():
+    ctx = _ctx()
+    assert not any(a.startswith("trait:") for a in SuperegoStage.detect_adjustments(ctx))
+    ctx.metadata[mk.VOICE_TRAITS] = ["humorous", "concise"]
+    adj = SuperegoStage.detect_adjustments(ctx)
+    assert adj[-2:] == ["trait:humorous", "trait:concise"]
+    assert "general:review" not in adj
+
+
+def test_voice_prompt_renders_persona_traits_as_their_own_section():
+    from cogno_anima.stages.superego import _TRAIT_DIRECTIVES
+    se = SuperegoStage()
+    ctx = _ctx()
+    ctx.intent.parole = "COLOQUIAL"
+    baseline = se._build_voice_prompt(ctx, "data", se.detect_adjustments(ctx))
+    assert "# Persona traits" not in baseline           # no traits → no section, prompt unchanged
+
+    ctx.metadata[mk.VOICE_TRAITS] = ["formal", "direct"]
+    prompt = se._build_voice_prompt(ctx, "data", se.detect_adjustments(ctx))
+    assert "# Persona traits (configured for this persona — obey)" in prompt
+    assert _TRAIT_DIRECTIVES["formal"] in prompt
+    assert _TRAIT_DIRECTIVES["direct"] in prompt
+    assert _TRAIT_DIRECTIVES["warm"] not in prompt
+    # delivery-only framing: a trait is never licence to touch figures or limits
+    assert "never WHAT" in prompt
+    # the persona's formality outranks the contact's casual register, and the prompt says so
+    assert "They outrank the user's register hint" in prompt
+    assert "User register: casual" in prompt
+    assert "persona voice/limits/traits (persona takes precedence)" in prompt
+    # the section is a standing instruction placed BEFORE the per-turn signals
+    assert prompt.index("# Persona traits") < prompt.index("# Signals")
+    # and the rest of the prompt is what it was — the traits are additive: the section, plus
+    # the two hint tokens on the Tone hints line (so the adjustments list stays the audit trail)
+    assert "Tone hints: register:casual, trait:formal, trait:direct" in prompt
+    stripped = (prompt.replace(se._traits_section(["formal", "direct"]), "")
+                      .replace(", trait:formal, trait:direct", ""))
+    assert stripped == baseline
+
+
+@pytest.mark.asyncio
+async def test_voice_carries_traits_end_to_end():
+    ctx = _ctx()
+    ctx.metadata[mk.VOICE_TRAITS] = ["warm"]
+    backend = ScriptedBackend(["Oi! Registrado, 50 reais."])
+    res = await SuperegoStage().voice(ctx, backend, voice_prompt="persona")
+    assert "trait:warm" in res.adjustments
+    assert "# Persona traits" in backend.calls[0]["prompt"]
+    assert "Warm:" in backend.calls[0]["prompt"]
+
+
+@pytest.mark.asyncio
+async def test_voice_traits_garbage_never_aborts_the_turn():
+    ctx = _ctx()
+    ctx.metadata[mk.VOICE_TRAITS] = object()
+    backend = ScriptedBackend(["ok"])
+    res = await SuperegoStage().voice(ctx, backend, voice_prompt="persona")
+    assert res.response == "ok"
+    assert not any(a.startswith("trait:") for a in res.adjustments)
+    assert "# Persona traits" not in backend.calls[0]["prompt"]
+
+
 def test_voice_prompt_hard_pins_the_reply_language():
     ctx = _ctx()   # noumeno.language == "pt"
     se = SuperegoStage()

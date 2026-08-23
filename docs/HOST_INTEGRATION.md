@@ -157,6 +157,7 @@ the core reads/writes:
 | `ego_correction` | host sets in the loop | `{reason, attempt}` fed back to the EGO on retry |
 | `ego_max_steps` | host may set | EGO agent-loop bound (default 5) |
 | `circling_streak` | host may inject | how many CONSECUTIVE turns the host's anti-repeat guard fired (an int, counted by the host, **reset to 0 on a clean turn**) → from 2, the EGO tells the executor it keeps arriving at the same answer. A stale value keeps warning forever, so it must be recomputed every turn, like the core does for `id_state`'s frustration streak |
+| `voice_traits` | host may inject | the persona's DECLARED personality traits (list, or comma string) from the closed `vocab.VALID_VOICE_TRAITS` (`warm`, `reserved`, `direct`, `formal`, `casual`, `humorous`, `concise`, `detailed`, `empathetic`; max 4; both sides of a contradicting pair are dropped) → the SUPEREGO voice renders them as a `# Persona traits` section and emits `trait:*` adjustments. Delivery only: they never touch figures, limits or refusals, and they outrank the contact's register hint. Read by the voice only — the EGO's tools stay neutral |
 
 Minimal threading between turns:
 

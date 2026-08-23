@@ -65,6 +65,36 @@ VALID_STOP_REASONS: set[str] = {
     "needs_clarification",
 }
 
+# SUPEREGO voice — the persona's DECLARED personality traits (host → `metakeys.VOICE_TRAITS`).
+# Closed on purpose: a trait is a deterministic directive the voicer renders verbatim, not a
+# free-text prompt fragment the tenant writes (that is `custom_rules`, which already exists).
+# The vocabulary is small and each value maps to ONE rendered instruction in
+# `SuperegoStage._TRAIT_DIRECTIVES`; the two must stay aligned (a unit test enforces it).
+# Traits shape HOW the reply is said — never WHAT: figures, limits and refusals are untouched,
+# and the persona's voice/limits prompt still outranks them. They are the persona's, so they
+# outrank the CONTACT's `register:*` accommodation (which yields "where it does not conflict").
+VALID_VOICE_TRAITS: set[str] = {
+    "warm", "reserved",        # warmth axis
+    "direct",                  # lead with the answer
+    "formal", "casual",        # formality axis (the persona's own, vs. the user's register)
+    "humorous",                # a light touch, never on bad news / refusals / PII
+    "concise", "detailed",     # length axis
+    "empathetic",              # name the user's situation before answering
+}
+
+# Mutually exclusive pairs. A configuration that declares BOTH sides of an axis is a
+# contradiction the model would resolve by coin-flip; the sanitizer drops BOTH sides (no trait
+# beats a self-contradicting instruction) and logs it. Order-independent.
+VOICE_TRAIT_CONFLICTS: frozenset[frozenset[str]] = frozenset({
+    frozenset({"warm", "reserved"}),
+    frozenset({"formal", "casual"}),
+    frozenset({"concise", "detailed"}),
+})
+
+# Cap on rendered traits. Beyond a handful the directives stop being a personality and become a
+# second voice prompt — the tenant has `custom_rules` for that. Extra values are dropped in order.
+MAX_VOICE_TRAITS: int = 4
+
 VALID_MODALITY: set[str] = {"CERTAIN", "PROBABLE", "POSSIBLE", "UNCERTAIN", "MIXED"}
 
 VALID_SPEECH_ACTS: set[str] = {
