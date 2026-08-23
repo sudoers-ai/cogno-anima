@@ -134,6 +134,17 @@ def test_trait_directives_cover_the_vocabulary_exactly():
         assert pair <= vocab.VALID_VOICE_TRAITS
 
 
+def test_sanitize_voice_traits_is_the_shared_pure_rule():
+    # the host imports THIS function (admin API refuses at save time what the voice drops)
+    from cogno_anima.stages.superego import sanitize_voice_traits
+    assert sanitize_voice_traits("Formal, direct") == ["formal", "direct"]
+    assert sanitize_voice_traits(["formal", "casual"]) == []
+    assert sanitize_voice_traits(None) == []
+    ctx = _ctx()
+    ctx.metadata[mk.VOICE_TRAITS] = ("Warm",)
+    assert SuperegoStage.persona_traits(ctx) == sanitize_voice_traits(("Warm",)) == ["warm"]
+
+
 def test_persona_traits_sanitizes_the_carrier():
     f = SuperegoStage.persona_traits
     ctx = _ctx()

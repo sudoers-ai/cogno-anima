@@ -74,6 +74,52 @@ _TRAIT_DIRECTIVES: dict[str, str] = {
                    "understood what it means for them."),
 }
 
+
+def sanitize_voice_traits(raw: Any) -> list[str]:
+    """Sanitize a persona-traits carrier against the closed vocabulary. Pure; never raises.
+
+    Accepts a list/tuple/set or a comma-separated string (a plain text column hands over the
+    latter); lowercases and strips; drops unknown values and non-strings; folds duplicates in
+    declaration order; drops BOTH sides of a contradicting axis (``vocab.VOICE_TRAIT_CONFLICTS``
+    — a coin-flip instruction is worse than none); caps at ``vocab.MAX_VOICE_TRAITS`` (first
+    declared wins). Every drop is logged, so a trait that "does not work" is diagnosable from
+    the log instead of from the reply. Shared with the host, whose admin API refuses at save
+    time exactly what this would drop at voice time — one rule, two ends of the wire.
+    """
+    if raw is None or raw == "" or raw == []:
+        return []
+    if isinstance(raw, str):
+        items: list[Any] = raw.split(",")
+    elif isinstance(raw, (list, tuple, set, frozenset)):
+        items = list(raw)
+    else:
+        logger.warning("stage=superego event=voice_traits_unusable type=%s", type(raw).__name__)
+        return []
+    seen: list[str] = []
+    dropped: list[str] = []
+    for item in items:
+        if not isinstance(item, str):
+            dropped.append(repr(item))
+            continue
+        t = item.strip().lower()
+        if not t:
+            continue
+        if t not in vocab.VALID_VOICE_TRAITS:
+            dropped.append(t)
+        elif t not in seen:
+            seen.append(t)
+    for pair in vocab.VOICE_TRAIT_CONFLICTS:
+        if pair <= set(seen):
+            logger.warning("stage=superego event=voice_traits_conflict traits=%s", sorted(pair))
+            seen = [t for t in seen if t not in pair]
+    if len(seen) > vocab.MAX_VOICE_TRAITS:
+        dropped += seen[vocab.MAX_VOICE_TRAITS:]
+        seen = seen[:vocab.MAX_VOICE_TRAITS]
+    if dropped:
+        logger.warning("stage=superego event=voice_traits_dropped dropped=%s kept=%s",
+                       dropped, seen)
+    return seen
+
 _SCOPE_SYSTEM = (
     "You are a scope classifier for a business AI assistant. Detect ONLY clearly "
     "off-topic requests (recipes, trivia, homework, politics). Default stance: "
@@ -195,53 +241,14 @@ class SuperegoStage:
 
     @staticmethod
     def persona_traits(ctx: PipelineContext) -> list[str]:
-        """The persona's DECLARED traits for this turn, sanitized (``mk.VOICE_TRAITS``).
+        """The persona's DECLARED traits for this turn (``mk.VOICE_TRAITS``), sanitized.
 
         Never trust the carrier: the value is host-stamped from a stored configuration, and
-        "the dashboard saved it" is not "the core can render it" (the value may be a stale
-        vocabulary, a comma string from a plain text column, or garbage). So: accept a list/
-        tuple/set or a comma-separated string, lowercase, drop unknowns, dedupe in order, drop
-        BOTH sides of a contradicting axis (``vocab.VOICE_TRAIT_CONFLICTS``), cap at
-        ``vocab.MAX_VOICE_TRAITS``. Anything unusable degrades to ``[]`` — a voice hint must
-        never abort a turn. Every drop is logged, so a trait that "does not work" is
-        diagnosable from the log instead of from the reply.
+        "the dashboard saved it" is not "the core can render it". See
+        :func:`sanitize_voice_traits` for the rules; anything unusable degrades to ``[]`` — a
+        voice hint must never abort a turn.
         """
-        raw = ctx.metadata.get(mk.VOICE_TRAITS)
-        if raw is None or raw == "" or raw == []:
-            return []
-        if isinstance(raw, str):
-            items: list[Any] = raw.split(",")
-        elif isinstance(raw, (list, tuple, set, frozenset)):
-            items = list(raw)
-        else:
-            logger.warning("stage=superego event=voice_traits_unusable type=%s",
-                           type(raw).__name__)
-            return []
-        seen: list[str] = []
-        dropped: list[str] = []
-        for item in items:
-            if not isinstance(item, str):
-                dropped.append(repr(item))
-                continue
-            t = item.strip().lower()
-            if not t:
-                continue
-            if t not in vocab.VALID_VOICE_TRAITS:
-                dropped.append(t)
-            elif t not in seen:
-                seen.append(t)
-        for pair in vocab.VOICE_TRAIT_CONFLICTS:
-            if pair <= set(seen):
-                logger.warning("stage=superego event=voice_traits_conflict traits=%s",
-                               sorted(pair))
-                seen = [t for t in seen if t not in pair]
-        if len(seen) > vocab.MAX_VOICE_TRAITS:
-            dropped += seen[vocab.MAX_VOICE_TRAITS:]
-            seen = seen[:vocab.MAX_VOICE_TRAITS]
-        if dropped:
-            logger.warning("stage=superego event=voice_traits_dropped dropped=%s kept=%s",
-                           dropped, seen)
-        return seen
+        return sanitize_voice_traits(ctx.metadata.get(mk.VOICE_TRAITS))
 
     @staticmethod
     def _parole_to_register(parole: Optional[str]) -> Optional[str]:
