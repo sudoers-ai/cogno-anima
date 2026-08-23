@@ -149,6 +149,8 @@ def test_sanitize_voice_traits_is_the_shared_pure_rule():
     assert sanitize_voice_traits("warm; direct") == ([], ["warm; direct"])
     # a dropped value is truncated: the log never echoes a tenant's 200-char string verbatim
     assert sanitize_voice_traits("x" * 200)[1] == ["x" * 40]
+    # a report, not a transcript: distinct values, no newline a hostile value could forge with
+    assert sanitize_voice_traits(["sassy", "sassy", "bad\nline"]) == ([], ["sassy", "bad line"])
     ctx = _ctx()
     ctx.metadata[mk.VOICE_TRAITS] = ("Warm",)
     assert SuperegoStage.persona_traits(ctx) == ["warm"]
@@ -160,6 +162,9 @@ def test_sanitize_voice_traits_is_deterministic_for_a_set():
     from cogno_anima import sanitize_voice_traits, vocab
     kept, _ = sanitize_voice_traits({"warm", "direct", "humorous", "empathetic", "formal", "concise"})
     assert kept == sorted(kept)[:vocab.MAX_VOICE_TRAITS] == ["concise", "direct", "empathetic", "formal"]
+    # ...and the sort is case-insensitive: "Warm" must not jump ahead of "concise"
+    assert sanitize_voice_traits({"Warm", "direct", "humorous", "empathetic", "formal", "concise"})[0] \
+        == ["concise", "direct", "empathetic", "formal"]
 
 
 def test_sanitize_voice_traits_resolves_contradictions_before_the_cap():
@@ -212,6 +217,7 @@ def test_persona_traits_logs_what_it_drops(caplog):
     with caplog.at_level(logging.WARNING, logger="cogno_anima.superego"):
         assert SuperegoStage.persona_traits(ctx) == []
     assert "voice_traits_dropped" in caplog.text and "sassy" in caplog.text
+    assert "persona=" in caplog.text
     assert "reserved" in caplog.text and "warm" in caplog.text     # the contradicting pair too
 
 
@@ -285,6 +291,9 @@ def test_suppress_traits_removes_humor_where_the_turn_forbids_it():
     rejected.metadata[mk.VOICE_CORRECTION] = {"reason": "wrong", "kind": "unverified_claim"}
     assert f(base, ["general:review"], rejected) == ["warm"]      # re-voice after rejection
     assert f(["warm"], ["pii:risk_high"], _ctx()) == ["warm"]     # nothing to suppress
+    # a re-voice must say LESS: `detailed` goes too (and only there — a PII turn keeps it)
+    assert f(["detailed", "direct"], ["general:review"], rejected) == ["direct"]
+    assert f(["detailed"], ["pii:risk_high"], _ctx()) == ["detailed"]
 
 
 @pytest.mark.asyncio
@@ -314,9 +323,16 @@ def test_voice_prompt_renders_persona_traits_as_their_own_section():
     assert _TRAIT_DIRECTIVES["warm"] in prompt and _TRAIT_DIRECTIVES["direct"] in prompt
     assert _TRAIT_DIRECTIVES["formal"] not in prompt
     assert "never WHAT" in prompt                       # delivery-only framing
-    assert "They outrank the per-turn tone hints below" in prompt
+    assert "They outrank the per-turn tone hints." in prompt
     assert "User register: casual" in prompt
     assert prompt.index("# Persona traits") < prompt.index("# Signals")
+    # a HARD RULE is the last instruction before the task: the section sits ABOVE the verdict
+    ctx_rej = _ctx()
+    ctx_rej.intent.parole = "COLOQUIAL"
+    ctx_rej.metadata[mk.VOICE_CORRECTION] = {"reason": "did Y not X"}
+    rej = se._build_voice_prompt(ctx_rej, "data", adjustments, ["warm"])
+    assert rej.index("# Persona traits") < rej.index("# Execution verdict (HARD RULE)")
+    assert "any review verdict below stay exactly as stated" in rej
     # the Tone hints line is the contact's axis: no trait token on it
     assert "Tone hints: register:casual\n" in prompt and "trait:" not in prompt
     # purely additive: remove the section and the prompt IS the baseline

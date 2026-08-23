@@ -73,8 +73,9 @@ _TRAIT_DIRECTIVES: dict[str, str] = {
                  "frustrated."),
     "concise": ("Concise: the shortest reply that fully answers — pleasantries in one line "
                 "at most, and never a recap of what the user just said."),
-    "detailed": ("Detailed: give the full picture — relevant context, the options and the "
-                 "next steps, structured when that helps reading."),
+    "detailed": ("Detailed: give the full picture OF WHAT THE DATA SUPPORTS — the relevant "
+                 "context and the next step that follows from it, structured when that helps "
+                 "reading; never options, figures or alternatives the executor did not return."),
     "empathetic": ("Empathetic: make it clear you understood what the situation means for "
                    "the user — a brief acknowledgment woven into the reply, never a preamble "
                    "that delays the answer."),
@@ -222,14 +223,18 @@ class SuperegoStage:
                 if len(_WARNED_TRAIT_CONFIGS) >= 256:
                     _WARNED_TRAIT_CONFIGS.clear()
                 _WARNED_TRAIT_CONFIGS.add(key)
-                logger.warning("stage=superego event=voice_traits_dropped dropped=%s kept=%s",
-                               dropped, kept)
+                # bounded line (a report of distinct values, capped) + the persona it belongs to
+                shown = dropped[:8] + ([f"(+{len(dropped) - 8})"] if len(dropped) > 8 else [])
+                logger.warning("stage=superego event=voice_traits_dropped persona=%s dropped=%s "
+                               "kept=%s", ctx.metadata.get(mk.ACTIVE_PERSONA_ID, "?"), shown, kept)
         return kept
 
     @staticmethod
     def _suppress_traits(traits: list[str], adjustments: list[str],
                          ctx: PipelineContext) -> list[str]:
         """Enforce the carve-outs IN CODE, not only in the directive's prose.
+
+        Removes ``humorous`` on a somber turn and ``detailed`` on a rejection re-voice.
 
         ``humorous`` is the trait a model over-applies, and its own text says "none on bad news,
         refusals, sensitive data, or when the user is frustrated" — but a small voicer reading
@@ -239,14 +244,21 @@ class SuperegoStage:
         judge's rejection (``VOICE_CORRECTION``). On any of them the trait is removed before
         rendering, so the section never asks for humor the turn forbids.
         """
-        if "humorous" not in traits:
-            return traits
-        somber = (any(a.startswith(("pii:", "override:")) or a == "tone:empathetic"
-                      for a in adjustments)
-                  or bool(ctx.metadata.get(mk.VOICE_CORRECTION))
+        rejected = bool(ctx.metadata.get(mk.VOICE_CORRECTION))
+        somber = (rejected
+                  or any(a.startswith(("pii:", "override:")) or a == "tone:empathetic"
+                         for a in adjustments)
                   or (ctx.intent is not None
                       and ctx.intent.sentiment in vocab.NEGATIVE_SENTIMENTS))
-        return [t for t in traits if t != "humorous"] if somber else traits
+        out = list(traits)
+        if somber:
+            out = [t for t in out if t != "humorous"]
+        if rejected:
+            # A re-voice after the judge's rejection must say LESS, not more: "the full picture,
+            # options, next steps" is an invitation to fill a verdict-shaped hole with content
+            # the data does not have.
+            out = [t for t in out if t != "detailed"]
+        return out
 
     @staticmethod
     def _parole_to_register(parole: Optional[str]) -> Optional[str]:
@@ -708,9 +720,9 @@ class SuperegoStage:
             f'# User request\n"{ctx.user_input}"\n\n'
             f"{context_section}"
             f"# Data gathered by the executor (ground figures/dates ONLY in this)\n{payload}\n\n"
+            f"{traits_section}"
             f"{self._draft_section(ctx, payload, rejection)}"
             f"{rejection_section}"
-            f"{traits_section}"
             f"# Signals\n" + "\n".join(signals) + "\n\n"
             f"# Task\n{lang_rule}Write the final reply to the user in the persona's voice and "
             "within its limits. Use the context for background, but keep exact "
@@ -727,7 +739,12 @@ class SuperegoStage:
         instruction and has to reach the voice as one (the same lesson the host learned
         for its opening/arc blocks: a directive that arrives as context loses to the
         persona's continuation rule). Framed as delivery-only so a trait can never be read
-        as licence to soften a limit or round a figure. Empty input → no section, so a persona
+        as licence to soften a limit or round a figure, and placed ABOVE the draft and the
+        judge's verdict: a HARD RULE must be the last standing instruction the model reads
+        before the task, never a style note. Precedence, stated for the record: the host's
+        ``voice_prompt`` (system) carries the persona's base voice AND its limits; the traits
+        refine the voice — the tenant configured both, and a declared ``reserved`` is meant to
+        beat a warm base (measured) — and never touch the limits. Empty input → no section, so a persona
         with no traits gets a byte-identical prompt to before this feature.
         """
         # No membership guard: input comes from the sanitizer (closed vocab) and a test pins
@@ -738,8 +755,9 @@ class SuperegoStage:
             return ""
         return (
             "# Persona traits (configured for this persona — obey)\n"
-            "These shape HOW you say it, never WHAT: figures, dates, limits and refusals stay "
-            "exactly as grounded. They outrank the per-turn tone hints below.\n"
+            "These refine the persona's voice above (they are part of its configuration) and "
+            "shape HOW you say it, never WHAT: figures, dates, limits, refusals and any review "
+            "verdict below stay exactly as stated. They outrank the per-turn tone hints.\n"
             + "\n".join(f"- {line}" for line in lines) + "\n\n"
         )
 

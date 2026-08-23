@@ -108,12 +108,13 @@ _LOG_LABEL_WIDTH = 40
 
 def _label(x: Any) -> str:
     """A short, safe label for a dropped item — never echoes a tenant string past 40 chars, and
-    never raises (a carrier element with a raising ``__repr__`` must not abort a turn)."""
+    never raises (a carrier element with a raising ``__repr__`` must not abort a turn). A
+    label carries no newline, so a hostile value cannot forge a second log line."""
     try:
         text = x if isinstance(x, str) else repr(x)
     except Exception:  # noqa: BLE001 — the label is diagnostics, the turn is the product
         text = f"<{type(x).__name__}>"
-    return text[:_LOG_LABEL_WIDTH]
+    return text.replace("\n", " ").replace("\r", " ")[:_LOG_LABEL_WIDTH]
 
 
 def sanitize_voice_traits(raw: Any) -> tuple[list[str], list[str]]:
@@ -153,7 +154,7 @@ def sanitize_voice_traits(raw: Any) -> tuple[list[str], list[str]]:
         items = list(raw)
     elif isinstance(raw, (set, frozenset)):
         try:
-            items = sorted(raw, key=_label)
+            items = sorted(raw, key=lambda x: _label(x).lower())   # case must not pick the four
         except Exception:  # noqa: BLE001
             return [], [_label(raw)]
     else:
@@ -175,12 +176,14 @@ def sanitize_voice_traits(raw: Any) -> tuple[list[str], list[str]]:
     conflicted = [t for pair in VOICE_TRAIT_CONFLICTS if pair <= kept_set
                   for t in kept if t in pair]
     if conflicted:
-        dropped += list(dict.fromkeys(conflicted))
+        dropped += conflicted
         kept = [t for t in kept if t not in conflicted]
     if len(kept) > MAX_VOICE_TRAITS:
         dropped += kept[MAX_VOICE_TRAITS:]
         kept = kept[:MAX_VOICE_TRAITS]
-    return kept, dropped
+    # `dropped` is a REPORT, not a transcript: one entry per distinct value (a carrier of 5000
+    # copies of "sassy" is one problem, not 5000), in first-seen order.
+    return kept, list(dict.fromkeys(dropped))
 
 
 VALID_MODALITY: set[str] = {"CERTAIN", "PROBABLE", "POSSIBLE", "UNCERTAIN", "MIXED"}
