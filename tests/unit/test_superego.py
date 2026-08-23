@@ -139,7 +139,10 @@ def test_sanitize_voice_traits_is_the_shared_pure_rule():
     # it is exported at the package root and returns (kept, dropped) so the caller can SAY why
     from cogno_anima import sanitize_voice_traits
     assert sanitize_voice_traits("Formal, direct") == (["formal", "direct"], [])
-    assert sanitize_voice_traits(["formal", "casual", "sassy"]) == ([], ["sassy", "casual", "formal"])
+    assert sanitize_voice_traits(["formal", "casual", "sassy"]) == ([], ["sassy", "formal", "casual"])
+    # a JSON array string (a JSON column read raw) is decoded, not split on its commas
+    assert sanitize_voice_traits('["warm", "direct"]') == (["warm", "direct"], [])
+    assert sanitize_voice_traits("[not json") == ([], ["[not json"])
     assert sanitize_voice_traits(None) == ([], [])
     assert sanitize_voice_traits(object()) == ([], ["object"])
     # only "," separates — "warm; direct" is ONE unknown value, not two traits
@@ -164,8 +167,42 @@ def test_sanitize_voice_traits_resolves_contradictions_before_the_cap():
     # ship "warm" — the intended order drops the pair, then caps what is left
     from cogno_anima import sanitize_voice_traits
     kept, dropped = sanitize_voice_traits(["warm", "direct", "formal", "humorous", "reserved"])
-    assert kept == ["direct", "formal", "humorous"]
-    assert "warm" in dropped and "reserved" in dropped
+    # warm/reserved AND reserved/humorous both contradict → all three go, in declaration order
+    assert kept == ["direct", "formal"]
+    assert dropped == ["warm", "reserved", "humorous"]
+    # the report order is stable across processes (a tuple of axes, not a set of sets)
+    assert sanitize_voice_traits(["concise", "detailed", "warm", "reserved"])[1] \
+        == ["warm", "reserved", "concise", "detailed"]
+
+
+def test_sanitize_voice_traits_never_raises_on_a_hostile_element():
+    from cogno_anima import sanitize_voice_traits
+
+    class Raising:
+        def __repr__(self):
+            raise RuntimeError("no repr for you")
+
+    assert sanitize_voice_traits(["warm", Raising()]) == (["warm"], ["<Raising>"])
+    assert sanitize_voice_traits({Raising(), "warm"}) == (["warm"], ["<Raising>"])
+
+
+def test_sanitize_voice_traits_set_with_conflict_and_overflow():
+    # the sort decides which side of the cap a contradicting pair lands on — the pair is
+    # resolved on the WHOLE sorted list before the cap, so it can never be hidden by it
+    from cogno_anima import sanitize_voice_traits
+    kept, dropped = sanitize_voice_traits(
+        {"warm", "reserved", "direct", "formal", "humorous", "empathetic"})
+    assert kept == ["direct", "empathetic", "formal"]
+    assert set(dropped) == {"warm", "reserved", "humorous"}
+
+
+def test_voice_trait_axes_derive_vocabulary_and_conflicts():
+    from cogno_anima import vocab
+    for a, b in vocab.VOICE_TRAIT_AXES:
+        assert {a, b} <= vocab.VALID_VOICE_TRAITS
+        assert frozenset({a, b}) in vocab.VOICE_TRAIT_CONFLICTS
+    assert set(vocab.VOICE_TRAIT_SINGLETONS) <= vocab.VALID_VOICE_TRAITS
+    assert len(vocab.VOICE_TRAIT_CONFLICTS) == len(vocab.VOICE_TRAIT_AXES)
 
 
 def test_persona_traits_logs_what_it_drops(caplog):
@@ -226,13 +263,39 @@ def test_persona_traits_caps_the_count():
     assert kept == ["warm", "direct", "formal", "humorous"]      # first-declared wins
 
 
-def test_detect_adjustments_emits_trait_hints():
+def test_detect_adjustments_stays_pure_per_turn():
+    # traits are NOT detected here (they are host config, not a per-turn signal): the sentinel
+    # for a signal-less turn keeps its meaning whether or not the persona has traits
     ctx = _ctx()
-    assert not any(a.startswith("trait:") for a in SuperegoStage.detect_adjustments(ctx))
     ctx.metadata[mk.VOICE_TRAITS] = ["humorous", "concise"]
     adj = SuperegoStage.detect_adjustments(ctx)
-    assert adj[-2:] == ["trait:humorous", "trait:concise"]
-    assert "general:review" not in adj
+    assert not any(a.startswith("trait:") for a in adj)
+    assert adj == ["general:review"]
+
+
+def test_suppress_traits_removes_humor_where_the_turn_forbids_it():
+    f = SuperegoStage._suppress_traits
+    base = ["humorous", "warm"]
+    assert f(base, ["general:review"], _ctx()) == base          # a plain turn keeps it
+    assert f(base, ["pii:risk_high"], _ctx()) == ["warm"]         # sensitive data
+    assert f(base, ["override:de_escalate"], _ctx()) == ["warm"]  # de-escalation
+    assert f(base, ["tone:empathetic"], _ctx()) == ["warm"]       # frustrated contact
+    assert f(base, ["general:review"], _ctx(sentiment="NEGATIVE")) == ["warm"]
+    rejected = _ctx()
+    rejected.metadata[mk.VOICE_CORRECTION] = {"reason": "wrong", "kind": "unverified_claim"}
+    assert f(base, ["general:review"], rejected) == ["warm"]      # re-voice after rejection
+    assert f(["warm"], ["pii:risk_high"], _ctx()) == ["warm"]     # nothing to suppress
+
+
+@pytest.mark.asyncio
+async def test_voice_enforces_the_humor_carve_out_in_code():
+    ctx = _ctx(sentiment="FRUSTRATED")
+    ctx.metadata[mk.VOICE_TRAITS] = ["humorous", "warm"]
+    backend = ScriptedBackend(["ok"])
+    res = await SuperegoStage().voice(ctx, backend, voice_prompt="persona")
+    prompt = backend.calls[0]["prompt"]
+    assert "Humorous:" not in prompt and "Warm:" in prompt
+    assert "trait:warm" in res.adjustments and "trait:humorous" not in res.adjustments
 
 
 def test_voice_prompt_renders_persona_traits_as_their_own_section():
@@ -240,45 +303,42 @@ def test_voice_prompt_renders_persona_traits_as_their_own_section():
     se = SuperegoStage()
     ctx = _ctx()
     ctx.intent.parole = "COLOQUIAL"
-    baseline = se._build_voice_prompt(ctx, "data", se.detect_adjustments(ctx))
-    assert "# Persona traits" not in baseline           # no traits → no section, prompt unchanged
-
-    # ... and the register line does not name traits that do not exist
-    assert "voice/limits (persona takes precedence)" in baseline and "/traits" not in baseline
-
-    ctx.metadata[mk.VOICE_TRAITS] = ["formal", "direct"]
     adjustments = se.detect_adjustments(ctx)
-    prompt = se._build_voice_prompt(ctx, "data", adjustments)
+    baseline = se._build_voice_prompt(ctx, "data", adjustments)
+    assert "# Persona traits" not in baseline           # no traits → no section, prompt unchanged
+    assert "User register: casual" in baseline
+
+    # traits that do NOT declare formality: section added, the contact's register still rendered
+    prompt = se._build_voice_prompt(ctx, "data", adjustments, ["warm", "direct"])
     assert "# Persona traits (configured for this persona — obey)" in prompt
-    assert _TRAIT_DIRECTIVES["formal"] in prompt
-    assert _TRAIT_DIRECTIVES["direct"] in prompt
-    assert _TRAIT_DIRECTIVES["warm"] not in prompt
-    # delivery-only framing: a trait is never licence to touch figures or limits
-    assert "never WHAT" in prompt
-    # the persona's traits outrank the contact's per-turn signals (register AND tone hints),
-    # except PII/de-escalation — and the section says "below" because it IS above them
-    assert "They outrank the per-turn signals below" in prompt
-    assert "except a PII or de-escalation signal, which always wins" in prompt
+    assert _TRAIT_DIRECTIVES["warm"] in prompt and _TRAIT_DIRECTIVES["direct"] in prompt
+    assert _TRAIT_DIRECTIVES["formal"] not in prompt
+    assert "never WHAT" in prompt                       # delivery-only framing
+    assert "They outrank the per-turn tone hints below" in prompt
     assert "User register: casual" in prompt
-    assert "persona voice/limits/traits (persona takes precedence)" in prompt
-    assert prompt.index("# Persona traits") < prompt.index("# Signals") < prompt.index("User register:")
-    # the traits ride the adjustments list (the audit trail on SuperegoResult) but NOT the
-    # rendered Tone hints line — that line is the contact's axis, the section is the persona's
-    assert adjustments[-2:] == ["trait:formal", "trait:direct"]
-    assert "Tone hints: register:casual\n" in prompt and "trait:" not in prompt.split("# Signals")[1]
-    # and the rest of the prompt is what it was — the traits are purely additive
-    stripped = (prompt.replace(se._traits_section(["formal", "direct"]), "")
-                      .replace("voice/limits/traits", "voice/limits"))
-    assert stripped == baseline
+    assert prompt.index("# Persona traits") < prompt.index("# Signals")
+    # the Tone hints line is the contact's axis: no trait token on it
+    assert "Tone hints: register:casual\n" in prompt and "trait:" not in prompt
+    # purely additive: remove the section and the prompt IS the baseline
+    assert prompt.replace(se._traits_section(["warm", "direct"]), "") == baseline
+
+    # a persona that DECLARES its formality: the contact's register is not rendered at all —
+    # the persona's axis wins by construction, not by two prose rules the model has to rank
+    formal = se._build_voice_prompt(ctx, "data", adjustments, ["formal"])
+    assert "User register:" not in formal and _TRAIT_DIRECTIVES["formal"] in formal
+    casual = se._build_voice_prompt(ctx, "data", adjustments, ["casual"])
+    assert "User register:" not in casual
 
 
-def test_voice_prompt_tone_hints_line_never_goes_blank():
-    # a turn whose only adjustments are traits still renders a well-formed Signals block
-    se = SuperegoStage()
+@pytest.mark.asyncio
+async def test_voice_records_traits_on_the_audit_trail_after_the_prompt():
     ctx = _ctx()
     ctx.metadata[mk.VOICE_TRAITS] = ["warm"]
-    prompt = se._build_voice_prompt(ctx, "data", se.detect_adjustments(ctx))
-    assert "Tone hints: none" in prompt and "Warm:" in prompt
+    backend = ScriptedBackend(["ok"])
+    res = await SuperegoStage().voice(ctx, backend, voice_prompt="persona")
+    prompt = backend.calls[0]["prompt"]
+    assert "Tone hints: general:review" in prompt        # the sentinel keeps its meaning
+    assert res.adjustments == ["general:review", "trait:warm"]
 
 
 @pytest.mark.asyncio

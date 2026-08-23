@@ -30,7 +30,7 @@ import re
 import time
 import json
 import logging
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from cogno_anima import metakeys as mk
 from cogno_anima import vocab
@@ -51,6 +51,9 @@ _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 _NUM_RE = re.compile(r"\d[\d.,]*\d|\d")
 _CRITICAL_TERM_RE = re.compile(r"\d|@|https?://", re.IGNORECASE)
 
+# Trait configurations already warned about (see SuperegoStage.persona_traits). Bounded.
+_WARNED_TRAIT_CONFIGS: set[tuple[tuple[str, ...], tuple[str, ...]]] = set()
+
 # One rendered instruction per `vocab.VALID_VOICE_TRAITS` value (a test pins the alignment).
 # Written as directives about DELIVERY only — none of them may loosen grounding or limits,
 # and the humorous one says so itself, because that is the trait a model over-applies.
@@ -59,8 +62,8 @@ _TRAIT_DIRECTIVES: dict[str, str] = {
              "a human presence, not a form letter."),
     "reserved": ("Reserved: courteous and even; no exclamation marks, no effusiveness, "
                  "no small talk."),
-    "direct": ("Direct: the first sentence IS the answer or the decision — no preamble, "
-               "no warm-up, no hedging filler."),
+    "direct": ("Direct: the answer or the decision comes first — no preamble, no warm-up, "
+               "no hedging filler."),
     "formal": ("Formal: polished wording and full sentences; no slang, no emoji; keep a "
                "respectful distance."),
     "casual": ("Casual: relaxed, everyday wording, as to someone you know; a light emoji "
@@ -72,8 +75,9 @@ _TRAIT_DIRECTIVES: dict[str, str] = {
                 "at most, and never a recap of what the user just said."),
     "detailed": ("Detailed: give the full picture — relevant context, the options and the "
                  "next steps, structured when that helps reading."),
-    "empathetic": ("Empathetic: name the user's situation before the answer, showing you "
-                   "understood what it means for them."),
+    "empathetic": ("Empathetic: make it clear you understood what the situation means for "
+                   "the user — a brief acknowledgment woven into the reply, never a preamble "
+                   "that delays the answer."),
 }
 
 
@@ -193,7 +197,6 @@ class SuperegoStage:
                 adj.append(register)
         if ctx.id_result and ctx.id_result.emotional_override:
             adj.append(f"override:{ctx.id_result.emotional_override}")
-        adj += [f"trait:{t}" for t in SuperegoStage.persona_traits(ctx)]
         return adj or ["general:review"]
 
     @staticmethod
@@ -209,9 +212,41 @@ class SuperegoStage:
         """
         kept, dropped = vocab.sanitize_voice_traits(ctx.metadata.get(mk.VOICE_TRAITS))
         if dropped:
-            logger.warning("stage=superego event=voice_traits_dropped dropped=%s kept=%s",
-                           dropped, kept)
+            # Once per configuration per process: the value is STORED on the persona, so the
+            # same drop would otherwise repeat on every turn and every re-voice of every
+            # contact of that tenant — volume scaling with traffic, not with the (single)
+            # misconfiguration. The host refuses these at save time; this is the net for a row
+            # written around it.
+            key = (tuple(kept), tuple(dropped))
+            if key not in _WARNED_TRAIT_CONFIGS:
+                if len(_WARNED_TRAIT_CONFIGS) >= 256:
+                    _WARNED_TRAIT_CONFIGS.clear()
+                _WARNED_TRAIT_CONFIGS.add(key)
+                logger.warning("stage=superego event=voice_traits_dropped dropped=%s kept=%s",
+                               dropped, kept)
         return kept
+
+    @staticmethod
+    def _suppress_traits(traits: list[str], adjustments: list[str],
+                         ctx: PipelineContext) -> list[str]:
+        """Enforce the carve-outs IN CODE, not only in the directive's prose.
+
+        ``humorous`` is the trait a model over-applies, and its own text says "none on bad news,
+        refusals, sensitive data, or when the user is frustrated" — but a small voicer reading
+        "obey" above a section and a parenthetical exception inside it can still joke on a PII
+        turn. The core already knows those turns deterministically: a ``pii:*`` or ``override:*``
+        adjustment, a FRUSTRATED/NEGATIVE contact (``tone:empathetic``), a re-voice after the
+        judge's rejection (``VOICE_CORRECTION``). On any of them the trait is removed before
+        rendering, so the section never asks for humor the turn forbids.
+        """
+        if "humorous" not in traits:
+            return traits
+        somber = (any(a.startswith(("pii:", "override:")) or a == "tone:empathetic"
+                      for a in adjustments)
+                  or bool(ctx.metadata.get(mk.VOICE_CORRECTION))
+                  or (ctx.intent is not None
+                      and ctx.intent.sentiment in vocab.NEGATIVE_SENTIMENTS))
+        return [t for t in traits if t != "humorous"] if somber else traits
 
     @staticmethod
     def _parole_to_register(parole: Optional[str]) -> Optional[str]:
@@ -538,9 +573,15 @@ class SuperegoStage:
         t0 = time.perf_counter()
         model = getattr(backend, "model", "unknown")
         adjustments = self.detect_adjustments(ctx)
+        # The persona's declared traits: one read, sanitized, carve-outs enforced in code, then
+        # handed to the prompt as their own parameter (not smuggled through the hints list and
+        # parsed back out). They join ``adjustments`` AFTER the prompt is built — the list is the
+        # audit trail on SuperegoResult, and the rendered Tone hints line stays the contact's.
+        traits = self._suppress_traits(self.persona_traits(ctx), adjustments, ctx)
         payload = self._tool_payload(ctx)
 
-        prompt = self._build_voice_prompt(ctx, payload, adjustments)
+        prompt = self._build_voice_prompt(ctx, payload, adjustments, traits)
+        adjustments += [f"trait:{t}" for t in traits]
         raw, ti, to = await backend.generate(voice_prompt or "You are a helpful assistant.", prompt)
         response, cot_stripped = self.strip_cot(raw)
 
@@ -576,30 +617,25 @@ class SuperegoStage:
                                  tokens_in=ti, tokens_out=to, model=model),
         )
 
-    def _build_voice_prompt(self, ctx: PipelineContext,
-                            payload: str, adjustments: list[str]) -> str:
+    def _build_voice_prompt(self, ctx: PipelineContext, payload: str,
+                            adjustments: list[str], traits: Sequence[str] = ()) -> str:
         signals = []
         if ctx.intent:
             signals.append(f"Sentiment: {ctx.intent.sentiment}")
         language = ctx.noumeno.language if ctx.noumeno else ""
-        # Register accommodation (sibling of Reply language): match the user's
-        # formality where it does not conflict with the persona — the persona's
-        # voice/limits always win.
-        traits = [a.split(":", 1)[1] for a in adjustments if a.startswith("trait:")]
         traits_section = self._traits_section(traits)
+        # Register accommodation (sibling of Reply language): match the user's formality where
+        # it does not conflict with the persona — the persona's voice/limits always win. When
+        # the persona DECLARES its formality (a formal/casual trait), the contact's register is
+        # not rendered at all: the persona's axis wins by construction, in code, instead of by
+        # two prose rules the model has to rank. The token stays on ``adjustments`` (audit).
         register = next((a for a in adjustments if a.startswith("register:")), None)
-        if register:
+        if register and not ({"formal", "casual"} & set(traits)):
             signals.append(
                 f"User register: {register.split(':', 1)[1]} — match it where it does "
-                f"not conflict with the persona voice/limits{'/traits' if traits else ''} "
-                "(persona takes precedence)"
+                "not conflict with the persona voice/limits (persona takes precedence)"
             )
-        # The rendered hints are the CONTACT's per-turn signals; the persona's traits have a
-        # section of their own above, so they do not ride this line too (one comma list would
-        # put the two axes side by side with no rule between them). ``adjustments`` itself —
-        # the audit trail on SuperegoResult — keeps every token.
-        per_turn = [a for a in adjustments if not a.startswith("trait:")]
-        signals.append(f"Tone hints: {', '.join(per_turn) if per_turn else 'none'}")
+        signals.append(f"Tone hints: {', '.join(adjustments)}")
         # Host-injected context (retrieved memories / history / clock) — the same
         # block the EGO sees; included so memories can ground the final reply.
         injected = ctx.metadata.get(mk.EGO_CONTEXT)
@@ -683,7 +719,7 @@ class SuperegoStage:
         )
 
     @staticmethod
-    def _traits_section(traits: list[str]) -> str:
+    def _traits_section(traits: Sequence[str]) -> str:
         """Render the persona's declared traits as a section of their own.
 
         A section, not one more token in ``Tone hints:`` — the hints are the CONTACT's
@@ -691,18 +727,19 @@ class SuperegoStage:
         instruction and has to reach the voice as one (the same lesson the host learned
         for its opening/arc blocks: a directive that arrives as context loses to the
         persona's continuation rule). Framed as delivery-only so a trait can never be read
-        as licence to soften a limit or round a figure. Empty input → no section, and the
-        register line does not mention traits either, so a persona with no traits gets a
-        byte-identical prompt to before this feature (a test renders both and compares).
+        as licence to soften a limit or round a figure. Empty input → no section, so a persona
+        with no traits gets a byte-identical prompt to before this feature.
         """
-        lines = [_TRAIT_DIRECTIVES[t] for t in traits if t in _TRAIT_DIRECTIVES]
+        # No membership guard: input comes from the sanitizer (closed vocab) and a test pins
+        # the directive table to it — a vocab value without a directive is a programming error
+        # that must fail loudly, not a trait that vanishes at render.
+        lines = [_TRAIT_DIRECTIVES[t] for t in traits]
         if not lines:
             return ""
         return (
             "# Persona traits (configured for this persona — obey)\n"
             "These shape HOW you say it, never WHAT: figures, dates, limits and refusals stay "
-            "exactly as grounded. They outrank the per-turn signals below — the user's register "
-            "and the tone hints — except a PII or de-escalation signal, which always wins.\n"
+            "exactly as grounded. They outrank the per-turn tone hints below.\n"
             + "\n".join(f"- {line}" for line in lines) + "\n\n"
         )
 
