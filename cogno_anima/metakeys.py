@@ -91,6 +91,23 @@ JUDGE_VERDICT = "judge_verdict"
 # host persists, and a full critique per attempt is unbounded text.
 JUDGE_ATTEMPTS = "judge_attempts"
 
+# ── prompt provenance (orchestrator writes, host stores) ─────────────────────
+# `{sha: {"kind": ..., "text": ...}}` for every DEPLOYMENT-AUTHORED prompt this turn used —
+# the persona's execution/voice/limits/scope text, keyed by the digest that `StageMetrics
+# .prompt_sha` carries. It is the other half of that field: the sha alone labels a
+# configuration, this makes the configuration READABLE after the fact, so "which text
+# produced this outcome" is answerable instead of merely groupable.
+#
+# TRANSIENT, and the contract has two halves a host must honour:
+#   * store it CONTENT-ADDRESSED (one row per distinct sha, not per turn) — the same persona
+#     across a million turns is one row, and a store that grows per turn means the addressing
+#     is not working;
+#   * do NOT copy it into the per-turn record. It is not session state either: the
+#     orchestrator's snapshot is an explicit allowlist and this is not in it.
+# Free of contact PII by CONSTRUCTION, not by filtering: the injected context (transcript,
+# memories, graph) is deliberately excluded from what gets digested and published.
+PROMPT_TEXTS = "prompt_texts"
+
 # ── ID / NER / NOUMENO — cross-turn carry-over (soma writes, stages read) ─────
 ID_STATE = "id_state"                          # serializable IDStage state
 TURN_NUMBER = "turn_number"                    # turn number (host/soma authoritative)
