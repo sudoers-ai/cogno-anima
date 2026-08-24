@@ -431,6 +431,12 @@ def is_fully_sequenced(metrics: "list[StageMetrics]") -> bool:
     return bool(metrics) and all(getattr(m, "seq", 0) > 0 for m in metrics)
 
 
+# Mirrors ``metakeys.PRIOR_ATTEMPT_COMMITTED``. Inlined, not imported: this module is the
+# bottom of the package and importing sideways for one string is how an import cycle starts.
+# ``tests/unit/test_types.py`` pins the two equal, so they cannot drift.
+_PRIOR_ATTEMPT_COMMITTED = "prior_attempt_committed"
+
+
 def committed_this_turn(ctx: "PipelineContext") -> bool:
     """Did this turn SUCCESSFULLY run a mutating tool, on any attempt?
 
@@ -443,16 +449,61 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     Falls back to `ego_result` for a turn whose orchestrator does not accumulate (a single-shot
     pipeline, or a host that reconstructs a context).
 
+    THIRD source, and it exists because the first two can both be gone. Both live ON the
+    context, so both die with it — and there is a path where the context dies mid-turn: the
+    host's model-routing fallback. The first attempt can commit an ordinary write and a LATER
+    stage then raise; the exception takes that context and its execution record with it, and
+    the retry is a fresh turn with a fresh context in which the write is nowhere. There the
+    host is the only layer that knows, so it says so (``mk.PRIOR_ATTEMPT_COMMITTED``) and this
+    predicate believes it.
+
+    Fixing it HERE and not in each caller is the whole point. Six places CALL this — soma's
+    commit gate, the semantic cache, three repair/re-step guards and the trace's committed flag
+    — and the soma's own comment states the invariant they rest on:
+    *"since committed_this_turn reads every attempt, the 'NOTHING was committed' the voice
+    renders as a HARD RULE is now TRUE of the whole turn"*. The path above is exactly what
+    makes that sentence false, and a guard added to one caller leaves the other five wrong. A
+    rule each consumer re-derives is a rule each consumer gets wrong alone.
+
+    Two layers in the host RE-DERIVE the rule from the trace rather than calling this — the
+    grounding backstop and the offline promise auditor — so they do NOT see the declaration.
+    Naming them is deliberate: the sentence above ("a rule each consumer re-derives is a rule
+    each consumer gets wrong alone") has two live re-derivations, and a reader who assumed they
+    were covered would believe the retry turn's symptom was fixed when only the guards were.
+
+    The declaration is TRUE-only: absent means "nothing to add", never "nothing was committed".
+    It is also PER TURN — it describes an earlier attempt of the turn being retried, and a host
+    that persisted it into the next turn would disarm both repairs and the cache for the rest of
+    the session.
+
     Read with `getattr`, deliberately: this is a POLICY predicate on the hot path of hosts that
     pass duck-typed carriers (test doubles, replayed traces, a leaner context of their own). It
     must answer "did anything change?" for those too, and an AttributeError raised here would
     kill a turn whose reply was already produced — the failure mode is the opposite of the
-    conservatism it exists to provide."""
+    conservatism it exists to provide. Same reason the metadata read below is defensive: a
+    carrier whose `metadata` is missing, or is not a mapping, degrades to the trace instead of
+    raising.
+
+    Be precise about the direction of THAT degradation: it answers False, which for five of the
+    six callers is the RELEASING answer (cacheable, re-step allowed, "nothing was committed"
+    rendered to the voice as a hard rule). So it is fail-OPEN here, unlike the no-op→True choice
+    above, which is conservative on purpose. It stays fail-open deliberately: answering True on
+    an unreadable carrier would make every test double and replayed trace read as "committed",
+    which is the worse error. On a real `PipelineContext` the handler is unreachable."""
     execs = getattr(ctx, "turn_executions", None)
     if not execs:
         ego = getattr(ctx, "ego_result", None)
         execs = getattr(ego, "tools_executed", None) or []
-    return any(getattr(t, "side_effect", False) and getattr(t, "ok", False) for t in execs)
+    if any(getattr(t, "side_effect", False) and getattr(t, "ok", False) for t in execs):
+        return True
+    try:
+        # The attribute read is INSIDE the try on purpose: `getattr` with a default swallows
+        # AttributeError and nothing else, so a carrier whose `metadata` is a property that
+        # RAISES would propagate straight through it — the same hole `_turn_metrics` documents
+        # in the host. A predicate six layers trust must never be the reason a turn is lost.
+        return bool(getattr(ctx, "metadata", None).get(_PRIOR_ATTEMPT_COMMITTED))  # type: ignore[union-attr]
+    except Exception:      # noqa: BLE001
+        return False
 
 
 class PipelineContext(BaseModel):
