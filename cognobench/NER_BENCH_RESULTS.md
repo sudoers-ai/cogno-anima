@@ -84,6 +84,29 @@ qwen3:8b's 3 while scoring within one check of it. (The harness now surfaces thi
 per run — the `fallbacks=` column in the report and `meta.ner_fallbacks` in
 persisted artifacts.)
 
+## 2026-08-24 re-run — the numbers above were stale relative to the prompt
+
+`gpt-4o-mini`, current prompt, `--embed-model openai:text-embedding-3-small`, n=1:
+**116/125, fallbacks=9**, in=248,567 out=19,474 over 110 calls.
+
+Run because the failure profile was about to be used as EVIDENCE — the question was whether
+`speech_act`/`modality`/`parole` are solid enough to carry a per-contact moving average
+(cogno-anima #98's emotional baseline, and the communication profile that would follow). A
+document is not a measurement once the prompt underneath it has moved.
+
+| field | then (post-diet) | now | reading |
+|---|---|---|---|
+| `speech_act` | ×2 (`directive`, `commissive`) | **×2, the same two** | the prompt now quotes the bench inputs **verbatim** — `DIRECTIVE (… "explain X", "me explica")`, `COMMISSIVE (… "vou implementar" — the speaker acts, not the assistant)` — and the model still answers INTERROGATIVE and DIRECTIVE. Prompt-resistant. The instrument note below called these quarantine candidates; they are not — the expected values are coherent and the prompt teaches them. It is the model. |
+| `modality` | ×2 | ×1, and it **moved** (`probable` now passes, `possible` now fails) | the error sits on the PROBABLE↔POSSIBLE boundary and drifts between runs — both values mean "hedged". A profile that collapses the axis to *asserts* vs *hedges* would read this field cleanly; one that distinguishes the two would be reading noise. |
+| `sentiment` | ×3 | ×3, all NEUTRAL/POSITIVE → **CURIOUS** | a systematic bias, and now a quantified one: `CURIOUS` is **+0.2** on `vocab.SENTIMENT_VALENCE`, so a neutral-heavy contact's emotional baseline drifts *upward* by a bounded amount. Small, one-directional, worth knowing before anyone reads a baseline as ground truth. |
+| `parole` | ×1 (nano only) | **0** | the only clean field of the four — the one register axis a profile can rest on today. |
+| new | — | `verbs` ×1, `constraint` ×1 | inside the ±2 noise floor; the `constraint` miss (`"3 linhas"` → `[]`) is the same coverage gap the SUPEREGO judge's `_format_restrictions` depends on. |
+
+**Do not read 117 → 116 as a regression.** It is one check inside the ±2 floor measured below,
+across a prompt change and a different embedder. What is outside the floor is the *profile*: two
+speech-act failures that survive being told the answer, and a modality error that changes which
+case it lands on.
+
 ## Effect of the field diet (#65)
 
 anima `19af7da` cut seven fields no code read (`entities_pronouns`,
