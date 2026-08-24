@@ -382,6 +382,38 @@ class SuperegoResult(BaseModel):
     metrics: StageMetrics
 
 
+def ordered_stage_metrics(ctx: "PipelineContext") -> "list[StageMetrics]":
+    """The turn's calls in the order they RAN — or the raw list when nobody said what that is.
+
+    ``PipelineContext.stage_metrics`` is "the populated canonical slots, then ``retry_metrics``",
+    and each canonical slot holds the value that SURVIVED, so its order is not call order.
+    ``StageMetrics.seq`` carries the real one, stamped by whichever layer sequences the stages.
+
+    **"Partially stamped" is a real state and this is where it gets a name.** Every canonical
+    metric is constructed INSIDE its stage, which knows nothing of the turn; an orchestrator
+    stamps them afterwards. So a mixed-version deployment, a host driving the stages itself, or
+    a new stage nobody remembered to stamp all produce a list where some entries carry ``seq``
+    and some do not. Sorting that mix is worse than not sorting it: every unstamped entry has
+    ``seq == 0`` and lands in FRONT, giving an order that is true for neither half while
+    looking authoritative. So the rule is all-or-nothing, defined once, here — beside the type
+    it reads, for the same reason :func:`committed_this_turn` is: three repos must agree on it,
+    and a rule each consumer re-derives is a rule each consumer gets to re-derive wrongly.
+
+    Returns a new list; never mutates ``ctx``. Use :func:`is_fully_sequenced` when the caller
+    needs to KNOW whether the order it got is the real one.
+    """
+    metrics = list(ctx.stage_metrics)
+    if not is_fully_sequenced(metrics):
+        return metrics
+    return sorted(metrics, key=lambda m: m.seq)
+
+
+def is_fully_sequenced(metrics: "list[StageMetrics]") -> bool:
+    """Did every call in this list get a ``seq``? Empty is not sequenced: there is no order to
+    claim, and returning True would let a caller present nothing as authoritative."""
+    return bool(metrics) and all(getattr(m, "seq", 0) > 0 for m in metrics)
+
+
 def committed_this_turn(ctx: "PipelineContext") -> bool:
     """Did this turn SUCCESSFULLY run a mutating tool, on any attempt?
 

@@ -401,3 +401,60 @@ def test_stage_metrics_per_call_identity_defaults_to_inert():
                            model="fake", seq=4, attempt=2, prompt_sha="9f3c1a")
     assert (stamped.seq, stamped.attempt, stamped.prompt_sha) == (4, 2, "9f3c1a")
     assert stamped.tokens_total == 12
+
+
+# ── "partially stamped" is a state, and it has to have a name ────────────────────────────
+#
+# Every canonical StageMetrics is built INSIDE its stage, which knows nothing of the turn; the
+# orchestrator stamps them afterwards. So a mixed-version deployment, or a host driving the
+# stages itself, produces a list where some entries carry `seq` and some do not — and sorting
+# that mix is WORSE than not sorting: unstamped entries have seq 0 and land in FRONT, giving an
+# order true for neither half while looking authoritative.
+
+def _sm(stage, seq=0):
+    return StageMetrics(stage=stage, elapsed_ms=1.0, tokens_in=1, tokens_out=1, model="fake",
+                        seq=seq)
+
+
+def test_ordered_stage_metrics_returns_the_TRUE_order_when_all_are_stamped():
+    from cogno_anima.types import PipelineContext, ordered_stage_metrics
+    ctx = PipelineContext(user_input="x")
+    ctx.retry_metrics = [_sm("superego_judge", 3), _sm("ego", 2), _sm("superego_judge", 5)]
+    assert [m.stage for m in ordered_stage_metrics(ctx)] == [
+        "ego", "superego_judge", "superego_judge"]
+    assert [m.seq for m in ordered_stage_metrics(ctx)] == [2, 3, 5]
+
+
+def test_a_PARTIALLY_stamped_turn_is_left_ALONE_not_sorted():
+    """The fixture is built so a naive sort WOULD move things: the unstamped entry sits LAST
+    in the raw list, so sorting by `seq` (0 for it) drags it to the front.
+
+    Mutation: sort unconditionally, or key on `m.seq` without the all-or-nothing guard, and
+    this dies. A fixture where the unstamped entry already sits first proves nothing — the
+    sorted and unsorted answers coincide, and the test passes with the bug in place.
+    """
+    from cogno_anima.types import PipelineContext, is_fully_sequenced, ordered_stage_metrics
+    ctx = PipelineContext(user_input="x")
+    ctx.retry_metrics = [_sm("ego", 2), _sm("superego_judge", 3), _sm("voice_unstamped", 0)]
+
+    assert is_fully_sequenced(list(ctx.stage_metrics)) is False
+    assert [m.stage for m in ordered_stage_metrics(ctx)] == [
+        "ego", "superego_judge", "voice_unstamped"], "a ordem crua é preservada"
+
+
+def test_an_unsequenced_turn_is_not_claimed_to_have_an_order():
+    from cogno_anima.types import PipelineContext, is_fully_sequenced, ordered_stage_metrics
+    ctx = PipelineContext(user_input="x")
+    ctx.retry_metrics = [_sm("ner"), _sm("ego")]
+    assert is_fully_sequenced(list(ctx.stage_metrics)) is False
+    assert [m.stage for m in ordered_stage_metrics(ctx)] == ["ner", "ego"]
+    assert is_fully_sequenced([]) is False, "vazio não tem ordem para afirmar"
+
+
+def test_ordered_stage_metrics_never_mutates_the_context():
+    from cogno_anima.types import PipelineContext, ordered_stage_metrics
+    ctx = PipelineContext(user_input="x")
+    ctx.retry_metrics = [_sm("b", 2), _sm("a", 1)]
+    before = [m.stage for m in ctx.retry_metrics]
+    ordered_stage_metrics(ctx)
+    assert [m.stage for m in ctx.retry_metrics] == before

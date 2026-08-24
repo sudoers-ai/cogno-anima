@@ -356,16 +356,24 @@ class EgoStage:
             interrupted, interrupt_reason = True, "max_steps"
 
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
+        attempt = int(ctx.metadata.get(mk.EGO_CORRECTION, {}).get("attempt", 1))
         ctx.ego_result = EgoResult(
             steps=steps,
             pending_confirmation=pending_confirmation,
             interrupted=interrupted,
             interrupt_reason=interrupt_reason,
-            attempt=int(ctx.metadata.get(mk.EGO_CORRECTION, {}).get("attempt", 1)),
+            attempt=attempt,
             persona=ctx.metadata.get(mk.EGO_PERSONA),
             metrics=StageMetrics(
                 stage=STAGE_NAME, elapsed_ms=elapsed_ms,
                 tokens_in=total_in, tokens_out=total_out, model=getattr(backend, "model", "unknown"),
+                # The EGO knows which correction attempt it is — the line above proves it — so
+                # it stamps its OWN metrics rather than leaving a 0 for an orchestrator to fill.
+                # Left unset, `ego_result.attempt` said 2 while `ego_result.metrics.attempt`
+                # said 0, and the obvious join between the two never matched: base-1 against a
+                # sentinel. `seq` still belongs to the orchestrator (only it knows the order);
+                # `attempt` does not.
+                attempt=attempt,
             ),
         )
         n_tools = len(ctx.ego_result.tools_executed)

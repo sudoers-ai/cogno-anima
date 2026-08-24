@@ -488,6 +488,23 @@ async def test_correction_injects_actions_block_and_attempt():
     assert "add_income" in sys_msg
     assert "valor errado" in sys_msg
     assert ctx.ego_result.attempt == 2
+    # …and the metrics say the same thing. They did not: `EgoResult.attempt` was computed
+    # here and `StageMetrics.attempt` was left at its 0 default for an orchestrator to fill,
+    # so the obvious join between the two — base-1 against a sentinel — never matched. The
+    # EGO knows which attempt it is; `seq` is the orchestrator's, `attempt` is not.
+    assert ctx.ego_result.metrics.attempt == ctx.ego_result.attempt == 2
+
+
+@pytest.mark.asyncio
+async def test_the_first_attempt_is_1_on_the_metrics_too():
+    """No correction block = attempt 1, not 0 — a turn that never retried still has a place in
+    the ledger, and 0 would read as "unstamped" to a consumer that treats it as a sentinel."""
+    ctx = _ctx()
+    backend = ScriptedToolCallingBackend([{"content": "done"}])
+    ctx = await EgoStage().process(ctx, backend, StubDispatcher.with_tools("add_income"),
+                                   system_prompt=SYS)
+    assert ctx.ego_result.attempt == 1
+    assert ctx.ego_result.metrics.attempt == 1
 
 
 @pytest.mark.asyncio

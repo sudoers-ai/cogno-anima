@@ -13,6 +13,8 @@ except PackageNotFoundError:  # source tree without an installed dist (e.g. vend
 
 from cogno_anima.types import (
     committed_this_turn,
+    is_fully_sequenced,
+    ordered_stage_metrics,
     StageMetrics,
     NoumenoResult,
     IntentResult,
@@ -65,6 +67,8 @@ from cogno_anima.vocab import sanitize_voice_traits
 __all__ = [
     "sanitize_voice_traits",
     "committed_this_turn",
+    "is_fully_sequenced",
+    "ordered_stage_metrics",
     "StageMetrics",
     "NoumenoResult",
     "IntentResult",
