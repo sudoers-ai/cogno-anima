@@ -40,6 +40,16 @@ JUDGE_CONVERSATIONAL = "judge_conversational"  # host: this turn has NO tool to 
 # identified person). The EGO never reads this key: traits change how the reply is SAID, and
 # the executor's tools stay neutral.
 VOICE_TRAITS = "voice_traits"
+# The contact's emotional NEUTRAL — an exponential moving average the host keeps per identity
+# (LLM-free, updated every turn from the NER sentiment): {"valence_ema": -1..1,
+# "arousal_ema": 0..1, "n": turns}. Read by the voice to tell a real escalation from the
+# contact's own normal: a person who complains by temperament has FRUSTRATED as a baseline, and
+# reading each turn in the absolute would treat every message as an emergency — condescending,
+# and it burns the persona. The voice computes the turn's DELTA against it (`vocab.
+# SENTIMENT_VALENCE`) and modulates the persona's traits (`SuperegoStage._modulate_traits`);
+# the absolute reading stays as the safety floor (never humor at a frustrated contact). Below
+# `vocab.CONTACT_STATE_MIN_TURNS` the state is ignored (cold start = the persona as declared).
+CONTACT_STATE = "contact_state"
 # The judge's FINAL verdict + how many EGO attempts it took: {"approved": bool, "attempts": int}.
 # Written by the orchestrator so the outcome is countable. Only rejections were ever logged (at
 # WARNING; approvals at INFO, which the deployment's handlers may drop), so "no approvals in the

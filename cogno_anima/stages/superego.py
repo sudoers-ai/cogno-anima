@@ -230,35 +230,84 @@ class SuperegoStage:
         return kept
 
     @staticmethod
-    def _suppress_traits(traits: list[str], adjustments: list[str],
+    def contact_state(ctx: PipelineContext) -> Optional[dict[str, float]]:
+        """The contact's emotional neutral for this turn (``mk.CONTACT_STATE``), validated."""
+        return vocab.sanitize_contact_state(ctx.metadata.get(mk.CONTACT_STATE))
+
+    @staticmethod
+    def _modulate_traits(traits: list[str], adjustments: list[str],
                          ctx: PipelineContext) -> list[str]:
-        """Enforce the carve-outs IN CODE, not only in the directive's prose.
+        """The persona's declared traits → the traits this TURN renders. Pure table, in code.
 
-        Removes ``humorous`` on a somber turn and ``detailed`` on a rejection re-voice.
+        Two readings of the contact's emotion, on purpose:
 
-        ``humorous`` is the trait a model over-applies, and its own text says "none on bad news,
-        refusals, sensitive data, or when the user is frustrated" — but a small voicer reading
-        "obey" above a section and a parenthetical exception inside it can still joke on a PII
-        turn. The core already knows those turns deterministically: a ``pii:*`` or ``override:*``
-        adjustment, a FRUSTRATED/NEGATIVE contact (``tone:empathetic``), a re-voice after the
-        judge's rejection (``VOICE_CORRECTION``). On any of them the trait is removed before
-        rendering, so the section never asks for humor the turn forbids.
+        * **absolute — the safety floor.** ``humorous`` leaves on a somber turn (a ``pii:*`` or
+          ``override:*`` adjustment, a FRUSTRATED/NEGATIVE contact, a re-voice after the judge's
+          rejection — which also drops ``detailed``: a re-voice must say LESS). URGENT makes the
+          reply direct and concise. These hold whatever the contact's temperament is. They
+          used to be the whole function (``_suppress_traits``).
+        * **relative — the personalization.** With a neutral old enough (``mk.CONTACT_STATE``,
+          the host's EMA per identity), the turn's valence is read as a DELTA against the
+          contact's own normal. A NEGATIVE turn that is also ``CONTACT_ESCALATION_DELTA`` or
+          more below that normal is a real escalation → ``empathetic`` (unless the persona is
+          ``reserved``), no ``detailed``; a merely neutral turn from a warm contact is not. A
+          FRUSTRATED turn from a contact whose neutral is already low is NOT — the persona keeps
+          its base tone instead of switching to emergency empathy at someone who simply talks
+          that way. A turn with no signal of its own takes its tone from the neutral: warm →
+          ``warm``; guarded → no humor.
+
+        Additions REPLACE the opposite side of their axis (URGENT turns a ``detailed`` persona
+        concise, it does not drop both) and go to the front, so the cap keeps them. The result
+        is re-sanitized, so the table can never emit a contradicting pair.
         """
         rejected = bool(ctx.metadata.get(mk.VOICE_CORRECTION))
+        sentiment = (ctx.intent.sentiment if ctx.intent is not None else "") or ""
+        signalled = any(a.startswith(("pii:", "override:", "tone:", "style:"))
+                        for a in adjustments)
         somber = (rejected
                   or any(a.startswith(("pii:", "override:")) or a == "tone:empathetic"
                          for a in adjustments)
-                  or (ctx.intent is not None
-                      and ctx.intent.sentiment in vocab.NEGATIVE_SENTIMENTS))
+                  or sentiment in vocab.NEGATIVE_SENTIMENTS)
         out = list(traits)
+        opposite = {a: b for axis in vocab.VOICE_TRAIT_AXES for a, b in (axis, axis[::-1])}
+
+        def add(t: str) -> None:
+            opp = opposite.get(t)
+            if opp in out:
+                out.remove(opp)
+            if t not in out:
+                out.insert(0, t)
+
+        def drop(t: str) -> None:
+            if t in out:
+                out.remove(t)
+
+        # ── absolute (safety floor) ──
         if somber:
-            out = [t for t in out if t != "humorous"]
+            drop("humorous")
         if rejected:
-            # A re-voice after the judge's rejection must say LESS, not more: "the full picture,
-            # options, next steps" is an invitation to fill a verdict-shaped hole with content
-            # the data does not have.
-            out = [t for t in out if t != "detailed"]
-        return out
+            drop("detailed")
+        if sentiment == "URGENT":
+            add("direct")
+            add("concise")
+            drop("humorous")
+        # ── relative (personalization) ──
+        state = SuperegoStage.contact_state(ctx)
+        if state is not None:
+            valence = vocab.SENTIMENT_VALENCE.get(sentiment, 0.0)
+            delta = valence - state["valence_ema"]
+            # An escalation is a NEGATIVE turn that is also below the contact's own normal —
+            # a neutral turn from a warm contact is a drop in the numbers, not a person upset.
+            if valence < 0 and delta <= -vocab.CONTACT_ESCALATION_DELTA:
+                if "reserved" not in out:
+                    add("empathetic")
+                drop("detailed")
+            elif not signalled and not rejected and sentiment != "URGENT":
+                if state["valence_ema"] >= vocab.CONTACT_WARM_NEUTRAL and "reserved" not in out:
+                    add("warm")
+                elif state["valence_ema"] <= vocab.CONTACT_GUARDED_NEUTRAL:
+                    drop("humorous")
+        return vocab.sanitize_voice_traits(out)[0]
 
     @staticmethod
     def _parole_to_register(parole: Optional[str]) -> Optional[str]:
@@ -585,11 +634,12 @@ class SuperegoStage:
         t0 = time.perf_counter()
         model = getattr(backend, "model", "unknown")
         adjustments = self.detect_adjustments(ctx)
-        # The persona's declared traits: one read, sanitized, carve-outs enforced in code, then
+        # The persona's declared traits: one read, sanitized, modulated by the turn (safety floor
+        # in the absolute, personalization relative to the contact's own neutral), then
         # handed to the prompt as their own parameter (not smuggled through the hints list and
         # parsed back out). They join ``adjustments`` AFTER the prompt is built — the list is the
         # audit trail on SuperegoResult, and the rendered Tone hints line stays the contact's.
-        traits = self._suppress_traits(self.persona_traits(ctx), adjustments, ctx)
+        traits = self._modulate_traits(self.persona_traits(ctx), adjustments, ctx)
         payload = self._tool_payload(ctx)
 
         prompt = self._build_voice_prompt(ctx, payload, adjustments, traits)

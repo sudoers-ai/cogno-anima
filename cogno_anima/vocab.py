@@ -14,7 +14,7 @@ will fail until both agree.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 VALID_INTENTS: set[str] = {
     "INFORMATION_REQUEST", "ACTION_REQUEST", "CLARIFICATION",
@@ -102,6 +102,43 @@ VOICE_TRAIT_CONFLICTS: tuple[frozenset[str], ...] = tuple(frozenset(a) for a in 
 # Cap on rendered traits. Beyond a handful the directives stop being a personality and become a
 # second voice prompt — the tenant has `custom_rules` for that. Extra values are dropped in order.
 MAX_VOICE_TRAITS: int = 4
+
+# The contact's per-turn sentiment as a valence scalar (−1…+1) — the input of the emotional
+# neutral (an EMA the host keeps, see `metakeys.CONTACT_STATE`) and of the turn's delta against
+# it. Closed on the NER's own vocabulary; an unknown label reads as 0 (no evidence either way).
+SENTIMENT_VALENCE: dict[str, float] = {
+    "POSITIVE": 1.0, "PLAYFUL": 0.6, "CURIOUS": 0.2, "NEUTRAL": 0.0,
+    "URGENT": -0.3, "NEGATIVE": -0.7, "FRUSTRATED": -1.0,
+}
+# Below this many observed turns the neutral is noise: the voice ignores it and the contact
+# receives the persona as declared.
+CONTACT_STATE_MIN_TURNS: int = 5
+# A turn this far BELOW the contact's own neutral is a real escalation (empathy, calm pace);
+# the same sentiment inside the contact's normal range is not.
+CONTACT_ESCALATION_DELTA: float = 0.5
+# A neutral this warm / this guarded shapes a turn that carries no signal of its own.
+CONTACT_WARM_NEUTRAL: float = 0.4
+CONTACT_GUARDED_NEUTRAL: float = -0.4
+
+
+def sanitize_contact_state(raw: Any) -> Optional[dict[str, float]]:
+    """Validate a host-stamped emotional-neutral carrier → ``{valence_ema, arousal_ema, n}`` or
+    ``None`` when unusable or too young (``n < CONTACT_STATE_MIN_TURNS``). Pure; never raises.
+    Values are clamped to their ranges — a stale or hand-edited row must not push the voice
+    outside the table."""
+    if not isinstance(raw, dict):
+        return None
+    try:
+        n = int(raw.get("n", 0))
+        v = float(raw.get("valence_ema", 0.0))
+        a = float(raw.get("arousal_ema", 0.5))
+    except (TypeError, ValueError):
+        return None
+    if n < CONTACT_STATE_MIN_TURNS or v != v or a != a:      # too young, or NaN
+        return None
+    return {"valence_ema": max(-1.0, min(1.0, v)), "arousal_ema": max(0.0, min(1.0, a)),
+            "n": float(n)}
+
 
 _LOG_LABEL_WIDTH = 40
 
