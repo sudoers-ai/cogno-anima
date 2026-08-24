@@ -14,6 +14,7 @@ will fail until both agree.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Optional
 
 VALID_INTENTS: set[str] = {
@@ -87,10 +88,10 @@ VOICE_TRAIT_AXES: tuple[tuple[str, str], ...] = (
     ("concise", "detailed"),     # length
     ("reserved", "humorous"),    # "no small talk" vs "one light remark" — the same coin-flip
 )
-# Traits that are not the primary side of an axis (`humorous` still opposes `reserved` above).
-# `direct` and `empathetic` are worded to coexist (the answer comes first; the acknowledgment is
-# woven in, never a preamble) — the directives, not this table, carry that guarantee.
-VOICE_TRAIT_SINGLETONS: tuple[str, ...] = ("direct", "humorous", "empathetic")
+# Traits with NO opposite (disjoint from every axis — a test pins it). `direct` and `empathetic`
+# are worded to coexist (the answer comes first; the acknowledgment is woven in, never a
+# preamble) — the directives, not this table, carry that guarantee.
+VOICE_TRAIT_SINGLETONS: tuple[str, ...] = ("direct", "empathetic")
 
 # Every side a trait contradicts (`reserved` sits on two axes). Derived, so it cannot drift.
 VOICE_TRAIT_OPPOSITES: dict[str, frozenset[str]] = {
@@ -150,6 +151,10 @@ def sanitize_contact_state(raw: Any) -> Optional[dict[str, float]]:
 
 
 _LOG_LABEL_WIDTH = 40
+_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
+# Above these the carrier is not a configuration, it is an attack or a bug: refused whole.
+MAX_TRAIT_CARRIER_CHARS = 4096
+MAX_TRAIT_CARRIER_ITEMS = 64
 
 
 def _label(x: Any) -> str:
@@ -160,7 +165,9 @@ def _label(x: Any) -> str:
         text = x if isinstance(x, str) else repr(x)
     except Exception:  # noqa: BLE001 — the label is diagnostics, the turn is the product
         text = f"<{type(x).__name__}>"
-    return text.replace("\n", " ").replace("\r", " ")[:_LOG_LABEL_WIDTH]
+    # slice FIRST (a 10 MB value must not be scanned whole), then neutralize every control and
+    # line/paragraph separator (\n, \r, \x85, \u2028, \v, \f…) so a value cannot forge a log line
+    return _CONTROL_RE.sub(" ", text[:_LOG_LABEL_WIDTH * 2])[:_LOG_LABEL_WIDTH]
 
 
 def sanitize_voice_traits(raw: Any) -> tuple[list[str], list[str]]:
@@ -183,8 +190,17 @@ def sanitize_voice_traits(raw: Any) -> tuple[list[str], list[str]]:
     """
     if raw is None:
         return [], []
+    if isinstance(raw, (bytes, bytearray)):
+        try:
+            raw = bytes(raw).decode("utf-8")          # a Redis client without decode_responses
+        except UnicodeDecodeError:
+            return [], ["<bytes>"]
     if isinstance(raw, str):
+        if len(raw) > MAX_TRAIT_CARRIER_CHARS:
+            return [], [f"<{len(raw)} chars>"]
         text = raw.strip()
+        if text.startswith("{") and text.endswith("}"):
+            text = text[1:-1]                          # a Postgres text[] literal: {warm,direct}
         if text.startswith("["):
             try:
                 import json
@@ -205,6 +221,8 @@ def sanitize_voice_traits(raw: Any) -> tuple[list[str], list[str]]:
             return [], [_label(raw)]
     else:
         return [], [type(raw).__name__]
+    if len(items) > MAX_TRAIT_CARRIER_ITEMS:
+        return [], [f"<{len(items)} items>"]
     kept: list[str] = []
     dropped: list[str] = []
     for item in items:

@@ -34,6 +34,16 @@ class RaisingBackend:
         raise ConnectionError("backend down")
 
 
+@pytest.fixture(autouse=True)
+def _fresh_trait_warnings():
+    # the warn-once set is process-global; a test that asserts on the log must not depend on
+    # which test ran first (the file is collected twice in this repo)
+    from cogno_anima.stages import superego as _se
+    _se._WARNED_TRAIT_CONFIGS.clear()
+    yield
+    _se._WARNED_TRAIT_CONFIGS.clear()
+
+
 def _m(stage="x"):
     return StageMetrics(stage=stage, elapsed_ms=0.0, tokens_in=0, tokens_out=0, model="t")
 
@@ -208,6 +218,8 @@ def test_voice_trait_axes_derive_vocabulary_and_conflicts():
         assert frozenset({a, b}) in vocab.VOICE_TRAIT_CONFLICTS
     assert set(vocab.VOICE_TRAIT_SINGLETONS) <= vocab.VALID_VOICE_TRAITS
     assert len(vocab.VOICE_TRAIT_CONFLICTS) == len(vocab.VOICE_TRAIT_AXES)
+    # a singleton has NO opposite — disjoint from every axis
+    assert not (set(vocab.VOICE_TRAIT_SINGLETONS) & {t for axis in vocab.VOICE_TRAIT_AXES for t in axis})
 
 
 def test_persona_traits_logs_what_it_drops(caplog):
@@ -216,12 +228,23 @@ def test_persona_traits_logs_what_it_drops(caplog):
     ctx = _ctx()
     ctx.metadata[mk.VOICE_TRAITS] = ["warm", "sassy", "reserved"]
     # once per (persona, config) per process — a fresh persona id makes this run log again
-    ctx.metadata[mk.ACTIVE_PERSONA_ID] = f"P-{uuid.uuid4()}"
+    ctx.metadata[mk.ACTIVE_PERSONA_ID] = f"P-{uuid.uuid4()}\nFORGED"     # newline: no 2nd line
     with caplog.at_level(logging.WARNING, logger="cogno_anima.superego"):
         assert SuperegoStage.persona_traits(ctx) == []
     assert "voice_traits_dropped" in caplog.text and "sassy" in caplog.text
-    assert "persona=" in caplog.text
+    assert "persona=" in caplog.text and "\nFORGED" not in caplog.text
     assert "reserved" in caplog.text and "warm" in caplog.text     # the contradicting pair too
+    # ...and a SECOND persona with the same bad row is logged too (the key has the persona)
+    caplog.clear()
+    ctx.metadata[mk.ACTIVE_PERSONA_ID] = f"Q-{uuid.uuid4()}"
+    with caplog.at_level(logging.WARNING, logger="cogno_anima.superego"):
+        SuperegoStage.persona_traits(ctx)
+    assert "voice_traits_dropped" in caplog.text
+    # ...but the SAME persona is not logged twice
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="cogno_anima.superego"):
+        SuperegoStage.persona_traits(ctx)
+    assert "voice_traits_dropped" not in caplog.text
 
 
 def test_humorous_directive_carries_its_own_carve_out():
@@ -288,11 +311,17 @@ def test_modulate_traits_absolute_floor_removes_humor_where_the_turn_forbids_it(
     assert f(base, ["general:review"], _ctx()) == base          # a plain turn keeps it
     assert f(base, ["pii:risk_high"], _ctx()) == ["warm"]         # sensitive data
     assert f(base, ["override:de_escalate"], _ctx()) == ["warm"]  # de-escalation
-    assert f(base, ["tone:empathetic"], _ctx()) == ["warm"]       # frustrated contact
+    assert f(base, ["tone:empathetic"], _ctx(sentiment="FRUSTRATED")) == ["warm"]   # upset contact
+    # the hint alone, on a NEUTRAL turn, is not evidence (voice() never emits it that way)
+    assert f(base, ["tone:empathetic"], _ctx()) == base
     assert f(base, ["general:review"], _ctx(sentiment="NEGATIVE")) == ["warm"]
     rejected = _ctx()
     rejected.metadata[mk.VOICE_CORRECTION] = {"reason": "wrong", "kind": "unverified_claim"}
     assert f(base, ["general:review"], rejected) == ["warm"]      # re-voice after rejection
+    # a carrier WITHOUT a reason renders no verdict — and is no rejection here either
+    no_reason = _ctx()
+    no_reason.metadata[mk.VOICE_CORRECTION] = {"kind": "unverified_claim"}
+    assert f(base, ["general:review"], no_reason) == base
     assert f(["warm"], ["pii:risk_high"], _ctx()) == ["warm"]     # nothing to suppress
     # a re-voice must say LESS: `detailed` goes too (and only there — a PII turn keeps it)
     assert f(["detailed", "direct"], ["general:review"], rejected) == ["direct"]
@@ -405,6 +434,15 @@ def test_sanitizers_never_raise_on_hostile_numbers_or_nesting():
     assert vocab.sanitize_contact_state({"n": float("inf"), "valence_ema": 0.2}) is None
     assert vocab.sanitize_contact_state({"n": 10, "valence_ema": float("inf")}) is None
     assert sanitize_voice_traits("[" * 100000)[0] == []
+    # size caps: a 10 MB carrier is refused whole, not scanned (bounded work on the hot path)
+    assert sanitize_voice_traits("warm," * 2_000_000) == ([], ["<10000000 chars>"])
+    assert sanitize_voice_traits(["warm"] * 65) == ([], ["<65 items>"])
+    # other shapes a host might hand over
+    assert sanitize_voice_traits(b"warm,direct") == (["warm", "direct"], [])
+    assert sanitize_voice_traits("{warm,direct}") == (["warm", "direct"], [])   # Postgres text[]
+    assert sanitize_voice_traits((t for t in ["warm"])) == ([], ["generator"])
+    # a label never carries a line/paragraph separator a value could forge a log line with
+    assert vocab._label("bad\x85line\u2028x\vy") == "bad line x y"
 
 
 @pytest.mark.asyncio
@@ -434,7 +472,7 @@ def test_voice_prompt_renders_persona_traits_as_their_own_section():
     assert _TRAIT_DIRECTIVES["warm"] in prompt and _TRAIT_DIRECTIVES["direct"] in prompt
     assert _TRAIT_DIRECTIVES["formal"] not in prompt
     assert "never WHAT" in prompt                       # delivery-only framing
-    assert "They outrank the per-turn tone hints." in prompt
+    assert "They outrank the per-turn tone hints, except" in prompt
     assert "User register: casual" in prompt
     assert prompt.index("# Persona traits") < prompt.index("# Signals")
     # a HARD RULE is the last instruction before the task: the section sits ABOVE the verdict
@@ -453,6 +491,11 @@ def test_voice_prompt_renders_persona_traits_as_their_own_section():
     # the persona's axis wins by construction, not by two prose rules the model has to rank
     formal = se._build_voice_prompt(ctx, "data", adjustments, ["formal"])
     assert "User register:" not in formal and _TRAIT_DIRECTIVES["formal"] in formal
+    assert "register:casual" not in formal          # the token leaves the rendered hints too
+    # a bare string is one trait, not four characters
+    assert _TRAIT_DIRECTIVES["warm"] in se._build_voice_prompt(ctx, "data", adjustments, "warm")
+    # the precedence sentence names the real tokens that win
+    assert "except `tone:empathetic`, `override:*` and `pii:*`" in formal
     casual = se._build_voice_prompt(ctx, "data", adjustments, ["casual"])
     assert "User register:" not in casual
     # ...but a register on ANOTHER axis (technical) still reaches a formal persona

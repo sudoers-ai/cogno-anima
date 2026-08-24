@@ -228,8 +228,19 @@ class SuperegoStage:
                 # bounded line (a report of distinct values, capped) + the persona it belongs to
                 shown = dropped[:8] + ([f"(+{len(dropped) - 8})"] if len(dropped) > 8 else [])
                 logger.warning("stage=superego event=voice_traits_dropped persona=%s dropped=%s "
-                               "kept=%s", ctx.metadata.get(mk.ACTIVE_PERSONA_ID, "?"), shown, kept)
+                               "kept=%s", vocab._label(ctx.metadata.get(mk.ACTIVE_PERSONA_ID, "?")),
+                               shown, kept)
         return kept
+
+    @staticmethod
+    def _rejection(ctx: PipelineContext) -> Optional[dict]:
+        """The judge's FINAL rejection for this re-voice, or ``None`` — ONE predicate for the
+        prompt's verdict section and for the trait modulation, so a carrier without a ``reason``
+        (nothing to render) cannot count as a rejection for one and not the other."""
+        rejection = ctx.metadata.get(mk.VOICE_CORRECTION)
+        if isinstance(rejection, dict) and (rejection.get("reason") or "").strip():
+            return rejection
+        return None
 
     @staticmethod
     def contact_state(ctx: PipelineContext) -> Optional[dict[str, float]]:
@@ -269,13 +280,14 @@ class SuperegoStage:
             # byte. Modulation refines DECLARED traits; it never invents a personality — the
             # section says "configured for this persona", and it must stay true.
             return []
-        rejected = bool(ctx.metadata.get(mk.VOICE_CORRECTION))
+        rejected = SuperegoStage._rejection(ctx) is not None
         sentiment = (ctx.intent.sentiment if ctx.intent is not None else "") or ""
         signalled = any(a.startswith(("pii:", "override:", "tone:", "style:"))
                         for a in adjustments)
+        # (a FRUSTRATED contact is covered by NEGATIVE_SENTIMENTS; `tone:empathetic` is its
+        # per-turn hint, so there is no separate clause for it)
         somber = (rejected
-                  or any(a.startswith(("pii:", "override:")) or a == "tone:empathetic"
-                         for a in adjustments)
+                  or any(a.startswith(("pii:", "override:")) for a in adjustments)
                   or sentiment in vocab.NEGATIVE_SENTIMENTS)
         out = list(traits)
 
@@ -319,6 +331,11 @@ class SuperegoStage:
         # No re-cap here: the declared list was capped at save time, and a modulation that
         # evicted a DECLARED trait (formal, say) would silently flip the persona's identity on
         # that turn. Conflicts cannot arise — `add` removes the opposite side first.
+        if out != list(traits):
+            # Visible in the log, so a suppressed trait is never mistaken for "the host did not
+            # stamp it" — at INFO: this is the table working, not a misconfiguration.
+            logger.info("stage=superego event=traits_modulated declared=%s effective=%s "
+                        "sentiment=%s", list(traits), out, sentiment)
         return out
 
     @staticmethod
@@ -697,6 +714,8 @@ class SuperegoStage:
         if ctx.intent:
             signals.append(f"Sentiment: {ctx.intent.sentiment}")
         language = ctx.noumeno.language if ctx.noumeno else ""
+        if isinstance(traits, str):                 # a bare "warm" must not iterate as w,a,r,m
+            traits = [traits]
         traits_section = self._traits_section(traits)
         # Register accommodation (sibling of Reply language): match the user's formality where
         # it does not conflict with the persona — the persona's voice/limits always win. When
@@ -706,13 +725,18 @@ class SuperegoStage:
         # model has to rank. A register on another axis (`technical`, `light`, `expressive`)
         # still reaches the voice. The token stays on ``adjustments`` (audit).
         register = next((a for a in adjustments if a.startswith("register:")), None)
-        if register and not ({"formal", "casual"} & set(traits)
-                             and register in ("register:formal", "register:casual")):
+        suppressed = bool(register and {"formal", "casual"} & set(traits)
+                          and register in ("register:formal", "register:casual"))
+        if register and not suppressed:
             signals.append(
                 f"User register: {register.split(':', 1)[1]} — match it where it does "
                 "not conflict with the persona voice/limits (persona takes precedence)"
             )
-        signals.append(f"Tone hints: {', '.join(adjustments)}")
+        # A suppressed register leaves the RENDERED hints too — otherwise the two axes would
+        # sit side by side again on one line, now without the precedence sentence. The token
+        # stays on ``adjustments`` (the audit trail).
+        rendered = [a for a in adjustments if not (suppressed and a == register)]
+        signals.append(f"Tone hints: {', '.join(rendered)}")
         # Host-injected context (retrieved memories / history / clock) — the same
         # block the EGO sees; included so memories can ground the final reply.
         injected = ctx.metadata.get(mk.EGO_CONTEXT)
@@ -726,9 +750,9 @@ class SuperegoStage:
         # the voice only sees the successful reads + the optimistic draft and narrates the
         # goal as done ("All set! confirmed") — HARD RULE: claiming an executed action is
         # forbidden; report what was found or ask ONE clarifying question.
-        rejection = ctx.metadata.get(mk.VOICE_CORRECTION)
+        rejection = self._rejection(ctx)
         rejection_section = ""
-        if isinstance(rejection, dict) and (rejection.get("reason") or "").strip():
+        if rejection is not None:
             reason = str(rejection["reason"]).strip()
             # Two kinds of final rejection, and the wording above only ever covered the first.
             # When NOTHING executed (a conversational persona), the verdict is about what the
@@ -815,6 +839,8 @@ class SuperegoStage:
         # No membership guard: input comes from the sanitizer (closed vocab) and a test pins
         # the directive table to it — a vocab value without a directive is a programming error
         # that must fail loudly, not a trait that vanishes at render.
+        if isinstance(traits, str):
+            traits = [traits]
         lines = [_TRAIT_DIRECTIVES[t] for t in traits]
         if not lines:
             return ""
@@ -822,7 +848,9 @@ class SuperegoStage:
             "# Persona traits (configured for this persona — obey)\n"
             "These refine the persona's voice above (they are part of its configuration) and "
             "shape HOW you say it, never WHAT: figures, dates, limits, refusals and any review "
-            "verdict below stay exactly as stated. They outrank the per-turn tone hints.\n"
+            "verdict below stay exactly as stated. They outrank the per-turn tone hints, except "
+            "`tone:empathetic`, `override:*` and `pii:*` — a frustrated contact, a de-escalation, "
+            "sensitive data — which always win.\n"
             + "\n".join(f"- {line}" for line in lines) + "\n\n"
         )
 
