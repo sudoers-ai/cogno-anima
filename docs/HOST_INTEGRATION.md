@@ -205,7 +205,15 @@ Every stage records a `StageMetrics` (LLM `tokens_in/out` + `embedding_tokens`).
 - `ctx.total_tokens`, `ctx.total_llm_tokens`, `ctx.total_embedding_tokens`,
   `ctx.total_elapsed_ms`.
 
-Bill `total_tokens + sum(retry_metrics)` per turn.
+Bill `total_tokens` per turn — **it already includes the retries**, so adding
+`retry_metrics` on top charges every retried turn twice.
+
+The trap is that both halves of the sentence above are true and read as if they compose:
+`retry_metrics` really is where the failed attempts live, and billing really must not miss
+them. But `stage_metrics` is *defined* as the canonical slots **plus** `retry_metrics`
+(`types.py`), and `total_tokens` sums `stage_metrics` — so the retries are already in the
+total before you add anything. A turn the judge rejected once is the common case, not a
+corner one, so the overcharge is systematic rather than rare.
 
 ---
 
