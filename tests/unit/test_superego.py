@@ -279,8 +279,8 @@ def test_detect_adjustments_stays_pure_per_turn():
     assert adj == ["general:review"]
 
 
-def test_suppress_traits_removes_humor_where_the_turn_forbids_it():
-    f = SuperegoStage._suppress_traits
+def test_modulate_traits_absolute_floor_removes_humor_where_the_turn_forbids_it():
+    f = SuperegoStage._modulate_traits
     base = ["humorous", "warm"]
     assert f(base, ["general:review"], _ctx()) == base          # a plain turn keeps it
     assert f(base, ["pii:risk_high"], _ctx()) == ["warm"]         # sensitive data
@@ -294,6 +294,83 @@ def test_suppress_traits_removes_humor_where_the_turn_forbids_it():
     # a re-voice must say LESS: `detailed` goes too (and only there — a PII turn keeps it)
     assert f(["detailed", "direct"], ["general:review"], rejected) == ["direct"]
     assert f(["detailed"], ["pii:risk_high"], _ctx()) == ["detailed"]
+
+
+def _state(valence, arousal=0.5, n=20):
+    return {"valence_ema": valence, "arousal_ema": arousal, "n": n}
+
+
+def test_sanitize_contact_state_validates_and_clamps():
+    from cogno_anima import vocab
+    f = vocab.sanitize_contact_state
+    assert f(None) is None and f("x") is None and f({"valence_ema": "no"}) is None
+    assert f(_state(0.3, n=4)) is None                       # too young: cold start
+    assert f(_state(0.3, n=5)) == {"valence_ema": 0.3, "arousal_ema": 0.5, "n": 5.0}
+    assert f(_state(7.0, arousal=-2, n=9)) == {"valence_ema": 1.0, "arousal_ema": 0.0, "n": 9.0}
+    assert f({"valence_ema": float("nan"), "n": 10}) is None
+
+
+def test_modulate_traits_reads_the_turn_relative_to_the_contacts_neutral():
+    f = SuperegoStage._modulate_traits
+    base = ["warm", "detailed", "humorous"]
+    # a warm contact (neutral +0.6) turns FRUSTRATED: delta −1.6 → real escalation
+    ctx = _ctx(sentiment="FRUSTRATED")
+    ctx.metadata[mk.CONTACT_STATE] = _state(0.6)
+    out = f(base, ["tone:empathetic"], ctx)
+    assert out[0] == "empathetic" and "detailed" not in out and "humorous" not in out
+    assert "warm" in out
+    # the chronic complainer (neutral −0.6) turns FRUSTRATED: delta −0.4 → inside their normal.
+    # The persona keeps its base; only the absolute floor applies (no humor)
+    ctx = _ctx(sentiment="FRUSTRATED")
+    ctx.metadata[mk.CONTACT_STATE] = _state(-0.6)
+    assert f(base, ["tone:empathetic"], ctx) == ["warm", "detailed"]
+    # cold start (n < 5): the relative reading is off, the floor still holds
+    ctx = _ctx(sentiment="FRUSTRATED")
+    ctx.metadata[mk.CONTACT_STATE] = _state(0.6, n=3)
+    assert f(base, ["tone:empathetic"], ctx) == ["warm", "detailed"]
+    # a reserved persona never gets empathy or warmth added — reserved is its identity
+    ctx = _ctx(sentiment="FRUSTRATED")
+    ctx.metadata[mk.CONTACT_STATE] = _state(0.6)
+    assert f(["reserved", "direct"], ["tone:empathetic"], ctx) == ["reserved", "direct"]
+
+
+def test_modulate_traits_default_for_a_signal_less_turn_comes_from_the_neutral():
+    f = SuperegoStage._modulate_traits
+    quiet = ["general:review"]
+    # warm neutral → warm added in front (and it survives the cap)
+    ctx = _ctx(sentiment="NEUTRAL")
+    ctx.metadata[mk.CONTACT_STATE] = _state(0.5)
+    assert f(["direct", "concise"], quiet, ctx) == ["warm", "direct", "concise"]
+    assert f(["reserved"], quiet, ctx) == ["reserved"]              # reserved stays reserved
+    # guarded neutral → no humor on a quiet turn, nothing else changes
+    ctx = _ctx(sentiment="NEUTRAL")
+    ctx.metadata[mk.CONTACT_STATE] = _state(-0.5)
+    assert f(["warm", "humorous"], quiet, ctx) == ["warm"]
+    # a neutral in the middle changes nothing
+    ctx = _ctx(sentiment="NEUTRAL")
+    ctx.metadata[mk.CONTACT_STATE] = _state(0.0)
+    assert f(["warm", "humorous"], quiet, ctx) == ["warm", "humorous"]
+    # a NEUTRAL turn from a warm contact is a drop in the numbers, not an escalation
+    ctx = _ctx(sentiment="NEUTRAL")
+    ctx.metadata[mk.CONTACT_STATE] = _state(0.9)
+    assert "empathetic" not in f(["direct"], quiet, ctx)
+    # a turn WITH a per-turn signal does not take the neutral's default
+    ctx = _ctx(sentiment="PLAYFUL")
+    ctx.metadata[mk.CONTACT_STATE] = _state(0.5)
+    assert f(["direct"], ["tone:playful"], ctx) == ["direct"]
+
+
+def test_modulate_traits_urgent_replaces_the_opposite_side_of_the_axis():
+    f = SuperegoStage._modulate_traits
+    ctx = _ctx(sentiment="URGENT")
+    # a detailed, humorous persona becomes direct + concise — it does NOT lose both length sides
+    out = f(["warm", "detailed", "humorous"], ["tone:direct"], ctx)
+    assert out == ["concise", "direct", "warm"]
+    # additions go to the front so the cap keeps them, and the result is always sanitized
+    out = f(["warm", "detailed", "humorous", "empathetic"], ["tone:direct"], ctx)
+    assert len(out) <= 4 and "concise" in out and "direct" in out and "detailed" not in out
+    from cogno_anima import sanitize_voice_traits
+    assert sanitize_voice_traits(out)[1] == []
 
 
 @pytest.mark.asyncio
