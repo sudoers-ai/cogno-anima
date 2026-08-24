@@ -39,6 +39,7 @@ from cogno_anima.types import (
     PipelineContext, StageMetrics, SuperegoResult, ScopeCheckResult,
 )
 from cogno_synapse import LLMBackend
+from cogno_anima.utils import WarnOnce
 from cogno_anima.security.prompt_guard import sanitize_untrusted
 from cogno_anima.stages.drift import DriftCalculator
 from cogno_anima.security.detector import PiiDetector, default_detector
@@ -56,8 +57,10 @@ _CRITICAL_TERM_RE = re.compile(r"\d|@|https?://", re.IGNORECASE)
 # voice, and a courtesy addition (warmth, empathy) would be exactly that.
 _EVEN_TRAIT = "reserved"
 
-# Trait configurations already warned about (see SuperegoStage.persona_traits). Bounded.
-_WARNED_TRAIT_CONFIGS: set[tuple[str, tuple[str, ...], tuple[str, ...]]] = set()
+# One gate PER FEATURE (never one shared set: a flood of keys from one evicts the other's
+# single entry), each keyed on the SHAPE of the problem, never on the offending value.
+_WARNED_TRAITS = WarnOnce()
+_WARNED_CONTACT_STATE = WarnOnce()
 
 # One rendered instruction per `vocab.VALID_VOICE_TRAITS` value (a test pins the alignment).
 # Written as directives about DELIVERY only — none of them may loosen grounding or limits,
@@ -225,10 +228,7 @@ class SuperegoStage:
             # written around it.
             key = (vocab._label(ctx.metadata.get(mk.ACTIVE_PERSONA_ID, "?")),
                    tuple(kept), tuple(dropped))
-            if key not in _WARNED_TRAIT_CONFIGS:
-                if len(_WARNED_TRAIT_CONFIGS) >= 256:
-                    _WARNED_TRAIT_CONFIGS.clear()
-                _WARNED_TRAIT_CONFIGS.add(key)
+            if _WARNED_TRAITS.first(key):
                 # bounded line (a report of distinct values, capped) + the persona it belongs to
                 shown = dropped[:8] + ([f"(+{len(dropped) - 8})"] if len(dropped) > 8 else [])
                 logger.warning("stage=superego event=voice_traits_dropped persona=%s dropped=%s "
@@ -270,17 +270,20 @@ class SuperegoStage:
         """
         raw = ctx.metadata.get(mk.CONTACT_STATE)
         state = vocab.sanitize_contact_state(raw)
-        if state is None and raw is not None and not (isinstance(raw, dict)
-                                                      and "valence_ema" in raw):
-            key = (vocab._label(ctx.metadata.get(mk.ACTIVE_PERSONA_ID, "?")),
-                   (type(raw).__name__,), (vocab._label(raw),))
-            if key not in _WARNED_TRAIT_CONFIGS:
-                if len(_WARNED_TRAIT_CONFIGS) >= 256:
-                    _WARNED_TRAIT_CONFIGS.clear()
-                _WARNED_TRAIT_CONFIGS.add(key)
-                logger.warning("stage=superego event=contact_state_unusable persona=%s type=%s "
-                               "value=%s — the contact's baseline is off for this turn",
-                               key[0], type(raw).__name__, vocab._label(raw))
+        if state is None and raw is not None:
+            # DECODED first: a well-formed JSON string that is merely too young is not
+            # malformed, and deciding on the undecoded value warned on every turn of every new
+            # contact — the exact noise this gate exists to prevent.
+            parsed = vocab.parse_contact_state_carrier(raw)
+            if parsed is None or "valence_ema" not in parsed:
+                persona = vocab._label(ctx.metadata.get(mk.ACTIVE_PERSONA_ID, "?"))
+                # SHAPE, never the value: a key carrying the state itself differs per contact
+                # and per turn, and a bounded gate keyed on that is not a gate.
+                shape = "not-a-mapping" if parsed is None else "no-valence"
+                if _WARNED_CONTACT_STATE.first((persona, shape, type(raw).__name__)):
+                    logger.warning("stage=superego event=contact_state_unusable persona=%s "
+                                   "shape=%s type=%s — the contact's baseline is off",
+                                   persona, shape, type(raw).__name__)
         return state
 
     @staticmethod
@@ -288,6 +291,18 @@ class SuperegoStage:
         """A bare ``"warm"`` is ONE trait, not four characters — normalized at every entry
         point that takes the list from a caller (``Sequence[str]`` type-accepts a ``str``)."""
         return [traits] if isinstance(traits, str) else list(traits)
+
+    @staticmethod
+    def _safety_floor(adjustments: "Sequence[str]") -> bool:
+        """True when this turn carries a signal that outranks every personalization: sensitive
+        data (``pii:*``) or the ID's de-escalation (``override:*``).
+
+        The two collide with the relative reading BY CONSTRUCTION — the contact whose normal is
+        upset is exactly the one whose frustration streak fires the override — so the yielding
+        has to be in code, not in a docstring claiming it. One predicate, three consumers
+        (``somber``, the hint modulation, the baseline sentence).
+        """
+        return any(a.startswith(("pii:", "override:")) for a in adjustments)
 
     @staticmethod
     def _within_own_normal(ctx: PipelineContext) -> bool:
@@ -305,7 +320,8 @@ class SuperegoStage:
         return delta > -vocab.CONTACT_ESCALATION_DELTA
 
     @staticmethod
-    def _baseline_signal(ctx: PipelineContext, traits: "Sequence[str]" = ()) -> str:
+    def _baseline_signal(ctx: PipelineContext, traits: "Sequence[str]" = (),
+                         adjustments: "Sequence[str]" = ()) -> str:
         """One sentence putting THIS message next to how this contact normally writes, or "".
 
         The relative reading has to be SAID. Measured twice on 2026-08-24 (gpt-4o-mini, the real
@@ -342,6 +358,11 @@ class SuperegoStage:
             return ""
         if ctx.intent.sentiment not in vocab.NEGATIVE_SENTIMENTS:
             return ""
+        if SuperegoStage._safety_floor(adjustments):
+            # Sensitive data or a de-escalation: the floor governs the turn, and "no treating it
+            # as an escalation" beside `pii:risk_high` would be exactly the contradiction this
+            # feature keeps being asked not to write.
+            return ""
         even = _EVEN_TRAIT in SuperegoStage._as_trait_list(traits)
         if SuperegoStage._within_own_normal(ctx):
             warmth = "" if even else "warmly and "     # the persona was configured to be even
@@ -375,7 +396,9 @@ class SuperegoStage:
         the contact's own range. ``pii:*`` and ``override:*`` are the safety floor and are
         never touched; the humour floor lives in :meth:`_modulate_traits` and is unaffected.
         """
-        if "tone:empathetic" not in adjustments or not SuperegoStage._within_own_normal(ctx):
+        if ("tone:empathetic" not in adjustments
+                or SuperegoStage._safety_floor(adjustments)      # PII / de-escalation win
+                or not SuperegoStage._within_own_normal(ctx)):
             return adjustments
         state = SuperegoStage.contact_state(ctx)
         logger.info("stage=superego event=hint_within_own_normal dropped=tone:empathetic "
@@ -425,9 +448,13 @@ class SuperegoStage:
         """
         traits = SuperegoStage._as_trait_list(traits)
         if not traits:
-            # The tenant declared nothing: the persona is voiced as before this feature, byte for
-            # byte. Modulation refines DECLARED traits; it never invents a personality — the
-            # section says "configured for this persona", and it must stay true.
+            # The tenant declared nothing: the persona is voiced as before this feature, byte
+            # for byte — including on an URGENT turn, which therefore adds nothing here. That is
+            # the deliberate trade: modulation REFINES a declared personality and never invents
+            # one, so a tenant who configured no traits gets no behaviour they did not ask for.
+            # (The header no longer claims the traits were "configured for this persona", so the
+            # honest wording would now ALLOW inventing them — the restraint is the point, not
+            # the wording that once justified it.)
             return []
         judged_bad = SuperegoStage._judge_rejection(ctx) is not None
         sentiment = (ctx.intent.sentiment if ctx.intent is not None else "") or ""
@@ -436,10 +463,13 @@ class SuperegoStage:
         # No place for a joke: sensitive data, a de-escalation, an upset contact (a FRUSTRATED
         # one is covered by NEGATIVE_SENTIMENTS — `tone:empathetic` is merely its per-turn
         # hint), a hurried one, or a re-voice the judge sent back.
-        somber = (judged_bad
+        # The FLOOR is deliberately permissive — ANY correction carrier means something went
+        # wrong this turn, malformed or not, and that is never a moment for a joke. Only the
+        # `detailed` trim below needs the precise verdict.
+        somber = (ctx.metadata.get(mk.VOICE_CORRECTION) is not None
                   or sentiment in vocab.NEGATIVE_SENTIMENTS
                   or sentiment == "URGENT"
-                  or any(a.startswith(("pii:", "override:")) for a in adjustments))
+                  or SuperegoStage._safety_floor(adjustments))
         declared = set(traits)
         out = list(traits)
 
@@ -878,7 +908,7 @@ class SuperegoStage:
         signals = []
         if ctx.intent:
             signals.append(f"Sentiment: {ctx.intent.sentiment}")
-        baseline = self._baseline_signal(ctx, traits)
+        baseline = self._baseline_signal(ctx, traits, adjustments)
         if baseline:
             signals.append(baseline)
         language = ctx.noumeno.language if ctx.noumeno else ""

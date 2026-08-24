@@ -35,13 +35,15 @@ class RaisingBackend:
 
 
 @pytest.fixture(autouse=True)
-def _fresh_trait_warnings():
-    # the warn-once set is process-global; a test that asserts on the log must not depend on
+def _fresh_warn_gates():
+    # the warn-once gates are process-global; a test that asserts on the log must not depend on
     # which test ran first (the file is collected twice in this repo)
     from cogno_anima.stages import superego as _se
-    _se._WARNED_TRAIT_CONFIGS.clear()
+    for gate in (_se._WARNED_TRAITS, _se._WARNED_CONTACT_STATE):
+        gate.reset()
     yield
-    _se._WARNED_TRAIT_CONFIGS.clear()
+    for gate in (_se._WARNED_TRAITS, _se._WARNED_CONTACT_STATE):
+        gate.reset()
 
 
 def _m(stage="x"):
@@ -318,10 +320,12 @@ def test_modulate_traits_absolute_floor_removes_humor_where_the_turn_forbids_it(
     rejected = _ctx()
     rejected.metadata[mk.VOICE_CORRECTION] = {"reason": "wrong", "kind": "unverified_claim"}
     assert f(base, ["general:review"], rejected) == ["warm"]      # re-voice after rejection
-    # a carrier WITHOUT a reason renders no verdict — and is no rejection here either
+    # a carrier WITHOUT a reason renders no verdict — but the FLOOR is permissive on purpose:
+    # any correction carrier means something went wrong this turn, and that is never a moment
+    # for a joke (only the `detailed` trim needs the precise verdict — see the test below)
     no_reason = _ctx()
     no_reason.metadata[mk.VOICE_CORRECTION] = {"kind": "unverified_claim"}
-    assert f(base, ["general:review"], no_reason) == base
+    assert f(base, ["general:review"], no_reason) == ["warm"]
     assert f(["warm"], ["pii:risk_high"], _ctx()) == ["warm"]     # nothing to suppress
     # a re-voice must say LESS: `detailed` goes too (and only there — a PII turn keeps it)
     assert f(["detailed", "direct"], ["general:review"], rejected) == ["direct"]
@@ -463,6 +467,86 @@ def test_modulate_hints_drops_emergency_empathy_inside_the_contacts_normal():
         "pii:risk_high", "override:sustained_frustration"]
 
 
+def test_warn_gates_are_per_feature_and_keyed_on_shape_not_value():
+    """The cardinality property no PR review catches by reading: N distinct contacts in cold
+    start must not evict the traits entry.
+
+    Both gates were once ONE shared set keyed on the offending VALUE — so a flood of
+    contact-state keys (one per contact, per turn) cleared it wholesale and silently ended the
+    traits gate's "once per process" guarantee, a fix for one feature reaching into another.
+    """
+    import uuid
+    from cogno_anima.stages import superego as _se
+
+    persona = f"P-{uuid.uuid4()}"
+    traits_ctx = _ctx()
+    traits_ctx.metadata[mk.VOICE_TRAITS] = ["warm", "sassy"]
+    traits_ctx.metadata[mk.ACTIVE_PERSONA_ID] = persona
+    SuperegoStage.persona_traits(traits_ctx)                  # the one entry that must survive
+    assert len(_se._WARNED_TRAITS) == 1
+
+    # 300 distinct contacts, each with its own malformed state: one SHAPE, so one entry
+    for i in range(300):
+        ctx = _ctx()
+        ctx.metadata[mk.ACTIVE_PERSONA_ID] = persona
+        ctx.metadata[mk.CONTACT_STATE] = f"garbage for contact {i}"
+        SuperegoStage.contact_state(ctx)
+    assert len(_se._WARNED_CONTACT_STATE) == 1                # keyed on shape, not on the value
+    assert len(_se._WARNED_TRAITS) == 1                       # ...and untouched by the flood
+
+    # and the traits gate still refuses to repeat itself
+    import logging as _logging
+    records = []
+    handler = _logging.Handler()
+    handler.emit = records.append                             # type: ignore[method-assign]
+    logger = _logging.getLogger("cogno_anima.superego")
+    logger.addHandler(handler)
+    try:
+        SuperegoStage.persona_traits(traits_ctx)
+    finally:
+        logger.removeHandler(handler)
+    assert not [r for r in records if "voice_traits_dropped" in str(r.getMessage())]
+
+
+def test_the_safety_floor_outranks_the_contacts_baseline():
+    """The chronic complainer is exactly who fires the ID's frustration streak, so the relative
+    reading and the safety signals collide by construction. The yielding is in code."""
+    se = SuperegoStage()
+    ctx = _ctx(sentiment="FRUSTRATED", pii_risk="HIGH")
+    ctx.metadata[mk.CONTACT_STATE] = _state(-0.6)             # within their own normal
+    adjustments = se.detect_adjustments(ctx)
+    assert any(a.startswith("pii:") for a in adjustments)
+    # the hint is NOT suppressed on a floor turn...
+    assert "tone:empathetic" in se._modulate_hints(adjustments + ["tone:empathetic"], ctx)
+    # ...and the baseline sentence is not written at all: "no treating it as an escalation"
+    # beside `pii:risk_high` is the contradiction this feature keeps being asked not to write
+    assert se._baseline_signal(ctx, [], adjustments) == ""
+    prompt = se._build_voice_prompt(ctx, "data", adjustments, ["warm"])
+    assert "Contact's baseline:" not in prompt
+    # same for the ID's de-escalation
+    ctx2 = _ctx(sentiment="FRUSTRATED", emotional="sustained_frustration")
+    ctx2.metadata[mk.CONTACT_STATE] = _state(-0.6)
+    adj2 = se.detect_adjustments(ctx2)
+    assert any(a.startswith("override:") for a in adj2)
+    assert se._baseline_signal(ctx2, [], adj2) == ""
+    # without a floor signal the sentence is written, as measured
+    ctx3 = _ctx(sentiment="FRUSTRATED")
+    ctx3.metadata[mk.CONTACT_STATE] = _state(-0.6)
+    assert "usually writes to us" in se._baseline_signal(ctx3, [], ["tone:empathetic"])
+
+
+def test_the_humour_floor_holds_for_a_malformed_correction_carrier():
+    # narrowing the TRIM to the judge's verdict must not narrow the FLOOR: any correction
+    # carrier means something went wrong this turn, and that is never a moment for a joke
+    f = SuperegoStage._modulate_traits
+    for carrier in ({"kind": "unverified_claim"}, {"reason": ""}, {"reason": None}, "boom"):
+        ctx = _ctx()
+        ctx.metadata[mk.VOICE_CORRECTION] = carrier
+        out = f(["warm", "humorous", "detailed"], ["general:review"], ctx)
+        assert "humorous" not in out, carrier
+        assert "detailed" in out, carrier          # ...but the precise trim needs the verdict
+
+
 def test_baseline_signal_says_the_comparison_out_loud():
     """The decision "this is their normal" must be SAID: an absence of a hint cannot outweigh
     the anger the contact wrote in their own words (measured twice, live, 2026-08-24)."""
@@ -517,12 +601,17 @@ def test_contact_state_accepts_a_json_string_and_warns_when_unusable(caplog):
         SuperegoStage.contact_state(ctx)
     assert "contact_state_unusable" not in caplog.text          # once, not every turn
     # a state that is merely TOO YOUNG is not malformed — every new contact is that for a few
-    # turns, and warning about it would drown the line that matters
-    caplog.clear()
-    ctx.metadata[mk.CONTACT_STATE] = _state(0.4, n=2)
-    with caplog.at_level(logging.WARNING, logger="cogno_anima.superego"):
-        assert SuperegoStage.contact_state(ctx) is None
-    assert caplog.text == ""
+    # turns, and warning about it would drown the line that matters. The decision runs on the
+    # DECODED value: a well-formed JSON string that is young is young, not malformed.
+    for young in (_state(0.4, n=2), '{"valence_ema": -0.2, "n": 2}'):
+        caplog.clear()
+        # a FRESH persona each time: otherwise the warn-once gate itself would swallow the
+        # warning this assertion exists to catch, and the test would pass with the bug
+        ctx.metadata[mk.ACTIVE_PERSONA_ID] = f"P-{uuid.uuid4()}"
+        ctx.metadata[mk.CONTACT_STATE] = young
+        with caplog.at_level(logging.WARNING, logger="cogno_anima.superego"):
+            assert SuperegoStage.contact_state(ctx) is None
+        assert caplog.text == "", young
 
 
 @pytest.mark.asyncio
@@ -578,8 +667,9 @@ def test_repeated_reply_is_not_a_judge_rejection():
     f = SuperegoStage._modulate_traits
     ctx = _ctx()
     ctx.metadata[mk.VOICE_CORRECTION] = {"kind": "repeated_reply", "reason": "já enviada"}
-    assert f(["warm", "detailed", "humorous"], ["general:review"], ctx) == \
-        ["warm", "detailed", "humorous"]
+    # the content was fine, so the reply is NOT trimmed — `detailed` survives...
+    assert f(["warm", "detailed", "humorous"], ["general:review"], ctx) == ["warm", "detailed"]
+    # ...but the humour floor still holds: the guard fired, something went wrong this turn
     assert SuperegoStage._judge_rejection(ctx) is None
     assert SuperegoStage._rejection(ctx) is not None          # it IS a rejection to RENDER
     # a judge verdict still trims
