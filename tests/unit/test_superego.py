@@ -332,15 +332,21 @@ def _state(valence, arousal=0.5, n=20):
     return {"valence_ema": valence, "arousal_ema": arousal, "n": n}
 
 
-def test_sanitize_contact_state_validates_and_clamps():
+def test_sanitize_contact_state_validates_and_never_fabricates():
     from cogno_anima import vocab
     f = vocab.sanitize_contact_state
     assert f(None) is None and f("x") is None and f({"valence_ema": "no"}) is None
     assert f(_state(0.3, n=4)) is None                       # too young: cold start
-    assert f(_state(0.3, n=5)) == {"valence_ema": 0.3, "arousal_ema": 0.5, "n": 5.0}
-    assert f(_state(7.0, arousal=-2, n=9)) == {"valence_ema": 1.0, "arousal_ema": 0.0, "n": 9.0}
-    assert f(_state(0.3, n=5.9)) is not None and f(_state(0.3, n=5.9))["n"] == 5.0
+    # ONLY what the core reads — the host's arousal/len_mean/schema are its series, not core
+    # semantics dressed up by a validator that nothing here consumes
+    assert f(_state(0.3, n=5)) == {"valence_ema": 0.3, "n": 5.0}
+    assert f(_state(7.0, n=9)) == {"valence_ema": 1.0, "n": 9.0}          # clamped
+    assert f(_state(0.3, n=5.9))["n"] == 5.0
     assert f({"valence_ema": float("nan"), "n": 10}) is None
+    # a carrier with only the counter is NOT a neutral of 0.0 — never invent one to modulate on
+    assert f({"n": 10}) is None
+    assert f({"valence_ema": True, "n": 10}) is None         # a flag is not a measurement
+    assert f({"valence_ema": 0.3, "n": True}) is None        # ...nor is it a count
 
 
 def test_modulate_traits_reads_the_turn_relative_to_the_contacts_neutral():
@@ -410,6 +416,171 @@ def test_modulate_traits_urgent_replaces_the_opposite_side_of_the_axis():
     assert sanitize_voice_traits(out)[1] == []          # and never a contradicting pair
 
 
+def test_json_carrier_branch_never_lets_the_parser_abort_the_turn(monkeypatch):
+    """A deeply nested carrier makes ``json.loads`` raise RecursionError — NOT a ValueError.
+
+    Pinned on the CONTRACT, not on a magic depth: how deep is "too deep" depends on the
+    process's ``sys.getrecursionlimit()``, and it differs between a plain interpreter and this
+    suite — an earlier version of this test asserted ``"[" * 2000`` and passed under BOTH a
+    correct guard and a narrow ``except ValueError`` for exactly that reason. Whatever the
+    parser does with a tenant's column is the carrier's problem; it is never the turn's.
+    """
+    import json
+
+    from cogno_anima import sanitize_voice_traits
+
+    def boom(*_a, **_k):
+        raise RecursionError("too deep")
+
+    monkeypatch.setattr(json, "loads", boom)
+    assert sanitize_voice_traits('["warm"]') == ([], ['["warm"]'])
+
+
+def test_modulate_hints_drops_emergency_empathy_inside_the_contacts_normal():
+    """The half the traits table alone could not deliver: `tone:empathetic` fires for EVERY
+    frustrated turn, so the chronic complainer was told "be empathetic" on every message —
+    measured live 2026-08-24, all three cells drew the same empathy. Inside their own normal
+    the hint is not rendered (the audit keeps it); on a real escalation it stays."""
+    f = SuperegoStage._modulate_hints
+    hints = ["tone:empathetic", "register:casual"]
+    # chronic complainer: FRUSTRATED is their normal (delta -0.4) → the hint goes
+    ctx = _ctx(sentiment="FRUSTRATED")
+    ctx.metadata[mk.CONTACT_STATE] = _state(-0.6)
+    assert f(hints, ctx) == ["register:casual"]
+    # warm contact, same turn: a real escalation (delta -1.6) → the hint stays
+    ctx = _ctx(sentiment="FRUSTRATED")
+    ctx.metadata[mk.CONTACT_STATE] = _state(0.6)
+    assert f(hints, ctx) == hints
+    # no neutral yet, or one too young → the absolute reading, exactly as before this feature
+    assert f(hints, _ctx(sentiment="FRUSTRATED")) == hints
+    ctx = _ctx(sentiment="FRUSTRATED")
+    ctx.metadata[mk.CONTACT_STATE] = _state(-0.6, n=3)
+    assert f(hints, ctx) == hints
+    # the safety floor is never touched, whatever the neutral says
+    ctx = _ctx(sentiment="FRUSTRATED", pii_risk="HIGH")
+    ctx.metadata[mk.CONTACT_STATE] = _state(-0.6)
+    assert f(["pii:risk_high", "override:sustained_frustration"], ctx) == [
+        "pii:risk_high", "override:sustained_frustration"]
+
+
+def test_baseline_signal_says_the_comparison_out_loud():
+    """The decision "this is their normal" must be SAID: an absence of a hint cannot outweigh
+    the anger the contact wrote in their own words (measured twice, live, 2026-08-24)."""
+    f = SuperegoStage._baseline_signal
+    # nothing to compare: no neutral, one too young, or a calm turn
+    assert f(_ctx(sentiment="FRUSTRATED")) == ""
+    ctx = _ctx(sentiment="FRUSTRATED")
+    ctx.metadata[mk.CONTACT_STATE] = _state(-0.6, n=3)
+    assert f(ctx) == ""
+    ctx = _ctx(sentiment="NEUTRAL")
+    ctx.metadata[mk.CONTACT_STATE] = _state(-0.6)
+    assert f(ctx) == ""
+    # the chronic complainer: their normal, and the line asks for a NORMAL answer, not a cold one
+    ctx = _ctx(sentiment="FRUSTRATED")
+    ctx.metadata[mk.CONTACT_STATE] = _state(-0.6)
+    within = f(ctx)
+    assert "matches how this contact usually writes" in within
+    assert "warmly and to the point" in within and "No extended apology" in within
+    # the warm contact who dropped: an escalation, and the line says to acknowledge it
+    ctx = _ctx(sentiment="FRUSTRATED")
+    ctx.metadata[mk.CONTACT_STATE] = _state(0.6)
+    esc = f(ctx)
+    assert "markedly more upset" in esc and "Acknowledge that before answering" in esc
+
+
+@pytest.mark.asyncio
+async def test_voice_renders_the_two_contacts_differently_on_the_same_turn():
+    """End to end: same persona, same frustrated message — only the neutral differs. The
+    prompts must NOT be byte-identical (they were, and that made the feature a no-op)."""
+    async def prompt_for(state):
+        ctx = _ctx(sentiment="FRUSTRATED")
+        ctx.metadata[mk.VOICE_TRAITS] = ["warm", "detailed", "humorous"]
+        if state:
+            ctx.metadata[mk.CONTACT_STATE] = state
+        backend = ScriptedBackend(["ok"])
+        await SuperegoStage().voice(ctx, backend, voice_prompt="persona")
+        return backend.calls[0]["prompt"]
+
+    chronic = await prompt_for(_state(-0.6))
+    warm = await prompt_for(_state(0.6))
+    cold = await prompt_for(None)
+    assert chronic != warm and chronic != cold
+    # the chronic complainer is not told to treat their normal as an emergency...
+    assert "tone:empathetic" not in chronic and "Empathetic:" not in chronic
+    assert "matches how this contact usually writes" in chronic     # ...and it SAYS so
+    # ...while the contact who actually dropped is
+    assert "tone:empathetic" in warm and "Empathetic:" in warm
+    assert "markedly more upset" in warm
+    # and both keep the safety floor (no humour at an upset contact) and their warmth
+    assert "Humorous:" not in chronic and "Humorous:" not in warm
+    assert "Warm:" in chronic and "Warm:" in warm
+    # cold start = the absolute reading, as before the feature
+    assert "tone:empathetic" in cold and "Empathetic:" not in cold
+    assert "Contact's baseline:" not in cold                        # nothing to compare yet
+
+
+def test_modulate_traits_offers_a_courtesy_but_never_overrides_the_persona():
+    f = SuperegoStage._modulate_traits
+    esc = _ctx(sentiment="FRUSTRATED")
+    esc.metadata[mk.CONTACT_STATE] = _state(0.6)
+    # a courtesy is offered to a persona that declared nothing on that axis...
+    assert "empathetic" in f(["warm", "detailed"], ["tone:empathetic"], esc)
+    # ...never to one the tenant configured to be even
+    assert f(["reserved", "direct"], ["tone:empathetic"], esc) == ["reserved", "direct"]
+    quiet = _ctx(sentiment="NEUTRAL")
+    quiet.metadata[mk.CONTACT_STATE] = _state(0.6)
+    assert f(["reserved"], ["general:review"], quiet) == ["reserved"]
+    # the ABSOLUTE branch does override the axis — an urgent message must get through
+    urgent = _ctx(sentiment="URGENT")
+    assert f(["reserved", "detailed"], ["tone:direct"], urgent) == ["concise", "direct", "reserved"]
+
+
+def test_repeated_reply_is_not_a_judge_rejection():
+    # the host's anti-repeat guard rides the same key and means something else: the content was
+    # fine, it had already been sent. It must not make the reply say less.
+    f = SuperegoStage._modulate_traits
+    ctx = _ctx()
+    ctx.metadata[mk.VOICE_CORRECTION] = {"kind": "repeated_reply", "reason": "já enviada"}
+    assert f(["warm", "detailed", "humorous"], ["general:review"], ctx) == \
+        ["warm", "detailed", "humorous"]
+    assert SuperegoStage._judge_rejection(ctx) is None
+    assert SuperegoStage._rejection(ctx) is not None          # it IS a rejection to RENDER
+    # a judge verdict still trims
+    ctx.metadata[mk.VOICE_CORRECTION] = {"kind": "unverified_claim", "reason": "sem prova"}
+    assert f(["warm", "detailed", "humorous"], ["general:review"], ctx) == ["warm"]
+
+
+def test_rejection_predicate_survives_a_non_string_reason():
+    ctx = _ctx()
+    ctx.metadata[mk.VOICE_CORRECTION] = {"reason": 42}        # a host reason need not be a str
+    assert SuperegoStage._rejection(ctx) == {"reason": 42}
+    ctx.metadata[mk.VOICE_CORRECTION] = {"reason": None}
+    assert SuperegoStage._rejection(ctx) is None
+    SuperegoStage()._build_voice_prompt(ctx, "data", ["general:review"])   # must not raise
+
+
+def test_tone_hints_line_never_goes_empty():
+    # the suppressed register can be the only token there was — the sentinel is what
+    # "no per-turn signal" looks like, and losing it changes what the line means
+    se = SuperegoStage()
+    ctx = _ctx()
+    ctx.intent.parole = "COLOQUIAL"
+    prompt = se._build_voice_prompt(ctx, "data", ["register:casual"], ["formal"])
+    assert "Tone hints: general:review" in prompt and "User register:" not in prompt
+
+
+def test_negative_sentiments_is_the_tail_of_the_valence_scale():
+    # two definitions of "upset" would drift; the escalation gate reads both
+    from cogno_anima import vocab
+    assert vocab.NEGATIVE_SENTIMENTS == {
+        s for s, v in vocab.SENTIMENT_VALENCE.items() if v <= -vocab.CONTACT_ESCALATION_DELTA}
+
+
+def test_modulate_traits_takes_a_bare_string_as_one_trait():
+    # Sequence[str] type-accepts a str; the FIRST consumer must not iterate its characters
+    assert SuperegoStage._modulate_traits("warm", ["general:review"], _ctx()) == ["warm"]
+
+
 def test_modulate_traits_never_invents_a_personality():
     # the tenant declared nothing → nothing is rendered, whatever the turn or the neutral says
     f = SuperegoStage._modulate_traits
@@ -433,13 +604,16 @@ def test_sanitizers_never_raise_on_hostile_numbers_or_nesting():
     from cogno_anima import sanitize_voice_traits, vocab
     assert vocab.sanitize_contact_state({"n": float("inf"), "valence_ema": 0.2}) is None
     assert vocab.sanitize_contact_state({"n": 10, "valence_ema": float("inf")}) is None
-    assert sanitize_voice_traits("[" * 100000)[0] == []
+    assert sanitize_voice_traits("[" * 2000)[0] == []            # under the cap: parsed, refused
+    assert sanitize_voice_traits("[" * 100000)[0] == []          # over the cap: refused first
     # size caps: a 10 MB carrier is refused whole, not scanned (bounded work on the hot path)
     assert sanitize_voice_traits("warm," * 2_000_000) == ([], ["<10000000 chars>"])
     assert sanitize_voice_traits(["warm"] * 65) == ([], ["<65 items>"])
     # other shapes a host might hand over
     assert sanitize_voice_traits(b"warm,direct") == (["warm", "direct"], [])
     assert sanitize_voice_traits("{warm,direct}") == (["warm", "direct"], [])   # Postgres text[]
+    # ...and Postgres QUOTES an element when it needs to — the quotes come off, the trait stays
+    assert sanitize_voice_traits('{"warm",direct}') == (["warm", "direct"], [])
     assert sanitize_voice_traits((t for t in ["warm"])) == ([], ["generator"])
     # a label never carries a line/paragraph separator a value could forge a log line with
     assert vocab._label("bad\x85line\u2028x\vy") == "bad line x y"
@@ -463,24 +637,24 @@ def test_voice_prompt_renders_persona_traits_as_their_own_section():
     ctx.intent.parole = "COLOQUIAL"
     adjustments = se.detect_adjustments(ctx)
     baseline = se._build_voice_prompt(ctx, "data", adjustments)
-    assert "# Persona traits" not in baseline           # no traits → no section, prompt unchanged
+    assert "# Voice for this turn" not in baseline           # no traits → no section, prompt unchanged
     assert "User register: casual" in baseline
 
     # traits that do NOT declare formality: section added, the contact's register still rendered
     prompt = se._build_voice_prompt(ctx, "data", adjustments, ["warm", "direct"])
-    assert "# Persona traits (configured for this persona — obey)" in prompt
+    assert "# Voice for this turn (this persona's configured traits, adjusted for this message — obey)" in prompt
     assert _TRAIT_DIRECTIVES["warm"] in prompt and _TRAIT_DIRECTIVES["direct"] in prompt
     assert _TRAIT_DIRECTIVES["formal"] not in prompt
     assert "never WHAT" in prompt                       # delivery-only framing
-    assert "They outrank the per-turn tone hints, except" in prompt
+    assert "They outrank the per-turn tone hints below; a `pii:*` or `override:*` signal outranks them." in prompt
     assert "User register: casual" in prompt
-    assert prompt.index("# Persona traits") < prompt.index("# Signals")
+    assert prompt.index("# Voice for this turn") < prompt.index("# Signals")
     # a HARD RULE is the last instruction before the task: the section sits ABOVE the verdict
     ctx_rej = _ctx()
     ctx_rej.intent.parole = "COLOQUIAL"
     ctx_rej.metadata[mk.VOICE_CORRECTION] = {"reason": "did Y not X"}
     rej = se._build_voice_prompt(ctx_rej, "data", adjustments, ["warm"])
-    assert rej.index("# Persona traits") < rej.index("# Execution verdict (HARD RULE)")
+    assert rej.index("# Voice for this turn") < rej.index("# Execution verdict (HARD RULE)")
     assert "any review verdict below stay exactly as stated" in rej
     # the Tone hints line is the contact's axis: no trait token on it
     assert "Tone hints: register:casual\n" in prompt and "trait:" not in prompt
@@ -495,7 +669,7 @@ def test_voice_prompt_renders_persona_traits_as_their_own_section():
     # a bare string is one trait, not four characters
     assert _TRAIT_DIRECTIVES["warm"] in se._build_voice_prompt(ctx, "data", adjustments, "warm")
     # the precedence sentence names the real tokens that win
-    assert "except `tone:empathetic`, `override:*` and `pii:*`" in formal
+    assert "a `pii:*` or `override:*` signal outranks them" in formal
     casual = se._build_voice_prompt(ctx, "data", adjustments, ["casual"])
     assert "User register:" not in casual
     # ...but a register on ANOTHER axis (technical) still reaches a formal persona
@@ -522,7 +696,7 @@ async def test_voice_carries_traits_end_to_end():
     backend = ScriptedBackend(["Oi! Registrado, 50 reais."])
     res = await SuperegoStage().voice(ctx, backend, voice_prompt="persona")
     assert "trait:warm" in res.adjustments
-    assert "# Persona traits" in backend.calls[0]["prompt"]
+    assert "# Voice for this turn" in backend.calls[0]["prompt"]
     assert "Warm:" in backend.calls[0]["prompt"]
 
 
@@ -534,7 +708,7 @@ async def test_voice_traits_garbage_never_aborts_the_turn():
     res = await SuperegoStage().voice(ctx, backend, voice_prompt="persona")
     assert res.response == "ok"
     assert not any(a.startswith("trait:") for a in res.adjustments)
-    assert "# Persona traits" not in backend.calls[0]["prompt"]
+    assert "# Voice for this turn" not in backend.calls[0]["prompt"]
 
 
 def test_voice_prompt_hard_pins_the_reply_language():

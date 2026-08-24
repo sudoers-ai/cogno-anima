@@ -15,7 +15,10 @@ will fail until both agree.
 from __future__ import annotations
 
 import re
+import math
 from typing import Any, Optional
+
+from cogno_anima.utils import as_count
 
 VALID_INTENTS: set[str] = {
     "INFORMATION_REQUEST", "ACTION_REQUEST", "CLARIFICATION",
@@ -113,6 +116,9 @@ MAX_VOICE_TRAITS: int = 4
 # The contact's per-turn sentiment as a valence scalar (−1…+1) — the input of the emotional
 # neutral (an EMA the host keeps, see `metakeys.CONTACT_STATE`) and of the turn's delta against
 # it. Closed on the NER's own vocabulary; an unknown label reads as 0 (no evidence either way).
+# ``NEGATIVE_SENTIMENTS`` (the streak family) is exactly the tail of this scale at
+# ``CONTACT_ESCALATION_DELTA`` — a test pins the identity, so the two cannot drift into two
+# different definitions of "upset".
 SENTIMENT_VALENCE: dict[str, float] = {
     "POSITIVE": 1.0, "PLAYFUL": 0.6, "CURIOUS": 0.2, "NEUTRAL": 0.0,
     "URGENT": -0.3, "NEGATIVE": -0.7, "FRUSTRATED": -1.0,
@@ -129,25 +135,27 @@ CONTACT_GUARDED_NEUTRAL: float = -0.4
 
 
 def sanitize_contact_state(raw: Any) -> Optional[dict[str, float]]:
-    """Validate a host-stamped emotional-neutral carrier → ``{valence_ema, arousal_ema, n}`` or
-    ``None`` when unusable or too young (``n < CONTACT_STATE_MIN_TURNS``). Pure; never raises.
-    Values are clamped to their ranges — a stale or hand-edited row must not push the voice
-    outside the table."""
-    if not isinstance(raw, dict):
+    """Validate a host-stamped emotional-neutral carrier → ``{valence_ema, n}`` or ``None``.
+
+    Returns ONLY what the core reads. The host's state carries more (the habitual intensity,
+    the mean message length, a schema version) — those are its series and its TTS delivery
+    profile, and validating a field nothing here consumes would dress it as core semantics.
+
+    Never FABRICATES: a carrier without ``valence_ema`` is not a neutral with a neutral value,
+    it is a carrier without a neutral (a host that stamped only its counter would otherwise
+    have the voice modulate against an invented 0.0). ``None`` also for a non-finite value, a
+    bool where a number belongs, and for a state too young to trust
+    (``n < CONTACT_STATE_MIN_TURNS`` — cold start: the persona as declared). Pure, never raises.
+    """
+    if not isinstance(raw, dict) or "valence_ema" not in raw:
         return None
-    try:
-        n_f = float(raw.get("n", 0))
-        v = float(raw.get("valence_ema", 0.0))
-        a = float(raw.get("arousal_ema", 0.5))
-    except (TypeError, ValueError, OverflowError):
+    n = as_count(raw.get("n"))
+    if n is None or n < CONTACT_STATE_MIN_TURNS:
         return None
-    if not all(x == x and abs(x) != float("inf") for x in (n_f, v, a)):   # NaN / inf
+    v = raw["valence_ema"]
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
         return None
-    n = int(n_f)
-    if n < CONTACT_STATE_MIN_TURNS:                            # too young: cold start
-        return None
-    return {"valence_ema": max(-1.0, min(1.0, v)), "arousal_ema": max(0.0, min(1.0, a)),
-            "n": float(n)}
+    return {"valence_ema": max(-1.0, min(1.0, float(v))), "n": float(n)}
 
 
 _LOG_LABEL_WIDTH = 40
@@ -199,8 +207,6 @@ def sanitize_voice_traits(raw: Any) -> tuple[list[str], list[str]]:
         if len(raw) > MAX_TRAIT_CARRIER_CHARS:
             return [], [f"<{len(raw)} chars>"]
         text = raw.strip()
-        if text.startswith("{") and text.endswith("}"):
-            text = text[1:-1]                          # a Postgres text[] literal: {warm,direct}
         if text.startswith("["):
             try:
                 import json
@@ -211,7 +217,11 @@ def sanitize_voice_traits(raw: Any) -> tuple[list[str], list[str]]:
                 return [], [_label(text)]
             items: list[Any] = loaded
         else:
-            items = text.split(",")
+            # A Postgres ``text[]`` literal: {warm,direct} — and Postgres QUOTES an element
+            # that needs it, so the quotes come off per item below, not with the braces.
+            if text.startswith("{") and text.endswith("}"):
+                text = text[1:-1]
+            items = [i.strip().strip('"') for i in text.split(",")]
     elif isinstance(raw, (list, tuple)):
         items = list(raw)
     elif isinstance(raw, (set, frozenset)):

@@ -345,10 +345,15 @@ class SuperegoResult(BaseModel):
     approved: bool = True           # JUDGE verdict; False → host retries the EGO with `critique`
     critique: Optional[str] = None  # why execution failed → fed back as ego_correction.reason
     blocked: bool = False           # PII-CRITICAL / scope block → response is a protection message
-    # The voice's audit trail: the per-turn tone hints (`tone:*`/`style:*`/`register:*`/`pii:*`/
-    # `override:*`, or the `general:review` sentinel), then the persona's declared traits that
-    # were actually rendered (`trait:*`, appended after the prompt), then any output backstop flag
-    # (`pii:flagged_in_output`, `preserved:mutated_in_output`).
+    # The voice's audit trail: every per-turn tone hint DETECTED (`tone:*`/`style:*`/`register:*`/
+    # `pii:*`/`override:*`, or the `general:review` sentinel) — including one the turn chose not to
+    # RENDER —, then the traits the turn actually rendered (`trait:*`, appended after the prompt).
+    # Those are the EFFECTIVE traits: the persona's declared ones after the turn's modulation, so
+    # a `trait:concise` here can come from an urgent message rather than from the tenant's
+    # configuration. The declared→effective mapping is logged by `SuperegoStage._modulate_traits`
+    # (INFO, `event=traits_modulated`) — the list itself records what was said, not what was
+    # configured. Finally any output backstop flag (`pii:flagged_in_output`,
+    # `preserved:mutated_in_output`).
     adjustments: list[str] = Field(default_factory=list)
     cot_stripped: bool = False      # a <think> block was removed
     metrics: StageMetrics

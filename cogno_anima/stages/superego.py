@@ -31,7 +31,7 @@ import re
 import time
 import json
 import logging
-from typing import Any, Optional, Sequence
+from typing import Optional, Sequence
 
 from cogno_anima import metakeys as mk
 from cogno_anima import vocab
@@ -52,8 +52,12 @@ _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 _NUM_RE = re.compile(r"\d[\d.,]*\d|\d")
 _CRITICAL_TERM_RE = re.compile(r"\d|@|https?://", re.IGNORECASE)
 
+# The persona trait the modulation must never talk over: the tenant asked for an even
+# voice, and a courtesy addition (warmth, empathy) would be exactly that.
+_EVEN_TRAIT = "reserved"
+
 # Trait configurations already warned about (see SuperegoStage.persona_traits). Bounded.
-_WARNED_TRAIT_CONFIGS: set[tuple[str, int]] = set()   # (persona id, hash of the config)
+_WARNED_TRAIT_CONFIGS: set[tuple[str, tuple[str, ...], tuple[str, ...]]] = set()
 
 # One rendered instruction per `vocab.VALID_VOICE_TRAITS` value (a test pins the alignment).
 # Written as directives about DELIVERY only — none of them may loosen grounding or limits,
@@ -219,8 +223,8 @@ class SuperegoStage:
             # contact of that tenant — volume scaling with traffic, not with the (single)
             # misconfiguration. The host refuses these at save time; this is the net for a row
             # written around it.
-            key = (str(ctx.metadata.get(mk.ACTIVE_PERSONA_ID, "?")),
-                   hash((tuple(kept), tuple(dropped))))
+            key = (vocab._label(ctx.metadata.get(mk.ACTIVE_PERSONA_ID, "?")),
+                   tuple(kept), tuple(dropped))
             if key not in _WARNED_TRAIT_CONFIGS:
                 if len(_WARNED_TRAIT_CONFIGS) >= 256:
                     _WARNED_TRAIT_CONFIGS.clear()
@@ -238,14 +242,111 @@ class SuperegoStage:
         prompt's verdict section and for the trait modulation, so a carrier without a ``reason``
         (nothing to render) cannot count as a rejection for one and not the other."""
         rejection = ctx.metadata.get(mk.VOICE_CORRECTION)
-        if isinstance(rejection, dict) and (rejection.get("reason") or "").strip():
-            return rejection
-        return None
+        if isinstance(rejection, dict) and str(rejection.get("reason") or "").strip():
+            return rejection      # str(): a host reason need not be a str, and .strip() on an
+        return None               # int would abort the turn from inside a delivery-only path
+
+    @staticmethod
+    def _judge_rejection(ctx: PipelineContext) -> Optional[dict]:
+        """The JUDGE's rejection of this turn's execution — ``None`` for the host's anti-repeat
+        guard (``kind="repeated_reply"``), which rides the same key but says something else
+        entirely: the content was fine, it had already been sent. Only a judge's verdict means
+        "this execution did not meet the goal", and only that should make the reply say less.
+        """
+        rejection = SuperegoStage._rejection(ctx)
+        if rejection is None or (rejection.get("kind") or "") == "repeated_reply":
+            return None
+        return rejection
 
     @staticmethod
     def contact_state(ctx: PipelineContext) -> Optional[dict[str, float]]:
         """The contact's emotional neutral for this turn (``mk.CONTACT_STATE``), validated."""
         return vocab.sanitize_contact_state(ctx.metadata.get(mk.CONTACT_STATE))
+
+    @staticmethod
+    def _as_trait_list(traits: "Sequence[str]") -> list[str]:
+        """A bare ``"warm"`` is ONE trait, not four characters — normalized at every entry
+        point that takes the list from a caller (``Sequence[str]`` type-accepts a ``str``)."""
+        return [traits] if isinstance(traits, str) else list(traits)
+
+    @staticmethod
+    def _within_own_normal(ctx: PipelineContext) -> bool:
+        """True when this turn's UPSET sentiment sits inside the contact's own normal range.
+
+        Requires a neutral old enough to trust (``mk.CONTACT_STATE``); a contact we do not know
+        yet is never "within normal" — the absolute reading applies, as before this feature.
+        """
+        state = SuperegoStage.contact_state(ctx)
+        if state is None or ctx.intent is None:
+            return False
+        if ctx.intent.sentiment not in vocab.NEGATIVE_SENTIMENTS:
+            return False
+        delta = vocab.SENTIMENT_VALENCE.get(ctx.intent.sentiment, 0.0) - state["valence_ema"]
+        return delta > -vocab.CONTACT_ESCALATION_DELTA
+
+    @staticmethod
+    def _baseline_signal(ctx: PipelineContext) -> str:
+        """One sentence putting THIS message next to how this contact normally writes, or "".
+
+        The relative reading has to be SAID. Measured twice on 2026-08-24 (gpt-4o-mini, the real
+        SECRETARY voice, one frustrated message, only the neutral varying): with the neutral
+        changing nothing but the trait list, and then with the emergency-empathy hint dropped
+        for a contact whose normal is upset, the three cells still drew the same 2.4–2.6 empathy
+        markers per reply. The model reads the anger in the contact's OWN words and in the
+        persona's warm base prompt; it never saw a word about a baseline, because the decision
+        "this is their normal" had no rendering — only the absence of a hint, and an absence
+        cannot outweigh a sentence the contact wrote. This is the same lesson the host learned
+        for its opening/arc blocks: a directive that arrives as background loses.
+
+        With the line rendered, the third run of the same probe finally moved the reply: the
+        within-normal contact drew 44.8 words against 54.6 for the same message with no
+        baseline (n=5, the two ranges barely overlap) — shorter, straight to the answer. What
+        did NOT move is the apology itself (2.6 vs 2.8 markers), and that is correct: the
+        acknowledgment comes from the contact's own words and from the persona's own prose,
+        neither of which this layer overrides. How apologetic a persona is belongs to its voice
+        prompt; what belongs here is the comparison the persona could not make on its own.
+
+        Rendered only for an UPSET turn (there is nothing to compare on a calm one) and only
+        with a neutral old enough to trust. It never licenses coldness: the within-normal line
+        asks for a normal, warm answer — not for the contact's feelings to be ignored.
+        """
+        state = SuperegoStage.contact_state(ctx)
+        if state is None or ctx.intent is None:
+            return ""
+        if ctx.intent.sentiment not in vocab.NEGATIVE_SENTIMENTS:
+            return ""
+        if SuperegoStage._within_own_normal(ctx):
+            return ("Contact's baseline: this message reads as upset, but it matches how this "
+                    "contact usually writes to us — answer it as you would a normal request, "
+                    "warmly and to the point. No extended apology, no treating it as an "
+                    "escalation.")
+        return ("Contact's baseline: this message is markedly more upset than how this contact "
+                "usually writes to us — something changed. Acknowledge that before answering.")
+
+    @staticmethod
+    def _modulate_hints(adjustments: list[str], ctx: PipelineContext) -> list[str]:
+        """The per-turn hints as this turn should RENDER them (the audit trail keeps them all).
+
+        ``tone:empathetic`` is the "this contact is upset" hint, and ``detect_adjustments``
+        emits it for every FRUSTRATED turn — in the ABSOLUTE. For a contact whose normal IS
+        upset it therefore fires on every message, and the reply opens with an apology every
+        single day: measured live on 2026-08-24 (gpt-4o-mini, the real SECRETARY voice, one
+        frustrated message, only the neutral varying), the chronic complainer and the warm
+        contact drew the SAME 2.7 empathy markers per reply — the traits table alone changed
+        nothing the reader could feel, because this older, stronger hint said "be empathetic"
+        in all three cells. Adding ``empathetic`` to the escalation case cannot differentiate
+        what is already saturated; the differentiation has to come from NOT saying it when the
+        turn is the person's normal. The model still reads the anger in the user's own words —
+        it simply is not TOLD to treat it as an emergency.
+
+        Surgical: only that hint, only when the neutral is old enough and the turn is inside
+        the contact's own range. ``pii:*`` and ``override:*`` are the safety floor and are
+        never touched; the humour floor lives in :meth:`_modulate_traits` and is unaffected.
+        """
+        if "tone:empathetic" not in adjustments or not SuperegoStage._within_own_normal(ctx):
+            return adjustments
+        logger.info("stage=superego event=hint_within_own_normal dropped=tone:empathetic")
+        return [a for a in adjustments if a != "tone:empathetic"]
 
     @staticmethod
     def _modulate_traits(traits: list[str], adjustments: list[str],
@@ -269,63 +370,86 @@ class SuperegoStage:
           that way. A turn with no signal of its own takes its tone from the neutral: warm →
           ``warm``; guarded → no humor.
 
-        Additions REPLACE the opposite side of their axis (URGENT turns a ``detailed`` persona
-        concise, it does not drop both) and go to the front. No cap is applied here — a
-        declared trait is never evicted by a modulation — and no contradicting pair can come
-        out, because ``add`` removes the opposite first. A persona that declared NO traits gets
-        none: modulation refines a declared personality, it does not invent one.
+        What may happen to a DECLARED trait, stated once so the two policies are not prose:
+
+        * **replaced** by the other side of its axis, and only from the absolute branch
+          (URGENT turns a ``detailed`` persona concise — that is what the length axis is for);
+          the relative branch ``offer``s instead, and a courtesy never overrides a declared
+          opposite nor a declared ``reserved``;
+        * **dropped** when the turn forbids it — humour on a somber turn, detail on an
+          escalation or on a re-voice the judge sent back;
+        * **never** dropped merely to fit a cap: none is applied here (the declared list was
+          capped at save time), because losing ``formal`` to a count would flip the persona's
+          identity on that turn with nothing to show for it.
+
+        No contradicting pair can come out — ``add`` removes the opposite first. A persona that
+        declared NO traits gets none: modulation refines a declared personality, never invents
+        one.
         """
+        traits = SuperegoStage._as_trait_list(traits)
         if not traits:
             # The tenant declared nothing: the persona is voiced as before this feature, byte for
             # byte. Modulation refines DECLARED traits; it never invents a personality — the
             # section says "configured for this persona", and it must stay true.
             return []
-        rejected = SuperegoStage._rejection(ctx) is not None
+        judged_bad = SuperegoStage._judge_rejection(ctx) is not None
         sentiment = (ctx.intent.sentiment if ctx.intent is not None else "") or ""
         signalled = any(a.startswith(("pii:", "override:", "tone:", "style:"))
                         for a in adjustments)
-        # (a FRUSTRATED contact is covered by NEGATIVE_SENTIMENTS; `tone:empathetic` is its
-        # per-turn hint, so there is no separate clause for it)
-        somber = (rejected
-                  or any(a.startswith(("pii:", "override:")) for a in adjustments)
-                  or sentiment in vocab.NEGATIVE_SENTIMENTS)
+        # No place for a joke: sensitive data, a de-escalation, an upset contact (a FRUSTRATED
+        # one is covered by NEGATIVE_SENTIMENTS — `tone:empathetic` is merely its per-turn
+        # hint), a hurried one, or a re-voice the judge sent back.
+        somber = (judged_bad
+                  or sentiment in vocab.NEGATIVE_SENTIMENTS
+                  or sentiment == "URGENT"
+                  or any(a.startswith(("pii:", "override:")) for a in adjustments))
+        declared = set(traits)
         out = list(traits)
 
         def add(t: str) -> None:
+            """The absolute branch: the axis working. A declared opposite yields — an urgent
+            message must get through, and that is what the length axis is FOR."""
             for opp in vocab.VOICE_TRAIT_OPPOSITES.get(t, ()):
                 if opp in out:
                     out.remove(opp)
             if t not in out:
                 out.insert(0, t)
 
+        def offer(t: str) -> None:
+            """The relative branch: a courtesy the turn suggests. It never overrides the
+            persona's identity — a declared opposite, or a declared ``reserved`` (the tenant
+            asked for an even voice; the contact's mood does not outrank that)."""
+            if _EVEN_TRAIT in declared:
+                return
+            if any(o in declared for o in vocab.VOICE_TRAIT_OPPOSITES.get(t, ())):
+                return
+            add(t)
+
         def drop(t: str) -> None:
             if t in out:
                 out.remove(t)
 
-        # ── absolute (safety floor) ──
+        # ── absolute (the floor: what the turn forbids, whoever the contact is) ──
         if somber:
             drop("humorous")
-        if rejected:
+        if judged_bad:
             drop("detailed")
         if sentiment == "URGENT":
             add("direct")
             add("concise")
-            drop("humorous")
-        # ── relative (personalization) ──
+        # ── relative (the personalization: this turn against THIS contact's normal) ──
         state = SuperegoStage.contact_state(ctx)
         if state is not None:
-            valence = vocab.SENTIMENT_VALENCE.get(sentiment, 0.0)
-            delta = valence - state["valence_ema"]
             # An escalation is an UPSET turn (FRUSTRATED/NEGATIVE — not merely hurried) that is
             # also below the contact's own normal; a neutral or urgent turn from a warm contact
-            # is a drop in the numbers, not a person upset.
-            if sentiment in vocab.NEGATIVE_SENTIMENTS and delta <= -vocab.CONTACT_ESCALATION_DELTA:
-                if "reserved" not in out:
-                    add("empathetic")
+            # is a drop in the numbers, not a person upset. ``_within_own_normal`` is the same
+            # comparison read the other way round — one definition, two consumers.
+            if sentiment in vocab.NEGATIVE_SENTIMENTS and not SuperegoStage._within_own_normal(ctx):
+                offer("empathetic")
                 drop("detailed")
-            elif not signalled and not rejected and sentiment != "URGENT":
-                if state["valence_ema"] >= vocab.CONTACT_WARM_NEUTRAL and "reserved" not in out:
-                    add("warm")
+            elif not signalled:
+                if state["valence_ema"] >= vocab.CONTACT_WARM_NEUTRAL:
+                    offer("warm")
                 elif state["valence_ema"] <= vocab.CONTACT_GUARDED_NEUTRAL:
                     drop("humorous")
         # No re-cap here: the declared list was capped at save time, and a modulation that
@@ -669,9 +793,12 @@ class SuperegoStage:
         # parsed back out). They join ``adjustments`` AFTER the prompt is built — the list is the
         # audit trail on SuperegoResult, and the rendered Tone hints line stays the contact's.
         traits = self._modulate_traits(self.persona_traits(ctx), adjustments, ctx)
+        # ...and the per-turn hints the same way: what the turn RENDERS, while ``adjustments``
+        # keeps every token for the audit trail.
+        rendered = self._modulate_hints(adjustments, ctx)
         payload = self._tool_payload(ctx)
 
-        prompt = self._build_voice_prompt(ctx, payload, adjustments, traits)
+        prompt = self._build_voice_prompt(ctx, payload, rendered, traits)
         adjustments += [f"trait:{t}" for t in traits]
         raw, ti, to = await backend.generate(voice_prompt or "You are a helpful assistant.", prompt)
         response, cot_stripped = self.strip_cot(raw)
@@ -713,9 +840,11 @@ class SuperegoStage:
         signals = []
         if ctx.intent:
             signals.append(f"Sentiment: {ctx.intent.sentiment}")
+        baseline = self._baseline_signal(ctx)
+        if baseline:
+            signals.append(baseline)
         language = ctx.noumeno.language if ctx.noumeno else ""
-        if isinstance(traits, str):                 # a bare "warm" must not iterate as w,a,r,m
-            traits = [traits]
+        traits = self._as_trait_list(traits)
         traits_section = self._traits_section(traits)
         # Register accommodation (sibling of Reply language): match the user's formality where
         # it does not conflict with the persona — the persona's voice/limits always win. When
@@ -736,7 +865,9 @@ class SuperegoStage:
         # sit side by side again on one line, now without the precedence sentence. The token
         # stays on ``adjustments`` (the audit trail).
         rendered = [a for a in adjustments if not (suppressed and a == register)]
-        signals.append(f"Tone hints: {', '.join(rendered)}")
+        # ...and never an empty line: the sentinel is what "no per-turn signal" looks like, and
+        # a suppressed register can be the only token there was.
+        signals.append(f"Tone hints: {', '.join(rendered) or 'general:review'}")
         # Host-injected context (retrieved memories / history / clock) — the same
         # block the EGO sees; included so memories can ground the final reply.
         injected = ctx.metadata.get(mk.EGO_CONTEXT)
@@ -839,23 +970,22 @@ class SuperegoStage:
         # No membership guard: input comes from the sanitizer (closed vocab) and a test pins
         # the directive table to it — a vocab value without a directive is a programming error
         # that must fail loudly, not a trait that vanishes at render.
-        if isinstance(traits, str):
-            traits = [traits]
-        lines = [_TRAIT_DIRECTIVES[t] for t in traits]
+        lines = [_TRAIT_DIRECTIVES[t] for t in SuperegoStage._as_trait_list(traits)]
         if not lines:
             return ""
         return (
-            "# Persona traits (configured for this persona — obey)\n"
-            "These refine the persona's voice above (they are part of its configuration) and "
-            "shape HOW you say it, never WHAT: figures, dates, limits, refusals and any review "
-            "verdict below stay exactly as stated. They outrank the per-turn tone hints, except "
-            "`tone:empathetic`, `override:*` and `pii:*` — a frustrated contact, a de-escalation, "
-            "sensitive data — which always win.\n"
+            "# Voice for this turn (this persona's configured traits, adjusted for this "
+            "message — obey)\n"
+            "These refine the persona's voice above and shape HOW you say it, never WHAT: "
+            "figures, dates, limits, refusals and any review verdict below stay exactly as "
+            "stated. They outrank the per-turn tone hints below; a `pii:*` or `override:*` "
+            "signal outranks them.\n"
             + "\n".join(f"- {line}" for line in lines) + "\n\n"
         )
 
     @staticmethod
-    def _draft_section(ctx: PipelineContext, payload: str, rejection: Any) -> str:
+    def _draft_section(ctx: PipelineContext, payload: str,
+                       rejection: "Optional[dict]") -> str:
         """The executor's own answer text, as its own clearly-subordinate section.
 
         EGO=executor, SUPEREGO=locutor: the draft is *what to say*, the tool results are *what
@@ -887,7 +1017,7 @@ class SuperegoStage:
         draft = ((ctx.ego_result.draft if ctx.ego_result else "") or "").strip()
         if not draft or draft in payload:
             return ""
-        if isinstance(rejection, dict) and (rejection.get("reason") or "").strip():
+        if rejection is not None:      # validated by ``_rejection`` — one predicate, not two
             return ""       # a rejected draft is handled by rejection_section, not re-offered
         return ("# Executor's answer (the CONTENT to convey — rewrite it in the persona's "
                 "voice; the executor data above wins on any figure, date or outcome)\n"

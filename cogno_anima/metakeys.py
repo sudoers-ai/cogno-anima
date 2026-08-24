@@ -46,9 +46,16 @@ VOICE_TRAITS = "voice_traits"
 # contact's own normal: a person who complains by temperament has FRUSTRATED as a baseline, and
 # reading each turn in the absolute would treat every message as an emergency — condescending,
 # and it burns the persona. The voice computes the turn's DELTA against it (`vocab.
-# SENTIMENT_VALENCE`) and modulates the persona's traits (`SuperegoStage._modulate_traits`);
+# SENTIMENT_VALENCE`) and modulates both the persona's traits and the per-turn hints
+# (`SuperegoStage._modulate_traits` / `_modulate_hints`);
 # the absolute reading stays as the safety floor (never humor at a frustrated contact). Below
 # `vocab.CONTACT_STATE_MIN_TURNS` the state is ignored (cold start = the persona as declared).
+#
+# TIMING IS PART OF THE CONTRACT: the value stamped here MUST be the neutral as it stood BEFORE
+# this turn — the host takes its EMA step AFTER the turn. Updating first folds this message's own
+# sentiment into the baseline it is about to be compared against, which shrinks every delta
+# toward zero and quietly disables the escalation branch (worst on the very first upset turn,
+# which is where the whole feature is supposed to fire).
 CONTACT_STATE = "contact_state"
 # The judge's FINAL verdict + how many EGO attempts it took: {"approved": bool, "attempts": int}.
 # Written by the orchestrator so the outcome is countable. Only rejections were ever logged (at

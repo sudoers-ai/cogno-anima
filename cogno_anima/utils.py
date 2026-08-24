@@ -2,7 +2,7 @@ import logging
 import re
 import math
 import string
-from typing import Any, Callable, Iterable
+from typing import Optional, Any, Callable, Iterable
 
 _logger = logging.getLogger("cogno_anima.utils")
 
@@ -83,6 +83,25 @@ def safe_float(value: object, default: float = 0.0) -> float:
         return float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return default
+
+
+def as_count(value: object) -> "Optional[int]":
+    """A host-supplied counter as a non-negative int, or ``None`` when the value is not one.
+
+    Every stage that reads a number the HOST counted needs the same policy, and the repo had
+    three of them (the EGO's circling streak, the ID's frustration streak, the SUPEREGO's
+    contact-state turn count). ``None`` is "absent"; a ``bool`` is refused rather than counted
+    as 1 — a host whose guard returns a flag is filling a COUNT slot with it, and reading that
+    as 1 leaves the feature dead-but-green. A float/str is accepted and truncated. Never
+    raises: ``int(object)`` and ``int(float("inf"))`` would, and a counter must not abort a
+    turn. The CALLER decides what to log and what to fall back to.
+    """
+    if value is None or isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return None
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 
 def word_count(text: str) -> int:
