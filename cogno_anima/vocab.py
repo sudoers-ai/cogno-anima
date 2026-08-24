@@ -147,6 +147,19 @@ def sanitize_contact_state(raw: Any) -> Optional[dict[str, float]]:
     bool where a number belongs, and for a state too young to trust
     (``n < CONTACT_STATE_MIN_TURNS`` — cold start: the persona as declared). Pure, never raises.
     """
+    if isinstance(raw, (bytes, bytearray, str)):
+        # A JSONB column read by a raw driver hands over the text, exactly as it can for the
+        # traits carrier — decoding it here is the difference between the feature working and
+        # the host chasing a silent no-op.
+        try:
+            if isinstance(raw, (bytes, bytearray)):
+                raw = bytes(raw).decode("utf-8")
+            if len(raw) > MAX_TRAIT_CARRIER_CHARS:
+                return None
+            import json
+            raw = json.loads(raw)
+        except Exception:  # noqa: BLE001 — any parser failure is the carrier's problem
+            return None
     if not isinstance(raw, dict) or "valence_ema" not in raw:
         return None
     n = as_count(raw.get("n"))

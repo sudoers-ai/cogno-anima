@@ -260,8 +260,28 @@ class SuperegoStage:
 
     @staticmethod
     def contact_state(ctx: PipelineContext) -> Optional[dict[str, float]]:
-        """The contact's emotional neutral for this turn (``mk.CONTACT_STATE``), validated."""
-        return vocab.sanitize_contact_state(ctx.metadata.get(mk.CONTACT_STATE))
+        """The contact's emotional neutral for this turn (``mk.CONTACT_STATE``), validated.
+
+        A MALFORMED carrier turns the whole relative reading off, and silence is the wrong way
+        to do that: the host would see a feature that "does not work" with nothing to read.
+        Warned once per (persona, shape), like the traits carrier. A carrier that is merely too
+        young is NOT malformed — every new contact is that for a few turns, and logging it
+        would drown the line that matters.
+        """
+        raw = ctx.metadata.get(mk.CONTACT_STATE)
+        state = vocab.sanitize_contact_state(raw)
+        if state is None and raw is not None and not (isinstance(raw, dict)
+                                                      and "valence_ema" in raw):
+            key = (vocab._label(ctx.metadata.get(mk.ACTIVE_PERSONA_ID, "?")),
+                   (type(raw).__name__,), (vocab._label(raw),))
+            if key not in _WARNED_TRAIT_CONFIGS:
+                if len(_WARNED_TRAIT_CONFIGS) >= 256:
+                    _WARNED_TRAIT_CONFIGS.clear()
+                _WARNED_TRAIT_CONFIGS.add(key)
+                logger.warning("stage=superego event=contact_state_unusable persona=%s type=%s "
+                               "value=%s — the contact's baseline is off for this turn",
+                               key[0], type(raw).__name__, vocab._label(raw))
+        return state
 
     @staticmethod
     def _as_trait_list(traits: "Sequence[str]") -> list[str]:
@@ -285,7 +305,7 @@ class SuperegoStage:
         return delta > -vocab.CONTACT_ESCALATION_DELTA
 
     @staticmethod
-    def _baseline_signal(ctx: PipelineContext) -> str:
+    def _baseline_signal(ctx: PipelineContext, traits: "Sequence[str]" = ()) -> str:
         """One sentence putting THIS message next to how this contact normally writes, or "".
 
         The relative reading has to be SAID. Measured twice on 2026-08-24 (gpt-4o-mini, the real
@@ -308,20 +328,32 @@ class SuperegoStage:
 
         Rendered only for an UPSET turn (there is nothing to compare on a calm one) and only
         with a neutral old enough to trust. It never licenses coldness: the within-normal line
-        asks for a normal, warm answer — not for the contact's feelings to be ignored.
+        asks for a normal answer — not for the contact's feelings to be ignored.
+
+        It obeys the SAME carve-outs the table does, because prose is not a side door: the
+        first version asked for warmth unconditionally and handed a ``reserved`` persona the
+        very courtesy ``offer`` refuses it ("no effusiveness" and "warmly" in one prompt), and
+        asked for an acknowledgment "before answering" while ``direct`` says the answer comes
+        first — the ``empathetic`` directive was worded to avoid exactly that collision, and
+        this line has to match it.
         """
         state = SuperegoStage.contact_state(ctx)
         if state is None or ctx.intent is None:
             return ""
         if ctx.intent.sentiment not in vocab.NEGATIVE_SENTIMENTS:
             return ""
+        even = _EVEN_TRAIT in SuperegoStage._as_trait_list(traits)
         if SuperegoStage._within_own_normal(ctx):
+            warmth = "" if even else "warmly and "     # the persona was configured to be even
             return ("Contact's baseline: this message reads as upset, but it matches how this "
-                    "contact usually writes to us — answer it as you would a normal request, "
-                    "warmly and to the point. No extended apology, no treating it as an "
+                    f"contact usually writes to us — answer it as you would a normal request, "
+                    f"{warmth}to the point. No extended apology, no treating it as an "
                     "escalation.")
+        # "in the reply", never "before answering": a `direct` persona leads with the answer,
+        # and the `empathetic` directive is worded the same way for the same reason.
         return ("Contact's baseline: this message is markedly more upset than how this contact "
-                "usually writes to us — something changed. Acknowledge that before answering.")
+                "usually writes to us — something changed. Let the reply show you noticed, "
+                "without delaying the answer.")
 
     @staticmethod
     def _modulate_hints(adjustments: list[str], ctx: PipelineContext) -> list[str]:
@@ -345,7 +377,12 @@ class SuperegoStage:
         """
         if "tone:empathetic" not in adjustments or not SuperegoStage._within_own_normal(ctx):
             return adjustments
-        logger.info("stage=superego event=hint_within_own_normal dropped=tone:empathetic")
+        state = SuperegoStage.contact_state(ctx)
+        logger.info("stage=superego event=hint_within_own_normal dropped=tone:empathetic "
+                    "persona=%s sentiment=%s neutral=%s n=%s",
+                    vocab._label(ctx.metadata.get(mk.ACTIVE_PERSONA_ID, "?")),
+                    ctx.intent.sentiment if ctx.intent else "?",
+                    state["valence_ema"] if state else "?", int(state["n"]) if state else 0)
         return [a for a in adjustments if a != "tone:empathetic"]
 
     @staticmethod
@@ -837,14 +874,14 @@ class SuperegoStage:
 
     def _build_voice_prompt(self, ctx: PipelineContext, payload: str,
                             adjustments: list[str], traits: Sequence[str] = ()) -> str:
+        traits = self._as_trait_list(traits)
         signals = []
         if ctx.intent:
             signals.append(f"Sentiment: {ctx.intent.sentiment}")
-        baseline = self._baseline_signal(ctx)
+        baseline = self._baseline_signal(ctx, traits)
         if baseline:
             signals.append(baseline)
         language = ctx.noumeno.language if ctx.noumeno else ""
-        traits = self._as_trait_list(traits)
         traits_section = self._traits_section(traits)
         # Register accommodation (sibling of Reply language): match the user's formality where
         # it does not conflict with the persona — the persona's voice/limits always win. When

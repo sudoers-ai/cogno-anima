@@ -26,6 +26,7 @@ import logging
 from typing import Awaitable, Callable, Optional
 
 from cogno_anima import metakeys as mk
+from cogno_anima.utils import as_count
 from cogno_anima.types import PipelineContext, IntentResult, StageMetrics, IdResult
 from cogno_synapse import Embedder
 from cogno_anima.stages.drift import DriftCalculator
@@ -102,7 +103,7 @@ class IDStage:
         # Frustration streak → emotional_override (host may inject its own). Counted over the
         # NEGATIVE family, not over a repeated "FRUSTRATED": a user who goes FRUSTRATED →
         # NEGATIVE has escalated, and keying on one label reset the count on that very turn.
-        streak = int(id_state.get("frustration_streak", 0))
+        streak = as_count(id_state.get("frustration_streak")) or 0   # host state: never raise
         streak = streak + 1 if intent.sentiment in NEGATIVE_SENTIMENTS else 0
         id_state["frustration_streak"] = streak
         emotional_override = ctx.metadata.get(mk.EMOTIONAL_OVERRIDE)

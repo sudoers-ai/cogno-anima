@@ -481,11 +481,48 @@ def test_baseline_signal_says_the_comparison_out_loud():
     within = f(ctx)
     assert "matches how this contact usually writes" in within
     assert "warmly and to the point" in within and "No extended apology" in within
-    # the warm contact who dropped: an escalation, and the line says to acknowledge it
+    # ...but prose is not a side door around the carve-outs the table obeys: a persona the
+    # tenant configured to be EVEN is not handed the warmth `offer` refuses it
+    even = f(ctx, ["reserved", "direct"])
+    assert "warmly" not in even and "to the point" in even
+    assert "No extended apology" in even                 # the rest of the line is unchanged
+    # the warm contact who dropped: an escalation — worded to coexist with a `direct` persona,
+    # like the `empathetic` directive it mirrors (acknowledge IN the reply, not before it)
     ctx = _ctx(sentiment="FRUSTRATED")
     ctx.metadata[mk.CONTACT_STATE] = _state(0.6)
     esc = f(ctx)
-    assert "markedly more upset" in esc and "Acknowledge that before answering" in esc
+    assert "markedly more upset" in esc
+    assert "without delaying the answer" in esc and "before answering" not in esc
+
+
+def test_contact_state_accepts_a_json_string_and_warns_when_unusable(caplog):
+    import logging
+    import uuid
+    from cogno_anima import vocab
+    # a JSONB column read by a raw driver hands over the text — same shape the traits carrier
+    # already accepted; without this the whole relative reading is a silent no-op
+    assert vocab.sanitize_contact_state('{"valence_ema": 0.4, "n": 12}') == {
+        "valence_ema": 0.4, "n": 12.0}
+    ctx = _ctx()
+    ctx.metadata[mk.CONTACT_STATE] = '{"valence_ema": 0.4, "n": 12}'
+    assert SuperegoStage.contact_state(ctx) == {"valence_ema": 0.4, "n": 12.0}
+    # a malformed carrier turns the feature off — and SAYS so, once per (persona, shape)
+    ctx.metadata[mk.CONTACT_STATE] = "not a state"
+    ctx.metadata[mk.ACTIVE_PERSONA_ID] = f"P-{uuid.uuid4()}"
+    with caplog.at_level(logging.WARNING, logger="cogno_anima.superego"):
+        assert SuperegoStage.contact_state(ctx) is None
+    assert "contact_state_unusable" in caplog.text
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="cogno_anima.superego"):
+        SuperegoStage.contact_state(ctx)
+    assert "contact_state_unusable" not in caplog.text          # once, not every turn
+    # a state that is merely TOO YOUNG is not malformed — every new contact is that for a few
+    # turns, and warning about it would drown the line that matters
+    caplog.clear()
+    ctx.metadata[mk.CONTACT_STATE] = _state(0.4, n=2)
+    with caplog.at_level(logging.WARNING, logger="cogno_anima.superego"):
+        assert SuperegoStage.contact_state(ctx) is None
+    assert caplog.text == ""
 
 
 @pytest.mark.asyncio
