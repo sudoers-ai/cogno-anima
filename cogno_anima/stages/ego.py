@@ -145,6 +145,12 @@ class EgoStage:
             tools = [t for t in tools if policy is not None
                      and not policy.is_mutating(t.get("function", {}).get("name", ""))]
         valid_names = {t.get("function", {}).get("name", "") for t in tools} - {""}
+        # Record it: this is the only place that knows it. The host's own probe runs BEFORE the
+        # mask above, so on a read-only turn it lists tools the model was never offered — and a
+        # later reader asking "could this persona have done what it promised?" would answer from
+        # the wrong surface, in the direction that blames the executor for a decision the host
+        # made. Sorted so two workers write the same value for the same turn.
+        ctx.metadata[mk.EGO_CALLABLE_TOOLS] = sorted(valid_names)
         # A composite (multi-task) request needs more loop budget; the host's
         # explicit ego_max_steps always wins. is_sequential only adds ordering
         # (rendered into the task context), not budget — it's a subset of composite.

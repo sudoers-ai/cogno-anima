@@ -969,3 +969,78 @@ async def test_the_task_context_actually_reaches_the_prompt_the_backend_receives
     assert "arrived at the same answer" in system          # the circling hint
     assert "FRUSTRATED" in system                           # the sentiment hint
     assert "não ligar depois das 18h" in system             # the user's own constraint
+
+
+# ── what the model could ACTUALLY call ────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_the_stage_records_what_was_callable_after_the_mask():
+    """The read-only mask runs INSIDE the stage, so only the stage knows the surface the model
+    was really offered. A host probe of the same dispatcher happens before this point and lists
+    the mutating tool that never reached the model — and a later reader asking "could this
+    persona have done what it promised?" would answer from that wrong surface, in the direction
+    that blames the executor for a decision the host made."""
+    backend = ScriptedToolCallingBackend([{"content": "13:00 ou 15:00?"}])
+    disp = PolicyDispatcher.with_tools("get_balance", "record_expense", mutating=["record_expense"])
+    ctx = await EgoStage().process(_ctx(intent_class="ACTION_REQUEST", ego_readonly=True),
+                                   backend, disp, system_prompt=SYS)
+    assert ctx.metadata[mk.EGO_CALLABLE_TOOLS] == ["get_balance"]     # sorted, and masked
+    # the dispatcher still HAS the mutating tool — the difference is the whole point
+    assert {t["function"]["name"] for t in disp.tools_schema()} == {"get_balance",
+                                                                    "record_expense"}
+
+
+@pytest.mark.asyncio
+async def test_it_is_recorded_on_an_unmasked_turn_too():
+    """"Nothing was removed" and "the stage did not say" must not look the same: an absent key
+    means the second, so the key is written even when the mask took nothing."""
+    backend = ScriptedToolCallingBackend([{"content": "pronto"}])
+    disp = PolicyDispatcher.with_tools("get_balance", "record_expense", mutating=["record_expense"])
+    ctx = await EgoStage().process(_ctx(intent_class="INFORMATION_REQUEST"), backend, disp,
+                                   system_prompt=SYS)
+    assert ctx.metadata[mk.EGO_CALLABLE_TOOLS] == ["get_balance", "record_expense"]
+
+
+def test_the_record_is_stable_across_workers():
+    """`valid_names` is a SET, so writing it out unsorted gives a different order per process
+    (string hashing is randomized). This value is persisted to a JSONB row and compared across
+    turns and workers, so an unstable order is a diff that means nothing — and any exact-match
+    assertion on it flakes by seed, which is why asserting the list inside one process cannot
+    catch it. Run the same turn under different hash seeds and demand the same answer."""
+    import os
+    import subprocess
+    import sys
+
+    script = (
+        "import asyncio, json, sys;"
+        "sys.path.insert(0, %r);"
+        "from tests.unit.test_ego import PolicyDispatcher, ScriptedToolCallingBackend, _ctx, SYS;"
+        "from cogno_anima.stages.ego import EgoStage;"
+        "from cogno_anima import metakeys as mk;"
+        "d = PolicyDispatcher.with_tools('delta','alpha','charlie','bravo','echo');"
+        "b = ScriptedToolCallingBackend([{'content': 'ok'}]);"
+        "c = asyncio.run(EgoStage().process(_ctx(intent_class='INFORMATION_REQUEST'), b, d,"
+        " system_prompt=SYS));"
+        "print(json.dumps(c.metadata[mk.EGO_CALLABLE_TOOLS]))"
+    ) % os.getcwd()
+
+    seen = set()
+    for seed in ("0", "1", "42"):
+        env = {**os.environ, "PYTHONHASHSEED": seed}
+        out = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True,
+                             env=env, cwd=os.getcwd())
+        assert out.returncode == 0, out.stderr[-800:]
+        seen.add(out.stdout.strip())
+    assert len(seen) == 1, f"a ordem mudou entre seeds: {seen}"
+    assert json.loads(seen.pop()) == ["alpha", "bravo", "charlie", "delta", "echo"]
+
+
+@pytest.mark.asyncio
+async def test_the_fail_safe_is_recorded_as_the_empty_surface_it_is():
+    """A plain dispatcher in read-only mode offers nothing (fail-safe). The record says so —
+    an empty list, not a missing key — because "the model could call nothing" is an answer."""
+    backend = ScriptedToolCallingBackend([{"content": "quer que eu registre 50?"}])
+    ctx = await EgoStage().process(_ctx(intent_class="ACTION_REQUEST", ego_readonly=True),
+                                   backend, StubDispatcher.with_tools("record_expense"),
+                                   system_prompt=SYS)
+    assert ctx.metadata[mk.EGO_CALLABLE_TOOLS] == []

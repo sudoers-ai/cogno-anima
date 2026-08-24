@@ -22,6 +22,22 @@ EGO_FORCE_TOOL = "ego_force_tool"              # host: this turn REQUIRES a tool
 EGO_CONFIRMED = "ego_confirmed"                # gate B: True | collection of tool names
 EGO_CONFIRMED_CALLS = "ego_confirmed_calls"    # gate B: approved calls to execute
 EGO_CORRECTION = "ego_correction"              # correction loop: {reason, attempt}
+
+# ── EGO writes, the host reads ───────────────────────────────────────────────
+# The tool names the model could ACTUALLY call this turn — the stage's own `valid_names`,
+# after the read-only mask (gate A) has run over `dispatcher.tools_schema()`.
+#
+# The host already knows its own tool surface, but it measures it BEFORE this point: the mask
+# lives inside the stage, so a host probe sees mutating tools that were never offered to the
+# model. On a masked turn (an onboarding hold, a proactive opening, the fallback retry) that
+# gap decides a verdict: a promise the model could not have kept reads as one it merely did
+# not keep — an error in the direction that absolves the design and blames the executor.
+#
+# Only the stage can answer it, because only the stage applies the mask; recomputing the
+# filter host-side would duplicate gate A's rule, and a duplicated rule diverges. Recorded
+# even when nothing is masked: a reader must be able to tell "nothing was removed" from "the
+# stage did not say", and the second is what an absent key means.
+EGO_CALLABLE_TOOLS = "ego_callable_tools"
 # How many CONSECUTIVE turns the host's anti-repeat guard has fired on this session (repaired
 # or shipped). The guard already knows the conversation is circling; before this key, only the
 # turn it fired on knew — the NEXT turn started with a clean slate and re-earned the repeat.
