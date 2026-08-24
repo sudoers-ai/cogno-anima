@@ -34,8 +34,12 @@ EGO_CORRECTION = "ego_correction"              # correction loop: {reason, attem
 #
 # On that path only the host knows, so the host says so — and `committed_this_turn` believes it.
 # SIX places CALL that predicate, measured rather than recalled: soma's commit gate
-# (`pipeline.py:273`), the semantic cache (`cache.py:152`), three repair/re-step guards
-# (`service.py:463`, `:539`, `:572`) and the trace's committed flag (`trace.py:140`). The soma's
+# (`pipeline.py::_gate_commit`), the semantic cache (`cache.py`), three repair/re-step guards
+# (`service.py::_repair_repetition` and two in `::_repair_grounding`) and the trace's
+# `committed` flag (`trace.py`). Cited by NAME on purpose: the line numbers a first draft
+# carried were read from an UNMERGED host branch that inserts a helper above them, so they
+# were already wrong for `main` — a line number in ANOTHER repository has a shorter life than
+# the sentence containing it. The soma's
 # own comment states the invariant they rest on: *"since committed_this_turn reads every
 # attempt, the 'NOTHING was committed' the voice renders as a HARD RULE is now TRUE of the whole
 # turn"*. The path above is what makes that sentence false; this key is what makes it true again
