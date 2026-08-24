@@ -14,7 +14,11 @@ will fail until both agree.
 
 from __future__ import annotations
 
-from typing import Any
+import re
+import math
+from typing import Any, Optional
+
+from cogno_anima.utils import as_count
 
 VALID_INTENTS: set[str] = {
     "INFORMATION_REQUEST", "ACTION_REQUEST", "CLARIFICATION",
@@ -75,7 +79,7 @@ VALID_STOP_REASONS: set[str] = {
 # prompt stays a text file). Traits shape HOW the reply is said — never WHAT: figures, limits and
 # refusals are untouched, and the persona's voice/limits prompt still outranks them. They are the
 # persona's, so they outrank the CONTACT's per-turn signals (register, tone) — except PII and
-# de-escalation, which the voice enforces in code (see `SuperegoStage._suppress_traits`).
+# de-escalation, which the voice enforces in code (see `SuperegoStage._modulate_traits`).
 #
 # The AXES are the single datum: an axis is a pair whose two sides contradict each other, and a
 # configuration that declares both is a contradiction the model would resolve by coin-flip — the
@@ -87,10 +91,16 @@ VOICE_TRAIT_AXES: tuple[tuple[str, str], ...] = (
     ("concise", "detailed"),     # length
     ("reserved", "humorous"),    # "no small talk" vs "one light remark" — the same coin-flip
 )
-# Traits with no opposite. `direct` and `empathetic` are worded to coexist (the answer comes
-# first; the acknowledgment is woven in, never a preamble) — the directives, not this table,
-# carry that guarantee.
-VOICE_TRAIT_SINGLETONS: tuple[str, ...] = ("direct", "humorous", "empathetic")
+# Traits with NO opposite (disjoint from every axis — a test pins it). `direct` and `empathetic`
+# are worded to coexist (the answer comes first; the acknowledgment is woven in, never a
+# preamble) — the directives, not this table, carry that guarantee.
+VOICE_TRAIT_SINGLETONS: tuple[str, ...] = ("direct", "empathetic")
+
+# Every side a trait contradicts (`reserved` sits on two axes). Derived, so it cannot drift.
+VOICE_TRAIT_OPPOSITES: dict[str, frozenset[str]] = {
+    t: frozenset(o for axis in VOICE_TRAIT_AXES if t in axis for o in axis if o != t)
+    for axis in VOICE_TRAIT_AXES for t in axis
+}
 
 VALID_VOICE_TRAITS: frozenset[str] = frozenset(
     {t for axis in VOICE_TRAIT_AXES for t in axis} | set(VOICE_TRAIT_SINGLETONS))
@@ -103,7 +113,79 @@ VOICE_TRAIT_CONFLICTS: tuple[frozenset[str], ...] = tuple(frozenset(a) for a in 
 # second voice prompt — the tenant has `custom_rules` for that. Extra values are dropped in order.
 MAX_VOICE_TRAITS: int = 4
 
+# The contact's per-turn sentiment as a valence scalar (−1…+1) — the input of the emotional
+# neutral (an EMA the host keeps, see `metakeys.CONTACT_STATE`) and of the turn's delta against
+# it. Closed on the NER's own vocabulary; an unknown label reads as 0 (no evidence either way).
+# ``NEGATIVE_SENTIMENTS`` (the streak family) is exactly the tail of this scale at
+# ``CONTACT_ESCALATION_DELTA`` — a test pins the identity, so the two cannot drift into two
+# different definitions of "upset".
+SENTIMENT_VALENCE: dict[str, float] = {
+    "POSITIVE": 1.0, "PLAYFUL": 0.6, "CURIOUS": 0.2, "NEUTRAL": 0.0,
+    "URGENT": -0.3, "NEGATIVE": -0.7, "FRUSTRATED": -1.0,
+}
+# Below this many observed turns the neutral is noise: the voice ignores it and the contact
+# receives the persona as declared.
+CONTACT_STATE_MIN_TURNS: int = 5
+# A turn this far BELOW the contact's own neutral is a real escalation (empathy, calm pace);
+# the same sentiment inside the contact's normal range is not.
+CONTACT_ESCALATION_DELTA: float = 0.5
+# A neutral this warm / this guarded shapes a turn that carries no signal of its own.
+CONTACT_WARM_NEUTRAL: float = 0.4
+CONTACT_GUARDED_NEUTRAL: float = -0.4
+
+
+def parse_contact_state_carrier(raw: Any) -> Optional[dict]:
+    """The carrier as a dict, decoding the JSON text a raw driver hands back for a JSONB
+    column — or ``None`` when it is not a mapping at all. Pure, never raises.
+
+    Separate from :func:`sanitize_contact_state` because two callers need the same decode for
+    different questions: "is this usable?" and "is this MALFORMED, or merely too young?" —
+    and answering the second on the undecoded value called every well-formed JSON string
+    malformed, which logged a warning on every turn of every new contact.
+    """
+    if isinstance(raw, (bytes, bytearray, str)):
+        try:
+            if isinstance(raw, (bytes, bytearray)):
+                raw = bytes(raw).decode("utf-8")
+            if len(raw) > MAX_TRAIT_CARRIER_CHARS:
+                return None
+            import json
+            raw = json.loads(raw)
+        except Exception:  # noqa: BLE001 — any parser failure is the carrier's problem
+            return None
+    return raw if isinstance(raw, dict) else None
+
+
+def sanitize_contact_state(raw: Any) -> Optional[dict[str, float]]:
+    """Validate a host-stamped emotional-neutral carrier → ``{valence_ema, n}`` or ``None``.
+
+    Returns ONLY what the core reads. The host's state carries more (the habitual intensity,
+    the mean message length, a schema version) — those are its series and its TTS delivery
+    profile, and validating a field nothing here consumes would dress it as core semantics.
+
+    Never FABRICATES: a carrier without ``valence_ema`` is not a neutral with a neutral value,
+    it is a carrier without a neutral (a host that stamped only its counter would otherwise
+    have the voice modulate against an invented 0.0). ``None`` also for a non-finite value, a
+    bool where a number belongs, and for a state too young to trust
+    (``n < CONTACT_STATE_MIN_TURNS`` — cold start: the persona as declared). Pure, never raises.
+    """
+    raw = parse_contact_state_carrier(raw)
+    if raw is None or "valence_ema" not in raw:
+        return None
+    n = as_count(raw.get("n"))
+    if n is None or n < CONTACT_STATE_MIN_TURNS:
+        return None
+    v = raw["valence_ema"]
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        return None
+    return {"valence_ema": max(-1.0, min(1.0, float(v))), "n": float(n)}
+
+
 _LOG_LABEL_WIDTH = 40
+_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
+# Above these the carrier is not a configuration, it is an attack or a bug: refused whole.
+MAX_TRAIT_CARRIER_CHARS = 4096
+MAX_TRAIT_CARRIER_ITEMS = 64
 
 
 def _label(x: Any) -> str:
@@ -114,7 +196,9 @@ def _label(x: Any) -> str:
         text = x if isinstance(x, str) else repr(x)
     except Exception:  # noqa: BLE001 — the label is diagnostics, the turn is the product
         text = f"<{type(x).__name__}>"
-    return text.replace("\n", " ").replace("\r", " ")[:_LOG_LABEL_WIDTH]
+    # slice FIRST (a 10 MB value must not be scanned whole), then neutralize every control and
+    # line/paragraph separator (\n, \r, \x85, \u2028, \v, \f…) so a value cannot forge a log line
+    return _CONTROL_RE.sub(" ", text[:_LOG_LABEL_WIDTH * 2])[:_LOG_LABEL_WIDTH]
 
 
 def sanitize_voice_traits(raw: Any) -> tuple[list[str], list[str]]:
@@ -137,19 +221,30 @@ def sanitize_voice_traits(raw: Any) -> tuple[list[str], list[str]]:
     """
     if raw is None:
         return [], []
+    if isinstance(raw, (bytes, bytearray)):
+        try:
+            raw = bytes(raw).decode("utf-8")          # a Redis client without decode_responses
+        except UnicodeDecodeError:
+            return [], ["<bytes>"]
     if isinstance(raw, str):
+        if len(raw) > MAX_TRAIT_CARRIER_CHARS:
+            return [], [f"<{len(raw)} chars>"]
         text = raw.strip()
         if text.startswith("["):
             try:
                 import json
                 loaded = json.loads(text)
-            except ValueError:
+            except Exception:  # noqa: BLE001 — ValueError, RecursionError on '[' * 1e5, …
                 return [], [_label(text)]
             if not isinstance(loaded, list):
                 return [], [_label(text)]
             items: list[Any] = loaded
         else:
-            items = text.split(",")
+            # A Postgres ``text[]`` literal: {warm,direct} — and Postgres QUOTES an element
+            # that needs it, so the quotes come off per item below, not with the braces.
+            if text.startswith("{") and text.endswith("}"):
+                text = text[1:-1]
+            items = [i.strip().strip('"') for i in text.split(",")]
     elif isinstance(raw, (list, tuple)):
         items = list(raw)
     elif isinstance(raw, (set, frozenset)):
@@ -159,6 +254,8 @@ def sanitize_voice_traits(raw: Any) -> tuple[list[str], list[str]]:
             return [], [_label(raw)]
     else:
         return [], [type(raw).__name__]
+    if len(items) > MAX_TRAIT_CARRIER_ITEMS:
+        return [], [f"<{len(items)} items>"]
     kept: list[str] = []
     dropped: list[str] = []
     for item in items:

@@ -2,7 +2,7 @@ import logging
 import re
 import math
 import string
-from typing import Any, Callable, Iterable
+from typing import Optional, Any, Callable, Iterable
 
 _logger = logging.getLogger("cogno_anima.utils")
 
@@ -83,6 +83,65 @@ def safe_float(value: object, default: float = 0.0) -> float:
         return float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return default
+
+
+def as_count(value: object) -> "Optional[int]":
+    """A host-supplied counter as a non-negative int, or ``None`` when the value is not one.
+
+    Every stage that reads a number the HOST counted needs the same policy, and the repo had
+    three of them (the EGO's circling streak, the ID's frustration streak, the SUPEREGO's
+    contact-state turn count). ``None`` is "absent"; a ``bool`` is refused rather than counted
+    as 1 — a host whose guard returns a flag is filling a COUNT slot with it, and reading that
+    as 1 leaves the feature dead-but-green. A float/str is accepted and truncated. Never
+    raises: ``int(object)`` and ``int(float("inf"))`` would, and a counter must not abort a
+    turn. The CALLER decides what to log and what to fall back to.
+    """
+    if value is None or isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return None
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+class WarnOnce:
+    """A bounded "say it once" gate for a condition that comes from STORED configuration.
+
+    A misconfigured persona or identity repeats on every turn of every contact, so logging it
+    per turn buries the log in proportion to TRAFFIC rather than to the problem. Two rules,
+    both learned the hard way:
+
+    * **the key describes the SHAPE of the problem, never the value.** A key carrying the
+      offending value has unbounded cardinality — one per contact, per turn — and a bounded
+      gate that evicts on it has stopped being a gate.
+    * **each feature owns its own instance.** One shared set meant a flood of keys from one
+      feature evicted another's single entry, silently ending its "once per process" guarantee
+      — a fix for one feature reaching into an unrelated one.
+
+    Eviction is wholesale (clear at the limit) and deliberate: the alternative, an LRU, would
+    hide the same cardinality bug behind steadier behaviour instead of making it visible.
+    """
+
+    __slots__ = ("_seen", "_limit")
+
+    def __init__(self, limit: int = 256) -> None:
+        self._seen: set = set()
+        self._limit = limit
+
+    def first(self, key: object) -> bool:
+        """True the first time ``key`` is seen (and after an eviction) — log then, not again."""
+        if key in self._seen:
+            return False
+        if len(self._seen) >= self._limit:
+            self._seen.clear()
+        self._seen.add(key)
+        return True
+
+    def reset(self) -> None:
+        self._seen.clear()
+
+    def __len__(self) -> int:
+        return len(self._seen)
 
 
 def word_count(text: str) -> int:
