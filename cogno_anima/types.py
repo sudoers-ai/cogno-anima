@@ -440,15 +440,24 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     host is the only layer that knows, so it says so (``mk.PRIOR_ATTEMPT_COMMITTED``) and this
     predicate believes it.
 
-    Fixing it HERE and not in each caller is the whole point. Six places read this — the soma
-    commit gate, the semantic cache, the host's unapproved-write meter, two re-step guards and
-    the grounding backstop — and the soma's own comment states the invariant they rest on:
+    Fixing it HERE and not in each caller is the whole point. Six places CALL this — soma's
+    commit gate, the semantic cache, three repair/re-step guards and the trace's committed flag
+    — and the soma's own comment states the invariant they rest on:
     *"since committed_this_turn reads every attempt, the 'NOTHING was committed' the voice
     renders as a HARD RULE is now TRUE of the whole turn"*. The path above is exactly what
     makes that sentence false, and a guard added to one caller leaves the other five wrong. A
     rule each consumer re-derives is a rule each consumer gets wrong alone.
 
+    Two layers in the host RE-DERIVE the rule from the trace rather than calling this — the
+    grounding backstop and the offline promise auditor — so they do NOT see the declaration.
+    Naming them is deliberate: the sentence above ("a rule each consumer re-derives is a rule
+    each consumer gets wrong alone") has two live re-derivations, and a reader who assumed they
+    were covered would believe the retry turn's symptom was fixed when only the guards were.
+
     The declaration is TRUE-only: absent means "nothing to add", never "nothing was committed".
+    It is also PER TURN — it describes an earlier attempt of the turn being retried, and a host
+    that persisted it into the next turn would disarm both repairs and the cache for the rest of
+    the session.
 
     Read with `getattr`, deliberately: this is a POLICY predicate on the hot path of hosts that
     pass duck-typed carriers (test doubles, replayed traces, a leaner context of their own). It
@@ -456,7 +465,14 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     kill a turn whose reply was already produced — the failure mode is the opposite of the
     conservatism it exists to provide. Same reason the metadata read below is defensive: a
     carrier whose `metadata` is missing, or is not a mapping, degrades to the trace instead of
-    raising."""
+    raising.
+
+    Be precise about the direction of THAT degradation: it answers False, which for five of the
+    six callers is the RELEASING answer (cacheable, re-step allowed, "nothing was committed"
+    rendered to the voice as a hard rule). So it is fail-OPEN here, unlike the no-op→True choice
+    above, which is conservative on purpose. It stays fail-open deliberately: answering True on
+    an unreadable carrier would make every test double and replayed trace read as "committed",
+    which is the worse error. On a real `PipelineContext` the handler is unreachable."""
     execs = getattr(ctx, "turn_executions", None)
     if not execs:
         ego = getattr(ctx, "ego_result", None)

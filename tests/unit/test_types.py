@@ -116,3 +116,11 @@ def test_the_inlined_constant_matches_the_metakey():
     from cogno_anima.types import _PRIOR_ATTEMPT_COMMITTED
 
     assert _PRIOR_ATTEMPT_COMMITTED == mk.PRIOR_ATTEMPT_COMMITTED
+
+    # And the VALUE, not only the two copies to each other: a `sed -i` over the repo moves both
+    # together and ships green, while `cogno_host/commit_sink.py` repeats the literal on purpose
+    # (to stay importable against an older pin). Renaming the value is a data migration, which
+    # is precisely what `metakeys.py` warns about — "a typo in a string does not fail, it
+    # silently no-ops the feature". Without this line the two-copy assert only LOOKS like drift
+    # protection.
+    assert mk.PRIOR_ATTEMPT_COMMITTED == "prior_attempt_committed"

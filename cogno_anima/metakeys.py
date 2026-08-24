@@ -33,15 +33,30 @@ EGO_CORRECTION = "ego_correction"              # correction loop: {reason, attem
 # write is nowhere in it.
 #
 # On that path only the host knows, so the host says so — and `committed_this_turn` believes it.
-# Six places read that predicate (the soma commit gate, the semantic cache, the host's
-# unapproved-write meter, two re-step guards and the grounding backstop), and the soma's own
-# comment states the invariant they rest on: *"since committed_this_turn reads every attempt,
-# the 'NOTHING was committed' the voice renders as a HARD RULE is now TRUE of the whole turn"*.
-# The path above is what makes that sentence false; this key is what makes it true again — in
-# the one place the definition lives, instead of six guards that would each get it wrong alone.
+# SIX places CALL that predicate, measured rather than recalled: soma's commit gate
+# (`pipeline.py:273`), the semantic cache (`cache.py:152`), three repair/re-step guards
+# (`service.py:463`, `:539`, `:572`) and the trace's committed flag (`trace.py:140`). The soma's
+# own comment states the invariant they rest on: *"since committed_this_turn reads every
+# attempt, the 'NOTHING was committed' the voice renders as a HARD RULE is now TRUE of the whole
+# turn"*. The path above is what makes that sentence false; this key is what makes it true again
+# — in the one place the definition lives, instead of six guards each getting it wrong alone.
+#
+# TWO layers are NOT covered, and saying which is the point of enumerating at all. The host's
+# grounding backstop (`grounding.py:_tool_calls`) and the offline promise auditor
+# (`turn_audit/promises.py:committed_from_trace`) RE-DERIVE the rule from the trace instead of
+# calling the predicate. They therefore do not see this declaration, and on the very turn it
+# describes the backstop still rewrites a truthful confirmation into a denial. That is a host
+# defect, not a core one — but a list that silently included them would make a reader believe
+# the symptom was fixed when only the guards were.
 #
 # TRUE only. Absent means "nothing to add", never "nothing was committed": a host that does not
 # set it is a host whose executions are all on the context, which is the normal case.
+#
+# PER TURN. It describes an earlier attempt of THE TURN BEING RETRIED and must never be carried
+# into the next one. The warning matters because this module tells hosts these values are
+# persisted, and anima's own CLAUDE.md endorses persisting `ctx.metadata["id_state"]` — so a
+# host that persists the metadata dict WHOLESALE would make the predicate answer True for every
+# remaining turn of the session, permanently disarming both repairs and the semantic cache.
 PRIOR_ATTEMPT_COMMITTED = "prior_attempt_committed"
 # How many CONSECUTIVE turns the host's anti-repeat guard has fired on this session (repaired
 # or shipped). The guard already knows the conversation is circling; before this key, only the
