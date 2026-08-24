@@ -212,8 +212,11 @@ def test_voice_trait_axes_derive_vocabulary_and_conflicts():
 
 def test_persona_traits_logs_what_it_drops(caplog):
     import logging
+    import uuid
     ctx = _ctx()
     ctx.metadata[mk.VOICE_TRAITS] = ["warm", "sassy", "reserved"]
+    # once per (persona, config) per process — a fresh persona id makes this run log again
+    ctx.metadata[mk.ACTIVE_PERSONA_ID] = f"P-{uuid.uuid4()}"
     with caplog.at_level(logging.WARNING, logger="cogno_anima.superego"):
         assert SuperegoStage.persona_traits(ctx) == []
     assert "voice_traits_dropped" in caplog.text and "sassy" in caplog.text
@@ -307,6 +310,7 @@ def test_sanitize_contact_state_validates_and_clamps():
     assert f(_state(0.3, n=4)) is None                       # too young: cold start
     assert f(_state(0.3, n=5)) == {"valence_ema": 0.3, "arousal_ema": 0.5, "n": 5.0}
     assert f(_state(7.0, arousal=-2, n=9)) == {"valence_ema": 1.0, "arousal_ema": 0.0, "n": 9.0}
+    assert f(_state(0.3, n=5.9)) is not None and f(_state(0.3, n=5.9))["n"] == 5.0
     assert f({"valence_ema": float("nan"), "n": 10}) is None
 
 
@@ -354,6 +358,10 @@ def test_modulate_traits_default_for_a_signal_less_turn_comes_from_the_neutral()
     ctx = _ctx(sentiment="NEUTRAL")
     ctx.metadata[mk.CONTACT_STATE] = _state(0.9)
     assert "empathetic" not in f(["direct"], quiet, ctx)
+    # ...and neither is a merely HURRIED one: urgent → brisk, not "I understand how you feel"
+    ctx = _ctx(sentiment="URGENT")
+    ctx.metadata[mk.CONTACT_STATE] = _state(0.9)
+    assert "empathetic" not in f(["warm"], ["tone:direct"], ctx)
     # a turn WITH a per-turn signal does not take the neutral's default
     ctx = _ctx(sentiment="PLAYFUL")
     ctx.metadata[mk.CONTACT_STATE] = _state(0.5)
@@ -366,11 +374,37 @@ def test_modulate_traits_urgent_replaces_the_opposite_side_of_the_axis():
     # a detailed, humorous persona becomes direct + concise — it does NOT lose both length sides
     out = f(["warm", "detailed", "humorous"], ["tone:direct"], ctx)
     assert out == ["concise", "direct", "warm"]
-    # additions go to the front so the cap keeps them, and the result is always sanitized
-    out = f(["warm", "detailed", "humorous", "empathetic"], ["tone:direct"], ctx)
-    assert len(out) <= 4 and "concise" in out and "direct" in out and "detailed" not in out
+    # additions never EVICT a declared trait: a formal persona stays formal on an urgent turn
+    out = f(["warm", "humorous", "formal", "detailed"], ["tone:direct"], ctx)
+    assert "formal" in out and "concise" in out and "direct" in out and "detailed" not in out
     from cogno_anima import sanitize_voice_traits
-    assert sanitize_voice_traits(out)[1] == []
+    assert sanitize_voice_traits(out)[1] == []          # and never a contradicting pair
+
+
+def test_modulate_traits_never_invents_a_personality():
+    # the tenant declared nothing → nothing is rendered, whatever the turn or the neutral says
+    f = SuperegoStage._modulate_traits
+    ctx = _ctx(sentiment="URGENT")
+    ctx.metadata[mk.CONTACT_STATE] = _state(0.9)
+    assert f([], ["tone:direct"], ctx) == []
+    ctx = _ctx(sentiment="NEUTRAL")
+    ctx.metadata[mk.CONTACT_STATE] = _state(0.9)
+    assert f([], ["general:review"], ctx) == []
+
+
+def test_sentiment_valence_covers_the_ner_vocabulary():
+    from cogno_anima import vocab
+    assert set(vocab.SENTIMENT_VALENCE) == vocab.VALID_SENTIMENTS
+    for t in vocab.VALID_VOICE_TRAITS:
+        assert t in vocab.VOICE_TRAIT_OPPOSITES or t in vocab.VOICE_TRAIT_SINGLETONS
+    assert vocab.VOICE_TRAIT_OPPOSITES["reserved"] == {"warm", "humorous"}
+
+
+def test_sanitizers_never_raise_on_hostile_numbers_or_nesting():
+    from cogno_anima import sanitize_voice_traits, vocab
+    assert vocab.sanitize_contact_state({"n": float("inf"), "valence_ema": 0.2}) is None
+    assert vocab.sanitize_contact_state({"n": 10, "valence_ema": float("inf")}) is None
+    assert sanitize_voice_traits("[" * 100000)[0] == []
 
 
 @pytest.mark.asyncio
@@ -421,6 +455,10 @@ def test_voice_prompt_renders_persona_traits_as_their_own_section():
     assert "User register:" not in formal and _TRAIT_DIRECTIVES["formal"] in formal
     casual = se._build_voice_prompt(ctx, "data", adjustments, ["casual"])
     assert "User register:" not in casual
+    # ...but a register on ANOTHER axis (technical) still reaches a formal persona
+    ctx.intent.parole = "TECNICO"
+    tech = se._build_voice_prompt(ctx, "data", se.detect_adjustments(ctx), ["formal"])
+    assert "User register: technical" in tech
 
 
 @pytest.mark.asyncio

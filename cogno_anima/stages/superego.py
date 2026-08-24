@@ -15,9 +15,10 @@ host injects whichever backend it wants for each; they may differ):
     deterministic PII backstop, and feeds synthesis drift.
 
 Plus deterministic, dependency-free utilities (``strip_cot``,
-``detect_adjustments`` — incl. the persona's DECLARED traits from ``mk.VOICE_TRAITS``,
-rendered as their own voice-prompt section) and ``_blocked_response`` (PII-CRITICAL
-protection).
+``detect_adjustments``, the persona-traits modulation ``_modulate_traits`` — the persona's
+DECLARED traits from ``mk.VOICE_TRAITS``, read by ``voice()`` and rendered as their own
+voice-prompt section, never by ``detect_adjustments``) and ``_blocked_response``
+(PII-CRITICAL protection).
 
 Host concerns (NOT here): the persona scope/limits/voice prompt text, the retry
 LOOP orchestration + ``max_corrections``, billing, and the actual human handoff
@@ -52,7 +53,7 @@ _NUM_RE = re.compile(r"\d[\d.,]*\d|\d")
 _CRITICAL_TERM_RE = re.compile(r"\d|@|https?://", re.IGNORECASE)
 
 # Trait configurations already warned about (see SuperegoStage.persona_traits). Bounded.
-_WARNED_TRAIT_CONFIGS: set[tuple[tuple[str, ...], tuple[str, ...]]] = set()
+_WARNED_TRAIT_CONFIGS: set[tuple[str, int]] = set()   # (persona id, hash of the config)
 
 # One rendered instruction per `vocab.VALID_VOICE_TRAITS` value (a test pins the alignment).
 # Written as directives about DELIVERY only — none of them may loosen grounding or limits,
@@ -218,7 +219,8 @@ class SuperegoStage:
             # contact of that tenant — volume scaling with traffic, not with the (single)
             # misconfiguration. The host refuses these at save time; this is the net for a row
             # written around it.
-            key = (tuple(kept), tuple(dropped))
+            key = (str(ctx.metadata.get(mk.ACTIVE_PERSONA_ID, "?")),
+                   hash((tuple(kept), tuple(dropped))))
             if key not in _WARNED_TRAIT_CONFIGS:
                 if len(_WARNED_TRAIT_CONFIGS) >= 256:
                     _WARNED_TRAIT_CONFIGS.clear()
@@ -257,9 +259,16 @@ class SuperegoStage:
           ``warm``; guarded → no humor.
 
         Additions REPLACE the opposite side of their axis (URGENT turns a ``detailed`` persona
-        concise, it does not drop both) and go to the front, so the cap keeps them. The result
-        is re-sanitized, so the table can never emit a contradicting pair.
+        concise, it does not drop both) and go to the front. No cap is applied here — a
+        declared trait is never evicted by a modulation — and no contradicting pair can come
+        out, because ``add`` removes the opposite first. A persona that declared NO traits gets
+        none: modulation refines a declared personality, it does not invent one.
         """
+        if not traits:
+            # The tenant declared nothing: the persona is voiced as before this feature, byte for
+            # byte. Modulation refines DECLARED traits; it never invents a personality — the
+            # section says "configured for this persona", and it must stay true.
+            return []
         rejected = bool(ctx.metadata.get(mk.VOICE_CORRECTION))
         sentiment = (ctx.intent.sentiment if ctx.intent is not None else "") or ""
         signalled = any(a.startswith(("pii:", "override:", "tone:", "style:"))
@@ -269,12 +278,11 @@ class SuperegoStage:
                          for a in adjustments)
                   or sentiment in vocab.NEGATIVE_SENTIMENTS)
         out = list(traits)
-        opposite = {a: b for axis in vocab.VOICE_TRAIT_AXES for a, b in (axis, axis[::-1])}
 
         def add(t: str) -> None:
-            opp = opposite.get(t)
-            if opp in out:
-                out.remove(opp)
+            for opp in vocab.VOICE_TRAIT_OPPOSITES.get(t, ()):
+                if opp in out:
+                    out.remove(opp)
             if t not in out:
                 out.insert(0, t)
 
@@ -296,9 +304,10 @@ class SuperegoStage:
         if state is not None:
             valence = vocab.SENTIMENT_VALENCE.get(sentiment, 0.0)
             delta = valence - state["valence_ema"]
-            # An escalation is a NEGATIVE turn that is also below the contact's own normal —
-            # a neutral turn from a warm contact is a drop in the numbers, not a person upset.
-            if valence < 0 and delta <= -vocab.CONTACT_ESCALATION_DELTA:
+            # An escalation is an UPSET turn (FRUSTRATED/NEGATIVE — not merely hurried) that is
+            # also below the contact's own normal; a neutral or urgent turn from a warm contact
+            # is a drop in the numbers, not a person upset.
+            if sentiment in vocab.NEGATIVE_SENTIMENTS and delta <= -vocab.CONTACT_ESCALATION_DELTA:
                 if "reserved" not in out:
                     add("empathetic")
                 drop("detailed")
@@ -307,7 +316,10 @@ class SuperegoStage:
                     add("warm")
                 elif state["valence_ema"] <= vocab.CONTACT_GUARDED_NEUTRAL:
                     drop("humorous")
-        return vocab.sanitize_voice_traits(out)[0]
+        # No re-cap here: the declared list was capped at save time, and a modulation that
+        # evicted a DECLARED trait (formal, say) would silently flip the persona's identity on
+        # that turn. Conflicts cannot arise — `add` removes the opposite side first.
+        return out
 
     @staticmethod
     def _parole_to_register(parole: Optional[str]) -> Optional[str]:
@@ -689,10 +701,13 @@ class SuperegoStage:
         # Register accommodation (sibling of Reply language): match the user's formality where
         # it does not conflict with the persona — the persona's voice/limits always win. When
         # the persona DECLARES its formality (a formal/casual trait), the contact's register is
-        # not rendered at all: the persona's axis wins by construction, in code, instead of by
-        # two prose rules the model has to rank. The token stays on ``adjustments`` (audit).
+        # not rendered when it lies on that same axis (`register:formal`/`register:casual`):
+        # the persona's axis wins by construction, in code, instead of by two prose rules the
+        # model has to rank. A register on another axis (`technical`, `light`, `expressive`)
+        # still reaches the voice. The token stays on ``adjustments`` (audit).
         register = next((a for a in adjustments if a.startswith("register:")), None)
-        if register and not ({"formal", "casual"} & set(traits)):
+        if register and not ({"formal", "casual"} & set(traits)
+                             and register in ("register:formal", "register:casual")):
             signals.append(
                 f"User register: {register.split(':', 1)[1]} — match it where it does "
                 "not conflict with the persona voice/limits (persona takes precedence)"

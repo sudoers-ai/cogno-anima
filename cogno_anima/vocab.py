@@ -75,7 +75,7 @@ VALID_STOP_REASONS: set[str] = {
 # prompt stays a text file). Traits shape HOW the reply is said — never WHAT: figures, limits and
 # refusals are untouched, and the persona's voice/limits prompt still outranks them. They are the
 # persona's, so they outrank the CONTACT's per-turn signals (register, tone) — except PII and
-# de-escalation, which the voice enforces in code (see `SuperegoStage._suppress_traits`).
+# de-escalation, which the voice enforces in code (see `SuperegoStage._modulate_traits`).
 #
 # The AXES are the single datum: an axis is a pair whose two sides contradict each other, and a
 # configuration that declares both is a contradiction the model would resolve by coin-flip — the
@@ -87,10 +87,16 @@ VOICE_TRAIT_AXES: tuple[tuple[str, str], ...] = (
     ("concise", "detailed"),     # length
     ("reserved", "humorous"),    # "no small talk" vs "one light remark" — the same coin-flip
 )
-# Traits with no opposite. `direct` and `empathetic` are worded to coexist (the answer comes
-# first; the acknowledgment is woven in, never a preamble) — the directives, not this table,
-# carry that guarantee.
+# Traits that are not the primary side of an axis (`humorous` still opposes `reserved` above).
+# `direct` and `empathetic` are worded to coexist (the answer comes first; the acknowledgment is
+# woven in, never a preamble) — the directives, not this table, carry that guarantee.
 VOICE_TRAIT_SINGLETONS: tuple[str, ...] = ("direct", "humorous", "empathetic")
+
+# Every side a trait contradicts (`reserved` sits on two axes). Derived, so it cannot drift.
+VOICE_TRAIT_OPPOSITES: dict[str, frozenset[str]] = {
+    t: frozenset(o for axis in VOICE_TRAIT_AXES if t in axis for o in axis if o != t)
+    for axis in VOICE_TRAIT_AXES for t in axis
+}
 
 VALID_VOICE_TRAITS: frozenset[str] = frozenset(
     {t for axis in VOICE_TRAIT_AXES for t in axis} | set(VOICE_TRAIT_SINGLETONS))
@@ -129,12 +135,15 @@ def sanitize_contact_state(raw: Any) -> Optional[dict[str, float]]:
     if not isinstance(raw, dict):
         return None
     try:
-        n = int(raw.get("n", 0))
+        n_f = float(raw.get("n", 0))
         v = float(raw.get("valence_ema", 0.0))
         a = float(raw.get("arousal_ema", 0.5))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
-    if n < CONTACT_STATE_MIN_TURNS or v != v or a != a:      # too young, or NaN
+    if not all(x == x and abs(x) != float("inf") for x in (n_f, v, a)):   # NaN / inf
+        return None
+    n = int(n_f)
+    if n < CONTACT_STATE_MIN_TURNS:                            # too young: cold start
         return None
     return {"valence_ema": max(-1.0, min(1.0, v)), "arousal_ema": max(0.0, min(1.0, a)),
             "n": float(n)}
@@ -180,7 +189,7 @@ def sanitize_voice_traits(raw: Any) -> tuple[list[str], list[str]]:
             try:
                 import json
                 loaded = json.loads(text)
-            except ValueError:
+            except Exception:  # noqa: BLE001 — ValueError, RecursionError on '[' * 1e5, …
                 return [], [_label(text)]
             if not isinstance(loaded, list):
                 return [], [_label(text)]
