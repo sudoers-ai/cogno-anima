@@ -84,6 +84,57 @@ qwen3:8b's 3 while scoring within one check of it. (The harness now surfaces thi
 per run — the `fallbacks=` column in the report and `meta.ner_fallbacks` in
 persisted artifacts.)
 
+## 2026-08-24 — the few-shot diet, measured and REFUSED
+
+The field diet (#65) removed seven fields no code reads from the parser and from the prompt's
+field SPEC — but left all seven in the three few-shot examples, which is the stronger
+instruction. So the model kept emitting `entities.pronouns`, `entities.possessives`,
+`abstract_tags`, `comparatives`, `raw_intent_class`, `raw_domains` and `raw_goal` on every turn,
+and the parser kept dropping them: **75 of 365 tokens of Example 1 — 21% of the OUTPUT**
+(tiktoken `cl100k_base`). #65's measured gain was **input-only** (−6.3%); output costs 4× and is
+the latency bottleneck.
+
+Cutting them from the examples was measured, `--repeat 3` per cell, and **refused**.
+
+| | input | **output** | stable score (majority) | unstable checks |
+|---|---|---|---|---|
+| **gpt-4o-mini** | −4.8% | **−19.1%** | 115 → **111** | 1 → **4** |
+| **gpt-4.1-nano** | −4.8% | **−16.4%** | 112 → **113** | 6 → **3** |
+
+Token deltas are means over the three repeats, not one artifact against another (that pairing
+reads −19.4% for gpt-4o-mini — the same conclusion, a less honest number). The `before`
+aggregates come from a SECOND baseline run: the first one was piped through `head` and lost its
+aggregate table, and the artifacts persist per-run totals but not per-run checks. Its medians
+agree with the first (115 and 111), which is the only cross-run claim made here.
+
+**Read the stable score, not the median.** By the median of three runs the cut cost gpt-4o-mini
+2 checks; by this suite's own majority instrument (strict, ties fail) it cost **4**, and the
+instability tripled. The median is optimistic by construction — the aggregate table is why
+`--repeat` exists.
+
+**The two models move in opposite directions on BOTH metrics**, which is the prior in the
+project's `prompt-slimming-loop-vs-singleshot` note, measured again with a different cut: the
+examples act as scaffolding for gpt-4o-mini and as distraction for the nano, whose instability
+halves without them.
+
+**What refuses it is the deployed configuration, not the average.** The live tenant routes
+`ner_model = openai:gpt-4o-mini` (`noumeno_model` is the nano). The one model that actually runs
+this stage in production is the one that loses four stable checks — and one of the checks the
+cut destabilizes is `parole`, the single pragmatic field this suite scores clean before it, and
+the one a per-contact register profile would have to rest on.
+
+**What reopens it**, with these numbers in hand: (a) a narrower cut measured per group — the
+`raw_*` trio is most of the text and is a different KIND of removal from
+`pronouns`/`possessives`/`comparatives`/`abstract_tags`, and nothing here separates them; (b)
+the NER slot moving to a nano-class model, where the cut is a gain on both axes. Until then the
+21% is a known, priced waste rather than an unknown one.
+
+**Instrument notes, paid for here:** never pipe a bench run through `head` — it cut the
+AGGREGATE table off the baseline, and the `--out` artifacts persist per-run totals but not
+per-run checks, so the "before" aggregate had to be re-run against a prompt that had already
+moved. And "clean field" from n=1 is not a statement about stability: `parole` showed 0 failures
+in a single run and is stable across three — true, but only the repetition could say so.
+
 ## 2026-08-24 re-run — the numbers above were stale relative to the prompt
 
 `gpt-4o-mini`, current prompt, `--embed-model openai:text-embedding-3-small`, n=1:
