@@ -91,22 +91,26 @@ JUDGE_VERDICT = "judge_verdict"
 # host persists, and a full critique per attempt is unbounded text.
 JUDGE_ATTEMPTS = "judge_attempts"
 
-# ── prompt provenance (orchestrator writes, host stores) ─────────────────────
-# `{sha: {"kind": ..., "text": ...}}` for every DEPLOYMENT-AUTHORED prompt this turn used —
-# the persona's execution/voice/limits/scope text, keyed by the digest that `StageMetrics
-# .prompt_sha` carries. It is the other half of that field: the sha alone labels a
-# configuration, this makes the configuration READABLE after the fact, so "which text
-# produced this outcome" is answerable instead of merely groupable.
+# ── prompt provenance (HOST writes, orchestrator labels with it) ─────────────
+# `{kind: sha}` — the host's digest of each prompt TEMPLATE it is running this turn, keyed by
+# slot ("ego" | "voice" | "judge" | "scope"). The orchestrator copies the matching one onto
+# each call's `StageMetrics.prompt_sha`, so an outcome can be grouped by the configuration
+# that produced it.
 #
-# TRANSIENT, and the contract has two halves a host must honour:
-#   * store it CONTENT-ADDRESSED (one row per distinct sha, not per turn) — the same persona
-#     across a million turns is one row, and a store that grows per turn means the addressing
-#     is not working;
-#   * do NOT copy it into the per-turn record. It is not session state either: the
-#     orchestrator's snapshot is an explicit allowlist and this is not in it.
-# Free of contact PII by CONSTRUCTION, not by filtering: the injected context (transcript,
-# memories, graph) is deliberately excluded from what gets digested and published.
-PROMPT_TEXTS = "prompt_texts"
+# **The host owns this because only the host has the TEMPLATE.** By the time a prompt reaches
+# the orchestrator it has been RENDERED — the host substitutes `{identity_label}` and
+# `{identity_email}` into the system/scope/limits/voice slots before handing them over. Two
+# things follow, and the first cut of this got both wrong by digesting the rendered text here:
+#
+#   * a digest of rendered text is a digest of the CONTACT, so the "same prompt" yields a
+#     different sha per person — one row per conversation in a content-addressed store, which
+#     is the opposite of the point;
+#   * and the text behind such a digest carries a name and an e-mail, so storing it would put
+#     contact PII in a table the identity purge does not know about.
+#
+# The template has neither problem: `{identity_label}` is literal, stable across contacts, and
+# answers the question actually being asked — which prompt was this deployment running.
+PROMPT_SHAS = "prompt_shas"
 
 # ── ID / NER / NOUMENO — cross-turn carry-over (soma writes, stages read) ─────
 ID_STATE = "id_state"                          # serializable IDStage state
