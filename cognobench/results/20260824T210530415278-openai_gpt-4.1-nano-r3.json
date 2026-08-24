@@ -1,0 +1,991 @@
+{
+  "run_id": "20260824T210530415278-openai_gpt-4.1-nano-r3",
+  "timestamp": "2026-08-24T21:05:30+00:00",
+  "model": "openai:gpt-4.1-nano",
+  "config": {
+    "model": "openai:gpt-4.1-nano",
+    "embed_model": "openai:text-embedding-3-small",
+    "language": "pt-BR",
+    "only": [
+      "ner"
+    ],
+    "limit": null,
+    "stub": false,
+    "calibrate": false,
+    "think": false,
+    "mutate": null,
+    "repeat_index": 3,
+    "repeat_total": 3
+  },
+  "suites": {
+    "ner": {
+      "suite_id": "ner-v1",
+      "suite_hash": "74507ab6c78e25cf",
+      "effective_case_ids": [
+        "intent_info_request",
+        "intent_action_request",
+        "intent_social",
+        "intent_creative",
+        "sentiment_positive",
+        "sentiment_frustrated",
+        "sentiment_urgent",
+        "sentiment_neutral",
+        "temporal_recent",
+        "temporal_historical",
+        "temporal_timeless",
+        "temporal_mixed",
+        "entity_person",
+        "entity_location",
+        "entity_concept_multi",
+        "lang_portuguese",
+        "lang_english",
+        "lang_spanish",
+        "ner_pii_none",
+        "ner_pii_credential",
+        "ner_pii_email",
+        "ner_pii_national_id",
+        "ner_pii_phone",
+        "ner_pii_credit_card",
+        "ner_pii_name_only",
+        "ner_pii_address",
+        "ner_pii_dob",
+        "ner_pii_combined",
+        "ner_pii_false_positive",
+        "speech_act_directive",
+        "speech_act_expressive",
+        "speech_act_commissive",
+        "speech_act_interrogative",
+        "modality_certain",
+        "modality_probable",
+        "modality_possible",
+        "modality_uncertain",
+        "parole_coloquial",
+        "parole_tecnico",
+        "parole_formal",
+        "verbs_single_action",
+        "verbs_multi_action",
+        "composite_multi_request",
+        "comparative_tech",
+        "negation_explicit",
+        "decomp_cross_domain_composite",
+        "decomp_sequential_chain",
+        "decomp_dependency_is_sequential",
+        "decomp_single_not_composite",
+        "decomp_social_not_composite",
+        "enrich_constraint_brevity",
+        "enrich_constraint_window",
+        "enrich_negation_multi",
+        "enrich_back_reference",
+        "enrich_fresh_question_not_dependent"
+      ]
+    }
+  },
+  "overall_accuracy": 90.4,
+  "total": 125,
+  "correct": 113,
+  "invalid_dimensions": [],
+  "tokens_in": 236566,
+  "tokens_out": 15884,
+  "llm_calls": 110,
+  "meta": {
+    "preflight_embedder_similarity": 0.1621,
+    "ner_fallbacks_total": {
+      "intent_class_fallback": 4,
+      "domains_fallback": 3
+    }
+  },
+  "dimensions": [
+    {
+      "dimension": "ner",
+      "valid": true,
+      "total": 125,
+      "correct": 113,
+      "accuracy": 90.4,
+      "errors": 0,
+      "meta": {
+        "ner_fallbacks": {
+          "intent_class_fallback": 4,
+          "domains_fallback": 3
+        }
+      },
+      "checks": [
+        {
+          "case_id": "intent_info_request",
+          "field": "intent_class",
+          "expected": "INFORMATION_REQUEST",
+          "actual": "INFORMATION_REQUEST",
+          "correct": true
+        },
+        {
+          "case_id": "intent_info_request",
+          "field": "sentiment",
+          "expected": "NEUTRAL",
+          "actual": "NEUTRAL",
+          "correct": true
+        },
+        {
+          "case_id": "intent_info_request",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "intent_action_request",
+          "field": "intent_class",
+          "expected": "ACTION_REQUEST",
+          "actual": "ACTION_REQUEST",
+          "correct": true
+        },
+        {
+          "case_id": "intent_action_request",
+          "field": "sentiment",
+          "expected": "NEUTRAL",
+          "actual": "NEUTRAL",
+          "correct": true
+        },
+        {
+          "case_id": "intent_action_request",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "intent_social",
+          "field": "intent_class",
+          "expected": "SOCIAL",
+          "actual": "SOCIAL",
+          "correct": true
+        },
+        {
+          "case_id": "intent_social",
+          "field": "sentiment",
+          "expected": "POSITIVE",
+          "actual": "NEUTRAL",
+          "correct": false
+        },
+        {
+          "case_id": "intent_social",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "intent_creative",
+          "field": "intent_class",
+          "expected": "CREATIVE_TASK",
+          "actual": "CREATIVE_TASK",
+          "correct": true
+        },
+        {
+          "case_id": "intent_creative",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "sentiment_positive",
+          "field": "sentiment",
+          "expected": "POSITIVE",
+          "actual": "POSITIVE",
+          "correct": true
+        },
+        {
+          "case_id": "sentiment_positive",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "sentiment_frustrated",
+          "field": "sentiment",
+          "expected": "FRUSTRATED",
+          "actual": "FRUSTRATED",
+          "correct": true
+        },
+        {
+          "case_id": "sentiment_frustrated",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "sentiment_urgent",
+          "field": "sentiment",
+          "expected": "URGENT",
+          "actual": "URGENT",
+          "correct": true
+        },
+        {
+          "case_id": "sentiment_urgent",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "sentiment_neutral",
+          "field": "sentiment",
+          "expected": "NEUTRAL",
+          "actual": "NEUTRAL",
+          "correct": true
+        },
+        {
+          "case_id": "sentiment_neutral",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "temporal_recent",
+          "field": "temporal",
+          "expected": "RECENT",
+          "actual": "RECENT",
+          "correct": true
+        },
+        {
+          "case_id": "temporal_recent",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "temporal_historical",
+          "field": "temporal",
+          "expected": "HISTORICAL",
+          "actual": "HISTORICAL",
+          "correct": true
+        },
+        {
+          "case_id": "temporal_historical",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "temporal_timeless",
+          "field": "temporal",
+          "expected": "TIMELESS",
+          "actual": "TIMELESS",
+          "correct": true
+        },
+        {
+          "case_id": "temporal_timeless",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "temporal_mixed",
+          "field": "temporal",
+          "expected": "MIXED",
+          "actual": "RECENT",
+          "correct": false
+        },
+        {
+          "case_id": "temporal_mixed",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "entity_person",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "entity_person",
+          "field": "entity:Albert Einstein",
+          "expected": "Albert Einstein",
+          "actual": "['albert einstein', 'contributions']",
+          "correct": true
+        },
+        {
+          "case_id": "entity_location",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "entity_location",
+          "field": "entity:São Paulo",
+          "expected": "São Paulo",
+          "actual": "['weather', 'são paulo', 'são paulo']",
+          "correct": true
+        },
+        {
+          "case_id": "entity_concept_multi",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "entity_concept_multi",
+          "field": "entity:Python",
+          "expected": "Python",
+          "actual": "['python', 'javascript', 'web development']",
+          "correct": true
+        },
+        {
+          "case_id": "entity_concept_multi",
+          "field": "entity:JavaScript",
+          "expected": "JavaScript",
+          "actual": "['python', 'javascript', 'web development']",
+          "correct": true
+        },
+        {
+          "case_id": "lang_portuguese",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "lang_english",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "lang_spanish",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "ner_pii_none",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "ner_pii_none",
+          "field": "pii_risk",
+          "expected": "NONE",
+          "actual": "NONE",
+          "correct": true
+        },
+        {
+          "case_id": "ner_pii_credential",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "ner_pii_credential",
+          "field": "pii_risk",
+          "expected": "CRITICAL",
+          "actual": "NONE",
+          "correct": false
+        },
+        {
+          "case_id": "ner_pii_email",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "ner_pii_email",
+          "field": "pii_risk",
+          "expected": "MEDIUM",
+          "actual": "MEDIUM",
+          "correct": true
+        },
+        {
+          "case_id": "ner_pii_national_id",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "ner_pii_national_id",
+          "field": "pii_risk",
+          "expected": "HIGH",
+          "actual": "HIGH",
+          "correct": true
+        },
+        {
+          "case_id": "ner_pii_phone",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "ner_pii_phone",
+          "field": "pii_risk",
+          "expected": "MEDIUM",
+          "actual": "MEDIUM",
+          "correct": true
+        },
+        {
+          "case_id": "ner_pii_credit_card",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "ner_pii_credit_card",
+          "field": "pii_risk",
+          "expected": "HIGH",
+          "actual": "HIGH",
+          "correct": true
+        },
+        {
+          "case_id": "ner_pii_name_only",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "ner_pii_name_only",
+          "field": "pii_risk",
+          "expected": "NONE",
+          "actual": "NONE",
+          "correct": true
+        },
+        {
+          "case_id": "ner_pii_address",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "ner_pii_address",
+          "field": "pii_risk",
+          "expected": "MEDIUM",
+          "actual": "NONE",
+          "correct": false
+        },
+        {
+          "case_id": "ner_pii_dob",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "ner_pii_dob",
+          "field": "pii_risk",
+          "expected": "HIGH",
+          "actual": "HIGH",
+          "correct": true
+        },
+        {
+          "case_id": "ner_pii_combined",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "ner_pii_combined",
+          "field": "pii_risk",
+          "expected": "HIGH",
+          "actual": "HIGH",
+          "correct": true
+        },
+        {
+          "case_id": "ner_pii_false_positive",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "ner_pii_false_positive",
+          "field": "pii_risk",
+          "expected": "NONE",
+          "actual": "NONE",
+          "correct": true
+        },
+        {
+          "case_id": "speech_act_directive",
+          "field": "intent_class",
+          "expected": "INFORMATION_REQUEST",
+          "actual": "INFORMATION_REQUEST",
+          "correct": true
+        },
+        {
+          "case_id": "speech_act_directive",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "speech_act_directive",
+          "field": "speech_act",
+          "expected": "DIRECTIVE",
+          "actual": "INTERROGATIVE",
+          "correct": false
+        },
+        {
+          "case_id": "speech_act_expressive",
+          "field": "sentiment",
+          "expected": "POSITIVE",
+          "actual": "POSITIVE",
+          "correct": true
+        },
+        {
+          "case_id": "speech_act_expressive",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "speech_act_expressive",
+          "field": "speech_act",
+          "expected": "EXPRESSIVE",
+          "actual": "EXPRESSIVE",
+          "correct": true
+        },
+        {
+          "case_id": "speech_act_commissive",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "speech_act_commissive",
+          "field": "speech_act",
+          "expected": "COMMISSIVE",
+          "actual": "DIRECTIVE",
+          "correct": false
+        },
+        {
+          "case_id": "speech_act_interrogative",
+          "field": "intent_class",
+          "expected": "INFORMATION_REQUEST",
+          "actual": "INFORMATION_REQUEST",
+          "correct": true
+        },
+        {
+          "case_id": "speech_act_interrogative",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "speech_act_interrogative",
+          "field": "speech_act",
+          "expected": "INTERROGATIVE",
+          "actual": "INTERROGATIVE",
+          "correct": true
+        },
+        {
+          "case_id": "modality_certain",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "modality_certain",
+          "field": "modality",
+          "expected": "CERTAIN",
+          "actual": "CERTAIN",
+          "correct": true
+        },
+        {
+          "case_id": "modality_probable",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "modality_probable",
+          "field": "modality",
+          "expected": "PROBABLE",
+          "actual": "PROBABLE",
+          "correct": true
+        },
+        {
+          "case_id": "modality_possible",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "modality_possible",
+          "field": "modality",
+          "expected": "POSSIBLE",
+          "actual": "PROBABLE",
+          "correct": false
+        },
+        {
+          "case_id": "modality_uncertain",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "modality_uncertain",
+          "field": "modality",
+          "expected": "UNCERTAIN",
+          "actual": "POSSIBLE",
+          "correct": false
+        },
+        {
+          "case_id": "parole_coloquial",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "parole_coloquial",
+          "field": "parole",
+          "expected": "COLOQUIAL",
+          "actual": "COLOQUIAL",
+          "correct": true
+        },
+        {
+          "case_id": "parole_tecnico",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "parole_tecnico",
+          "field": "parole",
+          "expected": "TECNICO",
+          "actual": "TECNICO",
+          "correct": true
+        },
+        {
+          "case_id": "parole_formal",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "parole_formal",
+          "field": "parole",
+          "expected": "FORMAL",
+          "actual": "FORMAL",
+          "correct": true
+        },
+        {
+          "case_id": "verbs_single_action",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "verbs_single_action",
+          "field": "verb:calculate",
+          "expected": "calculate",
+          "actual": "['calculate', 'discount']",
+          "correct": true
+        },
+        {
+          "case_id": "verbs_multi_action",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "verbs_multi_action",
+          "field": "is_composite",
+          "expected": "True",
+          "actual": "True",
+          "correct": true
+        },
+        {
+          "case_id": "verbs_multi_action",
+          "field": "verb:search",
+          "expected": "search",
+          "actual": "['search', 'analyze', 'generate']",
+          "correct": true
+        },
+        {
+          "case_id": "verbs_multi_action",
+          "field": "verb:analyze",
+          "expected": "analyze",
+          "actual": "['search', 'analyze', 'generate']",
+          "correct": true
+        },
+        {
+          "case_id": "verbs_multi_action",
+          "field": "verb:generate",
+          "expected": "generate",
+          "actual": "['search', 'analyze', 'generate']",
+          "correct": true
+        },
+        {
+          "case_id": "composite_multi_request",
+          "field": "intent_class",
+          "expected": "ACTION_REQUEST",
+          "actual": "ACTION_REQUEST",
+          "correct": true
+        },
+        {
+          "case_id": "composite_multi_request",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "composite_multi_request",
+          "field": "is_composite",
+          "expected": "True",
+          "actual": "True",
+          "correct": true
+        },
+        {
+          "case_id": "comparative_tech",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "comparative_tech",
+          "field": "entity:Python",
+          "expected": "Python",
+          "actual": "['python', 'rust', 'systems programming']",
+          "correct": true
+        },
+        {
+          "case_id": "comparative_tech",
+          "field": "entity:Rust",
+          "expected": "Rust",
+          "actual": "['python', 'rust', 'systems programming']",
+          "correct": true
+        },
+        {
+          "case_id": "negation_explicit",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "negation_explicit",
+          "field": "negation:JavaScript",
+          "expected": "JavaScript",
+          "actual": "[]",
+          "correct": false
+        },
+        {
+          "case_id": "decomp_cross_domain_composite",
+          "field": "intent_class",
+          "expected": "ACTION_REQUEST",
+          "actual": "ACTION_REQUEST",
+          "correct": true
+        },
+        {
+          "case_id": "decomp_cross_domain_composite",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "decomp_cross_domain_composite",
+          "field": "is_composite",
+          "expected": "True",
+          "actual": "True",
+          "correct": true
+        },
+        {
+          "case_id": "decomp_sequential_chain",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "decomp_sequential_chain",
+          "field": "is_composite",
+          "expected": "True",
+          "actual": "True",
+          "correct": true
+        },
+        {
+          "case_id": "decomp_sequential_chain",
+          "field": "is_sequential",
+          "expected": "True",
+          "actual": "True",
+          "correct": true
+        },
+        {
+          "case_id": "decomp_sequential_chain",
+          "field": "causal_chain_min",
+          "expected": ">= 2",
+          "actual": "2",
+          "correct": true
+        },
+        {
+          "case_id": "decomp_dependency_is_sequential",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "decomp_dependency_is_sequential",
+          "field": "is_sequential",
+          "expected": "True",
+          "actual": "True",
+          "correct": true
+        },
+        {
+          "case_id": "decomp_single_not_composite",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "decomp_single_not_composite",
+          "field": "is_composite",
+          "expected": "False",
+          "actual": "False",
+          "correct": true
+        },
+        {
+          "case_id": "decomp_single_not_composite",
+          "field": "is_sequential",
+          "expected": "False",
+          "actual": "False",
+          "correct": true
+        },
+        {
+          "case_id": "decomp_social_not_composite",
+          "field": "intent_class",
+          "expected": "SOCIAL",
+          "actual": "SOCIAL",
+          "correct": true
+        },
+        {
+          "case_id": "decomp_social_not_composite",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "decomp_social_not_composite",
+          "field": "is_composite",
+          "expected": "False",
+          "actual": "False",
+          "correct": true
+        },
+        {
+          "case_id": "enrich_constraint_brevity",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "enrich_constraint_brevity",
+          "field": "constraint:3 lin|three lin",
+          "expected": "3 lin|three lin",
+          "actual": "[]",
+          "correct": false
+        },
+        {
+          "case_id": "enrich_constraint_window",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "enrich_constraint_window",
+          "field": "constraint:18h|18:00|6 pm|6pm|after 6",
+          "expected": "18h|18:00|6 pm|6pm|after 6",
+          "actual": "['time after 6 PM']",
+          "correct": true
+        },
+        {
+          "case_id": "enrich_negation_multi",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "enrich_negation_multi",
+          "field": "negation:preço|price",
+          "expected": "preço|price",
+          "actual": "[]",
+          "correct": false
+        },
+        {
+          "case_id": "enrich_negation_multi",
+          "field": "negation:token",
+          "expected": "token",
+          "actual": "[]",
+          "correct": false
+        },
+        {
+          "case_id": "enrich_back_reference",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "enrich_back_reference",
+          "field": "context_dependent",
+          "expected": "True",
+          "actual": "True",
+          "correct": true
+        },
+        {
+          "case_id": "enrich_fresh_question_not_dependent",
+          "field": "langue_propagated",
+          "expected": "pt-BR",
+          "actual": "pt-BR",
+          "correct": true
+        },
+        {
+          "case_id": "enrich_fresh_question_not_dependent",
+          "field": "context_dependent",
+          "expected": "False",
+          "actual": "False",
+          "correct": true
+        }
+      ],
+      "error_detail": []
+    }
+  ]
+}
