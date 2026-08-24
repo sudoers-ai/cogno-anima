@@ -18,6 +18,8 @@ import json
 import pytest
 from pathlib import Path
 
+from cogno_anima.types import StageMetrics
+
 from cogno_anima.types import PipelineContext, IntentResult
 from cogno_anima.errors import StageParseError
 from cogno_anima.stages.base import BaseStage
@@ -381,3 +383,21 @@ async def test_no_backend_raises_instead_of_swapping():
     analyzer = IntentAnalyzer(prompts_dir=PROMPTS_DIR)  # no backend at init
     with pytest.raises(ValueError, match="LLMBackend must be provided"):
         await analyzer.analyze(make_noumeno_result())  # and none at call
+
+
+def test_stage_metrics_per_call_identity_defaults_to_inert():
+    """`seq`/`attempt`/`prompt_sha` are stamped by the ORCHESTRATOR, which is the only layer
+    that sequences the stages. Every stage in this package builds its own metrics and stamps
+    nothing, so the defaults must be inert — an unstamped metric has to behave exactly as it
+    did before the fields existed, or adding them changes every caller that never opted in.
+
+    Mutation: give any of them a truthy default and this dies.
+    """
+    m = StageMetrics(stage="ego", elapsed_ms=1.0, tokens_in=10, tokens_out=2, model="fake")
+    assert (m.seq, m.attempt, m.prompt_sha) == (0, 0, "")
+    assert m.tokens_total == 12, "as novas chaves não entram na conta de tokens"
+
+    stamped = StageMetrics(stage="ego", elapsed_ms=1.0, tokens_in=10, tokens_out=2,
+                           model="fake", seq=4, attempt=2, prompt_sha="9f3c1a")
+    assert (stamped.seq, stamped.attempt, stamped.prompt_sha) == (4, 2, "9f3c1a")
+    assert stamped.tokens_total == 12

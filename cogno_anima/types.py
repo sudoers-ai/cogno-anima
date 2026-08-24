@@ -5,11 +5,34 @@ from pydantic import BaseModel, Field
 
 
 class StageMetrics(BaseModel):
-    """Telemetry captured during execution of one LLM call or stage."""
+    """Telemetry captured during execution of one LLM call or stage.
+
+    ``seq``/``attempt``/``prompt_sha`` make ONE CALL the addressable unit. They are stamped by
+    the orchestrator (the only layer that sequences the stages) and default to inert, so a
+    stage that constructs its own metrics — every stage in this package does — needs no change
+    and an orchestrator that stamps nothing behaves exactly as before.
+
+    Why they belong here: ``PipelineContext.stage_metrics`` is composed as "the populated
+    canonical slots, then ``retry_metrics``", and each canonical slot holds the value that
+    SURVIVED. So the list is NOT call order, and reading it as one attributes a retried turn
+    backwards — on a turn the judge rejected once, the ``ego`` among the canonical slots is
+    attempt 2 and the ``ego`` further down is attempt 1. Measured on a real run: two ``ego``
+    entries at 3874 and 3747 prompt tokens, and reading top-to-bottom blames the wrong call
+    for the write. ``seq`` is the fix at the root — sort by it and the sequence is true.
+    """
     stage: str
     elapsed_ms: float
     tokens_in: int             # prompt tokens consumed by the LLM generate call
     tokens_out: int            # completion tokens produced by the LLM generate call
+    # ── per-call identity (orchestrator-stamped; 0/"" = not stamped) ──────────────────
+    seq: int = 0               # 1-based call order within the turn; 0 = unstamped
+    attempt: int = 0           # correction-loop attempt this call belongs to; 0 = n/a
+    prompt_sha: str = ""       # digest of the HOST-PARAMETRISED text handed to this call —
+    #   the persona's execution/voice/limits/scope prompt plus the injected context, i.e. what
+    #   a deployment can change without changing code. NOT the fully rendered prompt (the
+    #   stage composes that internally from these inputs plus the ctx). That is enough to be
+    #   the LABEL an outcome is grouped by; the byte-exact rendered prompt is a refinement to
+    #   make only if two calls sharing a sha are ever seen to behave materially differently.
     # Embedding telemetry for stages that call an Embedder (e.g. NOUMENO's
     # subject-continuity + drift similarity). Kept separate from the generate
     # tokens so LLM vs embedding cost stay distinguishable, but folded into
