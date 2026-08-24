@@ -10,7 +10,7 @@ from typing import Optional
 from cogno_anima import metakeys as mk
 from cogno_anima.types import PipelineContext, NoumenoResult, IntentResult, StageMetrics
 from cogno_synapse import LLMBackend
-from cogno_anima.prompts import load_prompt
+from cogno_anima.prompts import load_prompt, prompt_digest
 from cogno_anima.utils import (DEFAULT_CONFIDENCE, generate_json_resilient,
                                parse_json_object)
 from cogno_anima.security.pii import (
@@ -131,6 +131,9 @@ class IntentAnalyzer:
         # Load prompts
         self._system = load_prompt("ner", system_prompt_name, prompts_dir=prompts_dir)
         self._user_tpl = load_prompt("ner", "user.txt", prompts_dir=prompts_dir)
+        # This stage's own prompt identity — see `prompt_digest`. Computed once: the
+        # templates are fixed per instance, so a constant is not re-hashed every turn.
+        self._prompt_sha = prompt_digest(self._system, self._user_tpl)
 
     async def process(self, ctx: PipelineContext, llm: LLMBackend) -> PipelineContext:
         """
@@ -227,6 +230,11 @@ class IntentAnalyzer:
             elapsed_ms=round(elapsed_ms, 2),
             tokens_in=tokens_in,
             tokens_out=tokens_out,
+            # The layer that AUTHORS a text owns its identity: this stage loads its own
+            # templates, so nobody upstream can name them. Same rule that makes the EGO stamp
+            # its own `attempt`. Computed once at construction — the templates are fixed per
+            # instance — so a per-turn cost is not paid for a constant.
+            prompt_sha=self._prompt_sha,
             model=backend.model,
         )
 

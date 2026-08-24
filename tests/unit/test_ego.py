@@ -986,3 +986,38 @@ async def test_the_task_context_actually_reaches_the_prompt_the_backend_receives
     assert "arrived at the same answer" in system          # the circling hint
     assert "FRUSTRATED" in system                           # the sentiment hint
     assert "não ligar depois das 18h" in system             # the user's own constraint
+
+
+# ── the offered surface, and why it is not the executed one ──────────────────────────────
+
+@pytest.mark.asyncio
+async def test_the_offered_tool_surface_is_recorded_not_just_the_executed_one():
+    """`tools_executed` cannot tell "the model declined" from "it was never offered the tool",
+    and the two have opposite fixes — one is a prompt problem, the other is wiring. This
+    project has spent whole rounds confusing them.
+
+    Mutation: stop recording `tools_offered` and this dies."""
+    ctx = _ctx()
+    backend = ScriptedToolCallingBackend([{"content": "done"}])
+    disp = StubDispatcher.with_tools("add_income", "get_summary", "list_clients")
+    ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+
+    assert ctx.ego_result.tools_offered == ["add_income", "get_summary", "list_clients"]
+    assert ctx.ego_result.tools_executed == [], "nada rodou — e ainda assim havia opção"
+
+
+@pytest.mark.asyncio
+async def test_the_offered_surface_reflects_the_READ_ONLY_MASK_not_the_dispatcher():
+    """Gate A masks every mutating tool when the host flags the turn read-only. The record has
+    to show what the model ACTUALLY saw, or it answers the wiring question wrongly — which is
+    the whole reason it exists."""
+    ctx = _ctx()
+    ctx.metadata[mk.EGO_READONLY] = True
+    backend = ScriptedToolCallingBackend([{"content": "proposto"}])
+    disp = StubDispatcher.with_tools("add_income", "get_summary")
+    ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+
+    offered = ctx.ego_result.tools_offered
+    assert "add_income" not in offered, "tool mutante mascarada não foi ofertada"
+    assert offered != sorted(t["function"]["name"] for t in disp.tools_schema()), (
+        "o registro é do que o MODELO viu, não do que o dispatcher tinha")

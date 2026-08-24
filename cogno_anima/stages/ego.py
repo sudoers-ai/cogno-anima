@@ -364,6 +364,9 @@ class EgoStage:
             interrupt_reason=interrupt_reason,
             attempt=attempt,
             persona=ctx.metadata.get(mk.EGO_PERSONA),
+            # What this call was OFFERED, after every mask — the answer to "did the model
+            # decline, or was it never given the option", which `tools_executed` cannot give.
+            tools_offered=sorted(valid_names),
             metrics=StageMetrics(
                 stage=STAGE_NAME, elapsed_ms=elapsed_ms,
                 tokens_in=total_in, tokens_out=total_out, model=getattr(backend, "model", "unknown"),

@@ -458,3 +458,61 @@ def test_ordered_stage_metrics_never_mutates_the_context():
     before = [m.stage for m in ctx.retry_metrics]
     ordered_stage_metrics(ctx)
     assert [m.stage for m in ctx.retry_metrics] == before
+
+
+# ── each layer names its own prompt ──────────────────────────────────────────────────────
+#
+# The layer that AUTHORS a text is the only one that has it before it is rendered, so it is
+# the one that can name it. NOUMENO and NER load their own templates; the host authors the
+# persona slots; the orchestrator authors nothing and only says which slot each call used.
+# Same rule that makes the EGO stamp its own `attempt`.
+
+async def test_noumeno_and_ner_label_their_own_templates(stub_embedder):
+    """Mutation: drop `prompt_sha=self._prompt_sha` from either stage and this dies."""
+    from cogno_anima.prompts import load_prompt, prompt_digest
+
+    n_ctx = PipelineContext(user_input="quero lavar meu carro", force_language="pt")
+    n_ctx = await Noumeno(embedder=stub_embedder, prompts_dir=PROMPTS_DIR).process(
+        n_ctx, StubBackend(response=NOUMENO_JSON))
+    expected_n = prompt_digest(load_prompt("noumeno", "system.txt", prompts_dir=PROMPTS_DIR),
+                               load_prompt("noumeno", "user.txt", prompts_dir=PROMPTS_DIR))
+    assert n_ctx.noumeno.metrics.prompt_sha == expected_n != ""
+
+    n_ctx = await IntentAnalyzer(prompts_dir=PROMPTS_DIR).process(n_ctx, StubBackend(response=NER_JSON))
+    expected_r = prompt_digest(load_prompt("ner", "system.txt", prompts_dir=PROMPTS_DIR),
+                               load_prompt("ner", "user.txt", prompts_dir=PROMPTS_DIR))
+    assert n_ctx.intent.metrics.prompt_sha == expected_r != ""
+    assert expected_n != expected_r, "camadas diferentes, rótulos diferentes"
+
+
+async def test_a_DIFFERENT_prompt_gets_a_different_label(stub_embedder, tmp_path):
+    """The label has to move when the text moves, or it cannot be used to tell one prompt
+    configuration from another — which is the only thing it is for."""
+    from cogno_anima.prompts import prompt_digest
+
+    alt = tmp_path / "noumeno"
+    alt.mkdir()
+    (alt / "system.txt").write_text("A COMPLETELY DIFFERENT SYSTEM PROMPT", encoding="utf-8")
+    (alt / "user.txt").write_text("{input}", encoding="utf-8")
+
+    shipped = PipelineContext(user_input="oi", force_language="pt")
+    shipped = await Noumeno(embedder=stub_embedder, prompts_dir=PROMPTS_DIR).process(
+        shipped, StubBackend(response=NOUMENO_JSON))
+    custom = PipelineContext(user_input="oi", force_language="pt")
+    custom = await Noumeno(embedder=stub_embedder, prompts_dir=tmp_path).process(
+        custom, StubBackend(response=NOUMENO_JSON))
+
+    assert custom.noumeno.metrics.prompt_sha == prompt_digest(
+        "A COMPLETELY DIFFERENT SYSTEM PROMPT", "{input}")
+    assert custom.noumeno.metrics.prompt_sha != shipped.noumeno.metrics.prompt_sha
+
+
+def test_the_digest_excludes_nothing_by_accident_and_empty_means_unset():
+    """`prompt_digest` is the ONE algorithm every layer uses — two layers naming the same text
+    differently makes the labels incomparable, which is the one thing a label cannot afford."""
+    from cogno_anima.prompts import prompt_digest
+
+    assert prompt_digest() == "" and prompt_digest("", None) == ""
+    assert prompt_digest("a", "b") == prompt_digest("a\nb"), "junção estável"
+    assert prompt_digest("a", "b") != prompt_digest("b", "a"), "a ordem é parte do texto"
+    assert len(prompt_digest("x")) == 12

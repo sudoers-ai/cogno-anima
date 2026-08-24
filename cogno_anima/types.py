@@ -323,6 +323,23 @@ class EgoResult(BaseModel):
     attempt: int = 1                         # echoed from ctx.metadata["ego_correction"]
     persona: Optional[str] = None            # opaque host label (trace/billing)
 
+    # The tool surface this call was OFFERED, after every mask the turn applied (the tenant's
+    # allow-list, the identity's RBAC scope, gate A's read-only filter). Names only.
+    #
+    # It answers a question `tools_executed` cannot: whether the model chose not to act, or
+    # was never given the option. Those look identical downstream and have opposite fixes —
+    # one is a prompt problem, the other is wiring, and this project has spent whole rounds
+    # confusing the two (`[[skill-wiring-structural-defect]]`: a prompt derived from a flag
+    # instead of from the real capability).
+    #
+    # It is also the other half of what a prompt label means for THIS stage. The offered tools
+    # travel to the model — as schemas on the native path, as rendered text on the fallback —
+    # so "which text ran" is not fully answered by the persona prompt alone.
+    #
+    # Names, not schemas: the descriptions have exactly one home (the manifest) and belong in
+    # the catalog, not copied per turn into a trace.
+    tools_offered: list[str] = Field(default_factory=list)
+
     metrics: StageMetrics
 
     @property
