@@ -151,7 +151,16 @@ class Noumeno:
             detected_lang = self._default_language
         else:
             try:
-                from langdetect import detect
+                from langdetect import DetectorFactory, detect
+                # langdetect draws random samples and is NON-DETERMINISTIC without this:
+                # measured 2026-08-24, the same string ("Consulta 14h") resolved to three
+                # different languages across three consecutive calls. Unseeded, one contact
+                # could have their turn rewritten from a different assumed language on a
+                # retry — and every stage downstream reads that rewrite. Seeding makes the
+                # fallback repeatable; it does NOT make it accurate on short text (the same
+                # measurement had "pagar a conta" as Italian at 1.00 confidence), which is
+                # why this branch stays the LAST resort behind the tenant's own setting.
+                DetectorFactory.seed = 0
                 detected_lang = await asyncio.to_thread(detect, normalized_input)
             except Exception as le:
                 logger.warning("Failed to detect language, defaulting to 'und': %s", le)

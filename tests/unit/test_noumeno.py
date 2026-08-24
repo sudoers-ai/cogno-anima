@@ -194,6 +194,32 @@ class TestNoumenoStage:
         ctx = await noumeno.process(ctx, StubBackend())
         assert ctx.noumeno.language == "es"
 
+    async def test_the_langdetect_fallback_is_DETERMINISTIC(self):
+        """Unseeded, langdetect draws random samples and answers differently for the same
+        string — measured 2026-08-24: "Consulta 14h" resolved to three different languages
+        across three consecutive calls. That is not a cosmetic flake. This branch decides the
+        language the turn is REWRITTEN from, and every stage downstream reads that rewrite, so
+        an unseeded fallback means one contact's retry can be understood as a different
+        language than their first attempt.
+
+        Two assertions, because either alone is weak: the seed is pinned exactly (a mutation
+        removing the line dies immediately), and the behaviour is checked over repeats (so a
+        future change that seeds some other way still has to keep the property).
+        """
+        from langdetect import DetectorFactory
+
+        DetectorFactory.seed = 7                      # any other value, to prove we set it
+        noumeno = make_noumeno()                      # no force_language, no default → fallback
+        ctx = await noumeno.process(
+            PipelineContext(user_input="¿dónde está mi dinero?"), StubBackend())
+        assert DetectorFactory.seed == 0, "the fallback ran without pinning langdetect's seed"
+
+        first = ctx.noumeno.language
+        for _ in range(8):
+            again = await noumeno.process(
+                PipelineContext(user_input="¿dónde está mi dinero?"), StubBackend())
+            assert again.noumeno.language == first, "the same input resolved differently"
+
     async def test_force_language_overrides_detection(self):
         """If force_language is set in context, bypass language detection entirely."""
         noumeno = make_noumeno()
