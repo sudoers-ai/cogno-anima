@@ -98,8 +98,14 @@ Cutting them from the examples was measured, `--repeat 3` per cell, and **refuse
 
 | | input | **output** | stable score (majority) | unstable checks |
 |---|---|---|---|---|
-| **gpt-4o-mini** | −4.8% | **−19.4%** | 115 → **111** | 1 → **4** |
+| **gpt-4o-mini** | −4.8% | **−19.1%** | 115 → **111** | 1 → **4** |
 | **gpt-4.1-nano** | −4.8% | **−16.4%** | 112 → **113** | 6 → **3** |
+
+Token deltas are means over the three repeats, not one artifact against another (that pairing
+reads −19.4% for gpt-4o-mini — the same conclusion, a less honest number). The `before`
+aggregates come from a SECOND baseline run: the first one was piped through `head` and lost its
+aggregate table, and the artifacts persist per-run totals but not per-run checks. Its medians
+agree with the first (115 and 111), which is the only cross-run claim made here.
 
 **Read the stable score, not the median.** By the median of three runs the cut cost gpt-4o-mini
 2 checks; by this suite's own majority instrument (strict, ties fail) it cost **4**, and the
