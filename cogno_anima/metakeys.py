@@ -22,6 +22,27 @@ EGO_FORCE_TOOL = "ego_force_tool"              # host: this turn REQUIRES a tool
 EGO_CONFIRMED = "ego_confirmed"                # gate B: True | collection of tool names
 EGO_CONFIRMED_CALLS = "ego_confirmed_calls"    # gate B: approved calls to execute
 EGO_CORRECTION = "ego_correction"              # correction loop: {reason, attempt}
+
+# An EARLIER attempt of THIS turn committed a mutating tool, and its trace is GONE.
+#
+# Every consumer of :func:`types.committed_this_turn` reads the executions on the context. That
+# is complete while the orchestrator accumulates them (`turn_executions`) — but there is one
+# path where it cannot: the host's model-routing fallback. The first attempt can commit an
+# ordinary write and then a LATER stage raise; the exception takes that context, and its
+# execution record, with it. The retry is a fresh ``Host.step`` with a fresh context, and the
+# write is nowhere in it.
+#
+# On that path only the host knows, so the host says so — and `committed_this_turn` believes it.
+# Six places read that predicate (the soma commit gate, the semantic cache, the host's
+# unapproved-write meter, two re-step guards and the grounding backstop), and the soma's own
+# comment states the invariant they rest on: *"since committed_this_turn reads every attempt,
+# the 'NOTHING was committed' the voice renders as a HARD RULE is now TRUE of the whole turn"*.
+# The path above is what makes that sentence false; this key is what makes it true again — in
+# the one place the definition lives, instead of six guards that would each get it wrong alone.
+#
+# TRUE only. Absent means "nothing to add", never "nothing was committed": a host that does not
+# set it is a host whose executions are all on the context, which is the normal case.
+PRIOR_ATTEMPT_COMMITTED = "prior_attempt_committed"
 # How many CONSECUTIVE turns the host's anti-repeat guard has fired on this session (repaired
 # or shipped). The guard already knows the conversation is circling; before this key, only the
 # turn it fired on knew — the NEXT turn started with a clean slate and re-earned the repeat.
