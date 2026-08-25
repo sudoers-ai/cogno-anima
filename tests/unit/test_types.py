@@ -133,7 +133,7 @@ def test_a_PARTIAL_turn_record_does_not_mask_the_survivors_write():
     VAZIA — o que assenta numa invariante que ninguém escreve e nada pina ("se não está vazia,
     está completa"). Com uma LEITURA em `turn_executions` e uma ESCRITA no `ego_result`, o
     predicado respondia False sobre um turno que escreveu. E False é a resposta LIBERADORA para
-    seis dos sete consumidores, num predicado cujo primeiro parágrafo diz que o viés é
+    cinco dos sete consumidores, num predicado cujo primeiro parágrafo diz que o viés é
     fail-CLOSED. Achado pelo teste de paridade do cogno-host (#438)."""
     from types import SimpleNamespace as NS
 

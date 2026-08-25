@@ -496,10 +496,12 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     carrier whose `metadata` is missing, or is not a mapping, degrades to the trace instead of
     raising.
 
-    Be precise about the direction of THAT degradation: it answers False, which for six of the
-    seven callers is the RELEASING answer (cacheable, re-step allowed — the grounding backstop
-    judges, and can arm one — and "nothing was committed" rendered to the voice as a hard rule);
-    the seventh, the trace, only records it. So it is fail-OPEN here, unlike the no-op→True choice
+    Be precise about the direction of THAT degradation: it answers False, which for FIVE of the
+    seven callers is the RELEASING answer (cacheable, re-step allowed, "nothing was committed"
+    rendered to the voice as a hard rule). The other two do not release, and getting that wrong
+    is easy enough that a draft of this very sentence did: the trace only RECORDS the answer,
+    and at the grounding backstop False is the answer that ARMS the rules — True is what
+    suppresses them — so the backstop belongs in neither bucket that "releasing" describes. So it is fail-OPEN here, unlike the no-op→True choice
     above, which is conservative on purpose. It stays fail-open deliberately: answering True on
     an unreadable carrier would make every test double and replayed trace read as "committed",
     which is the worse error. On a real `PipelineContext` the handler is unreachable."""
@@ -509,7 +511,7 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     # today (it extends right after the EGO stage), but this predicate ships in a public lib and
     # is read by hosts with leaner carriers, replayed traces and test doubles. Measured
     # 2026-08-24: with a write in `ego_result` and only a READ in `turn_executions`, the old
-    # shape answered False over a turn that wrote — and False is the RELEASING answer for six
+    # shape answered False over a turn that wrote — and False is the RELEASING answer for five
     # of the seven callers, in a predicate whose own first paragraph claims a fail-CLOSED bias.
     #
     # The union costs nothing and cannot regress: adding a source can only turn False into True,
