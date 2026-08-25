@@ -37,7 +37,7 @@ from cogno_anima.types import (
     StageMetrics,
     ToolExecution,
     EgoStep,
-    EgoResult,
+    EgoResult, ToolResult,
 )
 from cogno_anima.security.prompt_guard import sanitize_untrusted
 from cogno_synapse import LLMBackend
@@ -223,6 +223,7 @@ class EgoStage:
                 raise                                             # fatal → propagate
             except Exception as exc:                              # stray → wrap + propagate
                 raise ToolExecutionError(name, args, exc) from exc
+            r = self._refuse_if_still_asking(r, name)
             ex = ToolExecution(tool=name, arguments=args, result=r.output, ok=r.ok,
                                error=r.error, side_effect=r.side_effect)
             steps.append(EgoStep(index=len(steps), path=path, assistant_text="", tool_calls=[ex]))
@@ -329,6 +330,26 @@ class EgoStage:
                     # again re-blocks, and max_steps + the duplicate cap still bound the loop.
                     failed_calls.clear()
                 logger.info("EGO step=%d tool=%s ok=%s side_effect=%s", i, name, r.ok, r.side_effect)
+                # ── Confirmation gate (Fonte C: the SKILL asked) ──────
+                # Gate B holds a tool by NAME, before it runs. This one is the skill saying,
+                # about THIS call and what it just read, "I did not commit — ask first". Same
+                # machinery from here on (record as pending, stop, propose), and the proposal
+                # text is the skill's own ``output``, grounded in the data it read.
+                #
+                # ``ok=False`` deliberately: `committed_this_turn` requires ``ok`` AND
+                # ``side_effect``, so a proposal can never be counted as a write, whatever the
+                # skill put in the other fields. A gate that could be mistaken for a commit
+                # would be worse than no gate.
+                if r.needs_confirmation and not self._is_confirmed(confirmed, name):
+                    held = ToolExecution(
+                        tool=name, arguments=args, result=r.output, ok=False,
+                        error="needs_confirmation", side_effect=False)
+                    execs.append(held)
+                    pending_confirmation.append(held)
+                    logger.info("stage=ego event=pending_confirmation source=skill step=%d "
+                                "tool=%s", i, name)
+                    continue
+                r = self._refuse_if_still_asking(r, name)
                 execs.append(ToolExecution(tool=name, arguments=args, result=r.output,
                                            ok=r.ok, error=r.error, side_effect=r.side_effect))
 
@@ -547,6 +568,32 @@ class EgoStage:
                 "intentionally unavailable this turn."
             )
         return "# Task context\n" + "\n".join(lines)
+
+    @staticmethod
+    def _refuse_if_still_asking(r: ToolResult, name: str) -> ToolResult:
+        """A skill still asking on a CONFIRMED call did not commit — and there is nobody left
+        to ask, because the user already said yes.
+
+        It means the skill never saw the confirmation. That channel belongs to the host (the
+        skill's own context/metadata — the core deliberately does not invent an argument name
+        for it), so a mis-wiring there is invisible from here except by this symptom. Recording
+        it as a success would ship "done" over a turn that wrote nothing, which is the exact
+        false-success this stage is built against. Fail it LOUDLY: the loop feeds the error
+        back and the trace keeps the evidence.
+
+        ONE helper for BOTH paths on purpose. The confirmed call arrives by two routes — the
+        deterministic replay of the held calls, and the model re-issuing it inside the loop —
+        and the first version guarded only the replay. A rule each path re-derives is a rule
+        each path gets wrong alone: the unguarded one counted the proposal as a commit."""
+        if not r.needs_confirmation:
+            return r
+        logger.warning("stage=ego event=confirmed_call_still_asks tool=%s — the skill did not "
+                       "see the confirmation; nothing was committed", name)
+        return r.model_copy(update={
+            "ok": False, "side_effect": False,
+            "error": (f"'{name}' was CONFIRMED by the user but the skill asked for confirmation "
+                      "again and committed nothing — it did not receive the confirmation. "
+                      "Do NOT report this as done.")})
 
     @staticmethod
     def _is_confirmed(confirmed: object, name: str) -> bool:
