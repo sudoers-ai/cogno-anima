@@ -544,7 +544,7 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     rendered to the voice as a hard rule). The other four do not release, and getting that wrong
     is easy enough that TWO drafts of this very sentence did — the second by OMISSION: when the
     caller count went 8 to 10 this half stayed at "six of the EIGHT", because only the first
-    number has a test. the trace only RECORDS the answer,
+    number has a test. The trace only RECORDS the answer,
     and at the grounding backstop False is the answer that ARMS the rules — True is what
     suppresses them — so the backstop belongs in neither bucket that "releasing" describes. So it is fail-OPEN here, unlike the no-op→True choice
     above, which is conservative on purpose. It stays fail-open deliberately: answering True on
