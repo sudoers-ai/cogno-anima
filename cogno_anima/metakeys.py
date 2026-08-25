@@ -33,16 +33,22 @@ EGO_CORRECTION = "ego_correction"              # correction loop: {reason, attem
 # write is nowhere in it.
 #
 # On that path only the host knows, so the host says so — and `committed_this_turn` believes it.
-# TEN places CALL that predicate, measured 2026-08-25 rather than recalled: soma's commit
+# NINE places CALL that predicate, measured 2026-08-25 rather than recalled: soma's commit
 # gate (`pipeline.py::run_turn`), the semantic cache (`cache.py`), FOUR repair/re-step guards
 # (an entry guard and a discard guard in each of `service.py::_repair_repetition` and
 # `::_repair_grounding`), the trace's `committed` flag (`trace.py`), the grounding backstop
-# (`grounding.py::_turn_committed`, since host #429) and — since the delivery profile landed —
-# the two VOICE policies (`emotion.py` and `delivery.py`), which decide whether a finished turn
-# is spoken with a lift. Those two arrived by re-derivation and were converted: both read
-# `ego_result.has_side_effects`, which is the SURVIVING attempt, so a turn that booked, was
-# rejected by the judge and re-voiced without tools reported "nothing was written" about a turn
-# that wrote — and the happy contact got no cue for the thing that actually got done. Cited by NAME on purpose: the line numbers a first draft
+# (`grounding.py::_turn_committed`, since host #429) and the VOICE's emotion policy
+# (`emotion.py`), which decides whether a finished turn is spoken with a lift. That last one
+# arrived by re-derivation and was converted: it read `ego_result.has_side_effects`, which is the
+# SURVIVING attempt, so a turn that booked, was rejected by the judge and re-voiced without tools
+# reported "nothing was written" about a turn that wrote — and the happy contact got no cue for
+# the thing that actually got done.
+#
+# NINE and not ten: a previous count named `delivery.py` as the tenth, and it is not a consumer.
+# Measured — it lives in cogno-vox, reads nothing off the turn trace, and cogno-vox does not
+# depend on cogno-anima. Naming a file in prose is not the same as it reading you, and a count
+# that includes a stranger is worse than no count: the guard goes red for the wrong reason and
+# the next reader hunts the wrong thing. Cited by NAME on purpose: the line numbers a first draft
 # carried were read from an UNMERGED host branch that inserts a helper above them, so they
 # were already wrong for `main` — a line number in ANOTHER repository has a shorter life than
 # the sentence containing it. A NAME is not immune either, and this block proved it: it cited

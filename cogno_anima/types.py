@@ -485,16 +485,24 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     host is the only layer that knows, so it says so (``mk.PRIOR_ATTEMPT_COMMITTED``) and this
     predicate believes it.
 
-    Fixing it HERE and not in each caller is the whole point. TEN places CALL this, measured 2026-08-25 rather than recalled: soma's commit
-    gate (`pipeline.py::run_turn`), the semantic cache (`cache.py`), FOUR repair/re-step guards
-    (an entry guard and a discard guard in each of `service.py::_repair_repetition` and
-    `::_repair_grounding`), the trace's `committed` flag (`trace.py`), the grounding backstop
-    (`grounding.py::_turn_committed`, since host #429) and — since the delivery profile landed —
-    the two VOICE policies (`emotion.py` and `delivery.py`), which decide whether a finished turn
-    is spoken with a lift. Those two arrived by re-derivation and were converted: both read
+    Fixing it HERE and not in each caller is the whole point. NINE places CALL this, measured
+    2026-08-25 rather than recalled: soma's commit gate (`pipeline.py::run_turn`), the semantic
+    cache (`cache.py`), FOUR repair/re-step guards (an entry guard and a discard guard in each of
+    `service.py::_repair_repetition` and `::_repair_grounding`), the trace's `committed` flag
+    (`trace.py`), the grounding backstop (`grounding.py::_turn_committed`, since host #429) and
+    the VOICE's emotion policy (`emotion.py`), which decides whether a finished turn is spoken
+    with a lift. That last one arrived by re-derivation and was converted: it read
     `ego_result.has_side_effects`, which is the SURVIVING attempt, so a turn that booked, was
     rejected by the judge and re-voiced without tools reported "nothing was written" about a turn
-    that wrote — and the happy contact got no cue for the thing that actually got done. The soma's own comment states the
+    that wrote — and the happy contact got no cue for the thing that actually got done.
+
+    NINE and not ten, and the correction is worth keeping because it is the same defect this
+    docstring warns about, committed in the docstring itself. A previous count said TEN and named
+    `delivery.py` as the tenth. Measured: `delivery.py` lives in **cogno-vox**, reads nothing off
+    the turn trace, and cogno-vox does not even depend on cogno-anima. It is not a consumer and
+    never was. Naming a file in prose is not the same as it reading you — and a count that
+    includes a stranger is worse than no count, because a guard then goes red for the wrong
+    reason and the next reader hunts the wrong thing. The soma's own comment states the
     invariant they rest on:
     *"since committed_this_turn reads every attempt, the 'NOTHING was committed' the voice
     renders as a HARD RULE is now TRUE of the whole turn"*. The path above is exactly what
