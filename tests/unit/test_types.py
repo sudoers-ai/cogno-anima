@@ -207,6 +207,29 @@ def test_a_BROKEN_source_costs_the_source_not_the_turn():
         "'nada foi comitado' em vez de 'esta fonte não diz nada'"
     )
 
+    # E o nível ABAIXO: a lista lê-se, o ITEM é que explode. Distingue proteger a LEITURA de
+    # proteger a VARREDURA — com o `any()` fora do `try`, a lista chega inteira e o predicado
+    # levanta na iteração. Realista: `getattr(x, "attr", default)` engole só `AttributeError`, e
+    # um `turn_executions` que seja gerador (um cursor duck-typed) falha ao iterar, não ao ler.
+    # Item partido na PRIMEIRA fonte, pela mesma regra de ordem descoberta acima.
+    class _ExecQueExplode:
+        ok = True
+        tool = "book"
+
+        @property
+        def side_effect(self):
+            raise RuntimeError("derivada do próprio item")
+
+    class _CarrierComItemPartido:
+        metadata: dict = {}
+        turn_executions = [_ExecQueExplode()]
+        ego_result = NS(tools_executed=[escrita])
+
+    assert committed_this_turn(_CarrierComItemPartido()) is True, (
+        "o item partido matou a varredura — a proteção cobre a leitura da fonte e não a "
+        "iteração sobre ela, e a segunda fonte tinha a resposta"
+    )
+
     # E, sem NENHUMA fonte a falar, a resposta é False por ausência de prova — não por exceção.
     assert committed_this_turn(NS(metadata={}, turn_executions=[],
                                   ego_result=_EgoPartido())) is False
