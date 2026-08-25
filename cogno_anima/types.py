@@ -485,13 +485,16 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     host is the only layer that knows, so it says so (``mk.PRIOR_ATTEMPT_COMMITTED``) and this
     predicate believes it.
 
-    Fixing it HERE and not in each caller is the whole point. EIGHT places CALL this, measured
-    2026-08-25 rather than recalled: soma's commit gate (`pipeline.py::run_turn`), the semantic
-    cache (`cache.py`), FOUR repair/re-step guards (an entry guard and a discard guard in each of
-    `service.py::_repair_repetition` and `::_repair_grounding`), the trace's `committed` flag
-    (`trace.py`) and — since host #429 — the grounding backstop
-    (`grounding.py::_turn_committed`). The fourth guard is the newest (host #448) and arrived
-    because its twin had one and it did not. The soma's own comment states the
+    Fixing it HERE and not in each caller is the whole point. TEN places CALL this, measured 2026-08-25 rather than recalled: soma's commit
+    gate (`pipeline.py::run_turn`), the semantic cache (`cache.py`), FOUR repair/re-step guards
+    (an entry guard and a discard guard in each of `service.py::_repair_repetition` and
+    `::_repair_grounding`), the trace's `committed` flag (`trace.py`), the grounding backstop
+    (`grounding.py::_turn_committed`, since host #429) and — since the delivery profile landed —
+    the two VOICE policies (`emotion.py` and `delivery.py`), which decide whether a finished turn
+    is spoken with a lift. Those two arrived by re-derivation and were converted: both read
+    `ego_result.has_side_effects`, which is the SURVIVING attempt, so a turn that booked, was
+    rejected by the judge and re-voiced without tools reported "nothing was written" about a turn
+    that wrote — and the happy contact got no cue for the thing that actually got done. The soma's own comment states the
     invariant they rest on:
     *"since committed_this_turn reads every attempt, the 'NOTHING was committed' the voice
     renders as a HARD RULE is now TRUE of the whole turn"*. The path above is exactly what
