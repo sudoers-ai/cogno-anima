@@ -421,7 +421,8 @@ class SuperegoResult(BaseModel):
     # configuration. The declared→effective mapping is logged by `SuperegoStage._modulate_traits`
     # (INFO, `event=traits_modulated`) — the list itself records what was said, not what was
     # configured. Finally any output backstop flag (`pii:flagged_in_output`,
-    # `preserved:mutated_in_output`).
+    # `preserved:mutated_in_output`, `voice:json_unwrapped`) — the last one counts how often the
+    # voicer answered in a JSON envelope, so a prompt problem cannot hide behind its own net.
     adjustments: list[str] = Field(default_factory=list)
     cot_stripped: bool = False      # a <think> block was removed
     metrics: StageMetrics
