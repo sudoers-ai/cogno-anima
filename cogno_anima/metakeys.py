@@ -33,12 +33,16 @@ EGO_CORRECTION = "ego_correction"              # correction loop: {reason, attem
 # write is nowhere in it.
 #
 # On that path only the host knows, so the host says so — and `committed_this_turn` believes it.
-# TWELVE places CALL that predicate, measured 2026-08-25 rather than recalled: soma's commit
-# gate (`pipeline.py::run_turn`), the semantic cache (`cache.py`), FOUR repair/re-step guards
-# (an entry guard and a discard guard in each of `service.py::_repair_repetition` and
-# `::_repair_grounding`), the trace's `committed` flag (`trace.py`), the grounding backstop
-# (`grounding.py::_turn_committed`, since host #429) and — since the delivery profile landed —
-# the two VOICE policies (`emotion.py` and `delivery.py`), which decide whether a finished turn
+# ELEVEN places CALL that predicate, measured 2026-08-25 rather than recalled: soma's commit
+# gate (`pipeline.py::run_turn`), the semantic cache (`cache.py`), THREE repair/re-step guards
+# (an entry guard in each of `service.py::_repair_repetition` and `::_repair_grounding`, plus
+# ONE shared discard guard in `::_finish_repair` — there were four, two of them duplicated
+# discard guards, until host #499 merged them: the count FELL by centralisation, not because a
+# net was removed), the trace's `committed` flag (`trace.py`), the grounding backstop
+# (`grounding.py::_turn_committed`, since host #429), the two STREAK CAPS
+# (`_apply_repeat_streak`, host #485; `_apply_grounding_streak`, host #489), which ask whether
+# the turn WROTE before swapping the reply for the tenant's transfer text, and — since the
+# delivery profile landed — the two VOICE policies (`emotion.py` and `delivery.py`), which decide whether a finished turn
 # is spoken with a lift. Those two arrived by re-derivation and were converted: both read
 # `ego_result.has_side_effects`, which is the SURVIVING attempt, so a turn that booked, was
 # rejected by the judge and re-voiced without tools reported "nothing was written" about a turn
