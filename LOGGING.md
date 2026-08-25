@@ -28,7 +28,9 @@ Logger por stage (`cogno_anima.stages.ner`, `.id`, `.ego`, …). Sinalize as
 - **WARNING** — `StageParseError`/coerção de fallback (LLM devolveu JSON
   inválido → heurístico); EGO: duplicate-call bloqueada, tool alucinada,
   `interrupted=true`; SUPEREGO: judge fail-closed devolveu `critique`, backstops
-  `pii:flagged_in_output` / `preserved:mutated_in_output`.
+  `pii:flagged_in_output` / `preserved:mutated_in_output` /
+  `voice:json_unwrapped` (a voz respondeu num envelope JSON e o backstop abriu —
+  conte-os: rede que ninguém conta vira o mecanismo).
 - **INFO** — rota resolvida pelo ID (`route`/`goal_status`/`blocked`).
 - **DEBUG** — `drift_score`/tags do NOUMENO, `pii_raw`→`pii_risk` no NER, cada
   passo do loop do EGO (tool/args/ok).

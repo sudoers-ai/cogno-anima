@@ -178,6 +178,54 @@ class SuperegoStage:
 
     # ── deterministic utilities ──────────────────────────────────────
 
+    # Keys a model reaches for when it decides to answer "properly" — a closed set on purpose.
+    # Unwrapping anything else would be guessing which field is the reply, and a wrong guess
+    # ships the wrong text to a person.
+    _ENVELOPE_KEYS = frozenset({"message", "reply", "response", "text", "content"})
+
+    @classmethod
+    def unwrap_envelope(cls, text: str) -> "Optional[str]":
+        """The reply inside a JSON envelope, or ``None`` when there is no envelope to open.
+
+        Measured live on 2026-08-24/25: the voicer (gpt-4o-mini) returned
+        ``{"message": "Oi, Vinicius! …"}`` and nothing between it and the contact unwrapped it —
+        the person would have been shown the JSON. One turn in 283, and **deterministic on the
+        input rather than random**: three fresh sessions on the same process gave
+        ``{"message": …}``, ``{"text": …}`` and plain text, all three routed to the EGO with a
+        plain-text draft and no tools. The KEY VARIES, which is why the accepted set is a list
+        and not one name.
+
+        **Narrow on purpose.** It opens exactly one shape — an object whose SINGLE key is one of
+        ``message``/``text``/``reply``/``response``/``content`` and whose value is a string.
+        Anything else is left alone:
+
+        * two keys — which field is the reply? Picking one is guessing, and a wrong guess ships
+          the wrong text to a person;
+        * a list, a number, a bare string — not an envelope;
+        * a reply that merely CONTAINS braces ("use {tenant} no template") — it is not JSON, so
+          it never reaches the parse.
+
+        A backstop, not a fix: a voicer answering in JSON is a prompt problem, and this is the
+        net under it. The ``voice:json_unwrapped`` adjustment exists so the trace can count how
+        often the net is doing work — a net nobody counts becomes the mechanism.
+        """
+        stripped = (text or "").strip()
+        if not stripped.startswith("{") or not stripped.endswith("}"):
+            # A FAST PATH, not a rule: `json.loads` rejects every one of these anyway, so no
+            # test can kill this line (mutation-checked — it survives, correctly). It is here
+            # because most replies are not JSON and a parse attempt per turn buys nothing.
+            return None
+        try:
+            data = json.loads(stripped)
+        except (ValueError, RecursionError):
+            return None
+        if not isinstance(data, dict) or len(data) != 1:
+            return None
+        key, value = next(iter(data.items()))
+        if str(key).strip().lower() not in cls._ENVELOPE_KEYS or not isinstance(value, str):
+            return None
+        return value
+
     @staticmethod
     def strip_cot(text: str) -> tuple[str, bool]:
         """Remove <think>/<thinking> CoT blocks. Returns (clean, was_stripped)."""
@@ -869,6 +917,13 @@ class SuperegoStage:
         adjustments += [f"trait:{t}" for t in traits]
         raw, ti, to = await backend.generate(voice_prompt or "You are a helpful assistant.", prompt)
         response, cot_stripped = self.strip_cot(raw)
+
+        # Deterministic envelope backstop: the voicer sometimes answers in JSON.
+        unwrapped = self.unwrap_envelope(response)
+        if unwrapped is not None:
+            adjustments.append("voice:json_unwrapped")
+            logger.warning("stage=superego event=voice_json_unwrapped")
+            response = unwrapped
 
         # Deterministic PII backstop on the OUTPUT — flag involuntary leaks
         # (do NOT auto-redact: avoid over-redaction of intentionally-shared data;
