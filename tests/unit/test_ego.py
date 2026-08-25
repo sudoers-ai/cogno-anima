@@ -1008,16 +1008,30 @@ async def test_the_offered_tool_surface_is_recorded_not_just_the_executed_one():
 
 @pytest.mark.asyncio
 async def test_the_offered_surface_reflects_the_READ_ONLY_MASK_not_the_dispatcher():
-    """Gate A masks every mutating tool when the host flags the turn read-only. The record has
-    to show what the model ACTUALLY saw, or it answers the wiring question wrongly — which is
-    the whole reason it exists."""
+    """Gate A masks the MUTATING tools when the host flags the turn read-only, and keeps
+    offering the read-only ones. The record has to show what the model ACTUALLY saw, or it
+    answers the wiring question wrongly — which is the whole reason it exists.
+
+    The dispatcher MUST carry a policy. Under a plain one the mask degenerates into the
+    fail-safe (``policy is None`` → mask everything), ``tools_offered`` comes back EMPTY, and
+    every assertion below is satisfied by the empty set — so the mask's own predicate is never
+    evaluated. Measured 2026-08-24: with ``StubDispatcher`` this test still passed with the
+    predicate INVERTED (offer the writes, hide the reads), which is the worst bug gate A can
+    have; only deleting the mask outright failed it. The fail-safe has its own test
+    (``test_readonly_without_policy_masks_everything``) — this one exists for the PARTIAL
+    mask, which is the only case that carries information.
+    """
     ctx = _ctx()
     ctx.metadata[mk.EGO_READONLY] = True
-    backend = ScriptedToolCallingBackend([{"content": "proposto"}])
-    disp = StubDispatcher.with_tools("add_income", "get_summary")
+    backend = ScriptedToolCallingBackend([{"content": "proposed"}])
+    disp = PolicyDispatcher.with_tools("add_income", "get_summary", mutating=("add_income",))
     ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
 
     offered = ctx.ego_result.tools_offered
-    assert "add_income" not in offered, "tool mutante mascarada não foi ofertada"
+    assert "add_income" not in offered, (
+        "the masked MUTATING tool was offered — gate A is missing, or its predicate is inverted")
+    assert "get_summary" in offered, (
+        "the read-only tool was masked too: the mask is total, not partial. A propose turn must "
+        "still be able to CONSULT — this is the assertion the fail-safe path cannot make")
     assert offered != sorted(t["function"]["name"] for t in disp.tools_schema()), (
-        "o registro é do que o MODELO viu, não do que o dispatcher tinha")
+        "the record is what the MODEL saw, not what the dispatcher held")
