@@ -33,12 +33,16 @@ EGO_CORRECTION = "ego_correction"              # correction loop: {reason, attem
 # write is nowhere in it.
 #
 # On that path only the host knows, so the host says so — and `committed_this_turn` believes it.
-# EIGHT places CALL that predicate, measured 2026-08-25 rather than recalled: soma's commit
+# TEN places CALL that predicate, measured 2026-08-25 rather than recalled: soma's commit
 # gate (`pipeline.py::run_turn`), the semantic cache (`cache.py`), FOUR repair/re-step guards
 # (an entry guard and a discard guard in each of `service.py::_repair_repetition` and
-# `::_repair_grounding`), the trace's `committed`
-# flag (`trace.py`) and — since host #429 — the grounding backstop
-# (`grounding.py::_turn_committed`). Cited by NAME on purpose: the line numbers a first draft
+# `::_repair_grounding`), the trace's `committed` flag (`trace.py`), the grounding backstop
+# (`grounding.py::_turn_committed`, since host #429) and — since the delivery profile landed —
+# the two VOICE policies (`emotion.py` and `delivery.py`), which decide whether a finished turn
+# is spoken with a lift. Those two arrived by re-derivation and were converted: both read
+# `ego_result.has_side_effects`, which is the SURVIVING attempt, so a turn that booked, was
+# rejected by the judge and re-voiced without tools reported "nothing was written" about a turn
+# that wrote — and the happy contact got no cue for the thing that actually got done. Cited by NAME on purpose: the line numbers a first draft
 # carried were read from an UNMERGED host branch that inserts a helper above them, so they
 # were already wrong for `main` — a line number in ANOTHER repository has a shorter life than
 # the sentence containing it. A NAME is not immune either, and this block proved it: it cited
