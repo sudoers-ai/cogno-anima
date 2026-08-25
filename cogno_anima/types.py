@@ -290,6 +290,14 @@ class ToolResult(BaseModel):
     # The host confirms through the channel it already owns (the skill's own context/metadata
     # — see ``cogno_cortex.ToolContext``); the core never invents an argument name, because
     # what a skill needs in order to commit is the skill's business, not the pipeline's.
+    #
+    # The hold is per CALL, not per TURN, and that is worth stating because the name suggests
+    # otherwise: it stops the LOOP, not the STEP. A step carrying two calls holds the one that
+    # asked and still runs its sibling, so a turn can report "holding" and "committed" at once.
+    # Inherited from gate B, not introduced here (measured identical on the same scenario) —
+    # what changes is REACH: gate B only ever fires on a tool the host declared destructive,
+    # while this one can be raised by any skill on any call. Making the hold turn-wide would
+    # change gate B's semantics too, so it is deliberately a separate change.
     needs_confirmation: bool = False
 
 
