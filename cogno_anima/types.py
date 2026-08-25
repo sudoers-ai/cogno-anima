@@ -490,12 +490,42 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     above, which is conservative on purpose. It stays fail-open deliberately: answering True on
     an unreadable carrier would make every test double and replayed trace read as "committed",
     which is the worse error. On a real `PipelineContext` the handler is unreachable."""
-    execs = getattr(ctx, "turn_executions", None)
-    if not execs:
-        ego = getattr(ctx, "ego_result", None)
-        execs = getattr(ego, "tools_executed", None) or []
-    if any(getattr(t, "side_effect", False) and getattr(t, "ok", False) for t in execs):
-        return True
+    # UNION, not "first non-empty wins". The earlier shape read `turn_executions` and consulted
+    # `ego_result` only when it was EMPTY — which rests on an invariant nobody states and nothing
+    # pins: "if `turn_executions` is non-empty, it is COMPLETE". The orchestrator honours it
+    # today (it extends right after the EGO stage), but this predicate ships in a public lib and
+    # is read by hosts with leaner carriers, replayed traces and test doubles. Measured
+    # 2026-08-24: with a write in `ego_result` and only a READ in `turn_executions`, the old
+    # shape answered False over a turn that wrote — and False is the RELEASING answer for five
+    # of the six callers, in a predicate whose own first paragraph claims a fail-CLOSED bias.
+    #
+    # The union costs nothing and cannot regress: adding a source can only turn False into True,
+    # never the reverse, so it moves strictly toward the conservative side. No de-duplication is
+    # needed either — `any()` does not count, so an execution present in both lists is harmless.
+    # Derived rather than enumerated, so a source added later joins without a second edit here.
+    #
+    # Each source is read LAZILY, inside its own `try`. Reading them eagerly is what a first
+    # version did, and it introduced a failure mode worse than the bug it fixed:
+    # `EgoResult.tools_executed` is a DERIVED property, and derived can raise. The old shape
+    # touched it only when `turn_executions` was empty; touching it ALWAYS turned a turn that
+    # answered True (from a complete `turn_executions`) into a turn that RAISES — fail-open
+    # traded for fail-FATAL, on a turn that COMMITTED, with six callers, one of them inside the
+    # orchestrator's loop. The docstring below objects to exactly this twice.
+    #
+    # `continue`, not a blanket `except: return False`: a broken source must degrade to
+    # "this source says nothing", never to "nothing was committed" — the second would trade
+    # raising for RELEASING, which is the very error this whole change exists to remove. The
+    # other source still gets its say.
+    for read in (lambda: getattr(ctx, "turn_executions", None) or [],
+                 lambda: getattr(getattr(ctx, "ego_result", None),
+                                 "tools_executed", None) or []):
+        try:
+            src = read()
+            hit = any(getattr(t, "side_effect", False) and getattr(t, "ok", False) for t in src)
+        except Exception:      # noqa: BLE001 — a source that breaks must not cost the turn
+            continue
+        if hit:
+            return True
     try:
         # The attribute read is INSIDE the try on purpose: `getattr` with a default swallows
         # AttributeError and nothing else, so a carrier whose `metadata` is a property that
