@@ -424,6 +424,13 @@ class SuperegoResult(BaseModel):
     # `preserved:mutated_in_output`, `voice:json_unwrapped`) — the last one counts how often the
     # voicer answered in a JSON envelope, so a prompt problem cannot hide behind its own net.
     adjustments: list[str] = Field(default_factory=list)
+    # Which sections the rendered VOICE prompt carried and how long each was — slugs from a
+    # closed list, never the matched text, so there is no contact data here and no purge path
+    # is needed. It answers the first question anyone asks about a bad reply ("did this turn
+    # get the memories block? the rejection block?"), which was unanswerable after the fact
+    # because the rendered prompt is deliberately not persisted. Empty on `evaluate`/
+    # `check_input_scope` — only `voice` fills it.
+    prompt_blocks: list[dict[str, Any]] = Field(default_factory=list)
     cot_stripped: bool = False      # a <think> block was removed
     metrics: StageMetrics
 

@@ -234,6 +234,64 @@ class SuperegoStage:
             return None
         return value
 
+    # The voice prompt's top-level sections, as literal header → stable slug. CLOSED on
+    # purpose, and the closure is what makes the inventory safe to persist: the output is
+    # drawn from these slugs alone, never from the matched text. Every one of these headers
+    # is followed by contact data (the user's words, retrieved memories, the executor's
+    # figures), so an inventory that echoed what it matched would put PII in a table the
+    # identity purge does not know about — the same trap `mk.PROMPT_SHAS` documents for a
+    # digest of RENDERED text. A memory that happens to contain one of these lines can at
+    # worst shift a length by a few characters; it can never contribute a byte of its own.
+    _VOICE_BLOCKS = (
+        ("# User request", "user_request"),
+        ("# Context (memories/history)", "context"),
+        ("# Data gathered by the executor", "executor_data"),
+        ("# Voice for this turn", "traits"),
+        ("# Executor's answer", "draft"),
+        ("# Already said (HARD RULE)", "already_said"),
+        ("# Review verdict (HARD RULE)", "review_verdict"),
+        ("# Execution verdict (HARD RULE)", "execution_verdict"),
+        ("# Signals", "signals"),
+        ("# Task", "task"),
+    )
+
+    @classmethod
+    def voice_prompt_inventory(cls, prompt: str) -> "list[dict[str, object]]":
+        """Which sections the rendered voice prompt carried, and how long each was — NO text.
+
+        The voice prompt is assembled per turn from optional blocks, and which ones rendered
+        is the first question anyone asks about a bad reply. It could not be answered after
+        the fact: the rendered prompt is not persisted (deliberately — it is full of contact
+        data), so a defect seen live left nothing to compare against a turn that behaved.
+        Measured 2026-08-25: reproducing one such defect offline cost 12 real turns and 320
+        sampled completions and still did not isolate it, because the two prompt shapes
+        reachable from a test harness were not the shape that failed.
+
+        Headers and lengths answer that question with **no contact data at all**: the slugs
+        come from `_VOICE_BLOCKS`, never from the text that matched, so this is safe to store
+        beside a turn and needs no purge path of its own.
+
+        Order is as rendered, so two turns diff as lists. A block that appears twice is
+        reported twice rather than merged — "twice" is itself a defect worth seeing.
+        """
+        found: "list[tuple[int, str]]" = []
+        for line, slug in cls._VOICE_BLOCKS:
+            start = 0
+            while True:
+                i = prompt.find(line, start)
+                if i < 0:
+                    break
+                # A header starts a line — otherwise "# Task" matches inside prose.
+                if i == 0 or prompt[i - 1] == "\n":
+                    found.append((i, slug))
+                start = i + len(line)
+        found.sort()
+        out: "list[dict[str, object]]" = []
+        for n, (at, slug) in enumerate(found):
+            end = found[n + 1][0] if n + 1 < len(found) else len(prompt)
+            out.append({"block": slug, "chars": end - at})
+        return out
+
     @staticmethod
     def strip_cot(text: str) -> tuple[str, bool]:
         """Remove <think>/<thinking> CoT blocks. Returns (clean, was_stripped)."""
@@ -959,6 +1017,7 @@ class SuperegoStage:
 
         return SuperegoResult(
             response=response, approved=True, adjustments=adjustments,
+            prompt_blocks=self.voice_prompt_inventory(prompt),
             cot_stripped=cot_stripped,
             metrics=StageMetrics(stage="superego_voice",
                                  elapsed_ms=(time.perf_counter() - t0) * 1000,
