@@ -493,7 +493,7 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     host is the only layer that knows, so it says so (``mk.PRIOR_ATTEMPT_COMMITTED``) and this
     predicate believes it.
 
-    Fixing it HERE and not in each caller is the whole point. ELEVEN places CALL this, measured 2026-08-25 rather than recalled: soma's commit
+    Fixing it HERE and not in each caller is the whole point. TWELVE places CALL this, measured 2026-08-25 rather than recalled: soma's commit
     gate (`pipeline.py::run_turn`), the semantic cache (`cache.py`), FOUR repair/re-step guards
     (an entry guard and a discard guard in each of `service.py::_repair_repetition` and
     `::_repair_grounding`), the trace's `committed` flag (`trace.py`), the grounding backstop
@@ -539,8 +539,8 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     carrier whose `metadata` is missing, or is not a mapping, degrades to the trace instead of
     raising.
 
-    Be precise about the direction of THAT degradation: it answers False, which for SEVEN of the
-    eleven callers is the RELEASING answer (cacheable, re-step allowed, "nothing was committed"
+    Be precise about the direction of THAT degradation: it answers False, which for EIGHT of the
+    twelve callers is the RELEASING answer (cacheable, re-step allowed, "nothing was committed"
     rendered to the voice as a hard rule). The other four do not release, and getting that wrong
     is easy enough that TWO drafts of this very sentence did — the second by OMISSION: when the
     caller count went 8 to 10 this half stayed at "six of the EIGHT", because only the first
