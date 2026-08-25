@@ -124,3 +124,40 @@ def test_the_inlined_constant_matches_the_metakey():
     # silently no-ops the feature". Without this line the two-copy assert only LOOKS like drift
     # protection.
     assert mk.PRIOR_ATTEMPT_COMMITTED == "prior_attempt_committed"
+
+
+def test_a_PARTIAL_turn_record_does_not_mask_the_survivors_write():
+    """O piso não pode ser saltável.
+
+    A forma anterior lia `turn_executions` e só consultava o `ego_result` quando ela estava
+    VAZIA — o que assenta numa invariante que ninguém escreve e nada pina ("se não está vazia,
+    está completa"). Com uma LEITURA em `turn_executions` e uma ESCRITA no `ego_result`, o
+    predicado respondia False sobre um turno que escreveu. E False é a resposta LIBERADORA para
+    cinco dos seis consumidores, num predicado cujo primeiro parágrafo diz que o viés é
+    fail-CLOSED. Achado pelo teste de paridade do cogno-host (#438)."""
+    from types import SimpleNamespace as NS
+
+    from cogno_anima.types import committed_this_turn
+
+    escrita = NS(tool="book", ok=True, side_effect=True)
+    leitura = NS(tool="list", ok=True, side_effect=False)
+    ego = NS(tools_executed=[escrita])
+
+    assert committed_this_turn(NS(metadata={}, turn_executions=[], ego_result=ego)) is True, \
+        "pré-condição: com a lista vazia o piso é consultado"
+    assert committed_this_turn(NS(metadata={}, turn_executions=[leitura], ego_result=ego)) is True, (
+        "uma lista PARCIAL escondeu a escrita da sobrevivente — o piso voltou a ser saltável"
+    )
+
+
+def test_the_union_does_not_invent_a_commit():
+    """A gémea: somar fontes só pode virar False→True, então a rede tem de provar que ela NÃO
+    vira True sozinha. Nenhuma fonte com escrita ⇒ False, por mais listas que existam."""
+    from types import SimpleNamespace as NS
+
+    from cogno_anima.types import committed_this_turn
+
+    leitura = NS(tool="list", ok=True, side_effect=False)
+    falhou = NS(tool="book", ok=False, side_effect=True)
+    ego = NS(tools_executed=[falhou])
+    assert committed_this_turn(NS(metadata={}, turn_executions=[leitura], ego_result=ego)) is False

@@ -490,12 +490,23 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     above, which is conservative on purpose. It stays fail-open deliberately: answering True on
     an unreadable carrier would make every test double and replayed trace read as "committed",
     which is the worse error. On a real `PipelineContext` the handler is unreachable."""
-    execs = getattr(ctx, "turn_executions", None)
-    if not execs:
-        ego = getattr(ctx, "ego_result", None)
-        execs = getattr(ego, "tools_executed", None) or []
-    if any(getattr(t, "side_effect", False) and getattr(t, "ok", False) for t in execs):
-        return True
+    # UNION, not "first non-empty wins". The earlier shape read `turn_executions` and consulted
+    # `ego_result` only when it was EMPTY — which rests on an invariant nobody states and nothing
+    # pins: "if `turn_executions` is non-empty, it is COMPLETE". The orchestrator honours it
+    # today (it extends right after the EGO stage), but this predicate ships in a public lib and
+    # is read by hosts with leaner carriers, replayed traces and test doubles. Measured
+    # 2026-08-24: with a write in `ego_result` and only a READ in `turn_executions`, the old
+    # shape answered False over a turn that wrote — and False is the RELEASING answer for five
+    # of the six callers, in a predicate whose own first paragraph claims a fail-CLOSED bias.
+    #
+    # The union costs nothing and cannot regress: adding a source can only turn False into True,
+    # never the reverse, so it moves strictly toward the conservative side. No de-duplication is
+    # needed either — `any()` does not count, so an execution present in both lists is harmless.
+    # Derived rather than enumerated, so a source added later joins without a second edit here.
+    for src in (getattr(ctx, "turn_executions", None) or [],
+                getattr(getattr(ctx, "ego_result", None), "tools_executed", None) or []):
+        if any(getattr(t, "side_effect", False) and getattr(t, "ok", False) for t in src):
+            return True
     try:
         # The attribute read is INSIDE the try on purpose: `getattr` with a default swallows
         # AttributeError and nothing else, so a carrier whose `metadata` is a property that
