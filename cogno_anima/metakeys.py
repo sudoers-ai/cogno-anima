@@ -33,9 +33,10 @@ EGO_CORRECTION = "ego_correction"              # correction loop: {reason, attem
 # write is nowhere in it.
 #
 # On that path only the host knows, so the host says so — and `committed_this_turn` believes it.
-# SEVEN places CALL that predicate, measured 2026-08-25 rather than recalled: soma's commit
-# gate (`pipeline.py::run_turn`), the semantic cache (`cache.py`), three repair/re-step guards
-# (`service.py::_repair_repetition` and two in `::_repair_grounding`), the trace's `committed`
+# EIGHT places CALL that predicate, measured 2026-08-25 rather than recalled: soma's commit
+# gate (`pipeline.py::run_turn`), the semantic cache (`cache.py`), FOUR repair/re-step guards
+# (an entry guard and a discard guard in each of `service.py::_repair_repetition` and
+# `::_repair_grounding`), the trace's `committed`
 # flag (`trace.py`) and — since host #429 — the grounding backstop
 # (`grounding.py::_turn_committed`). Cited by NAME on purpose: the line numbers a first draft
 # carried were read from an UNMERGED host branch that inserts a helper above them, so they

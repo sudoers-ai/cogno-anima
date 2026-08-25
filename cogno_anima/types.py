@@ -457,11 +457,13 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     host is the only layer that knows, so it says so (``mk.PRIOR_ATTEMPT_COMMITTED``) and this
     predicate believes it.
 
-    Fixing it HERE and not in each caller is the whole point. SEVEN places CALL this, measured
+    Fixing it HERE and not in each caller is the whole point. EIGHT places CALL this, measured
     2026-08-25 rather than recalled: soma's commit gate (`pipeline.py::run_turn`), the semantic
-    cache (`cache.py`), three repair/re-step guards (`service.py::_repair_repetition` and two in
-    `::_repair_grounding`), the trace's `committed` flag (`trace.py`) and — since host #429 —
-    the grounding backstop (`grounding.py::_turn_committed`). The soma's own comment states the
+    cache (`cache.py`), FOUR repair/re-step guards (an entry guard and a discard guard in each of
+    `service.py::_repair_repetition` and `::_repair_grounding`), the trace's `committed` flag
+    (`trace.py`) and — since host #429 — the grounding backstop
+    (`grounding.py::_turn_committed`). The fourth guard is the newest (host #448) and arrived
+    because its twin had one and it did not. The soma's own comment states the
     invariant they rest on:
     *"since committed_this_turn reads every attempt, the 'NOTHING was committed' the voice
     renders as a HARD RULE is now TRUE of the whole turn"*. The path above is exactly what
@@ -496,8 +498,8 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     carrier whose `metadata` is missing, or is not a mapping, degrades to the trace instead of
     raising.
 
-    Be precise about the direction of THAT degradation: it answers False, which for FIVE of the
-    seven callers is the RELEASING answer (cacheable, re-step allowed, "nothing was committed"
+    Be precise about the direction of THAT degradation: it answers False, which for SIX of the
+    eight callers is the RELEASING answer (cacheable, re-step allowed, "nothing was committed"
     rendered to the voice as a hard rule). The other two do not release, and getting that wrong
     is easy enough that a draft of this very sentence did: the trace only RECORDS the answer,
     and at the grounding backstop False is the answer that ARMS the rules — True is what
@@ -511,8 +513,8 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     # today (it extends right after the EGO stage), but this predicate ships in a public lib and
     # is read by hosts with leaner carriers, replayed traces and test doubles. Measured
     # 2026-08-24: with a write in `ego_result` and only a READ in `turn_executions`, the old
-    # shape answered False over a turn that wrote — and False is the RELEASING answer for five
-    # of the seven callers, in a predicate whose own first paragraph claims a fail-CLOSED bias.
+    # shape answered False over a turn that wrote — and False is the RELEASING answer for six
+    # of the eight callers, in a predicate whose own first paragraph claims a fail-CLOSED bias.
     #
     # The union costs nothing and cannot regress: adding a source can only turn False into True,
     # never the reverse, so it moves strictly toward the conservative side. No de-duplication is
@@ -524,7 +526,7 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     # `EgoResult.tools_executed` is a DERIVED property, and derived can raise. The old shape
     # touched it only when `turn_executions` was empty; touching it ALWAYS turned a turn that
     # answered True (from a complete `turn_executions`) into a turn that RAISES — fail-open
-    # traded for fail-FATAL, on a turn that COMMITTED, with seven callers, one of them inside the
+    # traded for fail-FATAL, on a turn that COMMITTED, with eight callers, one of them inside the
     # orchestrator's loop. The docstring below objects to exactly this twice.
     #
     # `continue`, not a blanket `except: return False`: a broken source must degrade to
