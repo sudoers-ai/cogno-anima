@@ -501,20 +501,22 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     makes that sentence false, and a guard added to one caller leaves the other five wrong. A
     rule each consumer re-derives is a rule each consumer gets wrong alone.
 
-    ONE layer still RE-DERIVES the rule from the trace rather than calling this: the offline
-    promise auditor (`turn_audit/promises.py::committed_from_trace`), which therefore does not
-    see the declaration. It was two. The grounding backstop was the other, and became a caller
-    in host #429: on the very turn this path describes it now SUPPRESSES every rule instead of
-    rewriting a truthful confirmation into a denial.
-
-    The auditor differs in KIND from the backstop it used to be listed beside, and the difference
-    is why it is still open. It reads a persisted row weeks later and has no context to pass, so
-    mirroring is the only shape available to it — "call the predicate" is not a fix anyone can
-    apply there. What makes it a defect rather than a ceiling is that the host's OTHER offline
-    reader disagrees with it: the offline grounding replay takes `trace["guards"]["committed"]`,
-    which DOES carry this declaration. Host defect, not a core one, and registered rather than
-    silent — `tests/unit/test_committed_parity.py` there pins it with an auto-invalidating
-    message (22 passed on 2026-08-25, so the divergence still stands).
+    The last layer that RE-DERIVED the rule instead of reading it closed on 2026-08-25 (the
+    owner's decision; host PR `fix/the-auditor-reads-the-declaration`): the offline promise
+    auditor (`turn_audit/promises.py::committed_from_trace`) now reads the stamp
+    `trace["guards"]["committed"]` — which the host's `trace.py` writes by CALLING this
+    predicate, so it carries this declaration — in UNION with the execution lists. It could
+    never CALL this: it reads a persisted row weeks later with no context to pass, so the stamp
+    is the only shape the declaration can reach it in. The lists stay as the floor on purpose:
+    0 of the 277 rows on the demo box carried the stamp when this closed, and a visible write
+    must count whatever the stamp says (a degraded readout stamps False; the declaration is
+    TRUE-only). What made the auditor a defect rather than a ceiling was the host's OTHER
+    offline reader — the grounding replay — already taking the same key, so two halves of one
+    offline layer read one row two ways; `tests/unit/test_committed_parity.py` there pinned
+    the divergence with an auto-invalidating message until it closed. It was two
+    re-derivations: the grounding backstop was the other, and became a caller in host #429 —
+    on the very turn this path describes it now SUPPRESSES every rule instead of rewriting a
+    truthful confirmation into a denial.
 
     The declaration is TRUE-only: absent means "nothing to add", never "nothing was committed".
     It is also PER TURN — it describes an earlier attempt of the turn being retried, and a host
