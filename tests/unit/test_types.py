@@ -161,3 +161,52 @@ def test_the_union_does_not_invent_a_commit():
     falhou = NS(tool="book", ok=False, side_effect=True)
     ego = NS(tools_executed=[falhou])
     assert committed_this_turn(NS(metadata={}, turn_executions=[leitura], ego_result=ego)) is False
+
+
+def test_a_BROKEN_source_costs_the_source_not_the_turn():
+    """Irmão do `test_the_predicate_never_raises_however_broken_the_carrier`, que cobre a
+    `metadata` a levantar e NÃO cobria a fonte de execuções.
+
+    `EgoResult.tools_executed` é DERIVADO, e derivado pode levantar (um traço reproduzido sem os
+    `steps`, um carregador magro). A primeira versão da união lia as duas fontes com avidez e
+    passou a LEVANTAR num turno que a forma anterior respondia True — fail-open trocado por
+    fail-FATAL, no turno pior possível: um que COMITOU. Achado em revisão, não por mim."""
+    from types import SimpleNamespace as NS
+
+    from cogno_anima.types import committed_this_turn
+
+    class _EgoPartido:
+        @property
+        def tools_executed(self):
+            raise RuntimeError("traço reproduzido sem os steps")
+
+    escrita = NS(tool="book", ok=True, side_effect=True)
+
+    ctx = NS(metadata={}, turn_executions=[escrita], ego_result=_EgoPartido())
+    assert committed_this_turn(ctx) is True, (
+        "a fonte partida custou o turno — e a OUTRA fonte tinha a resposta"
+    )
+
+    # E agora a ORDEM INVERSA, que é o caso que discrimina o `continue` do `return False`.
+    # Acima, a fonte partida vem em SEGUNDO e a primeira já respondeu antes de lhe tocar — então
+    # aquele caso passa com qualquer das duas degradações. Aqui a fonte partida vem PRIMEIRO e a
+    # resposta está na SEGUNDA: só o `continue` a alcança. Um `except: return False` transformaria
+    # "esta fonte não diz nada" em "nada foi comitado", trocando levantar por LIBERAR — que é o
+    # erro exato que este PR existe para remover.
+    class _CarrierComPrimeiraFontePartida:
+        metadata: dict = {}
+
+        @property
+        def turn_executions(self):
+            raise RuntimeError("carregador magro: a lista do turno não existe")
+
+        ego_result = NS(tools_executed=[escrita])
+
+    assert committed_this_turn(_CarrierComPrimeiraFontePartida()) is True, (
+        "a primeira fonte partiu-se e a resposta estava na segunda — a degradação virou "
+        "'nada foi comitado' em vez de 'esta fonte não diz nada'"
+    )
+
+    # E, sem NENHUMA fonte a falar, a resposta é False por ausência de prova — não por exceção.
+    assert committed_this_turn(NS(metadata={}, turn_executions=[],
+                                  ego_result=_EgoPartido())) is False
