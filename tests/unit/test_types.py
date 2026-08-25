@@ -133,7 +133,7 @@ def test_a_PARTIAL_turn_record_does_not_mask_the_survivors_write():
     VAZIA — o que assenta numa invariante que ninguém escreve e nada pina ("se não está vazia,
     está completa"). Com uma LEITURA em `turn_executions` e uma ESCRITA no `ego_result`, o
     predicado respondia False sobre um turno que escreveu. E False é a resposta LIBERADORA para
-    sete dos onze consumidores, num predicado cujo primeiro parágrafo diz que o viés é
+    oito dos doze consumidores, num predicado cujo primeiro parágrafo diz que o viés é
     fail-CLOSED. Achado pelo teste de paridade do cogno-host (#438)."""
     from types import SimpleNamespace as NS
 
@@ -268,11 +268,16 @@ def test_the_three_prose_sites_state_the_SAME_caller_count():
     docstring = re.search(r"(\w+) places CALL this", committed_this_turn.__doc__ or "")
     comentario = re.search(r"(\w+) places CALL that predicate",
                            pathlib.Path(mk.__file__).read_text(encoding="utf-8"))
-    guia = re.search(r"\*\*(\w+)\*\* CHAMAM este predicado",
-                     (raiz / "CLAUDE.md").read_text(encoding="utf-8"))
+    claude_md = (raiz / "CLAUDE.md").read_text(encoding="utf-8")
+    guia = re.search(r"\*\*(\w+)\*\* CHAMAM este predicado", claude_md)
+    # O CABEÇALHO do mesmo parágrafo, e não é zelo: a contagem foi actualizada na frase medida
+    # e esquecida aqui TRÊS vezes seguidas (#116, #117 e o conserto do #117), duas delas
+    # apanhadas a olho pela gerente. Um parágrafo com dois números precisa que os DOIS sejam
+    # lidos, senão "a prosa concorda consigo mesma" é meia-verdade.
+    cabecalho = re.search(r"uma definição, (\w+) consumidores", claude_md)
 
     for nome, achado in (("types.py", docstring), ("metakeys.py", comentario),
-                         ("CLAUDE.md", guia)):
+                         ("CLAUDE.md (frase)", guia), ("CLAUDE.md (cabeçalho)", cabecalho)):
         assert achado, (
             f"{nome} deixou de declarar a contagem. Perder a frase é perder o fato — e é a "
             f"forma de 'passar' que este teste NÃO pode aceitar."
@@ -284,4 +289,8 @@ def test_the_three_prose_sites_state_the_SAME_caller_count():
     )
     assert _CONTAGEM_PT_EN.get(guia.group(1).lower()) == en, (
         f"types.py diz {en}, CLAUDE.md diz {guia.group(1)}"
+    )
+    assert _CONTAGEM_PT_EN.get(cabecalho.group(1).lower()) == en, (
+        f"a frase do CLAUDE.md diz {guia.group(1)} e o CABEÇALHO do mesmo parágrafo diz "
+        f"{cabecalho.group(1)} — a meia-actualização que este assert existe para apanhar"
     )
