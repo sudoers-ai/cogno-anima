@@ -53,20 +53,20 @@ EGO_CORRECTION = "ego_correction"              # correction loop: {reason, attem
 # turn"*. The path above is what makes that sentence false; this key is what makes it true again
 # — in the one place the definition lives, instead of six guards each getting it wrong alone.
 #
-# ONE layer is NOT covered, and saying which is the point of enumerating at all: the offline
-# promise auditor (`turn_audit/promises.py::committed_from_trace`) RE-DERIVES the rule from the
-# trace, so it does not see this declaration. It was TWO. The host's grounding backstop was the
-# other and is now a caller (host #429): on the very turn this key describes it SUPPRESSES every
-# rule (`event=grounding_suppressed reason=prior_attempt_committed`) instead of rewriting a
-# truthful confirmation into a denial.
-#
-# The auditor differs in KIND from the backstop it used to be listed beside: it reads a persisted
-# row weeks later and has no context to pass, so mirroring is the only shape available to it.
-# What makes it a defect rather than a ceiling is that the host's OTHER offline reader disagrees
-# with it — the offline grounding replay takes `trace["guards"]["committed"]`, which carries this
-# declaration. Host defect, not a core one, and registered rather than silent:
-# `tests/unit/test_committed_parity.py` there pins it with an auto-invalidating message
-# (22 passed on 2026-08-25, so the divergence still stands).
+# The last layer that RE-DERIVED the rule instead of reading it closed on 2026-08-25 (the
+# owner's decision; host PR `fix/the-auditor-reads-the-declaration`): the offline promise
+# auditor (`turn_audit/promises.py::committed_from_trace`) reads the stamp
+# `trace["guards"]["committed"]` — written by the host's `trace.py` by CALLING the predicate,
+# so it carries this key's declaration — in UNION with the execution lists. It reads a persisted
+# row weeks later with no context to pass, so the stamp is the only shape the declaration can
+# reach it in; the lists stay as the floor because 0 of the 277 rows on the demo box carried the
+# stamp when this closed, and a visible write counts whatever the stamp says. It was TWO
+# re-derivations: the host's grounding backstop was the other and is now a caller (host #429) —
+# on the very turn this key describes it SUPPRESSES every rule
+# (`event=grounding_suppressed reason=prior_attempt_committed`) instead of rewriting a truthful
+# confirmation into a denial. Until the auditor closed, the host's OTHER offline reader (the
+# grounding replay) already took the same key, and `tests/unit/test_committed_parity.py` there
+# pinned the two halves reading one row two ways with an auto-invalidating message.
 #
 # TRUE only. Absent means "nothing to add", never "nothing was committed": a host that does not
 # set it is a host whose executions are all on the context, which is the normal case.
