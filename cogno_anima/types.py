@@ -271,6 +271,26 @@ class ToolResult(BaseModel):
     ok: bool = True                      # False = recoverable failure → fed back
     error: Optional[str] = None
     side_effect: bool = False            # host hint for the turn record (core does not act on it)
+    # The skill RAN, decided it must not commit, and is asking first. It is a THIRD
+    # confirmation source, and the two it joins answer different questions:
+    #
+    #   gate A (``mk.EGO_READONLY``)  the USER was tentative      → mask every write
+    #   gate B (``requires_confirmation``)  the TOOL is destructive → hold it, never run it
+    #   this field                   THIS CALL, on what the skill just read → propose
+    #
+    # The difference from gate B is what makes it worth having: gate B is per tool NAME and
+    # decided BEFORE execution, so it cannot know that cancelling *this* appointment is two
+    # hours away, or that *this* entry is a hundred times the usual one. The skill knows,
+    # because it read. And because it ran, its ``output`` carries a proposal GROUNDED in real
+    # data instead of a generic "are you sure?".
+    #
+    # A ``True`` here is a promise that NOTHING was committed. The EGO records the call with
+    # ``ok=False`` for that reason: `committed_this_turn` requires ``ok`` AND ``side_effect``,
+    # so a proposal can never be counted as a write however the skill fills the other fields.
+    # The host confirms through the channel it already owns (the skill's own context/metadata
+    # — see ``cogno_cortex.ToolContext``); the core never invents an argument name, because
+    # what a skill needs in order to commit is the skill's business, not the pipeline's.
+    needs_confirmation: bool = False
 
 
 class ToolExecution(BaseModel):

@@ -8,7 +8,7 @@ from cogno_anima.stages.ego import EgoStage
 from cogno_synapse.base import ToolCallingBackend
 from cogno_anima.types import (
     StageMetrics, NoumenoResult, IntentResult, PipelineContext, EgoResult,
-    EgoStep, ToolExecution, ToolResult,
+    EgoStep, ToolExecution, ToolResult, committed_this_turn,
 )
 from cogno_anima.errors import MCPDispatchError, ToolExecutionError
 
@@ -1035,3 +1035,137 @@ async def test_the_offered_surface_reflects_the_READ_ONLY_MASK_not_the_dispatche
         "still be able to CONSULT — this is the assertion the fail-safe path cannot make")
     assert offered != sorted(t["function"]["name"] for t in disp.tools_schema()), (
         "the record is what the MODEL saw, not what the dispatcher held")
+
+
+# ── Confirmation gate (Fonte C: a SKILL asked) ───────────────────────
+# Gate B holds a tool by NAME, before it runs, from a host classification. This source is the
+# skill itself, about THIS call and what it just read: "I did not commit — ask first". It
+# exists because the name-based gate cannot know that cancelling *this* appointment is two
+# hours away, or that *this* entry is a hundred times the usual one. The skill knows, because
+# it read — and its proposal is grounded in that instead of a generic "are you sure?".
+
+def _asks(text="Cancelar a consulta de amanhã às 10h?", **kw):
+    """A skill that ran, did not commit, and is asking."""
+    return lambda a: ToolResult(output=text, needs_confirmation=True, **kw)
+
+
+@pytest.mark.asyncio
+async def test_a_skill_that_asks_first_is_held_and_NOTHING_is_committed():
+    backend = ScriptedToolCallingBackend([_tool_turn("cancel_appointment", {"id": "a1"}),
+                                          {"content": "x"}])
+    disp = StubDispatcher.with_tools("cancel_appointment",
+                                     handlers={"cancel_appointment": _asks()})
+    ctx = await EgoStage().process(_ctx(), backend, disp, system_prompt=SYS)
+    res = ctx.ego_result
+
+    # o oposto do gate B: a skill CORREU — é isso que lhe dá o texto da proposta
+    assert disp.executed == [("cancel_appointment", {"id": "a1"})]
+    assert [t.tool for t in res.pending_confirmation] == ["cancel_appointment"]
+    assert res.pending_confirmation[0].result == "Cancelar a consulta de amanhã às 10h?"
+    assert committed_this_turn(ctx) is False
+    assert res.has_side_effects is False
+
+
+@pytest.mark.asyncio
+async def test_the_same_skill_answering_NO_runs_normally():
+    """O irmão do valor oposto: sem ele, um `needs_confirmation` cravado a True passaria."""
+    backend = ScriptedToolCallingBackend([_tool_turn("cancel_appointment", {"id": "a1"}),
+                                          {"content": "x"}])
+    disp = StubDispatcher.with_tools(
+        "cancel_appointment",
+        handlers={"cancel_appointment": lambda a: ToolResult(output="cancelled",
+                                                             side_effect=True)})
+    ctx = await EgoStage().process(_ctx(), backend, disp, system_prompt=SYS)
+    assert ctx.ego_result.pending_confirmation == []
+    assert committed_this_turn(ctx) is True
+
+
+@pytest.mark.asyncio
+async def test_a_proposal_is_not_a_write_even_when_the_skill_contradicts_itself():
+    """`needs_confirmation=True` É a promessa de que nada foi comitado. Se a skill também
+    mandar `side_effect=True`, os dois não podem valer — e o desempate tem de cair para o lado
+    conservador, senão a proposta conta como escrita e a voz anuncia feito o que não foi."""
+    backend = ScriptedToolCallingBackend([_tool_turn("cancel_appointment", {"id": "a1"}),
+                                          {"content": "x"}])
+    disp = StubDispatcher.with_tools("cancel_appointment",
+                                     handlers={"cancel_appointment": _asks(side_effect=True)})
+    ctx = await EgoStage().process(_ctx(), backend, disp, system_prompt=SYS)
+    assert committed_this_turn(ctx) is False
+    assert ctx.ego_result.has_side_effects is False
+
+
+@pytest.mark.asyncio
+async def test_the_hold_does_not_fire_on_a_turn_the_host_already_confirmed():
+    """Confirmado, a porta abre — senão o pedido de confirmação repetia-se para sempre."""
+    backend = ScriptedToolCallingBackend([_tool_turn("cancel_appointment", {"id": "a1"}),
+                                          {"content": "x"}])
+    disp = StubDispatcher.with_tools(
+        "cancel_appointment",
+        handlers={"cancel_appointment": lambda a: ToolResult(output="cancelled",
+                                                             side_effect=True)})
+    ctx = await EgoStage().process(_ctx(ego_confirmed=True), backend, disp, system_prompt=SYS)
+    assert ctx.ego_result.pending_confirmation == []
+    assert committed_this_turn(ctx) is True
+
+
+@pytest.mark.asyncio
+async def test_a_CONFIRMED_call_whose_skill_still_asks_fails_LOUDLY():
+    """O modo de falha que este ramo existe para impedir.
+
+    Na re-execução de uma chamada que o utilizador JÁ aprovou não há mais ninguém a quem
+    perguntar. Se a skill continua a pedir, é porque não viu a confirmação — o canal é do host
+    (o `metadata` do contexto da própria skill). Aceitar isso como sucesso entregaria "feito"
+    sobre um turno que não escreveu nada, que é exatamente o falso-sucesso deste estágio."""
+    backend = PlainBackend()
+    disp = StubDispatcher.with_tools("cancel_appointment",
+                                     handlers={"cancel_appointment": _asks()})
+    ctx = _ctx(ego_confirmed=True,
+               ego_confirmed_calls=[{"tool": "cancel_appointment", "arguments": {"id": "a1"}}])
+    ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+
+    call = [tc for s in ctx.ego_result.steps for tc in s.tool_calls
+            if tc.tool == "cancel_appointment"][0]
+    assert call.ok is False and call.side_effect is False
+    assert "did not receive the confirmation" in (call.error or "")
+    assert committed_this_turn(ctx) is False
+
+
+@pytest.mark.asyncio
+async def test_a_CONFIRMED_call_whose_skill_COMMITS_is_recorded_as_done():
+    """O irmão: sem ele, um ramo que reprovasse SEMPRE a re-execução passaria no teste acima."""
+    backend = PlainBackend()
+    disp = StubDispatcher.with_tools(
+        "cancel_appointment",
+        handlers={"cancel_appointment": lambda a: ToolResult(output="cancelled",
+                                                             side_effect=True)})
+    ctx = _ctx(ego_confirmed=True,
+               ego_confirmed_calls=[{"tool": "cancel_appointment", "arguments": {"id": "a1"}}])
+    ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+
+    call = [tc for s in ctx.ego_result.steps for tc in s.tool_calls
+            if tc.tool == "cancel_appointment"][0]
+    assert call.ok is True and call.side_effect is True
+    assert committed_this_turn(ctx) is True
+
+
+@pytest.mark.asyncio
+async def test_a_confirmed_turn_where_the_skill_STILL_asks_fails_in_the_LOOP_too():
+    """O caso que faltava, e que duas mutações sobreviventes apontaram ao mesmo tempo.
+
+    Uma chamada confirmada chega por DOIS caminhos: o replay determinístico das chamadas
+    seguras, e o modelo a reemiti-la dentro do laço. A primeira versão guardava só o replay —
+    então pelo laço a proposta era gravada como `ok=True, side_effect=True` e contava como
+    escrita. Falso-sucesso, no caminho mais comum dos dois."""
+    backend = ScriptedToolCallingBackend([_tool_turn("cancel_appointment", {"id": "a1"}),
+                                          {"content": "x"}])
+    disp = StubDispatcher.with_tools("cancel_appointment",
+                                     handlers={"cancel_appointment": _asks(side_effect=True)})
+    ctx = await EgoStage().process(_ctx(ego_confirmed=True), backend, disp, system_prompt=SYS)
+
+    call = [tc for s in ctx.ego_result.steps for tc in s.tool_calls
+            if tc.tool == "cancel_appointment"][0]
+    assert call.ok is False and call.side_effect is False
+    assert "did not receive the confirmation" in (call.error or "")
+    assert committed_this_turn(ctx) is False
+    # e NÃO volta a segurar: já não há a quem perguntar
+    assert ctx.ego_result.pending_confirmation == []
