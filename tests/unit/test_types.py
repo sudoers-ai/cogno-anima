@@ -233,3 +233,51 @@ def test_a_BROKEN_source_costs_the_source_not_the_turn():
     # E, sem NENHUMA fonte a falar, a resposta é False por ausência de prova — não por exceção.
     assert committed_this_turn(NS(metadata={}, turn_executions=[],
                                   ego_result=_EgoPartido())) is False
+
+
+# ── a prosa sobre `committed_this_turn` tem de concordar consigo mesma ────────────────────
+#
+# O fato ("quantos lugares chamam o predicado?") está escrito em TRÊS sítios deste repo, em
+# dois idiomas, e envelheceu nos três ao mesmo tempo: diziam "seis" enquanto a árvore tinha
+# sete. Este repo não consegue CONTAR os chamadores — eles moram no cogno-host e no cogno-soma,
+# que dependem daqui e não o contrário. Então ele fecha a metade que lhe cabe: os três sítios
+# dizem o MESMO número. A outra metade ("esse número é o real") é pinada no host, onde os três
+# pacotes são importáveis, por `tests/unit/test_committed_prose_matches_code.py`.
+#
+# Sozinho, isto não pega os três derivando JUNTOS — é o modo de falha gêmeo, e é exatamente por
+# isso que a corrente precisa dos dois elos. Nenhum dos dois basta.
+
+_CONTAGEM_PT_EN = {"um": "ONE", "dois": "TWO", "três": "THREE", "quatro": "FOUR",
+                   "cinco": "FIVE", "seis": "SIX", "sete": "SEVEN", "oito": "EIGHT",
+                   "nove": "NINE", "dez": "TEN"}
+
+
+def test_the_three_prose_sites_state_the_SAME_caller_count():
+    import pathlib
+    import re
+
+    from cogno_anima import metakeys as mk
+    from cogno_anima.types import committed_this_turn
+
+    raiz = pathlib.Path(mk.__file__).resolve().parent.parent
+
+    docstring = re.search(r"(\w+) places CALL this", committed_this_turn.__doc__ or "")
+    comentario = re.search(r"(\w+) places CALL that predicate",
+                           pathlib.Path(mk.__file__).read_text(encoding="utf-8"))
+    guia = re.search(r"\*\*(\w+)\*\* CHAMAM este predicado",
+                     (raiz / "CLAUDE.md").read_text(encoding="utf-8"))
+
+    for nome, achado in (("types.py", docstring), ("metakeys.py", comentario),
+                         ("CLAUDE.md", guia)):
+        assert achado, (
+            f"{nome} deixou de declarar a contagem. Perder a frase é perder o fato — e é a "
+            f"forma de 'passar' que este teste NÃO pode aceitar."
+        )
+
+    en = docstring.group(1).upper()
+    assert comentario.group(1).upper() == en, (
+        f"types.py diz {en}, metakeys.py diz {comentario.group(1)}"
+    )
+    assert _CONTAGEM_PT_EN.get(guia.group(1).lower()) == en, (
+        f"types.py diz {en}, CLAUDE.md diz {guia.group(1)}"
+    )
