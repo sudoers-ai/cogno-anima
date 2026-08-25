@@ -133,7 +133,7 @@ def test_a_PARTIAL_turn_record_does_not_mask_the_survivors_write():
     VAZIA — o que assenta numa invariante que ninguém escreve e nada pina ("se não está vazia,
     está completa"). Com uma LEITURA em `turn_executions` e uma ESCRITA no `ego_result`, o
     predicado respondia False sobre um turno que escreveu. E False é a resposta LIBERADORA para
-    seis dos oito consumidores, num predicado cujo primeiro parágrafo diz que o viés é
+    sete dos onze consumidores, num predicado cujo primeiro parágrafo diz que o viés é
     fail-CLOSED. Achado pelo teste de paridade do cogno-host (#438)."""
     from types import SimpleNamespace as NS
 
@@ -247,9 +247,13 @@ def test_a_BROKEN_source_costs_the_source_not_the_turn():
 # Sozinho, isto não pega os três derivando JUNTOS — é o modo de falha gêmeo, e é exatamente por
 # isso que a corrente precisa dos dois elos. Nenhum dos dois basta.
 
+# Estendido para além de DEZ na terceira vez que a contagem passou do teto do mapa: um mapa
+# curto transforma "a prosa está certa" em KeyError/falha opaca, que é a forma de falhar que
+# esta suíte inteira existe para evitar.
 _CONTAGEM_PT_EN = {"um": "ONE", "dois": "TWO", "três": "THREE", "quatro": "FOUR",
                    "cinco": "FIVE", "seis": "SIX", "sete": "SEVEN", "oito": "EIGHT",
-                   "nove": "NINE", "dez": "TEN"}
+                   "nove": "NINE", "dez": "TEN", "onze": "ELEVEN", "doze": "TWELVE",
+                   "treze": "THIRTEEN", "catorze": "FOURTEEN", "quinze": "FIFTEEN"}
 
 
 def test_the_three_prose_sites_state_the_SAME_caller_count():
