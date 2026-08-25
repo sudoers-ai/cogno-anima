@@ -556,8 +556,12 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     # today (it extends right after the EGO stage), but this predicate ships in a public lib and
     # is read by hosts with leaner carriers, replayed traces and test doubles. Measured
     # 2026-08-24: with a write in `ego_result` and only a READ in `turn_executions`, the old
-    # shape answered False over a turn that wrote — and False is the RELEASING answer for six
-    # of the eight callers, in a predicate whose own first paragraph claims a fail-CLOSED bias.
+    # shape answered False over a turn that wrote — and False was then the RELEASING answer for
+    # six of the EIGHT callers there were at the time (2026-08-24; twelve today, eight of them
+    # releasing) — in a predicate whose own first paragraph claims a fail-CLOSED bias. The
+    # number is left as it was MEASURED because the sentence describes that measurement; a
+    # historical count that does not say it is historical reads exactly like a forgotten one,
+    # which is why this now says so.
     #
     # The union costs nothing and cannot regress: adding a source can only turn False into True,
     # never the reverse, so it moves strictly toward the conservative side. No de-duplication is
