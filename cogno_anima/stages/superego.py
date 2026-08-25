@@ -203,7 +203,8 @@ class SuperegoStage:
           the wrong text to a person;
         * a list, a number, a bare string — not an envelope;
         * a reply that merely CONTAINS braces ("use {tenant} no template") — it is not JSON, so
-          it never reaches the parse.
+          it never reaches the parse;
+        * a BLANK value — see below: silence is a different bug from garbage.
 
         A backstop, not a fix: a voicer answering in JSON is a prompt problem, and this is the
         net under it. The ``voice:json_unwrapped`` adjustment exists so the trace can count how
@@ -223,6 +224,13 @@ class SuperegoStage:
             return None
         key, value = next(iter(data.items()))
         if str(key).strip().lower() not in cls._ENVELOPE_KEYS or not isinstance(value, str):
+            return None
+        # A blank value holds no reply, and nothing downstream guards an empty response —
+        # measured across `cogno_soma.pipeline` and the host: neither has a fallback for one.
+        # Unwrapping here would trade VISIBLE garbage for unhandled SILENCE, which is a
+        # different bug, not a fix. The voicer produced nothing; that is its own failure and
+        # the existing `SUPEREGO voice len=0` log is where it shows.
+        if not value.strip():
             return None
         return value
 

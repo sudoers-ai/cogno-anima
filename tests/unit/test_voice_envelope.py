@@ -120,3 +120,12 @@ async def test_the_backstop_covers_the_CORRECTION_entry_point_too(key):
     res = await SuperegoStage().voice(ctx, backend, voice_prompt="persona")
     assert res.response == "Certo — não confirmei nada ainda."
     assert "voice:json_unwrapped" in res.adjustments
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\n\t "])
+def test_a_blank_envelope_is_left_alone_because_silence_is_a_different_bug(blank):
+    """Nothing downstream guards an empty response — measured across `cogno_soma.pipeline` and
+    the host: neither has a fallback for one, so it would reach the channel as silence.
+    Unwrapping a blank value trades visible garbage for an unhandled state; the envelope stays,
+    and the voicer producing nothing shows up as its own failure."""
+    assert unwrap(json.dumps({"message": blank})) is None
