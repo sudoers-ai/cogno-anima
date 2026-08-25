@@ -457,19 +457,31 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     host is the only layer that knows, so it says so (``mk.PRIOR_ATTEMPT_COMMITTED``) and this
     predicate believes it.
 
-    Fixing it HERE and not in each caller is the whole point. Six places CALL this — soma's
-    commit gate, the semantic cache, three repair/re-step guards and the trace's committed flag
-    — and the soma's own comment states the invariant they rest on:
+    Fixing it HERE and not in each caller is the whole point. SEVEN places CALL this, measured
+    2026-08-25 rather than recalled: soma's commit gate (`pipeline.py::run_turn`), the semantic
+    cache (`cache.py`), three repair/re-step guards (`service.py::_repair_repetition` and two in
+    `::_repair_grounding`), the trace's `committed` flag (`trace.py`) and — since host #429 —
+    the grounding backstop (`grounding.py::_turn_committed`). The soma's own comment states the
+    invariant they rest on:
     *"since committed_this_turn reads every attempt, the 'NOTHING was committed' the voice
     renders as a HARD RULE is now TRUE of the whole turn"*. The path above is exactly what
     makes that sentence false, and a guard added to one caller leaves the other five wrong. A
     rule each consumer re-derives is a rule each consumer gets wrong alone.
 
-    Two layers in the host RE-DERIVE the rule from the trace rather than calling this — the
-    grounding backstop and the offline promise auditor — so they do NOT see the declaration.
-    Naming them is deliberate: the sentence above ("a rule each consumer re-derives is a rule
-    each consumer gets wrong alone") has two live re-derivations, and a reader who assumed they
-    were covered would believe the retry turn's symptom was fixed when only the guards were.
+    ONE layer still RE-DERIVES the rule from the trace rather than calling this: the offline
+    promise auditor (`turn_audit/promises.py::committed_from_trace`), which therefore does not
+    see the declaration. It was two. The grounding backstop was the other, and became a caller
+    in host #429: on the very turn this path describes it now SUPPRESSES every rule instead of
+    rewriting a truthful confirmation into a denial.
+
+    The auditor differs in KIND from the backstop it used to be listed beside, and the difference
+    is why it is still open. It reads a persisted row weeks later and has no context to pass, so
+    mirroring is the only shape available to it — "call the predicate" is not a fix anyone can
+    apply there. What makes it a defect rather than a ceiling is that the host's OTHER offline
+    reader disagrees with it: the offline grounding replay takes `trace["guards"]["committed"]`,
+    which DOES carry this declaration. Host defect, not a core one, and registered rather than
+    silent — `tests/unit/test_committed_parity.py` there pins it with an auto-invalidating
+    message (22 passed on 2026-08-25, so the divergence still stands).
 
     The declaration is TRUE-only: absent means "nothing to add", never "nothing was committed".
     It is also PER TURN — it describes an earlier attempt of the turn being retried, and a host
@@ -484,9 +496,10 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     carrier whose `metadata` is missing, or is not a mapping, degrades to the trace instead of
     raising.
 
-    Be precise about the direction of THAT degradation: it answers False, which for five of the
-    six callers is the RELEASING answer (cacheable, re-step allowed, "nothing was committed"
-    rendered to the voice as a hard rule). So it is fail-OPEN here, unlike the no-op→True choice
+    Be precise about the direction of THAT degradation: it answers False, which for six of the
+    seven callers is the RELEASING answer (cacheable, re-step allowed — the grounding backstop
+    judges, and can arm one — and "nothing was committed" rendered to the voice as a hard rule);
+    the seventh, the trace, only records it. So it is fail-OPEN here, unlike the no-op→True choice
     above, which is conservative on purpose. It stays fail-open deliberately: answering True on
     an unreadable carrier would make every test double and replayed trace read as "committed",
     which is the worse error. On a real `PipelineContext` the handler is unreachable."""
@@ -496,8 +509,8 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     # today (it extends right after the EGO stage), but this predicate ships in a public lib and
     # is read by hosts with leaner carriers, replayed traces and test doubles. Measured
     # 2026-08-24: with a write in `ego_result` and only a READ in `turn_executions`, the old
-    # shape answered False over a turn that wrote — and False is the RELEASING answer for five
-    # of the six callers, in a predicate whose own first paragraph claims a fail-CLOSED bias.
+    # shape answered False over a turn that wrote — and False is the RELEASING answer for six
+    # of the seven callers, in a predicate whose own first paragraph claims a fail-CLOSED bias.
     #
     # The union costs nothing and cannot regress: adding a source can only turn False into True,
     # never the reverse, so it moves strictly toward the conservative side. No de-duplication is
@@ -509,7 +522,7 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     # `EgoResult.tools_executed` is a DERIVED property, and derived can raise. The old shape
     # touched it only when `turn_executions` was empty; touching it ALWAYS turned a turn that
     # answered True (from a complete `turn_executions`) into a turn that RAISES — fail-open
-    # traded for fail-FATAL, on a turn that COMMITTED, with six callers, one of them inside the
+    # traded for fail-FATAL, on a turn that COMMITTED, with seven callers, one of them inside the
     # orchestrator's loop. The docstring below objects to exactly this twice.
     #
     # `continue`, not a blanket `except: return False`: a broken source must degrade to

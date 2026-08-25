@@ -33,25 +33,35 @@ EGO_CORRECTION = "ego_correction"              # correction loop: {reason, attem
 # write is nowhere in it.
 #
 # On that path only the host knows, so the host says so — and `committed_this_turn` believes it.
-# SIX places CALL that predicate, measured rather than recalled: soma's commit gate
-# (`pipeline.py::_gate_commit`), the semantic cache (`cache.py`), three repair/re-step guards
-# (`service.py::_repair_repetition` and two in `::_repair_grounding`) and the trace's
-# `committed` flag (`trace.py`). Cited by NAME on purpose: the line numbers a first draft
+# SEVEN places CALL that predicate, measured 2026-08-25 rather than recalled: soma's commit
+# gate (`pipeline.py::run_turn`), the semantic cache (`cache.py`), three repair/re-step guards
+# (`service.py::_repair_repetition` and two in `::_repair_grounding`), the trace's `committed`
+# flag (`trace.py`) and — since host #429 — the grounding backstop
+# (`grounding.py::_turn_committed`). Cited by NAME on purpose: the line numbers a first draft
 # carried were read from an UNMERGED host branch that inserts a helper above them, so they
 # were already wrong for `main` — a line number in ANOTHER repository has a shorter life than
-# the sentence containing it. The soma's
+# the sentence containing it. A NAME is not immune either, and this block proved it: it cited
+# `pipeline.py::_gate_commit` for a function that exists nowhere in soma (the call sits in
+# `run_turn`). Grep the symbol; do not recall it. The soma's
 # own comment states the invariant they rest on: *"since committed_this_turn reads every
 # attempt, the 'NOTHING was committed' the voice renders as a HARD RULE is now TRUE of the whole
 # turn"*. The path above is what makes that sentence false; this key is what makes it true again
 # — in the one place the definition lives, instead of six guards each getting it wrong alone.
 #
-# TWO layers are NOT covered, and saying which is the point of enumerating at all. The host's
-# grounding backstop (`grounding.py:_tool_calls`) and the offline promise auditor
-# (`turn_audit/promises.py:committed_from_trace`) RE-DERIVE the rule from the trace instead of
-# calling the predicate. They therefore do not see this declaration, and on the very turn it
-# describes the backstop still rewrites a truthful confirmation into a denial. That is a host
-# defect, not a core one — but a list that silently included them would make a reader believe
-# the symptom was fixed when only the guards were.
+# ONE layer is NOT covered, and saying which is the point of enumerating at all: the offline
+# promise auditor (`turn_audit/promises.py::committed_from_trace`) RE-DERIVES the rule from the
+# trace, so it does not see this declaration. It was TWO. The host's grounding backstop was the
+# other and is now a caller (host #429): on the very turn this key describes it SUPPRESSES every
+# rule (`event=grounding_suppressed reason=prior_attempt_committed`) instead of rewriting a
+# truthful confirmation into a denial.
+#
+# The auditor differs in KIND from the backstop it used to be listed beside: it reads a persisted
+# row weeks later and has no context to pass, so mirroring is the only shape available to it.
+# What makes it a defect rather than a ceiling is that the host's OTHER offline reader disagrees
+# with it — the offline grounding replay takes `trace["guards"]["committed"]`, which carries this
+# declaration. Host defect, not a core one, and registered rather than silent:
+# `tests/unit/test_committed_parity.py` there pins it with an auto-invalidating message
+# (22 passed on 2026-08-25, so the divergence still stands).
 #
 # TRUE only. Absent means "nothing to add", never "nothing was committed": a host that does not
 # set it is a host whose executions are all on the context, which is the normal case.
