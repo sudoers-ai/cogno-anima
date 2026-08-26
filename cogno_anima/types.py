@@ -398,6 +398,26 @@ class ScopeCheckResult(BaseModel):
     metrics: StageMetrics
 
 
+class PiiFinding(BaseModel):
+    """One personal datum found in the OUTGOING text, and what the provenance rule did with it.
+
+    **It carries no value, and that is the point.** This lands on ``SuperegoResult`` and the host
+    persists that into ``turn_traces``; a field holding the CPF would move the leak from the
+    reply into a table the identity purge does not walk. Type + provenance + verdict answer every
+    question the record exists for ("what is the net masking, and is it getting in the way")
+    without any of them being answerable about a PERSON.
+
+    ``mask`` is the replacement that was — or, under the shipped observation mode, WOULD have
+    been — spliced in (``"[EMAIL REDACTED]"``); never the value it replaced. Under `enforce` it
+    locates the span in the shipped text; under `observe` nothing was spliced and the reply is
+    byte-identical, so read ``redacted`` for what actually happened.
+    """
+    pii_type: str          # `security.pii.VALID_PII_TYPES`
+    provenance: str        # `vocab.VALID_PII_PROVENANCE`
+    redacted: bool         # True → the span was masked before the reply left
+    mask: str = ""         # what replaced it; "" when the value was allowed out
+
+
 class SuperegoResult(BaseModel):
     """Output of the SUPEREGO stage (Stage 5) — judge + voicer.
 
@@ -445,6 +465,11 @@ class SuperegoResult(BaseModel):
     # to compare it against. Slice it with :meth:`SuperegoStage.voice_prompt_block` — the host
     # must not re-derive the section headers, or the two sides drift.
     prompt_text: str = ""
+    # What the outgoing-PII provenance rule found and decided, one entry per detected value.
+    # Empty means the detector found nothing — NOT that the rule was off (an inactive rule is
+    # not a state this stage has: absence of a host allowlist only makes it stricter). Carries
+    # types and verdicts, never values; see :class:`PiiFinding`.
+    pii_findings: list[PiiFinding] = Field(default_factory=list)
     cot_stripped: bool = False      # a <think> block was removed
     metrics: StageMetrics
 

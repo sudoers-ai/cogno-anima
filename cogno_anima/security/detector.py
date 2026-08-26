@@ -144,25 +144,60 @@ US_PATTERNS: list[PiiPattern] = [
 #  Detector
 # ──────────────────────────────────────────────────────────────────────────
 
+@dataclass(frozen=True)
+class PiiMatch:
+    """One located PII value: its canonical type, the exact text, and its span.
+
+    ``detect`` answers *what kinds* of personal data a text carries — enough to flag a turn, and
+    all the risk computation ever needed. Redacting needs *where and which*, and deriving that
+    from a second set of regexes elsewhere is the failure this type prevents: two definitions
+    that agree today and diverge exactly where it costs. :meth:`PiiDetector.find` is the single
+    definition; ``detect`` is now expressed over it.
+    """
+    pii_type: str
+    value: str
+    start: int
+    end: int
+    pattern_name: str
+
+
 class PiiDetector:
     """Runs a set of PiiPatterns over text, returning canonical PII types found."""
 
     def __init__(self, patterns: list[PiiPattern]) -> None:
         self._patterns = list(patterns)
 
-    def detect(self, text: str) -> list[str]:
-        """Return the deterministically-detected canonical PII types (deduped, ordered)."""
+    def find(self, text: str) -> list[PiiMatch]:
+        """Every validated PII value in ``text``, with its span — pattern order, then position.
+
+        Unlike :meth:`detect` this does not stop at the first hit per pattern: a reply that names
+        two different people's phone numbers has two spans, and masking one of them is not a
+        protection. Matches that fail their check digit (CPF/CNPJ/Luhn) are dropped here, so a
+        protocol number that merely looks like a document is never masked.
+
+        The value is the WHOLE match (``group(0)``), which is what a span has to be. The
+        superseded ``findall`` loop read ``match[0]`` — the first capture GROUP when a pattern
+        has one. No shipped pattern does, so nothing here changes; a host adding a pack with a
+        capturing group now validates and masks the whole match instead of the group.
+        """
         if not text:
             return []
-        found: list[str] = []
+        found: list[PiiMatch] = []
         for pat in self._patterns:
-            for match in pat.pattern.findall(text):
-                value = match if isinstance(match, str) else match[0]
+            for m in pat.pattern.finditer(text):
+                value = m.group(0)
                 if pat.validator and not pat.validator(value):
                     continue
-                if pat.pii_type not in found:
-                    found.append(pat.pii_type)
-                break  # one hit per pattern is enough
+                found.append(PiiMatch(pii_type=pat.pii_type, value=value,
+                                      start=m.start(), end=m.end(), pattern_name=pat.name))
+        return found
+
+    def detect(self, text: str) -> list[str]:
+        """Return the deterministically-detected canonical PII types (deduped, ordered)."""
+        found: list[str] = []
+        for match in self.find(text):
+            if match.pii_type not in found:
+                found.append(match.pii_type)
         return found
 
     def checksum_rejected(self, text: str) -> set[str]:

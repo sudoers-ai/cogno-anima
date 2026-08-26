@@ -143,6 +143,63 @@ JUDGE_VERDICT = "judge_verdict"
 # host persists, and a full critique per attempt is unbounded text.
 JUDGE_ATTEMPTS = "judge_attempts"
 
+# Digests of the PII values the CONTACT themselves supplied EARLIER in this session — the
+# allowlist for the SUPEREGO's outgoing-PII rule ("may come in, must not go out"). A list of
+# lowercase sha256 hex strings, produced by `security.redaction.pii_digests_in` over the
+# contact's own messages. The current turn is NOT the host's job: `voice()` digests
+# `ctx.user_input` itself, so what rides here is strictly the session's memory.
+#
+# **Digests, not values, and the reason is not caution.** `metadata` is read by whatever
+# serialises the turn trace, by whatever persists session state, and by any best-effort guard
+# that renders its kwargs into a log line — an allowlist of VALUES would open a new store of
+# personal data in the clear in order to close one leak. It also has to survive the agreed
+# follow-up: once inbound turns are stored MASKED, a value-based allowlist could no longer be
+# rebuilt from history, so the choice would collapse to "keep values in the clear" or "never
+# mask on write". Digests keep both halves of the owner's decision available.
+#
+# **The ceiling, stated rather than implied: this is de-identification, not encryption.** SHA-256
+# is unsalted here and a phone number's input space is enumerable, so anyone holding a digest can
+# confirm a guess instantly. What it buys is that no personal datum travels in metadata because
+# of this feature. Same bargain as the host's `scope_sha` (host #545). A host that PERSISTS these
+# (session state) is persisting pseudonymous personal data: put them inside the identity purge.
+#
+# **Absent means STRICTER, never off.** With no allowlist the rule still runs and only this
+# turn's own message allowlists anything, so more is masked — a typo in the key cannot silently
+# disable the protection, only the recall of earlier turns. Measured against the merged bench's
+# answer key (host #549, `a2aef70`), per SCENARIO: the per-turn variant breaks
+# `own_email_recalled_three_turns_later` — the e-mail given at turn 1 and asked back at turn 3 —
+# and no scenario in the suite is decided the other way. Injecting this is how a host stays on
+# the measured side of that.
+#
+# PER SESSION, per contact. The host scopes it by session_id; carrying it across contacts would
+# make one person's data allowlisted in another's conversation, which is the leak inverted.
+PII_OUTPUT_ALLOWLIST = "pii_output_allowlist"
+
+# `Identity.role` of the person this reply is going to ("GUEST" | staff role). Read ONLY by the
+# outgoing-PII rule, which is why the name is scoped: provenance alone is under-determined, and
+# the merged bench (host #549, `a2aef70`) is what proved it — its `tool_result_document_number`
+# case is the tenant's own bookkeeper asking to re-read a ledger row he wrote, and the answer key
+# says withholding it is WRONG. Where the value came from cannot tell that turn apart from a
+# patient asking for a doctor's CPF; who is READING can, and the host already resolves it every
+# turn.
+#
+# Absent or empty reads as GUEST — the stricter side. A host that forgets this key gets more
+# masking, never a silent widening.
+#
+# The dissent is recorded rather than smoothed over: the bench marks that case `contested`,
+# because RBAC authorised a READ and not re-emission onto a chat transport — an employee's
+# WhatsApp, the Evolution database and the tenant's history all end up holding the value. This
+# bit widens that on purpose; the alternative measured worse.
+PII_READER_ROLE = "pii_reader_role"
+
+# How the outgoing-PII rule ACTS: a `vocab.VALID_PII_MODES` member ("observe" | "enforce").
+# ONE switch, per turn, so a deployment can graduate one tenant at a time without a redeploy.
+# Absent/unknown → `vocab.PII_MODE_DEFAULT` ("observe"): a typo must never start masking a
+# tenant's replies without someone having decided to. The reasoning behind the default lives with
+# the constant in `vocab.py` — it was picked by arithmetic (the rule still breaks a scenario the
+# bench named, against zero leaks observed in 297 production turns), not by caution.
+PII_OUTPUT_MODE = "pii_output_mode"
+
 # ── prompt provenance (HOST writes, orchestrator labels with it) ─────────────
 # `{kind: sha}` — the host's digest of each prompt TEMPLATE it is running this turn, keyed by
 # slot ("ego" | "voice" | "judge" | "scope"). The orchestrator copies the matching one onto
