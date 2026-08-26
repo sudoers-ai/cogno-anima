@@ -1195,3 +1195,86 @@ async def test_a_confirmed_turn_where_the_skill_STILL_asks_fails_in_the_LOOP_too
     assert committed_this_turn(ctx) is False
     # e NÃO volta a segurar: já não há a quem perguntar
     assert ctx.ego_result.pending_confirmation == []
+
+
+# ── same-step duplicate ──────────────────────────────────────────────
+# The cross-step guard allows a signature twice, which is right BETWEEN steps and provably
+# wrong WITHIN one: both calls came out of the same model turn, so nothing ran in between.
+# Measured on the doctor bench (2026-08-25): a single step emitted
+#   resolve_date({'expression': 'July 7, 2026'})   ×2
+# and both executed. Harmless for a date; the same door is open to a write.
+
+def _two_calls(name_a, args_a, name_b, args_b):
+    """ONE model turn emitting TWO tool calls — the shape the guard could not see."""
+    return {"content": "", "tool_calls": [
+        {"id": "c1", "type": "function",
+         "function": {"name": name_a, "arguments": json.dumps(args_a)}},
+        {"id": "c2", "type": "function",
+         "function": {"name": name_b, "arguments": json.dumps(args_b)}}]}
+
+
+@pytest.mark.asyncio
+async def test_same_step_repeat_of_a_read_is_blocked():
+    """A read repeated in one step can only return what the first call returned.
+
+    Mutation that kills it: drop the `sig in this_step` branch — the second call executes and
+    the trace shows two reads where the model learned nothing twice.
+    """
+    backend = ScriptedToolCallingBackend([
+        _two_calls("resolve_date", {"expression": "July 7"}, "resolve_date", {"expression": "July 7"}),
+        {"content": "7 July 2026."}])
+    disp = PolicyDispatcher.with_tools("resolve_date", mutating=())
+    ctx = await EgoStage().process(_ctx(), backend, disp, system_prompt=SYS)
+    assert disp.executed == [("resolve_date", {"expression": "July 7"})], "ran twice"
+    calls = ctx.ego_result.steps[0].tool_calls
+    assert len(calls) == 2 and calls[1].ok is False and calls[1].error == "duplicate_in_step"
+
+
+@pytest.mark.asyncio
+async def test_same_step_repeat_of_a_write_is_NOT_blocked():
+    """The restriction to reads is the whole point, and this is the case that forces it.
+
+    Two identical `record_expense(5, "coffee")` in one step may be TWO COFFEES. Blocking the
+    second would silently drop a real entry — the opposite defect, and a quieter one. A
+    repeated write is what the confirmation gates are for; they hold per CALL, so they already
+    see the second one.
+
+    Mutation that kills it: drop `and not policy.is_mutating(name)` — the second coffee vanishes.
+    """
+    backend = ScriptedToolCallingBackend([
+        _two_calls("record_expense", {"amount": 5}, "record_expense", {"amount": 5}),
+        {"content": "Recorded both."}])
+    disp = PolicyDispatcher.with_tools("record_expense", mutating=("record_expense",))
+    await EgoStage().process(_ctx(), backend, disp, system_prompt=SYS)
+    assert disp.executed == [("record_expense", {"amount": 5}),
+                             ("record_expense", {"amount": 5})], "dropped a real entry"
+
+
+@pytest.mark.asyncio
+async def test_same_step_repeat_without_policy_is_NOT_blocked():
+    """No policy → no claim about the tool → no block. Same fail-safe direction as the
+    read-only mask, which masks rather than assumes.
+
+    Mutation that kills it: drop `policy is not None` — the core starts deciding which tools
+    mutate, which is exactly what it must never do.
+    """
+    backend = ScriptedToolCallingBackend([
+        _two_calls("record_expense", {"amount": 5}, "record_expense", {"amount": 5}),
+        {"content": "done"}])
+    disp = StubDispatcher.with_tools("record_expense")       # no is_mutating
+    await EgoStage().process(_ctx(), backend, disp, system_prompt=SYS)
+    assert len(disp.executed) == 2
+
+
+@pytest.mark.asyncio
+async def test_same_step_different_args_are_untouched():
+    """Two DIFFERENT dates in one step is work, not waste — the guard is by signature.
+
+    Mutation that kills it: key `this_step` on the tool name instead of `_sig(name, args)`.
+    """
+    backend = ScriptedToolCallingBackend([
+        _two_calls("resolve_date", {"expression": "July 7"}, "resolve_date", {"expression": "July 8"}),
+        {"content": "ok"}])
+    disp = PolicyDispatcher.with_tools("resolve_date", mutating=())
+    await EgoStage().process(_ctx(), backend, disp, system_prompt=SYS)
+    assert len(disp.executed) == 2

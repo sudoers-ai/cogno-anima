@@ -270,6 +270,12 @@ class EgoStage:
 
             # ── execute / block each call ─────────────────────────────
             execs: list[ToolExecution] = []
+            # Signatures already issued in THIS step. The cross-step counter below cannot see
+            # them: it allows a signature twice, which is right BETWEEN steps (a read after a
+            # write can legitimately return something new) and provably wrong WITHIN one — both
+            # calls came out of the same model turn, with nothing running in between, so the
+            # second can only return what the first already did.
+            this_step: set[str] = set()
             executed_any = False
             for tc in raw_calls:
                 name, args = self._name_args(tc)
@@ -288,6 +294,25 @@ class EgoStage:
                                 "tool, or give your final answer with what you have."),
                     ))
                     continue
+                # ── Same-step repeat of a READ ────────────────────────
+                # Restricted to a tool the host declared NON-mutating, and the restriction is
+                # the whole point. For a read the second call is provably redundant. For a
+                # WRITE it is not: two identical `add_expense(5, "coffee")` in one step may be
+                # two coffees, and blocking the second would silently drop a real entry — the
+                # opposite defect, and a quieter one. A repeated write is what the confirmation
+                # gates (B and C) are for; they hold per CALL, so they already see the second.
+                # No policy → no claim about the tool → no block (same fail-safe direction as
+                # the read-only mask, which masks rather than assumes).
+                if sig in this_step and policy is not None and not policy.is_mutating(name):
+                    logger.warning("stage=ego event=duplicate_in_step step=%d tool=%s", i, name)
+                    execs.append(ToolExecution(
+                        tool=name, arguments=args, ok=False, error="duplicate_in_step",
+                        result=(f"[DUPLICATE] '{name}' was already called with these exact "
+                                "arguments in this same step — nothing ran in between, so the "
+                                "answer is the one you already have. Use it."),
+                    ))
+                    continue
+                this_step.add(sig)
                 if seen_calls.get(sig, 0) >= self.MAX_DUPLICATE_CALLS:
                     logger.warning("stage=ego event=duplicate_call step=%d tool=%s", i, name)
                     execs.append(ToolExecution(

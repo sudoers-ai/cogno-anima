@@ -4,6 +4,23 @@
 
 ### Fixed
 
+- **A guarda de duplicados não via duas chamadas idênticas dentro do MESMO passo.** O contador
+  `MAX_DUPLICATE_CALLS` bloqueia a terceira repetição de uma assinatura, e isso está certo
+  ENTRE passos — uma leitura depois de uma escrita pode legitimamente devolver outra coisa.
+  Dentro de um passo é demonstravelmente errado: as duas chamadas saíram do mesmo turno do
+  modelo, sem nada a correr no meio, logo a segunda só pode devolver o que a primeira devolveu.
+
+  Medido no bench do doctor (2026-08-25), instrumentando o despachante: um único passo emitiu
+  `resolve_date({'expression': 'July 7, 2026'})` **duas vezes** e as duas executaram. Inócuo
+  para uma data — a mesma porta está aberta para uma escrita.
+
+  **Restrito a tool que o host declarou NÃO-mutante, e a restrição é o ponto.** Dois
+  `record_expense(5, "café")` idênticos num passo podem ser DOIS CAFÉS: bloquear o segundo
+  apagaria em silêncio um lançamento real — o defeito oposto, e mais calado. Escrita repetida é
+  o que os portões de confirmação (B e C) tratam, e eles retêm por CHAMADA, portanto já veem a
+  segunda. Sem política declarada não há afirmação sobre a tool e não há bloqueio — mesma
+  direção à prova de falha da máscara só-leitura, que mascara em vez de assumir.
+
 - **Uma persona SEM tools era ensinada a chamar tools, e emitia a tag.** No caminho de
   fallback textual o bloco de mecânica do `<TOOL_CALL>` era anexado incondicionalmente — a
   LISTA de tools já era condicional, só a lição não era. Um catálogo vazio recebia na mesma o
