@@ -189,8 +189,11 @@ class SuperegoStage:
 
         Measured live on 2026-08-24/25: the voicer (gpt-4o-mini) returned
         ``{"message": "Oi, Vinicius! …"}`` and nothing between it and the contact unwrapped it —
-        the person would have been shown the JSON. One turn in 283, and **deterministic on the
-        input rather than random**: three fresh sessions on the same process gave
+        the person would have been shown the JSON. Re-counted on 2026-08-26 over the box's whole
+        trace table: **5 turns in 297**, not one in 283 — ~17x more frequent than the first count,
+        which had looked only at a slice. The five are 2026-08-25 11:03, 11:19, 11:20, 22:10 and
+        22:11 BRT: one isolated and two PAIRS, a shape chance does not explain. And **deterministic
+        on the input rather than random**: three fresh sessions on the same process gave
         ``{"message": …}``, ``{"text": …}`` and plain text, all three routed to the EGO with a
         plain-text draft and no tools. The KEY VARIES, which is why the accepted set is a list
         and not one name.
