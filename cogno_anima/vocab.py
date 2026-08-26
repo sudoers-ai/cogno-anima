@@ -57,6 +57,84 @@ VALID_GOAL_STATUS: set[str] = {"NEW", "ONGOING", "COMPLETED", "ABANDONED"}
 
 VALID_COMPLEXITY: set[str] = {"LOW", "MEDIUM", "HIGH", "EXPERT"}
 
+# ── Outgoing-PII provenance (SUPEREGO output backstop) ───────────────────────
+# Why a personal datum found in the OUTGOING text was, or was not, allowed to leave. The rule the
+# owner decided (2026-08-25): "PII may come IN, it must never go OUT" — except the contact's own,
+# which they are entitled to hear back (confirming an e-mail they just typed is the ANSWER, not a
+# leak). The vocabulary is closed because it is an audit alphabet: it lands in
+# `SuperegoResult.adjustments` as `pii:provenance_<value>`, which the host counts, and a
+# free-form reason would make "is this net working or getting in the way" uncountable. Which of
+# these values means "withheld" is read off the vocabulary itself (`PII_PROVENANCE_UNKNOWN`), so
+# there is no second token family that could drift out of step with this one.
+#
+# It is deliberately NOT a taxonomy of SOURCES (config / memory / graph / tool / third party).
+# The SUPEREGO holds a string and an allowlist; it can tell "the contact said this" from "the
+# contact did not", and nothing finer. Naming the source would be a guess, and the host's own
+# bench (#549, scenarios 3 vs 3b) measured that source does not decide the question anyway —
+# two values with the SAME provenance had opposite correct answers.
+PII_PROVENANCE_TURN = "contact_turn"        # in THIS turn's message → may leave
+PII_PROVENANCE_SESSION = "contact_session"  # said earlier in THIS session → may leave
+# The reply is going to STAFF, not to a visitor. Provenance alone is under-determined and the
+# merged bench (host #549, `a2aef70`) is what says so: its `tool_result_document_number` case is
+# the tenant's own bookkeeper asking to re-read a ledger row HE wrote, and the answer key says
+# withholding it is wrong. No rule that looks only at where the value came from can tell that
+# from a patient asking for a doctor's CPF — the difference is WHO IS READING. `Identity.role`
+# already carries it, so the bit is available rather than invented.
+#
+# Its scope is narrow on purpose, and the bench's own dissent is recorded with it: RBAC
+# authorised a READ, not re-emission onto a chat transport, so this widens what may reach an
+# employee's WhatsApp. It is a deliberate trade, not an oversight.
+PII_PROVENANCE_READER_STAFF = "reader_is_staff"
+PII_PROVENANCE_UNKNOWN = "not_from_contact"  # everything else → masked in place
+
+VALID_PII_PROVENANCE: frozenset[str] = frozenset(
+    {PII_PROVENANCE_TURN, PII_PROVENANCE_SESSION, PII_PROVENANCE_READER_STAFF,
+     PII_PROVENANCE_UNKNOWN})
+
+# ── How the outgoing-PII rule ACTS on what it decided ────────────────────────
+# ONE switch, and the reasoning belongs with it rather than scattered across call sites.
+#
+# `observe` runs the entire rule — detection, provenance, the record — and then ships the text
+# UNTOUCHED. It is the default, and the default was picked by arithmetic rather than by caution:
+# on the merged bench the rule with the role bit still breaks one scenario in seven (all three of
+# its decidable runs), and that scenario is the tenant's OWN reception number — the shape a
+# scheduling persona says all day. Meanwhile production has shown ZERO leaks in 297 turns.
+# Enforcing on those numbers trades a harm nobody has observed for one that would land on a real
+# contact tomorrow. Observation converts the remaining uncertainty into production counts —
+# `pii:would_redact_in_output` with the type — which is the evidence the missing second bit
+# (tenant-declared quotable contacts) needs in order to be built for a real case.
+#
+# **The exit criterion, written down, because a mode with none is a switch nobody touches again.**
+# Observation is only worth its name if someone can say what would end it, so:
+#
+#   Graduate a TENANT to `enforce` when, over at least PII_OBSERVATION_MIN_TURNS turns that
+#   carried a SUPEREGO block, none of its `pii:withheld_<type>` stamps is that tenant's OWN
+#   business data.
+#
+# The stamps carry the TYPE for exactly this reason: the classes have opposite verdicts and an
+# undifferentiated count decides nothing. `ADDRESS` (a CEP) and `TAX_ID` (a CNPJ) are almost
+# always the tenant's own — the frequent false positive. `NATIONAL_ID` is almost always a
+# person's, and a person who is not the one reading — the leak. `PHONE` and `EMAIL` are the
+# genuinely ambiguous pair (the reception's number and another patient's number are both PHONE),
+# so they are the ones a human actually has to look at.
+#
+# **Why 200.** Rule of three: observing ZERO events in n trials bounds the true rate below 3/n at
+# ~95% confidence, so zero stamps in 200 turns bounds the false-positive rate under 1.5%. It is
+# also about an order of magnitude more than the sample that exists today — of the demo box's 297
+# traces only 9 could carry a SUPEREGO block at all — which is what makes "we saw none" different
+# from "we did not look". Fewer turns than this and a clean run is indistinguishable from an
+# empty one.
+#
+# **Per tenant, and a DECISION, not an automatic flip.** Nothing in this package promotes anybody:
+# a human reads the counts for one tenant and sets `mk.PII_OUTPUT_MODE`. A rule that graduated
+# itself on a threshold would be enforcing on the strength of a quiet week.
+PII_OBSERVATION_MIN_TURNS: int = 200
+
+PII_MODE_OBSERVE = "observe"
+PII_MODE_ENFORCE = "enforce"
+VALID_PII_MODES: frozenset[str] = frozenset({PII_MODE_OBSERVE, PII_MODE_ENFORCE})
+PII_MODE_DEFAULT = PII_MODE_OBSERVE
+
 # Closed vocabulary for `PipelineContext.stop_reason` — the terminal signal the
 # core emits for the host to act on. "completed" is the happy path; the others
 # are early-exits/escalations. The ACTION is always the host's (escalate to a

@@ -18,6 +18,7 @@ import pytest
 
 from cogno_anima.stages.superego import SuperegoStage
 from cogno_anima import metakeys as mk
+from cogno_anima import vocab
 from tests.unit.test_superego import ScriptedBackend, _ctx
 
 unwrap = SuperegoStage.unwrap_envelope
@@ -99,12 +100,22 @@ async def test_the_envelope_is_opened_BEFORE_the_pii_backstop_reads_it():
     CPF that the detector cannot see in the raw envelope (measured: `[]`) and sees plainly once
     unwrapped (`['NATIONAL_ID']`). Run the backstops on the envelope and the leak ships unflagged
     — so the unwrap has to come first, and this test fails if it is ever moved after.
+
+    Since the PII backstop decides by provenance, the order is now visible in the shipped text
+    rather than only in a flag: this CPF is in no allowlist, so opening the envelope first is
+    what turns an unflagged leak into a mask. Read the envelope late and the contact receives
+    the document number. Asserted under `enforce` because that is where the consequence is
+    visible in the TEXT — under the shipped `observe` default the same ordering decides the same
+    way, and only the count would show it.
     """
     ctx = _ctx()
+    ctx.metadata[mk.PII_OUTPUT_MODE] = vocab.PII_MODE_ENFORCE
     backend = ScriptedBackend(['{"message": "CPF \\u0031\\u0032\\u0033.456.789-09"}'])
     res = await SuperegoStage().voice(ctx, backend, voice_prompt="persona")
-    assert res.response == "CPF 123.456.789-09"
+    assert "123.456.789-09" not in res.response
+    assert res.response == "CPF [NATIONAL_ID REDACTED]"
     assert "pii:flagged_in_output" in res.adjustments
+    assert "pii:redacted_in_output" in res.adjustments
 
 
 @pytest.mark.parametrize("key", ["message", "text", "reply", "response", "content"])

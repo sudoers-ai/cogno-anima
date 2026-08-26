@@ -43,6 +43,15 @@ from cogno_anima.utils import WarnOnce
 from cogno_anima.security.prompt_guard import sanitize_untrusted
 from cogno_anima.stages.drift import DriftCalculator
 from cogno_anima.security.detector import PiiDetector, default_detector
+from cogno_anima.security.redaction import (
+    PiiRedactionOutcome,
+    ProvenanceContext,
+    pii_digests_in,
+    redact_pii,
+    sanitize_digests,
+    sanitize_pii_mode,
+    sanitize_reader_role,
+)
 
 logger = logging.getLogger("cogno_anima.superego")
 
@@ -993,6 +1002,71 @@ class SuperegoStage:
                 return True
         return False
 
+    # ── Outgoing-PII rule (provenance) ───────────────────────────────
+
+    def _redact_output(self, ctx: PipelineContext, text: str) -> PiiRedactionOutcome:
+        """Apply the provenance rule to one piece of outgoing text.
+
+        Two allowlists, and the split is the whole design. The CURRENT turn is derived HERE from
+        ``ctx.user_input`` — the contact's own words are already on the context, so asking the
+        host to re-send them would be a second copy of the same data with a second chance to
+        drift. Everything EARLIER comes from the host as digests
+        (:data:`~cogno_anima.metakeys.PII_OUTPUT_ALLOWLIST`), because a session's memory is not
+        something this package has: ``PipelineContext`` sees one turn, by design.
+
+        Fails toward masking. A host that injects nothing still gets the rule, just without the
+        recall of earlier turns.
+        """
+        meta = ctx.metadata or {}
+        context = ProvenanceContext(
+            turn_digests=frozenset(pii_digests_in(ctx.user_input or "", self._pii)),
+            session_digests=sanitize_digests(meta.get(mk.PII_OUTPUT_ALLOWLIST)),
+            reader_role=sanitize_reader_role(meta.get(mk.PII_READER_ROLE)),
+        )
+        return redact_pii(text, detector=self._pii, context=context,
+                          mode=sanitize_pii_mode(meta.get(mk.PII_OUTPUT_MODE)))
+
+    @staticmethod
+    def _pii_adjustments(outcome: PiiRedactionOutcome) -> list[str]:
+        """The audit trail of the rule, in the closed alphabet of ``vocab.VALID_PII_PROVENANCE``.
+
+        ``pii:flagged_in_output`` is kept with its original meaning — "the outgoing text carried
+        a detectable personal datum" — so every existing reader of it keeps working and the
+        before/after of this change stays comparable. What is new sits beside it:
+        ``pii:redacted_in_output`` / ``pii:would_redact_in_output`` says whether the net ACTED,
+        ``pii:withheld_<type>`` says on WHAT, and one ``pii:provenance_<value>`` per distinct
+        decision says why — for the allowed values too, not only the withheld ones. Allowed and
+        withheld are read OFF the provenance (``not_from_contact`` is the withheld one), rather
+        than being two token families that could disagree with each other.
+
+        Both sides are recorded on purpose. A count of redactions alone cannot answer the
+        question that decides whether this feature survives contact with real conversations —
+        *is it getting in the way?* — because that needs the denominator: how often the rule
+        looked at a value and let it through, and by which branch. The `contact_session` branch
+        in particular is the one the host pays for; if it never appears in production, the host's
+        injection is broken and the redaction count would never say so.
+        """
+        if not outcome.findings:
+            return []
+        adj = ["pii:flagged_in_output"]
+        if outcome.withheld:
+            # The mode is visible in the TOKEN, not only in a config nobody reads back. A count of
+            # `pii:would_redact_in_output` in production is the whole point of observation mode:
+            # it is the evidence that decides whether this tenant can be switched to enforcing.
+            adj.append("pii:redacted_in_output" if outcome.enforced
+                       else "pii:would_redact_in_output")
+            # ...and the CLASS, because the classes have opposite verdicts and an undifferentiated
+            # count decides nothing. A withheld `ADDRESS`/`TAX_ID` is almost always the tenant's
+            # own CEP or CNPJ — the frequent false positive; a withheld `NATIONAL_ID` is almost
+            # always a person who is not the one reading — the leak. Same stamp, opposite
+            # meanings, so the type travels with it (`vocab.PII_OBSERVATION_MIN_TURNS` states what
+            # would end the observation).
+            for pii_type in dict.fromkeys(f.pii_type for f in outcome.withheld):
+                adj.append(f"pii:withheld_{pii_type.lower()}")
+        for provenance in outcome.provenances:
+            adj.append(f"pii:provenance_{provenance}")
+        return adj
+
     # ── Voicer (post-EGO) — writes the final response ────────────────
 
     async def voice(
@@ -1030,25 +1104,42 @@ class SuperegoStage:
             logger.warning("stage=superego event=voice_json_unwrapped")
             response = unwrapped
 
-        # Deterministic PII backstop on the OUTPUT — flag involuntary leaks
-        # (do NOT auto-redact: avoid over-redaction of intentionally-shared data;
-        # the host's limits policy decides). Signal via adjustments.
-        if response and self._pii.detect(response):
-            adjustments.append("pii:flagged_in_output")
-            logger.warning("stage=superego event=pii_flagged_in_output")
-
         # Deterministic preserved-term backstop on the OUTPUT (2R-A) — flag-only,
         # never auto-inject. Fires only when a CRITICAL term (figure/email/URL)
         # that the executor grounded appears ALTERED in the reply (mutation-of-
         # present), not on mere absence (the reply may legitimately omit it).
+        # Runs on what the VOICER wrote, before the PII rule masks anything: a mask is this
+        # guard's own doing, and reading it back as the voicer mutating a grounded term would
+        # make the protection indistinguishable from the defect it was built to catch.
+        voiced = response
         preserved = ctx.noumeno.preserved_terms if ctx.noumeno else []
-        if response and self._preserved_mutated(preserved, payload, response):
+        if voiced and self._preserved_mutated(preserved, payload, voiced):
             adjustments.append("preserved:mutated_in_output")
             logger.warning("stage=superego event=preserved_mutated_in_output")
 
-        # Feed synthesis drift (lexical grounding of response vs tool data).
+        # Deterministic outgoing-PII backstop — REDACT IN PLACE by provenance.
+        # "May come in, must never go out": a value the contact themselves supplied (this turn,
+        # or earlier in this session per the host's digest allowlist) may be said back to them;
+        # anything else is masked. It masks rather than refuses on purpose — a refusal costs the
+        # contact their answer and hands the turn to the re-voicing loop, which has already been
+        # measured shipping a handoff in place of a correct reply.
+        outcome = self._redact_output(ctx, voiced)
+        response = outcome.text
+        adjustments += self._pii_adjustments(outcome)
+        if outcome.withheld:
+            logger.warning("stage=superego event=%s count=%d types=%s",
+                           "pii_redacted_in_output" if outcome.enforced
+                           else "pii_would_redact_in_output",
+                           len(outcome.withheld),
+                           sorted({f.pii_type for f in outcome.withheld}))
+
+        # Feed synthesis drift (lexical grounding of response vs tool data) — measured on the
+        # VOICED text, not the masked one. Drift asks whether the voicer grounded its answer in
+        # the data; a mask lowers the lexical overlap without the voicer having done anything
+        # wrong, and letting it raise `drift_action` would turn the protection into a
+        # self-correction loop against itself.
         if ctx.drift is not None:
-            self._drift.compute_synthesis(ctx.drift, payload, response)
+            self._drift.compute_synthesis(ctx.drift, payload, voiced)
             self._drift.compute_cumulative(ctx.drift)
 
         logger.info("SUPEREGO voice len=%d cot_stripped=%s adjustments=%s",
@@ -1058,6 +1149,7 @@ class SuperegoStage:
             response=response, approved=True, adjustments=adjustments,
             prompt_blocks=self.voice_prompt_inventory(prompt),
             prompt_text=prompt,
+            pii_findings=list(outcome.findings),
             cot_stripped=cot_stripped,
             metrics=StageMetrics(stage="superego_voice",
                                  elapsed_ms=(time.perf_counter() - t0) * 1000,

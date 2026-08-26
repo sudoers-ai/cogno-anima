@@ -1,5 +1,129 @@
 # Changelog
 
+## Unreleased — a PII pode entrar, mas não sai: a voz decide por proveniência (2026-08-26)
+
+### Added
+
+- **O backstop de PII na saída passou a DECIDIR por proveniência, e a redigir quando actua.** A
+  regra do dono: *"a validação e proteção já deveria estar automaticamente no SUPEREGO, podendo
+  entrar, mas nunca sair"* — com a única excepção de que o dado do PRÓPRIO contato pode
+  voltar-lhe: confirmar o e-mail que a pessoa acabou de escrever **é a resposta**, não uma fuga.
+
+  **Mascara, nunca recusa.** Uma recusa custa ao contato a resposta dele e entrega o turno ao
+  laço de re-vozeamento — já medido a despachar um handoff em vez de uma marcação. A frase sai;
+  o valor não.
+
+- **Três entradas na decisão, e a terceira é o LEITOR.** O turno CORRENTE é derivado aqui, de
+  `ctx.user_input`. Tudo o que é ANTERIOR na sessão chega em
+  `ctx.metadata[mk.PII_OUTPUT_ALLOWLIST]`, porque `PipelineContext` vê um turno — por desenho. E
+  `mk.PII_READER_ROLE` (o `Identity.role`) diz a quem a resposta vai.
+
+  **Por SESSÃO, não por turno**, medido contra o gabarito do bench mergeado (host #549,
+  `a2aef70`), por CENÁRIO: a variante por turno quebra `own_email_recalled_three_turns_later` —
+  o e-mail dado no turno 1 e pedido de volta no 3 — e nenhum cenário da suíte é decidido ao
+  contrário. (A manchete por CORRIDA que aquele bench publicou primeiro foi retirada pelo próprio
+  autor por ser aritmética; a unidade é o cenário, ou a corrida DECIDÍVEL.)
+
+  **O papel do leitor** porque a proveniência sozinha é sub-determinada, e é o mesmo bench que o
+  prova: em `tool_result_document_number` o contabilista do próprio tenant relê uma linha do
+  livro que ele escreveu — MESMA origem que o CPF de uma médica entregue a uma paciente, e
+  gabarito OPOSTO. Medido de forma determinística (zero chamadas ao modelo) sobre o gabarito
+  mergeado, o bit do papel move a concordância **5/7 → 6/7** e as respostas boas quebradas
+  **2/5 → 1/5**; vazamentos barrados ficam em 2/2 nas duas variantes. Ausente, em branco ou só
+  espaços lê-se GUEST — quem esquece a chave recebe MAIS máscara, nunca um alargamento calado.
+
+- **A lista carrega DIGESTS, nunca valores** (`security/redaction.py`). `metadata` é lido por
+  quem serializa o traço, por quem persiste o estado da sessão e por qualquer guarda que
+  renderize os seus kwargs numa linha de log — uma lista de VALORES abriria um armazém novo de
+  dado pessoal em claro para fechar um vazamento, exactamente a classe que se está a fechar. E
+  colide com o passo seguinte já acordado: quando os turnos de entrada forem guardados
+  MASCARADOS, uma lista de valores deixa de poder ser reconstruída a partir do histórico.
+
+  **O tecto, dito e não insinuado: isto é de-identificação do fluxo, não cifra.** SHA-256 sem
+  sal sobre um telefone tem espaço de entrada enumerável — quem tem o digest confirma um palpite
+  em microssegundos. O que se compra é que nenhum dado pessoal viaja em `metadata`, chega a uma
+  linha de traço ou a um log **por causa desta funcionalidade**. Mesmo negócio, e mesmo tecto,
+  que o `scope_sha` do host (#545): um digest persistido é dado pessoal pseudonimizado e
+  pertence DENTRO da purga de identidade.
+
+- **Entra em modo de OBSERVAÇÃO, e o padrão foi escolhido por aritmética** — não por prudência
+  (`mk.PII_OUTPUT_MODE`, `vocab.VALID_PII_MODES`, omissão `observe`; um erro de escrita cai em
+  `observe`, nunca em `enforce`). Mesmo com o bit do papel, a regra ainda mascara um dos sete
+  cenários que não devia: o telefone da recepção do próprio tenant, `red_by_design`. E não é uma
+  forma de laboratório — varrido o detector sobre respostas com a forma de produção, o **CNPJ** e
+  o **CEP** do próprio tenant mascaram igualmente ("Nosso CNPJ e 11.222.333/0001-81",
+  "Rua das Flores, 123 - CEP 01310-100"), que é o que uma persona de recepção diz o dia inteiro.
+  A classe de falsos positivos é **estreita e frequente**. Do outro lado: **zero vazamentos em
+  297 turnos** de produção. Impor sobre estes números troca um dano nunca observado por um que
+  cai num contato real amanhã.
+
+  Em observação a regra corre inteira — detecção, proveniência, papel, registo — e o texto sai
+  **byte-idêntico**, carimbando `pii:would_redact_in_output` **e a CLASSE**
+  (`pii:withheld_<tipo>`). A classe vai junto porque as classes têm vereditos OPOSTOS: um
+  `ADDRESS`/`TAX_ID` retido é quase sempre o CEP/CNPJ do próprio tenant — o falso positivo
+  frequente; um `NATIONAL_ID` retido é quase sempre uma pessoa que não é quem está a ler — o
+  vazamento. Contados juntos não decidem nada, e "observar" vira "esquecer". `PHONE` e `EMAIL`
+  são o par genuinamente ambíguo, e são esses que um humano tem mesmo de olhar.
+
+  **O critério de saída é um NÚMERO, não uma frase num PR que ninguém relê**
+  (`vocab.PII_OBSERVATION_MIN_TURNS` = 200): gradua-se um tenant quando, ao longo de pelo menos
+  200 turnos com bloco SUPEREGO, nenhum carimbo `pii:withheld_*` é dado do PRÓPRIO tenant. Regra
+  de três — zero eventos em n ensaios limita a taxa real abaixo de 3/n a ~95% de confiança, logo
+  zero em 200 põe o falso positivo abaixo de 1,5% — e 200 é cerca de uma ordem de grandeza acima
+  da amostra que existe hoje (dos 297 traços da caixa, só 9 podiam carregar o bloco), que é o que
+  distingue "não vimos nenhum" de "não olhámos". **Por tenant, e é uma DECISÃO**: nada neste
+  pacote promove ninguém — um humano lê as contagens e põe `mk.PII_OUTPUT_MODE`. Uma regra que se
+  graduasse sozinha estaria a impor com base numa semana calma.
+
+  Um teste fixa que os dois modos DECIDEM igual e só diferem no texto — é ele que faz a contagem
+  da observação valer o que a imposição faria; outro fixa as DUAS direcções do alfabeto de
+  classes (todo tipo que o detector produz é alcançável; todo símbolo emitido está no
+  vocabulário), no molde do `test_voice_blocks_sync`.
+
+- **Cada decisão deixa registo com a razão que a causou.** `SuperegoResult.pii_findings`
+  (tipo + `vocab.VALID_PII_PROVENANCE` + veredito — **nunca o valor**) e o alfabeto fechado de
+  `adjustments`: `pii:flagged_in_output` (mantido, com o significado de sempre),
+  `pii:redacted_in_output` **ou** `pii:would_redact_in_output` (o MODO está no símbolo, não só
+  numa configuração que ninguém relê), e `pii:provenance_<valor>` para cada decisão — as
+  permitidas incluídas, porque a pergunta que decide se isto sobrevive a conversas reais
+  (*está a atrapalhar?*) precisa do denominador, e uma contagem de redações não o tem.
+
+- **A decisão é UMA função pura** — `decide_provenance(digest, ProvenanceContext)`. A forma é que
+  é a entrega: o segundo bit em falta está NOMEADO e NÃO CONSTRUÍDO (contatos que o tenant
+  DECLARA citáveis, que resolvem o cenário da recepção), e tem de entrar como um CAMPO e um ramo
+  — nunca como uma condição re-derivada em cada sítio que pergunta.
+
+- **O digest inclui o TIPO, e a normalização é consciente do tipo** — dois falsos POSITIVOS de
+  permissão, medidos, não imaginados. Sem o prefixo do tipo, o telefone do próprio contato
+  `(52) 99822-4725` e o CPF de um desconhecido `529.982.247-25` reduzem-se aos MESMOS onze
+  dígitos (cerca de 1 em 100 telemóveis BR calha num CPF de checksum válido), portanto quem
+  escreveu o telefone permitia o documento alheio durante o resto da sessão. E apagar pontuação
+  de um valor não-numérico fazia `ana@example.com` e `an@aexample.com` — domínios DIFERENTES —
+  colidirem. Agora: valor todo-dígitos → só dígitos (é para isso que serve); o resto → apenas
+  `strip` + `casefold`. Um e-mail nunca é re-pontuado entre a mensagem e a resposta, logo não
+  havia nada a ganhar com o contrário.
+
+- **Padrões sobrepostos são AGRUPADOS, não descartados.** O `\S{4,}` do `credential_kv` pára no
+  espaço e o do cartão não, portanto `"senha: 4539 1488 0343 6467"` produz uma sobreposição
+  PARCIAL. Descartar o segundo achado — correcto para uma sobreposição ANINHADA — deixava
+  `"[CREDENTIAL REDACTED] 1488 0343 6467"`: catorze dos dezanove dígitos do cartão em claro, uma
+  máscara enfiada no meio de um valor, e o CREDIT_CARD ausente de `findings` — logo, em modo de
+  observação, a contagem que decide a graduação teria sub-reportado em silêncio. Um grupo é
+  substituído de uma vez e todos os membros ficam registados; o mesmo TIPO aninhado num intervalo
+  maior conta UMA vez (os packs de telefone sobrepõem-se de propósito, e inflar essa contagem
+  manteria toda a gente em observação para sempre).
+
+- `PiiDetector.find()` — valores localizados (tipo, texto, extensão), e `detect()` passou a ser
+  expresso sobre ele. **Uma definição só**: o caminho que sinaliza e o caminho que mascara não
+  podem discordar sobre o que conta como PII. A mascaragem na ESCRITA, o passo seguinte, tem de
+  reutilizar este mesmo detector — nunca uma segunda definição.
+
+### Changed
+
+- O drift de síntese e o backstop de termos preservados passam a ler o texto **VOZEADO**, não o
+  mascarado. A máscara é obra desta guarda; realimentá-la faria a protecção parecer uma
+  fabricação e podia disparar o laço de correcção contra si própria.
+
 ## Unreleased — a taxa do envelope JSON estava 17x abaixo do real (2026-08-26)
 
 ### Fixed

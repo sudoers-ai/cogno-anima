@@ -25,6 +25,7 @@ from cogno_anima.types import (
     EgoResult,
     ScopeCheckResult,
     SuperegoResult,
+    PiiFinding,
     DriftMetrics,
     PipelineContext,
 )
@@ -63,6 +64,16 @@ from cogno_anima.stages.ego import EgoStage
 from cogno_anima.stages.superego import SuperegoStage
 from cogno_anima.stages.drift import DriftCalculator, DriftThresholds
 from cogno_anima.vocab import sanitize_voice_traits
+from cogno_anima.security.detector import PiiDetector, PiiMatch, default_detector
+from cogno_anima.security.redaction import (
+    PiiRedactionOutcome,
+    ProvenanceContext,
+    decide_provenance,
+    normalize_pii_value,
+    pii_digest,
+    pii_digests_in,
+    redact_pii,
+)
 
 __all__ = [
     "sanitize_voice_traits",
@@ -79,6 +90,17 @@ __all__ = [
     "EgoResult",
     "ScopeCheckResult",
     "SuperegoResult",
+    "PiiFinding",
+    "PiiDetector",
+    "PiiMatch",
+    "default_detector",
+    "PiiRedactionOutcome",
+    "ProvenanceContext",
+    "decide_provenance",
+    "normalize_pii_value",
+    "pii_digest",
+    "pii_digests_in",
+    "redact_pii",
     "DriftMetrics",
     "PipelineContext",
     "LLMBackend",
