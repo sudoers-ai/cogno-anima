@@ -126,3 +126,54 @@ def test_evaluate_and_scope_do_not_fill_it():
                        metrics=StageMetrics(stage="superego_judge", elapsed_ms=1.0,
                                             tokens_in=1, tokens_out=1, model="m"))
     assert r.prompt_blocks == []
+
+
+# ── the rendered prompt, in memory, for the host to slice ─────────────────────
+
+@pytest.mark.asyncio
+async def test_voice_carries_the_prompt_it_SENT():
+    """The host cannot rebuild it: the prompt is assembled inside `voice()` and was discarded.
+    A defect that shows in one turn out of 283 cannot be diagnosed from block LENGTHS alone."""
+    ctx = _ctx()
+    backend = ScriptedBackend(["Pronto!"])
+    res = await SuperegoStage().voice(ctx, backend, voice_prompt="persona")
+    assert res.prompt_text == backend.calls[0]["prompt"]
+
+
+@pytest.mark.asyncio
+async def test_it_is_carried_on_EVERY_turn_not_only_an_interesting_one():
+    """The turn that looks normal is the comparison half. A capture that only fires on the
+    anomaly has nothing to compare against — which is the whole point of keeping it."""
+    ctx = _ctx()
+    res = await SuperegoStage().voice(ctx, ScriptedBackend(["tudo certo, sem nada de estranho"]),
+                                      voice_prompt="persona")
+    assert res.prompt_text and "voice:json_unwrapped" not in res.adjustments
+
+
+def test_the_slicer_returns_a_block_BY_SLUG_header_included():
+    """So a host can keep `context` without knowing its header reads
+    `# Context (memories/history)`. A second copy of that string is a contract that drifts."""
+    prompt = ('# User request\n"oi"\n\n'
+              '# Context (memories/history)\n[MEMORIES]\nmora em Santos\n\n'
+              '# Task\nescreve')
+    got = SuperegoStage.voice_prompt_block(prompt, "context")
+    assert got.startswith("# Context (memories/history)")
+    assert "mora em Santos" in got
+    assert "# Task" not in got and '"oi"' not in got
+
+
+def test_the_slicer_and_the_inventory_agree_on_LENGTH():
+    """They parse the same headers; two scans is two chances to disagree, so they share one."""
+    prompt = ('# User request\n"oi"\n\n'
+              '# Context (memories/history)\nabc\n\n'
+              '# Signals\nx\n\n# Task\ngo')
+    inv = {b["block"]: b["chars"] for b in SuperegoStage.voice_prompt_inventory(prompt)}
+    for slug, chars in inv.items():
+        assert len(SuperegoStage.voice_prompt_block(prompt, slug)) == chars, slug
+
+
+@pytest.mark.parametrize("slug", ["context", "draft", "traits", "nao_existe"])
+def test_a_block_that_did_not_render_is_empty_not_an_error(slug):
+    """The host asks for `context` on every turn; a turn without one must not raise."""
+    assert SuperegoStage.voice_prompt_block('# Task\ngo', slug) == ""
+    assert SuperegoStage.voice_prompt_block("", slug) == ""

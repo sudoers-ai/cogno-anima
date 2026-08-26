@@ -431,6 +431,20 @@ class SuperegoResult(BaseModel):
     # because the rendered prompt is deliberately not persisted. Empty on `evaluate`/
     # `check_input_scope` — only `voice` fills it.
     prompt_blocks: list[dict[str, Any]] = Field(default_factory=list)
+    # The rendered voice prompt, IN MEMORY, for the turn the host is holding right now.
+    #
+    # It carries contact data — the user's own words, retrieved memories, the graph block — and
+    # the core NEVER persists it. `mk.PROMPT_SHAS` explains why a digest of rendered text is a
+    # digest of the CONTACT; the same reasoning says this string must not reach a store by
+    # accident. It exists because the host cannot rebuild it (the prompt is assembled here and
+    # was discarded), and a defect that only shows in one turn out of 283 cannot be diagnosed
+    # from an inventory of block LENGTHS alone.
+    #
+    # Populated on EVERY `voice` call, not only on an interesting one: the turn that looks
+    # normal is the comparison half, and a capture that only fires on the anomaly has nothing
+    # to compare it against. Slice it with :meth:`SuperegoStage.voice_prompt_block` — the host
+    # must not re-derive the section headers, or the two sides drift.
+    prompt_text: str = ""
     cot_stripped: bool = False      # a <think> block was removed
     metrics: StageMetrics
 

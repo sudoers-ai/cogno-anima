@@ -274,6 +274,17 @@ class SuperegoStage:
         Order is as rendered, so two turns diff as lists. A block that appears twice is
         reported twice rather than merged — "twice" is itself a defect worth seeing.
         """
+        found = cls._block_positions(prompt)
+        out: "list[dict[str, object]]" = []
+        for n, (at, slug) in enumerate(found):
+            end = found[n + 1][0] if n + 1 < len(found) else len(prompt)
+            out.append({"block": slug, "chars": end - at})
+        return out
+
+    @classmethod
+    def _block_positions(cls, prompt: str) -> "list[tuple[int, str]]":
+        """Where each known section starts, in order. ONE parser for the inventory and the
+        slicer — two scans of the same headers is two chances to disagree."""
         found: "list[tuple[int, str]]" = []
         for line, slug in cls._VOICE_BLOCKS:
             start = 0
@@ -286,11 +297,31 @@ class SuperegoStage:
                     found.append((i, slug))
                 start = i + len(line)
         found.sort()
-        out: "list[dict[str, object]]" = []
-        for n, (at, slug) in enumerate(found):
-            end = found[n + 1][0] if n + 1 < len(found) else len(prompt)
-            out.append({"block": slug, "chars": end - at})
-        return out
+        return found
+
+    @classmethod
+    def voice_prompt_block(cls, prompt: str, slug: str) -> str:
+        """One section of a rendered voice prompt, by SLUG, or ``""`` when it did not render.
+
+        Exists so a caller can keep the `context` block without knowing that its header reads
+        `# Context (memories/history)`. The headers live in `_VOICE_BLOCKS` and nowhere else;
+        a host that matched on the text would be a second copy of a contract that has already
+        changed once, and the copy that drifts is the one nobody re-reads.
+
+        Returns the section INCLUDING its header, so what comes back is exactly what the model
+        saw — a slice with the header stripped would read as a different prompt to whoever
+        opens it next.
+        """
+        known = {s: line for line, s in cls._VOICE_BLOCKS}
+        want = known.get(slug)
+        if not want or not prompt:
+            return ""
+        starts = sorted(at for at, _ in cls._block_positions(prompt))
+        i = next((a for a in starts if prompt.startswith(want, a)), -1)
+        if i < 0:
+            return ""
+        after = [a for a in starts if a > i]
+        return prompt[i:after[0]] if after else prompt[i:]
 
     @staticmethod
     def strip_cot(text: str) -> tuple[str, bool]:
@@ -1018,6 +1049,7 @@ class SuperegoStage:
         return SuperegoResult(
             response=response, approved=True, adjustments=adjustments,
             prompt_blocks=self.voice_prompt_inventory(prompt),
+            prompt_text=prompt,
             cot_stripped=cot_stripped,
             metrics=StageMetrics(stage="superego_voice",
                                  elapsed_ms=(time.perf_counter() - t0) * 1000,
