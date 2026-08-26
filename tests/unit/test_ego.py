@@ -186,6 +186,32 @@ async def test_fallback_path_when_native_disabled():
 
 
 @pytest.mark.asyncio
+async def test_a_persona_with_NO_tools_is_never_taught_the_tool_syntax():
+    """Teaching `<TOOL_CALL>` to a persona that has nothing to call is teaching a syntax whose
+    only possible use is wrong.
+
+    The mechanics block was appended unconditionally on the fallback path, so an EMPTY catalogue
+    still got the lesson — and the model takes it: measured live, a tool-less persona emitted
+    the tag and it reached the contact, because nothing downstream strips a block naming a tool
+    nobody offers. A leak of the machinery into a human conversation.
+
+    The tool LIST was already conditional; only the lesson was not, which is why the prompt read
+    as coherent to anyone checking it: no tools listed, and a format to call them with.
+    """
+    backend = ScriptedToolCallingBackend([{"content": "Bom dia! Como posso ajudar?"}],
+                                         native=False)
+    disp = StubDispatcher.with_tools()          # a persona that offers nothing
+    await EgoStage().process(_ctx(), backend, disp, system_prompt=SYS)
+    system = backend.calls[0]["system"]
+
+    assert "<TOOL_CALL>" not in system, "ensinou a sintaxe sem ter o que chamar"
+    assert "# Available tools" not in system
+    # POSITIVE CONTROL: the persona prompt itself still arrives — the assertion above is about
+    # the tool lesson, not about an empty system prompt.
+    assert SYS.strip() in system
+
+
+@pytest.mark.asyncio
 async def test_fallback_prompt_lists_tools_and_mechanics():
     backend = ScriptedToolCallingBackend([{"content": "done"}], native=False)
     disp = StubDispatcher.with_tools("add_income", "get_summary")
