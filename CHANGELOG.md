@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — a taxa do envelope JSON estava 17x abaixo do real (2026-08-26)
+
+### Fixed
+
+- **A prosa dizia "1 turno em 283"; o defeito estava no DENOMINADOR.** O primeiro número dividiu
+  por todos os traços guardados, incluindo turnos ANTERIORES ao campo existir — e foi ele que sustentou a leitura
+  "isto é raro, a rede determinística chega". Uma taxa errada numa doc pública é pior do que
+  nenhuma: quem lê decide o tamanho da resposta por ela. Re-contado a 2026-08-26 com
+  a caixa tem 297 traços mas só **9** carregam bloco `superego` (o campo é persistido desde
+  25/08 11:03) — os outros 288 nunca poderiam ter mostrado o carimbo. Dos 9 que podiam, **5
+  mostraram**: 25/08 às 11:03, 11:19, 11:20, 22:10 e 22:11 BRT. A FORMA diz mais que a contagem:
+  três são `turn 1` de três sessões DIFERENTES cuja primeira mensagem é quase a mesma frase, e
+  dois são os turnos 10 e 11 de UMA sessão, também quase idênticos entre si — logo não é
+  re-vozeamento do mesmo turno após rejeição do juiz. Reforça a leitura já escrita de que o
+  gatilho está na ENTRADA. Nada muda no comportamento: a rede
+  (`unwrap_envelope`) já estava lá, o `voice:json_unwrapped` já era carimbado, e a captura do
+  bloco `# Context` no host (cogno-host #510/#514/#533) está viva para apanhar o próximo.
+
 ## Unreleased
 
 ### Fixed

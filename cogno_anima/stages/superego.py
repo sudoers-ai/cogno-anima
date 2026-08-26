@@ -189,8 +189,16 @@ class SuperegoStage:
 
         Measured live on 2026-08-24/25: the voicer (gpt-4o-mini) returned
         ``{"message": "Oi, Vinicius! …"}`` and nothing between it and the contact unwrapped it —
-        the person would have been shown the JSON. One turn in 283, and **deterministic on the
-        input rather than random**: three fresh sessions on the same process gave
+        the person would have been shown the JSON. Re-counted on 2026-08-26, and the DENOMINATOR is
+        the finding: the box holds 297 traces but only **9** carry a ``superego`` block at all (the
+        field is persisted since 2026-08-25 11:03), so 288 of them could not have shown the flag
+        either way. Among the 9 that could, **5 did** — 2026-08-25 at 11:03, 11:19, 11:20, 22:10 and
+        22:11 BRT. "One turn in 283" divided by every trace ever stored, including turns from before
+        the flag existed; the honest reading is that the rate among comparable turns is HIGH and the
+        sample is small. Their shape says more than their count: three are ``turn 1`` of three
+        DIFFERENT sessions whose first message is nearly the same sentence, and two are turns 10 and
+        11 of ONE session, also near-identical to each other — so not a judge re-voice of a single
+        turn. And **deterministic on the input rather than random**: three fresh sessions on the same process gave
         ``{"message": …}``, ``{"text": …}`` and plain text, all three routed to the EGO with a
         plain-text draft and no tools. The KEY VARIES, which is why the accepted set is a list
         and not one name.
