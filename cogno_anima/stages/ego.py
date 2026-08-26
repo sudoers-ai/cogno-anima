@@ -438,7 +438,13 @@ class EgoStage:
             rendered = self._render_tools(tools)
             if rendered:
                 parts.append(rendered)
-            parts.append(_TOOL_MECHANICS)
+                # ONLY with a catalogue. Teaching `<TOOL_CALL>` to a persona that has nothing to
+                # call is teaching a syntax whose only possible use is wrong — and the model
+                # takes it: measured live, a tool-less persona emitted the tag and it reached
+                # the contact, because nothing downstream strips a block that parses to a tool
+                # nobody offers. The instruction was appended unconditionally, so an empty
+                # catalogue still got the lesson.
+                parts.append(_TOOL_MECHANICS)
 
         return "\n\n".join(p for p in parts if p)
 
