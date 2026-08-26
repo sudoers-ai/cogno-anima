@@ -133,8 +133,9 @@ def test_a_PARTIAL_turn_record_does_not_mask_the_survivors_write():
     VAZIA — o que assenta numa invariante que ninguém escreve e nada pina ("se não está vazia,
     está completa"). Com uma LEITURA em `turn_executions` e uma ESCRITA no `ego_result`, o
     predicado respondia False sobre um turno que escreveu. E False é a resposta LIBERADORA para
-    sete dos onze consumidores, num predicado cujo primeiro parágrafo diz que o viés é
-    fail-CLOSED. Achado pelo teste de paridade do cogno-host (#438)."""
+    quase todos os consumidores — o número vive num sítio só, o docstring do
+    `committed_this_turn`, e repeti-lo aqui era a quarta cópia —, num predicado cujo primeiro
+    parágrafo diz que o viés é fail-CLOSED. Achado pelo teste de paridade do cogno-host (#438)."""
     from types import SimpleNamespace as NS
 
     from cogno_anima.types import committed_this_turn
@@ -250,47 +251,54 @@ def test_a_BROKEN_source_costs_the_source_not_the_turn():
 # Estendido para além de DEZ na terceira vez que a contagem passou do teto do mapa: um mapa
 # curto transforma "a prosa está certa" em KeyError/falha opaca, que é a forma de falhar que
 # esta suíte inteira existe para evitar.
-_CONTAGEM_PT_EN = {"um": "ONE", "dois": "TWO", "três": "THREE", "quatro": "FOUR",
-                   "cinco": "FIVE", "seis": "SIX", "sete": "SEVEN", "oito": "EIGHT",
-                   "nove": "NINE", "dez": "TEN", "onze": "ELEVEN", "doze": "TWELVE",
-                   "treze": "THIRTEEN", "catorze": "FOURTEEN", "quinze": "FIFTEEN"}
+# The count used to live in three files, and this test used to check that the three agreed.
+# That check is gone because its SUBJECT is gone: `metakeys.py` and `CLAUDE.md` no longer state
+# a count at all — they point at the docstring. Four consecutive PRs (#115-#118) each fixed the
+# number in every copy and each left a stale sub-count or a missing name behind, because a test
+# can pin a token and cannot read two hundred words of prose. Agreement between copies was
+# always the weaker goal; having one copy is the stronger one.
+#
+# What replaces it is the inverse assertion: the other two sites must NOT restate the count.
+# A future edit that "helpfully" re-inlines the list here is the exact regression, and it would
+# have looked like documentation improving.
+_CANONICO = "the count and the caller list live in `committed_this_turn`'s docstring only"
 
 
-def test_the_three_prose_sites_state_the_SAME_caller_count():
+def test_the_other_sites_do_NOT_restate_the_caller_count():
+    """`metakeys.py` and `CLAUDE.md` must POINT at the canonical enumeration, not copy it."""
     import pathlib
     import re
 
     from cogno_anima import metakeys as mk
-    from cogno_anima.types import committed_this_turn
 
     raiz = pathlib.Path(mk.__file__).resolve().parent.parent
-
-    docstring = re.search(r"(\w+) places CALL this", committed_this_turn.__doc__ or "")
-    comentario = re.search(r"(\w+) places CALL that predicate",
-                           pathlib.Path(mk.__file__).read_text(encoding="utf-8"))
-    claude_md = (raiz / "CLAUDE.md").read_text(encoding="utf-8")
-    guia = re.search(r"\*\*(\w+)\*\* CHAMAM este predicado", claude_md)
-    # O CABEÇALHO do mesmo parágrafo, e não é zelo: a contagem foi actualizada na frase medida
-    # e esquecida aqui TRÊS vezes seguidas (#116, #117 e o conserto do #117), duas delas
-    # apanhadas a olho pela gerente. Um parágrafo com dois números precisa que os DOIS sejam
-    # lidos, senão "a prosa concorda consigo mesma" é meia-verdade.
-    cabecalho = re.search(r"uma definição, (\w+) consumidores", claude_md)
-
-    for nome, achado in (("types.py", docstring), ("metakeys.py", comentario),
-                         ("CLAUDE.md (frase)", guia), ("CLAUDE.md (cabeçalho)", cabecalho)):
-        assert achado, (
-            f"{nome} deixou de declarar a contagem. Perder a frase é perder o fato — e é a "
-            f"forma de 'passar' que este teste NÃO pode aceitar."
+    for nome, texto in (("metakeys.py", pathlib.Path(mk.__file__).read_text(encoding="utf-8")),
+                        ("CLAUDE.md", (raiz / "CLAUDE.md").read_text(encoding="utf-8"))):
+        achados = re.findall(r"(\w+) places CALL (?:this|that predicate)", texto)
+        achados += re.findall(r"\*\*(\w+)\*\* CHAMAM este predicado", texto)
+        achados += re.findall(r"uma definição, (\w+) consumidores", texto)
+        assert not achados, (
+            f"{nome} STATES the count again ({achados}) instead of pointing at the "
+            f"docstring. {_CANONICO} — a second copy cost four consecutive PRs of drift, and "
+            f"the regression would look like documentation improving."
+        )
+        assert "committed_this_turn" in texto, (
+            f"{nome} stopped pointing at the canonical source — with neither the count NOR "
+            f"the pointer, the reader is left with nothing."
         )
 
-    en = docstring.group(1).upper()
-    assert comentario.group(1).upper() == en, (
-        f"types.py diz {en}, metakeys.py diz {comentario.group(1)}"
-    )
-    assert _CONTAGEM_PT_EN.get(guia.group(1).lower()) == en, (
-        f"types.py diz {en}, CLAUDE.md diz {guia.group(1)}"
-    )
-    assert _CONTAGEM_PT_EN.get(cabecalho.group(1).lower()) == en, (
-        f"a frase do CLAUDE.md diz {guia.group(1)} e o CABEÇALHO do mesmo parágrafo diz "
-        f"{cabecalho.group(1)} — a meia-actualização que este assert existe para apanhar"
+
+def test_the_canonical_docstring_still_states_a_count():
+    """The other jaw of the pincer: pointing only works while the target still states it.
+
+    The count itself is compared against the TREE by cogno-host
+    (`test_committed_prose_matches_code`), the only repo that sees all three packages. This one
+    guarantees only that the sentence exists — losing it would lose the fact, and two files
+    would then point at nothing."""
+    import re
+
+    from cogno_anima.types import committed_this_turn
+
+    assert re.search(r"(\w+) places CALL this", committed_this_turn.__doc__ or ""), (
+        "the canonical docstring stopped declaring the count, and TWO files now point at it"
     )

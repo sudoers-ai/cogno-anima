@@ -494,15 +494,17 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     predicate believes it.
 
     Fixing it HERE and not in each caller is the whole point. ELEVEN places CALL this, measured 2026-08-25 rather than recalled: soma's commit
-    gate (`pipeline.py::run_turn`), the semantic cache (`cache.py`), THREE repair/re-step guards
+    gate (`pipeline.py::run_turn`), the semantic cache (`cache.py::default_cacheable`), THREE repair/re-step guards
     (an entry guard in each of `service.py::_repair_repetition` and `::_repair_grounding`, plus
     ONE shared discard guard in `::_finish_repair` — there were four, two of them duplicated
     discard guards, until host #499 merged them: the count FELL by centralisation, not because a
-    net was removed), the trace's `committed` flag (`trace.py`), the grounding backstop
+    net was removed), the trace's `committed` flag (`trace.py::guard_outcomes`), the grounding backstop
     (`grounding.py::_turn_committed`, since host #429), the two STREAK CAPS
-    (`_apply_repeat_streak`, host #485; `_apply_grounding_streak`, host #489), which ask whether
+    (`service.py::_apply_repeat_streak`, host #485;
+    `service.py::_apply_grounding_streak`, host #489), which ask whether
     the turn WROTE before swapping the reply for the tenant's transfer text, and — since the
-    delivery profile landed — the two VOICE policies (`emotion.py` and `delivery.py`), which decide whether a finished turn
+    delivery profile landed — the two VOICE policies (`emotion.py::_wrote_something` and
+    `delivery.py::_completed_something_real`), which decide whether a finished turn
     is spoken with a lift. Those two arrived by re-derivation and were converted: both read
     `ego_result.has_side_effects`, which is the SURVIVING attempt, so a turn that booked, was
     rejected by the judge and re-voiced without tools reported "nothing was written" about a turn
@@ -510,7 +512,8 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     invariant they rest on:
     *"since committed_this_turn reads every attempt, the 'NOTHING was committed' the voice
     renders as a HARD RULE is now TRUE of the whole turn"*. The path above is exactly what
-    makes that sentence false, and a guard added to one caller leaves the other five wrong. A
+    makes that sentence false, and a guard added to one caller leaves every OTHER caller wrong (there are ten of them
+    today; the number moves, which is why this sentence no longer names it). A
     rule each consumer re-derives is a rule each consumer gets wrong alone.
 
     The last layer that RE-DERIVED the rule instead of reading it closed on 2026-08-25 (the
@@ -598,7 +601,7 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
         # The attribute read is INSIDE the try on purpose: `getattr` with a default swallows
         # AttributeError and nothing else, so a carrier whose `metadata` is a property that
         # RAISES would propagate straight through it — the same hole `_turn_metrics` documents
-        # in the host. A predicate six layers trust must never be the reason a turn is lost.
+        # in the host. A predicate this many layers trust must never be the reason a turn is lost.
         return bool(getattr(ctx, "metadata", None).get(_PRIOR_ATTEMPT_COMMITTED))  # type: ignore[union-attr]
     except Exception:      # noqa: BLE001
         return False

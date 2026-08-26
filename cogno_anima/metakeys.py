@@ -33,20 +33,13 @@ EGO_CORRECTION = "ego_correction"              # correction loop: {reason, attem
 # write is nowhere in it.
 #
 # On that path only the host knows, so the host says so — and `committed_this_turn` believes it.
-# ELEVEN places CALL that predicate, measured 2026-08-25 rather than recalled: soma's commit
-# gate (`pipeline.py::run_turn`), the semantic cache (`cache.py`), THREE repair/re-step guards
-# (an entry guard in each of `service.py::_repair_repetition` and `::_repair_grounding`, plus
-# ONE shared discard guard in `::_finish_repair` — there were four, two of them duplicated
-# discard guards, until host #499 merged them: the count FELL by centralisation, not because a
-# net was removed), the trace's `committed` flag (`trace.py`), the grounding backstop
-# (`grounding.py::_turn_committed`, since host #429), the two STREAK CAPS
-# (`_apply_repeat_streak`, host #485; `_apply_grounding_streak`, host #489), which ask whether
-# the turn WROTE before swapping the reply for the tenant's transfer text, and — since the
-# delivery profile landed — the two VOICE policies (`emotion.py` and `delivery.py`), which decide whether a finished turn
-# is spoken with a lift. Those two arrived by re-derivation and were converted: both read
-# `ego_result.has_side_effects`, which is the SURVIVING attempt, so a turn that booked, was
-# rejected by the judge and re-voiced without tools reported "nothing was written" about a turn
-# that wrote — and the happy contact got no cue for the thing that actually got done. Cited by NAME on purpose: the line numbers a first draft
+# The callers are enumerated ONCE, in :func:`types.committed_this_turn` — count, files and
+# functions. **Do not repeat the list here.** A second copy is what four consecutive PRs of
+# drift cost (#115–#118): each one corrected the NUMBER in the copies and left a sub-count or a
+# missing name behind, because a test can pin a token and cannot read two hundred words of
+# prose. The number itself moves — eleven at the time of writing, and it fell once by
+# centralisation rather than by a net being removed. Go read it there; that is the point of
+# there being one place. Cited by NAME on purpose: the line numbers a first draft
 # carried were read from an UNMERGED host branch that inserts a helper above them, so they
 # were already wrong for `main` — a line number in ANOTHER repository has a shorter life than
 # the sentence containing it. A NAME is not immune either, and this block proved it: it cited
@@ -55,7 +48,7 @@ EGO_CORRECTION = "ego_correction"              # correction loop: {reason, attem
 # own comment states the invariant they rest on: *"since committed_this_turn reads every
 # attempt, the 'NOTHING was committed' the voice renders as a HARD RULE is now TRUE of the whole
 # turn"*. The path above is what makes that sentence false; this key is what makes it true again
-# — in the one place the definition lives, instead of six guards each getting it wrong alone.
+# — in the one place the definition lives, instead of every caller getting it wrong alone.
 #
 # The last layer that RE-DERIVED the rule instead of reading it closed on 2026-08-25 (the
 # owner's decision; host PR `fix/the-auditor-reads-the-declaration`): the offline promise
