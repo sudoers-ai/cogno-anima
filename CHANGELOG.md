@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased — o juiz aprende o que o turno NÃO PODIA fazer (2026-08-27)
+
+### Added
+
+- **`mk.UNAVAILABLE_CAPABILITIES` — o Duty computado chega ao JUIZ.** O host subtrai o
+  `requires` de cada capacidade das ferramentas que o turno realmente ofereceu e carimba a
+  diferença; o `_build_judge_prompt` renderiza-a como `# NOT AVAILABLE this turn`.
+
+  **É o JOIN que o `cogno_host/capabilities.py` tinha RESERVADO e que ninguém computava** — os
+  dois lados já existiam (`EgoResult.tools_offered` e `Capability.variants[*].requires`).
+
+  **Porque o juiz e não só o executor:** dizer ao executor *"não podes fazer X"* é obedecido
+  TRIVIALMENTE por um turno que não tem X para chamar. O juiz é quem decide se a resposta é
+  HONESTA, e sem esta linha **não distingue "não havia ferramenta" de "havia e não foi usada"** —
+  os dois aparecem como `(no tools executed)`. Medido ao vivo: uma persona com duas ferramentas
+  de leitura confirmou um lembrete que nunca criou, e o juiz aprovou à primeira, com crítica vazia.
+
+  **DADO, nunca prosa.** O host renderiza texto de capacidade no prompt do EXECUTOR, e esse
+  módulo regista que a palavra "duty" nomeia duas coisas diferentes nas duas camadas e que a
+  divergência *"deixa de ser segura no dia em que blocos de capacidade forem acrescentados ao
+  prompt do juiz"*. Atravessa o **facto** (nomes nossos, vocabulário fechado), nunca o texto — e
+  `test_no_capability_PROSE_reaches_the_judge` transforma essa condição documentada num TESTE.
+
+  A instrução diz também que **admitir o limite é uma resposta CORRECTA e COMPLETA** — sem isso
+  o juiz rejeita a recusa honesta, e já medimos o que isso custa: o laço esgota e entrega um
+  encaminhamento em vez da resposta. Sem o sinal, o prompt é byte-idêntico ao de antes.
+
 ## Unreleased — a PII pode entrar, mas não sai: a voz decide por proveniência (2026-08-26)
 
 ### Added

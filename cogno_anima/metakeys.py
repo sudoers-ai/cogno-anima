@@ -82,6 +82,24 @@ CIRCLING_STREAK = "circling_streak"
 # ── SUPEREGO (locutor) — soma/host write, voice reads ────────────────────────
 VOICE_CORRECTION = "voice_correction"          # judge's final rejection: {reason}
 JUDGE_CONVERSATIONAL = "judge_conversational"  # host: this turn has NO tool to execute
+# THE DUTY, computed: which capabilities this turn could NOT perform, and why.
+#
+# A JOIN whose two sides already existed and which nobody computed — `EgoResult.tools_offered`
+# (the tools the turn really put in front of the executor) against each capability's `requires`.
+# The host does the subtraction and stamps the RESULT here; the judge reads it.
+#
+# Why the judge and not only the executor: telling the EXECUTOR "you cannot do X" is obeyed
+# TRIVIALLY by a turn that has no X to call, while the judge — the one that decides whether the
+# reply is honest — has no idea the capability was missing and approves a draft that claims it.
+# Measured live: a persona with two read-only tools confirmed a reminder it never created, and
+# the judge approved it first time with an empty critique.
+#
+# The value is DATA, never prose: a list of {"capability": <name>, "missing": [<tool names>]}.
+# That is deliberate. The host's capability blocks are rendered PROSE into the executor's
+# prompt, and `cogno_host/capabilities.py` records why the two must never meet: the word "duty"
+# names two different things there, and the divergence "stops being safe the day capability
+# blocks are added to the judge's prompt". Sending the FACT keeps them apart by construction.
+UNAVAILABLE_CAPABILITIES = "unavailable_capabilities"
 # The persona's DECLARED personality traits for this turn — a list of `vocab.VALID_VOICE_TRAITS`
 # values (a comma-separated string is tolerated). Written by the host from the persona's stored
 # configuration (the tenant chose them in the dashboard); read by `SuperegoStage.voice`, which

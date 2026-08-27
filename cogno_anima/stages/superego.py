@@ -878,6 +878,10 @@ class SuperegoStage:
         # User-stated pragmatic restrictions (NER signals): the judge must verify
         # the execution honored them — including what the user forbade.
         restrictions = self._format_restrictions(ctx.intent)
+        # The computed Duty: what this turn could NOT do. Without it the judge cannot tell
+        # "there was no tool" from "there was a tool and it went unused" — both render as
+        # `(no tools executed)` below, and only one of them makes a confirming draft a lie.
+        unavailable = self._format_unavailable(ctx)
         # Terms the NOUMENO preserved verbatim (names/URLs/emails/figures): the
         # judge uses them as concrete grounding evidence (2R-A).
         preserved = self._format_preserved(ctx)
@@ -896,6 +900,7 @@ class SuperegoStage:
             f"{context}"
             f"# Active goal\n{goal}\n"
             f"{restrictions}"
+            f"{unavailable}"
             f"{preserved}"
             f"{limits}\n"
             f"# What the EGO executed\n{executed}\n\n"
@@ -945,6 +950,64 @@ class SuperegoStage:
             'Respond ONLY with: {"approved": true/false, "critique": '
             '"...if not approved, what is wrong, to guide a retry..."}'
         )
+
+    @staticmethod
+    def _format_unavailable(ctx: PipelineContext) -> str:
+        """What this turn COULD NOT do — the computed Duty, rendered for the judge.
+
+        The host subtracts each capability's ``requires`` from the tools the turn actually
+        offered and stamps the difference on ``mk.UNAVAILABLE_CAPABILITIES``. This turns it
+        into one line per capability, naming what the CONTACT will not be able to get.
+
+        Why the judge needs it, stated plainly because it is not obvious: the executor already
+        knows — it simply has no such tool to call, so "do not claim you did X" is obeyed
+        trivially and costs nothing. The JUDGE is the one that decides whether the reply is
+        honest, and without this it cannot tell "there was no tool" from "there was a tool and
+        it was not used": both look like `(no tools executed)`. Measured live — a persona with
+        two read-only tools confirmed a reminder it never created and the judge approved it at
+        the first attempt, with an empty critique.
+
+        DATA IN, PROSE OUT — and only here. The host renders capability text into the
+        EXECUTOR's prompt; ``cogno_host/capabilities.py`` records that the word "duty" names
+        two different things across those layers and that the divergence "stops being safe the
+        day capability blocks are added to the judge's prompt". What crosses is the fact, built
+        from closed vocabulary (our own capability and tool names), never that text.
+
+        Anything malformed is dropped rather than raised: a judge prompt must never be the
+        reason a turn dies, and a missing line degrades to today's behaviour.
+        """
+        def _flat(value: object) -> str:
+            """One line, and never one that can pass for a heading."""
+            return " ".join(str(value or "").split()).lstrip("#").strip()
+
+        raw = (ctx.metadata or {}).get(mk.UNAVAILABLE_CAPABILITIES)
+        if not isinstance(raw, (list, tuple)) or not raw:
+            return ""
+        lines = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            # NEUTRALISED, not trusted. The value comes from the host's own table today, but
+            # what this method emits lands in a PROMPT beside real section headings — so a name
+            # carrying `##` or a newline could forge one. The line collapses to a single line
+            # and loses any leading `#`: the output alphabet of this block stays ours, which is
+            # the same reason the voice's block inventory takes its slugs from a table instead
+            # of from the text that matched.
+            name = _flat(item.get("capability"))
+            if not name:
+                continue
+            missing = item.get("missing")
+            missing = [_flat(t) for t in missing if str(t).strip()] \
+                if isinstance(missing, (list, tuple)) else []
+            tail = f" (needs: {', '.join(sorted(missing))})" if missing else ""
+            lines.append(f"- {name}{tail}")
+        if not lines:
+            return ""
+        return ("\n# NOT AVAILABLE this turn (the persona has no tool for these)\n"
+                + "\n".join(sorted(set(lines)))
+                + "\nThe draft MUST NOT claim any of these was done, scheduled, registered or "
+                  "confirmed. Saying plainly that it cannot be done here is a CORRECT and "
+                  "COMPLETE answer; claiming it is a fabrication even when it sounds helpful.\n")
 
     @staticmethod
     def _format_restrictions(intent) -> str:
