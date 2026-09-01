@@ -587,28 +587,29 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     host is the only layer that knows, so it says so (``mk.PRIOR_ATTEMPT_COMMITTED``) and this
     predicate believes it.
 
-    Fixing it HERE and not in each caller is the whole point. ELEVEN places CALL this, measured 2026-08-25 rather than recalled: soma's commit
-    gate (`pipeline.py::run_turn`), the semantic cache (`cache.py::default_cacheable`), THREE repair/re-step guards
-    (an entry guard in each of `service.py::_repair_repetition` and `::_repair_grounding`, plus
-    ONE shared discard guard in `::_finish_repair` — there were four, two of them duplicated
-    discard guards, until host #499 merged them: the count FELL by centralisation, not because a
-    net was removed), the trace's `committed` flag (`trace.py::guard_outcomes`), the grounding backstop
-    (`grounding.py::_turn_committed`, since host #429), the two STREAK CAPS
-    (`service.py::_apply_repeat_streak`, host #485;
-    `service.py::_apply_grounding_streak`, host #489), which ask whether
-    the turn WROTE before swapping the reply for the tenant's transfer text, and — since the
-    delivery profile landed — the two VOICE policies (`emotion.py::_wrote_something` and
-    `delivery.py::_completed_something_real`), which decide whether a finished turn
-    is spoken with a lift. Those two arrived by re-derivation and were converted: both read
-    `ego_result.has_side_effects`, which is the SURVIVING attempt, so a turn that booked, was
-    rejected by the judge and re-voiced without tools reported "nothing was written" about a turn
-    that wrote — and the happy contact got no cue for the thing that actually got done. The soma's own comment states the
-    invariant they rest on:
-    *"since committed_this_turn reads every attempt, the 'NOTHING was committed' the voice
-    renders as a HARD RULE is now TRUE of the whole turn"*. The path above is exactly what
-    makes that sentence false, and a guard added to one caller leaves every OTHER caller wrong (there are ten of them
-    today; the number moves, which is why this sentence no longer names it). A
-    rule each consumer re-derives is a rule each consumer gets wrong alone.
+    Fixing it HERE and not in each caller is the whole point. FIVE places CALL this, measured
+    2026-09-01 rather than recalled — and it is FIVE, not eleven, because the enumeration SPLIT:
+    seven callers were asking a different question and moved to `wrote_for_the_contact` (its
+    docstring carries that list). What stayed are the callers for whom the answer is *"repeating
+    is unsafe"*, which is what this predicate means:
+
+      * the semantic cache (`cache.py::default_cacheable`) — an action must always re-run, and a
+        cached reply replayed without its persona transfer promises a handoff that never happens;
+      * TWO repair guards (`service.py::_repair_repetition` and `::_repair_grounding`) —
+        re-running a turn that already acted commits a SECOND time, and a re-run transfer starts
+        a second conversation;
+      * the discard guard (`service.py::_finish_repair`) — an attempt that did something
+        irreversible must not have its context thrown away;
+      * and `wrote_for_the_contact` itself, which delegates here when the host declares no
+        routing set. Named for the same reason as the others: a delegation the enumeration does
+        not list is a re-derivation hiding behind a call.
+
+    The COUNT above is a derived fact asserted in two places (here and the host's
+    `ANTI_FABRICATION.md`), while the NAMES have a guard of their own. The asymmetry has a price,
+    measured on this very change: a migration across three repos costs two prose edits that exist
+    only to let a number catch up. Named rather than acted on — the names are the substance.
+
+    A rule each consumer re-derives is a rule each consumer gets wrong alone.
 
     The last layer that RE-DERIVED the rule instead of reading it closed on 2026-08-25 (the
     owner's decision; host PR `fix/the-auditor-reads-the-declaration`): the offline promise
@@ -737,6 +738,19 @@ def wrote_for_the_contact(ctx: "PipelineContext") -> bool:
         semantic cache and the two repair guards. **A transfer belongs there**: a cached reply
         replayed without it promises the contact a handoff that never happens, which is the
         same defect as the ledger's, pointing the other way.
+
+    SEVEN places call this, measured 2026-09-01 — the ones that moved off `committed_this_turn`
+    when the enumeration split, and each of them was WRONG before the move:
+
+      * the ledger stamp (`trace.py::guard_outcomes`) — the defect that started this: a turn
+        whose only side-effecting call was a transfer told the ledger it had written;
+      * the anti-fabrication net (`grounding.py::_turn_committed`);
+      * the two streak caps (`service.py::_apply_repeat_streak`, `::_apply_grounding_streak`),
+        whose own comment says replacing the reply would hide a write from the contact;
+      * the two voice policies (`emotion.py::_wrote_something`,
+        `delivery.py::_completed_something_real`) — a lift for something real being done;
+      * soma's commit gate (`pipeline.py::run_turn`), which keeps a conversation alive rather
+        than dead-ending in a handoff when nothing was actually committed.
 
     The excluded set is HOST-DECLARED (``mk.ROUTING_ONLY_TOOLS``) because only the host knows
     which of its tools are routing — the same reason, and the same channel, as
