@@ -257,6 +257,11 @@ pii — PII categories from ORIGINAL input. Use ONLY:
   DATE_OF_BIRTH | HEALTH_DATA | ADDRESS | IP_ADDRESS | PASSPORT |
   CREDENTIAL | BIOMETRIC | NAME
   → Max 10. [] if no PII.
+  → HEALTH_DATA = a PERSON's physical/mental condition, diagnosis, treatment, medication or
+    pregnancy — including lay/colloquial wording ("sou soropositivo", "tomo fluoxetina").
+    NOT admission/exit dates, exams, certificates or "health/treatment" phrasing in academic,
+    HR, business or data-protection contexts (course admission, school exam, enrollment
+    certificate, a company's financial health, LGPD data processing).
 
 pii_risk — EXACTLY one of: NONE | LOW | MEDIUM | HIGH | CRITICAL
   → NONE → pii == []

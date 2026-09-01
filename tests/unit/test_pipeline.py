@@ -256,6 +256,17 @@ async def test_pii_risk_ignores_llm_value_and_recomputes():
 #  domains: prompt ↔ code alignment, GENERAL regression
 # ────────────────────────────────────────────────────────────────────
 
+def test_ner_prompt_defines_health_data():
+    """The HEALTH_DATA definition in ner/system.txt is load-bearing: without it the NER both
+    over-labels administrative texts (course "admission/exit" read as hospital admission) and
+    under-labels lay disclosures (measured on gpt-4o-mini 2026-09-01: genuine "tenho diabetes
+    e uso insulina" → NONE at baseline, CRITICAL with the definition). Pin its presence and
+    its two halves — what it IS and what it is NOT."""
+    text = (PROMPTS_DIR / "ner" / "system.txt").read_text(encoding="utf-8")
+    assert "HEALTH_DATA = a PERSON's" in text
+    assert "NOT admission/exit dates" in text
+
+
 def _parse_prompt_domains() -> set[str]:
     """Extract the closed `domains` list declared in cogno_anima/prompt_templates/ner/system.txt."""
     text = (PROMPTS_DIR / "ner" / "system.txt").read_text(encoding="utf-8")
