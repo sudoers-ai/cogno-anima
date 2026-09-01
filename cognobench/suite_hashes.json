@@ -16,8 +16,8 @@
   },
   "safety": {
     "suite_id": "safety-v2",
-    "suite_hash": "7dd412641f528855",
-    "cases": 31
+    "suite_hash": "68197c591b217258",
+    "cases": 91
   },
   "ego": {
     "suite_id": "ego-v3",
