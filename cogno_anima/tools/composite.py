@@ -100,9 +100,16 @@ class CompositeDispatcher:
         wrapped; the wrapping just sits INSIDE this router, and the router was a wall. True in
         the letter, false in the effect.
 
-        **A generic `__getattr__` is deliberately NOT the fix here.** That is the right answer
-        for a WRAPPER — one layer over one source — and the wrong one for a ROUTER over many:
-        it would not know which source to forward to and would have to pick one. Explicit and
+        **A generic `__getattr__` is deliberately NOT the fix here** — and, since 2026-09-01,
+        it is not the fix for a WRAPPER either. This sentence used to call it "the right answer
+        for a WRAPPER — one layer over one source"; that was true when it was written and the
+        ground moved. Python 3.12 verifies `runtime_checkable` protocols with
+        `inspect.getattr_static`, which **never calls** `__getattr__`, so a wrapper that
+        delegates a policy method that way disappears from `isinstance` — measured on both
+        interpreters, and the confirmation gate then never fires at all. See
+        `ToolPolicyDispatcher` in `base.py` for the shape that works on both.
+        For a ROUTER over many sources it was never right for a second reason, unchanged: it
+        would not know which source to forward to and would have to pick one. Explicit and
         routed, like the two policy methods above it.
 
         The fallbacks, in order, and each one is a different question:
