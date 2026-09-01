@@ -699,6 +699,47 @@ async def test_confirmed_call_blocks_a_redundant_model_reissue():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("route", ["loop", "confirmed_replay"])
+async def test_a_side_effect_on_a_FAILED_call_is_reported_not_corrected(caplog, route):
+    """A dispatcher stamping ``side_effect`` on a failed call is describing the TOOL.
+
+    The core does NOT rewrite it — a host's declaration is the host's, and correcting it in
+    silence would hide the next source that repeats the defect. It says so instead, on BOTH
+    routes a result reaches the trace by: the deterministic replay of a confirmed call, and
+    the model issuing the call inside the loop. Guarding only one is the mistake
+    ``_refuse_if_still_asking`` already documents having made once.
+    """
+    disp = StubDispatcher.with_tools("book_appointment", handlers={
+        "book_appointment": lambda a: ToolResult(
+            output="", ok=False, error="09:00 is already booked", side_effect=True),
+    })
+    if route == "confirmed_replay":
+        class RecordingBackend:
+            model = "plain"
+            async def generate(self, system, prompt):
+                return "That slot is taken.", 1, 1
+        backend, ctx = RecordingBackend(), _ctx(
+            ego_confirmed=True,
+            ego_confirmed_calls=[{"tool": "book_appointment", "arguments": {"time": "09:00"}}])
+    else:
+        backend = ScriptedToolCallingBackend([
+            _tool_turn("book_appointment", {"time": "09:00"}), {"content": "That slot is taken."}])
+        ctx = _ctx()
+
+    with caplog.at_level("WARNING", logger="cogno_anima.stages.ego"):
+        ctx = await EgoStage().process(ctx, backend, disp, system_prompt=SYS)
+
+    assert "side_effect_without_success" in caplog.text, (
+        f"route={route}: a dispatcher stamped a side effect on a failed call and nothing said so")
+    assert "book_appointment" in caplog.text
+    # reported, NOT corrected: the host's declaration reaches the trace untouched...
+    call = ctx.ego_result.steps[0].tool_calls[0]
+    assert call.ok is False and call.side_effect is True
+    # ...and the READER is what keeps the turn honest about it
+    assert ctx.ego_result.has_side_effects is False
+
+
+@pytest.mark.asyncio
 async def test_confirmed_call_failure_feeds_the_error_not_already_executed():
     """A confirmed call can still fail execute-time business validation (slot taken, limit
     reached). The model must receive the ERROR — '[ALREADY EXECUTED] → (empty)' makes it

@@ -382,7 +382,15 @@ class EgoResult(BaseModel):
 
     @property
     def has_side_effects(self) -> bool:
-        return any(t.side_effect for t in self.tools_executed)
+        """Did any tool call in this result actually change something?
+
+        ``ok`` is conjoined for the same reason `committed_this_turn` conjoins it: a call that
+        FAILED changed nothing, whatever ``side_effect`` says. That is not a hypothetical — a
+        dispatcher stamps ``side_effect`` from the tool's NATURE, decided per NAME *before* the
+        call, so the field describes the TOOL and this property has to describe the RESULT.
+        Read alone it answered True for a booking that was rejected because the slot was taken.
+        """
+        return any(t.side_effect and t.ok for t in self.tools_executed)
 
 
 class ScopeCheckResult(BaseModel):
@@ -520,6 +528,19 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     confirmed — no change was made") answers True here; that is the fail-CLOSED direction on
     purpose — a needless human check is recoverable, telling a user "nothing happened" over a
     row that changed is not.
+
+    Being per NAME, the hint is decided BEFORE the call, so it describes the TOOL and not the
+    RESULT — and until 2026-09-01 both shipped dispatchers copied it onto their failure branch
+    too, calling a rejected booking a write. They now stamp ``False`` there. The core does not
+    police it: a source that still arrives that way is LOGGED, not corrected (see
+    ``EgoStage._warn_if_effect_without_success``), because rewriting a host's declaration in
+    silence decides for the host and hides the next source that repeats the defect.
+
+    ``EgoResult.has_side_effects`` conjoins ``ok`` for this same reason and is now the ONLY
+    other place that does — it used to read ``side_effect`` alone, which answered True over a
+    turn that wrote nothing. Both readings live here and there deliberately: this repo's
+    standing lesson is that a rule each consumer re-derives is a rule each consumer gets wrong
+    alone, and that property was the consumer that had.
 
     Falls back to `ego_result` for a turn whose orchestrator does not accumulate (a single-shot
     pipeline, or a host that reconstructs a context).

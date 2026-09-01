@@ -53,6 +53,24 @@ def test_has_side_effects():
     assert clean.has_side_effects is False
 
 
+def test_has_side_effects_requires_the_call_to_have_SUCCEEDED():
+    """``side_effect`` is stamped per tool NAME, before the call runs — it describes the TOOL.
+    A booking the server REJECTED wrote nothing, and reading the field alone said it did."""
+    rejected = EgoResult(steps=[EgoStep(index=0, path="native", tool_calls=[
+        ToolExecution(tool="book_appointment", ok=False,
+                      error="09:00 on 2026-07-02 is already booked", side_effect=True),
+    ])], metrics=_m())
+    assert rejected.has_side_effects is False
+
+    # ...and the conjunction must not swallow a real write standing beside the failed one,
+    # or "always False" would pass this test while losing the only thing it measures.
+    mixed = EgoResult(steps=[EgoStep(index=0, path="native", tool_calls=[
+        ToolExecution(tool="book_appointment", ok=False, error="taken", side_effect=True),
+        ToolExecution(tool="add_note", ok=True, side_effect=True),
+    ])], metrics=_m())
+    assert mixed.has_side_effects is True
+
+
 def test_no_user_facing_response_field():
     res = EgoResult(steps=[], metrics=_m())
     assert not hasattr(res, "response")
