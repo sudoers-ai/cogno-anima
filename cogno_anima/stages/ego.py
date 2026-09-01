@@ -226,7 +226,8 @@ class EgoStage:
             r = self._refuse_if_still_asking(r, name)
             self._warn_if_effect_without_success(r, name)
             ex = ToolExecution(tool=name, arguments=args, result=r.output, ok=r.ok,
-                               error=r.error, side_effect=r.side_effect)
+                               error=r.error, side_effect=r.side_effect,
+                               tool_mutating=self._declared_mutating(policy, name))
             steps.append(EgoStep(index=len(steps), path=path, assistant_text="", tool_calls=[ex]))
             seen_calls[self._sig(name, args)] = self.MAX_DUPLICATE_CALLS   # block a re-issue
             # The output of a CONFIRMED call is third-party data like any other tool result —
@@ -290,6 +291,7 @@ class EgoStage:
                     logger.debug("stage=ego event=blocked_retry step=%d tool=%s", i, name)
                     execs.append(ToolExecution(
                         tool=name, arguments=args, ok=False, error="blocked_retry",
+                        tool_mutating=self._declared_mutating(policy, name),
                         result=(f"[BLOCKED] '{name}' with these args already FAILED. "
                                 "Do NOT retry it — change the arguments, try a different "
                                 "tool, or give your final answer with what you have."),
@@ -308,6 +310,7 @@ class EgoStage:
                     logger.warning("stage=ego event=duplicate_in_step step=%d tool=%s", i, name)
                     execs.append(ToolExecution(
                         tool=name, arguments=args, ok=False, error="duplicate_in_step",
+                        tool_mutating=self._declared_mutating(policy, name),
                         result=(f"[DUPLICATE] '{name}' was already called with these exact "
                                 "arguments in this same step — nothing ran in between, so the "
                                 "answer is the one you already have. Use it."),
@@ -318,6 +321,7 @@ class EgoStage:
                     logger.warning("stage=ego event=duplicate_call step=%d tool=%s", i, name)
                     execs.append(ToolExecution(
                         tool=name, arguments=args, ok=False, error="duplicate",
+                        tool_mutating=self._declared_mutating(policy, name),
                         result=(f"[DUPLICATE] You already called '{name}' with these exact "
                                 "args. Use the data you already have to answer, or try "
                                 "something different."),
@@ -330,6 +334,7 @@ class EgoStage:
                         and not self._is_confirmed(confirmed, name)):
                     held = ToolExecution(
                         tool=name, arguments=args, ok=False, error="needs_confirmation",
+                        tool_mutating=self._declared_mutating(policy, name),
                         result=(f"[PENDING CONFIRMATION] '{name}' is destructive and was "
                                 "NOT executed; it needs explicit user confirmation first."),
                     )
@@ -369,7 +374,8 @@ class EgoStage:
                 if r.needs_confirmation and not self._is_confirmed(confirmed, name):
                     held = ToolExecution(
                         tool=name, arguments=args, result=r.output, ok=False,
-                        error="needs_confirmation", side_effect=False)
+                        error="needs_confirmation", side_effect=False,
+                        tool_mutating=self._declared_mutating(policy, name))
                     execs.append(held)
                     pending_confirmation.append(held)
                     logger.info("stage=ego event=pending_confirmation source=skill step=%d "
@@ -377,8 +383,10 @@ class EgoStage:
                     continue
                 r = self._refuse_if_still_asking(r, name)
                 self._warn_if_effect_without_success(r, name)
-                execs.append(ToolExecution(tool=name, arguments=args, result=r.output,
-                                           ok=r.ok, error=r.error, side_effect=r.side_effect))
+                execs.append(ToolExecution(
+                    tool=name, arguments=args, result=r.output, ok=r.ok, error=r.error,
+                    side_effect=r.side_effect,
+                    tool_mutating=self._declared_mutating(policy, name)))
 
             steps.append(EgoStep(index=i, path=path, assistant_text=assistant_text,
                                  tool_calls=execs, tokens_in=ti, tokens_out=to))
@@ -646,6 +654,28 @@ class EgoStage:
             logger.warning("stage=ego event=side_effect_without_success tool=%s — the "
                            "dispatcher stamped side_effect on a FAILED call; it is describing "
                            "the tool, not the result", name)
+
+    @staticmethod
+    def _declared_mutating(policy: "Optional[ToolPolicyDispatcher]",
+                           name: str) -> Optional[bool]:
+        """Is this tool DECLARED to write? The per-NAME fact, known BEFORE the call.
+
+        It rides on the trace because the trace is read OFFLINE — persisted, without a host,
+        a dispatcher or a manifest in reach — and after ``side_effect`` was narrowed to mean
+        "THIS call wrote", nothing else carried it.
+
+        ``None`` is a real answer, not a fallback: no policy means nobody declared anything,
+        which is the same "no claim about the tool" direction the duplicate-in-step guard
+        takes. A policy that raises degrades to ``None`` for the reason the circling hint
+        degrades to 0 — a diagnostic field must never cost the turn.
+        """
+        if policy is None:
+            return None
+        try:
+            return bool(policy.is_mutating(name))
+        except Exception:                 # noqa: BLE001 — a trace field must not abort a turn
+            logger.warning("stage=ego event=policy_is_mutating_failed tool=%s", name)
+            return None
 
     @staticmethod
     def _is_confirmed(confirmed: object, name: str) -> bool:
