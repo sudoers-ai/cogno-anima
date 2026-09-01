@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased — o router encaminhava duas perguntas de política e não a terceira (2026-09-01)
+
+### Fixed
+
+- **A pergunta que faltava era a que uma protecção do host precisava de atravessar.** O
+  `CompositeDispatcher` roteia `is_mutating` e `requires_confirmation` à fonte dona, mas não
+  `source_requires_confirmation` — e não tem `__getattr__`. Era uma parede.
+
+  **Medido ponta a ponta, não lido.** Um contacto que escreveu *«prefiro não falar com robô, me
+  passa pra uma pessoa por favor»* recebeu *«Só pra confirmar: executo human handoff. Posso
+  seguir?»* — jargão de sistema, uma pergunta, e **nenhuma escalada**. O chão anti-retenção do
+  host, que existe exactamente para impedir isso, precisa daquele predicado para separar *"a
+  fonte declarou destrutivo"* de *"é escrita e ninguém isentou"*; ao alcançá-lo pelos wrappers
+  bateu neste router e recuou para o seu conservador, que **retém**.
+
+  **A forma do erro vale mais que o conserto: premissa verdadeira, conclusão falsa.** O docstring
+  do chão dizia que o recuo era *"inalcançável em produção: toda fonte é embrulhada"*. Toda fonte
+  **é** embrulhada — o embrulho fica **dentro** do router. **"Embrulhada" não é "o método
+  atravessa":** a alcançabilidade depende da TRAVESSIA, e a verificação parou na premissa. Não é
+  medir a coisa errada; é medir a coisa certa e parar um passo antes do que a conclusão precisa.
+  Quatro medições falharam porque **todas deixaram o router de fora** — e sem ele o defeito não
+  aparece.
+
+  **`__getattr__` genérico foi recusado de propósito:** é a resposta certa para um WRAPPER (uma
+  camada sobre UMA fonte) e a errada para um ROUTER sobre muitas, que não sabe a que fonte
+  encaminhar e teria de escolher uma.
+
+  **Os recuos seguem a convenção já declarada da classe**, e o do meio é o que mantém isto
+  seguro: uma fonte de política **sem** o predicado fino tem no seu `requires_confirmation` o
+  próprio veredicto, portanto responder `False` ali deixaria o chão engolir um `destructiveHint`
+  — a única coisa que ele nunca pode fazer.
+
 ## Unreleased — o juiz aprende o que o turno NÃO PODIA fazer (2026-08-27)
 
 ### Added
