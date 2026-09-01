@@ -302,13 +302,30 @@ class ToolResult(BaseModel):
 
 
 class ToolExecution(BaseModel):
-    """One tool call + its result, as recorded in the EGO trace."""
+    """One tool call + its result, as recorded in the EGO trace.
+
+    ``side_effect`` and ``tool_mutating`` are TWO facts that used to be one field, and the
+    difference is WHEN each is known:
+
+      ``tool_mutating``  is this tool the KIND that writes? Declared per NAME, known BEFORE
+                         the call, from the host's policy. A property of the tool.
+      ``side_effect``    did THIS call write? Known only AFTER it ran. A property of the call.
+
+    One field carried both until 2026-09-01, and every consumer that wanted the second had to
+    remember to conjoin ``ok``. Splitting them is what lets a trace be read OFFLINE: the
+    per-name fact has no other carrier once the host, the dispatcher and the manifest are gone,
+    and a trace that needs a live object to be interpreted is not a trace.
+    """
     tool: str
     arguments: dict[str, Any] = Field(default_factory=dict)
     result: str = ""                     # = ToolResult.output ("" when the call was blocked)
     ok: bool = True
     error: Optional[str] = None
-    side_effect: bool = False
+    side_effect: bool = False            # did THIS call write? (needs `ok` to mean "committed")
+    # Is this tool DECLARED to write? ``None`` = nobody declared — the same "no claim about the
+    # tool" direction the duplicate-in-step guard takes. Deliberately tri-state: coerced to a
+    # bool, an offline reader could not tell a silence from a declaration.
+    tool_mutating: Optional[bool] = None
 
 
 class EgoStep(BaseModel):

@@ -699,6 +699,76 @@ async def test_confirmed_call_blocks_a_redundant_model_reissue():
 
 
 @pytest.mark.asyncio
+async def test_the_trace_carries_BOTH_facts_separately():
+    """Two facts, two fields — and the failed write is where they come apart.
+
+    ``tool_mutating`` is the tool's KIND, declared per NAME before the call. ``side_effect``
+    is what THIS call did. A booking the server rejected is mutating-and-did-not-write, and
+    one field could not say both.
+    """
+    disp = PolicyDispatcher.with_tools("book", "lookup", mutating=["book"], handlers={
+        "book": lambda a: ToolResult(output="", ok=False, error="taken", side_effect=False),
+        "lookup": lambda a: ToolResult(output="09:00 free", ok=True),
+    })
+    backend = ScriptedToolCallingBackend([
+        _tool_turn("book", {"t": "09:00"}), _tool_turn("lookup", {}), {"content": "09:00 is taken."}])
+    ctx = await EgoStage().process(_ctx(), backend, disp, system_prompt=SYS)
+
+    failed_write = ctx.ego_result.steps[0].tool_calls[0]
+    assert failed_write.tool_mutating is True, "the tool IS the kind that writes"
+    assert failed_write.side_effect is False, "...and THIS call wrote nothing"
+    assert failed_write.ok is False
+
+    read = ctx.ego_result.steps[1].tool_calls[0]
+    assert read.tool_mutating is False and read.ok is True
+
+    # the turn still honestly reports that nothing was committed
+    assert ctx.ego_result.has_side_effects is False
+
+
+@pytest.mark.asyncio
+async def test_no_policy_leaves_the_kind_UNDECLARED_not_false():
+    """``None`` is a real answer. Coerced to a bool, an offline reader could not tell a host
+    that declared "read-only" from a host that declared nothing at all."""
+    disp = StubDispatcher.with_tools("book")          # a plain ToolDispatcher: no policy
+    backend = ScriptedToolCallingBackend([_tool_turn("book", {}), {"content": "done"}])
+    ctx = await EgoStage().process(_ctx(), backend, disp, system_prompt=SYS)
+    call = ctx.ego_result.steps[0].tool_calls[0]
+    assert call.tool_mutating is None
+    assert call.tool_mutating is not False, "no claim is not the same as a claim of False"
+
+
+@pytest.mark.asyncio
+async def test_a_HELD_destructive_tool_records_its_kind():
+    """The case the offline reader most needs: gate B held the call, so nothing ran and
+    ``side_effect`` is False — but "a destructive tool was ATTEMPTED here" is exactly what a
+    human auditing a discarded attempt is looking for, and only this field still says it."""
+    disp = PolicyDispatcher.with_tools("drop", mutating=["drop"], destructive=["drop"])
+    backend = ScriptedToolCallingBackend([_tool_turn("drop", {}), {"content": "shall I?"}])
+    ctx = await EgoStage().process(_ctx(), backend, disp, system_prompt=SYS)
+    held = ctx.ego_result.steps[0].tool_calls[0]
+    assert held.error == "needs_confirmation"
+    assert held.side_effect is False and held.tool_mutating is True
+    assert disp.executed == [], "gate B must not have run it"
+
+
+@pytest.mark.asyncio
+async def test_a_raising_policy_costs_the_field_not_the_turn(caplog):
+    """A diagnostic field must never abort a turn — the same rule the circling hint follows."""
+    class BrokenPolicy(PolicyDispatcher):
+        def is_mutating(self, name):
+            raise RuntimeError("host policy blew up")
+
+    disp = BrokenPolicy.with_tools("book")
+    backend = ScriptedToolCallingBackend([_tool_turn("book", {}), {"content": "done"}])
+    with caplog.at_level("WARNING", logger="cogno_anima.stages.ego"):
+        ctx = await EgoStage().process(_ctx(), backend, disp, system_prompt=SYS)
+    assert ctx.ego_result.steps[0].tool_calls[0].tool_mutating is None
+    assert "policy_is_mutating_failed" in caplog.text
+    assert ctx.ego_result.draft == "done", "the turn survived"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("route", ["loop", "confirmed_replay"])
 async def test_a_side_effect_on_a_FAILED_call_is_reported_not_corrected(caplog, route):
     """A dispatcher stamping ``side_effect`` on a failed call is describing the TOOL.
