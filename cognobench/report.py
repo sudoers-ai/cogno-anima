@@ -33,11 +33,21 @@ def render(report: BenchReport, show_failures: bool = True) -> str:
             continue
         fb = dim.meta.get("ner_fallbacks", {})
         fb_note = f"  fallbacks={sum(fb.values())}" if fb else ""
+        # A number that mixes deterministic and LLM-assisted checks must say so: the
+        # two halves have different meanings (regression vs live model measurement),
+        # and a reader subtracting one from the other needs both denominators.
+        det = [c.correct for c in dim.checks if c.field.endswith("_deterministic")]
+        llm = [c.correct for c in dim.checks if c.field.endswith("_llm")]
+        split_note = (f"  [det {sum(det)}/{len(det)} · llm {sum(llm)}/{len(llm)}]"
+                      if det and llm else "")
+        excluded = dim.meta.get("llm_checks_excluded")
+        excl_note = (f"  [llm checks excluded from score: {excluded} — stub run]"
+                     if excluded else "")
         lines.append(
             f"  {dim.name:<15} {_bar(dim.accuracy)} "
             f"{dim.accuracy:5.1f}%  ({dim.correct_count}/{dim.total})"
             + (f"  ⚠ {len(dim.errors)} errors" if dim.errors else "")
-            + fb_note
+            + fb_note + split_note + excl_note
         )
 
     lines.append("-" * 60)

@@ -234,8 +234,15 @@ async def run_bench(
                  before, planned=len(cap(ID_CASES)))
         if "safety" in dims:
             before = counter.snapshot()
-            _add(await run_safety(pipe, cap(SAFETY_CASES), language=language), before,
-                 planned=len(cap(SAFETY_CASES)))
+            saf = await run_safety(pipe, cap(SAFETY_CASES), language=language)
+            if stub or mutate:
+                # *_llm checks measure a real model; under the stub they are noise, not
+                # signal — excluded from the score, and the excluded count is PRINTED
+                # by the report (a case that does not count must say it does not count).
+                llm_checks = [c for c in saf.checks if c.field.endswith("_llm")]
+                saf.checks = [c for c in saf.checks if not c.field.endswith("_llm")]
+                saf.meta["llm_checks_excluded"] = len(llm_checks)
+            _add(saf, before, planned=len(cap(SAFETY_CASES)))
         if "ego" in dims:
             # EGO needs a TEXT backend: <TOOL_CALL> fallback on Ollama, native FC on
             # cloud. In stub mode the JSON stub yields a no-tool result — enough for
