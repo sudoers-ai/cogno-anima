@@ -641,14 +641,21 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     carrier whose `metadata` is missing, or is not a mapping, degrades to the trace instead of
     raising.
 
-    Be precise about the direction of THAT degradation: it answers False, which for SEVEN of the
-    eleven callers is the RELEASING answer (cacheable, re-step allowed, "nothing was committed"
-    rendered to the voice as a hard rule). The other four do not release, and getting that wrong
-    is easy enough that TWO drafts of this very sentence did — the second by OMISSION: when the
-    caller count went 8 to 10 this half stayed at "six of the EIGHT", because only the first
-    number has a test. The trace only RECORDS the answer,
-    and at the grounding backstop False is the answer that ARMS the rules — True is what
-    suppresses them — so the backstop belongs in neither bucket that "releasing" describes. So it is fail-OPEN here, unlike the no-op→True choice
+    Be precise about the direction of THAT degradation: it answers False, which for THREE of the
+    five callers is the RELEASING answer — the semantic cache (cacheable), and the two repair
+    guards (the re-step may run). The other two do NOT release, and each was checked call by
+    call rather than carried over: at `_finish_repair` False makes the HONEST pre-repair context
+    win, which releases no action at all; and `wrote_for_the_contact` only delegates, so its
+    polarity is its own callers', not this one's.
+
+    Getting that wrong is easy enough that THREE drafts of this very sentence did. The first two
+    by putting a consumer in the wrong bucket and by OMISSION — when the count went 8 to 10 this
+    half stayed at "six of the EIGHT". The third was 2026-09-01: the split to `wrote_for_the_contact`
+    updated the count in the paragraph above and left "seven of the eleven" here, in the same
+    docstring, contradicting it. **The cause is stated and unchanged: only the FIRST number has a
+    test.** The guard compares one sentence to the callers on disk; every other sentence — this
+    one included — is unguarded, and so is the bullet list itself (a name that stops being a
+    caller survives all four guards; measured with a planted ghost). So it is fail-OPEN here, unlike the no-op→True choice
     above, which is conservative on purpose. It stays fail-open deliberately: answering True on
     an unreadable carrier would make every test double and replayed trace read as "committed",
     which is the worse error. On a real `PipelineContext` the handler is unreachable."""
@@ -659,8 +666,9 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     # is read by hosts with leaner carriers, replayed traces and test doubles. Measured
     # 2026-08-24: with a write in `ego_result` and only a READ in `turn_executions`, the old
     # shape answered False over a turn that wrote — and False was then the RELEASING answer for
-    # six of the EIGHT callers there were at the time (2026-08-24; eleven today, seven of them
-    # releasing) — in a predicate whose own first paragraph claims a fail-CLOSED bias. The
+    # six of the EIGHT callers there were at the time (2026-08-24; FIVE today, three of them
+    # releasing — see the paragraph above) — in a predicate whose own first paragraph claims a
+    # fail-CLOSED bias. The
     # number is left as it was MEASURED because the sentence describes that measurement; a
     # historical count that does not say it is historical reads exactly like a forgotten one,
     # which is why this now says so.
