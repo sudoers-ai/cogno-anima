@@ -124,3 +124,67 @@ async def test_empty_composite_execute_is_recoverable():
     comp = CompositeDispatcher([])
     res = await comp.execute("anything", {})
     assert res.ok is False
+
+
+# ── source_requires_confirmation: the router must FORWARD the finer verdict ───────────
+# Added 2026-09-01 after an end-to-end measurement: a contact who asked for a human was
+# answered "Só pra confirmar: executo human handoff. Posso seguir?" and no escalation
+# happened. A host floor that exists to prevent exactly that needs to tell a SOURCE's own
+# destructive verdict from a blanket "every write confirms" rule; it reaches for the finer
+# predicate through the wrappers and hit this router, which defined neither the method nor
+# `__getattr__`, and fell back to holding.
+
+class _Finer(PolicyStub):
+    """A source that exposes the finer predicate, as a host gate wrapper does."""
+
+    def __init__(self, *names, mutating=(), destructive=(), source_says=()):
+        super().__init__(*names, mutating=mutating, destructive=destructive)
+        self._source_says = set(source_says)
+
+    def source_requires_confirmation(self, name):
+        return name in self._source_says
+
+
+def test_the_router_forwards_the_finer_predicate_to_the_owning_source():
+    """The production shape: ask the source that owns the tool, not the first one.
+
+    Mutation that kills it: drop the method — `getattr` on the router raises/misses and the
+    caller above falls back to its conservative answer, which is what shipped the defect.
+    """
+    comp = CompositeDispatcher([
+        _Finer("book", mutating=("book",), destructive=("book",), source_says=()),
+        _Finer("wipe", mutating=("wipe",), destructive=("wipe",), source_says=("wipe",)),
+    ])
+    assert comp.source_requires_confirmation("book") is False   # blanket rule only
+    assert comp.source_requires_confirmation("wipe") is True    # the source itself said so
+
+
+def test_a_policy_source_without_the_finer_predicate_answers_with_its_own_verdict():
+    """The branch that keeps the floor above SAFE, and the reason it is not simply `False`.
+
+    A policy source with no blanket rule layered in front of it has one verdict, and that
+    verdict IS the source's. Answering `False` here would let the caller waive a tool the
+    source really did mark destructive — the single thing the anti-holding floor must never do.
+
+    Mutation that kills it: `return False` for a source lacking the finer predicate.
+    """
+    comp = CompositeDispatcher([PolicyStub("cancel", mutating=("cancel",), destructive=("cancel",))])
+    assert comp.source_requires_confirmation("cancel") is True
+
+
+def test_a_source_with_no_policy_declared_nothing():
+    """Symmetric with `requires_confirmation` above: an un-classified source did not opt in,
+    so it declared nothing destructive — and it can never reach the gate anyway.
+
+    Mutation that kills it: `return True` as a blanket conservative default — every composite
+    with a plain source starts holding tools nobody classified.
+    """
+    comp = CompositeDispatcher([Stub("plain")])
+    assert comp.source_requires_confirmation("plain") is False
+
+
+def test_an_unknown_tool_is_not_claimed_by_anyone():
+    """Mutation that kills it: index `_resolve()[1][name]` instead of `.get` — a hallucinated
+    tool name raises inside a POLICY read, where the EGO expects a boolean."""
+    comp = CompositeDispatcher([PolicyStub("a", mutating=("a",))])
+    assert comp.source_requires_confirmation("does_not_exist") is False
