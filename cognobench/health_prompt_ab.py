@@ -97,19 +97,23 @@ async def _run(model: str, baseline: pathlib.Path, defined: pathlib.Path) -> Non
                 results[label].append((got, risk))
         out[variant] = dict(results)
 
+    def fmt(xs):
+        marks = ",".join("H" if g else ("?" if g is None else "-") for g, _ in xs)
+        return marks + " " + "/".join(str(r)[:4] for _, r in xs)
+
     print(f"model={model}  runs/cell={RUNS}\n")
     print(f"{'case':12} {'expect':7} | {'baseline':26} | defined")
     fp_fixed = fp_total = tp_kept = tp_total = 0
     for label, _o, _r, expect in CASES:
-        fmt = lambda xs: ",".join("H" if g else ("?" if g is None else "-") for g, _ in xs) \
-            + " " + "/".join(str(r)[:4] for _, r in xs)
         b, d = out["baseline"][label], out["defined"][label]
         print(f"{label:12} {'HEALTH' if expect else 'clean':7} | {fmt(b):26} | {fmt(d)}")
         d_major = sum(1 for g, _ in d if g) >= (RUNS + 1) // 2
         if expect:
-            tp_total += 1; tp_kept += int(d_major)
+            tp_total += 1
+            tp_kept += int(d_major)
         else:
-            fp_total += 1; fp_fixed += int(not d_major)
+            fp_total += 1
+            fp_fixed += int(not d_major)
     print(f"\ndefined-prompt verdict: FP clean {fp_fixed}/{fp_total} · TP kept {tp_kept}/{tp_total}")
 
 
