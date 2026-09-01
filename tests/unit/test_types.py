@@ -302,3 +302,81 @@ def test_the_canonical_docstring_still_states_a_count():
     assert re.search(r"(\w+) places CALL this", committed_this_turn.__doc__ or ""), (
         "the canonical docstring stopped declaring the count, and TWO files now point at it"
     )
+
+
+# ── o eixo do DOMÍNIO: encaminhar não é escrever PARA O CONTACTO ──────────────────────────
+
+
+def _turno(*execucoes, routing=("transfer_persona",)):
+    """Um ctx com as execuções dadas e a declaração do host (ou sem ela, com `routing=None`)."""
+    from cogno_anima import metakeys as mk
+    from cogno_anima.types import PipelineContext
+
+    ctx = PipelineContext(user_input="remova o lançamento de R$ 45,00")
+    ctx.turn_executions = list(execucoes)
+    if routing is not None:
+        ctx.metadata[mk.ROUTING_ONLY_TOOLS] = list(routing)
+    return ctx
+
+
+def _tool(nome, *, ok=True, side_effect=True):
+    from cogno_anima.types import ToolExecution
+    return ToolExecution(tool=nome, arguments={}, result="ok", ok=ok, side_effect=side_effect)
+
+
+def test_a_transferencia_conta_para_o_replay_e_NAO_para_o_contacto():
+    """A fixture viva de 2026-09-01 (`sess c2de2f2e t1`): o turno prometeu remover um lançamento,
+    não removeu nada, e a única chamada com efeito foi `transfer_persona`.
+
+    As DUAS respostas neste teste de propósito — a divisão É a asserção. Separadas em dois
+    testes, cada um passaria com o predicado errado por baixo.
+    """
+    from cogno_anima.types import committed_this_turn, wrote_for_the_contact
+
+    ctx = _turno(_tool("resolve_date", side_effect=False),
+                 _tool("search_history", side_effect=False),
+                 _tool("transfer_persona"))
+    assert wrote_for_the_contact(ctx) is False, "o livro-razão registou uma escrita que não houve"
+    assert committed_this_turn(ctx) is True, (
+        "o replay tem de continuar a contar: uma resposta cacheada e repetida sem a "
+        "transferência promete ao contacto um encaminhamento que não acontece")
+
+
+def test_transferir_NAO_isenta_uma_escrita_real_no_mesmo_turno():
+    """A sabotagem que importa, e não é esvaziar a lista.
+
+    Sem este par, *"encaminhar não escreve"* é indistinguível de *"nada escreve"* — e o conserto
+    passaria a desarmar a rede em qualquer turno que também tivesse transferido.
+    """
+    from cogno_anima.types import wrote_for_the_contact
+
+    ctx = _turno(_tool("transfer_persona"), _tool("confirm_appointment"))
+    assert wrote_for_the_contact(ctx) is True
+
+
+def test_sem_declaracao_do_host_responde_como_o_irmao():
+    """Ausência = comportamento de hoje. Não é prudência: é a única opção — o mesmo valor é
+    CERTO para a cache e ERRADO para o traço, logo nenhum filtro pode aplicar-se por omissão."""
+    from cogno_anima.types import committed_this_turn, wrote_for_the_contact
+
+    ctx = _turno(_tool("transfer_persona"), routing=None)
+    assert wrote_for_the_contact(ctx) is committed_this_turn(ctx) is True
+
+
+def test_uma_declaracao_inutilizavel_degrada_e_nao_custa_o_turno():
+    """Um host que injecte lixo não pode rebentar um predicado que onze sítios consultam."""
+    from cogno_anima import metakeys as mk
+    from cogno_anima.types import PipelineContext, wrote_for_the_contact
+
+    ctx = PipelineContext(user_input="q")
+    ctx.turn_executions = [_tool("transfer_persona")]
+    ctx.metadata[mk.ROUTING_ONLY_TOOLS] = 12345          # nem iterável de strings
+    assert wrote_for_the_contact(ctx) is True             # degrada para "não declarei nada"
+
+
+def test_a_constante_inlined_do_routing_tambem_bate_com_a_metakey():
+    from cogno_anima import metakeys as mk
+    from cogno_anima.types import _ROUTING_ONLY_TOOLS
+
+    assert _ROUTING_ONLY_TOOLS == mk.ROUTING_ONLY_TOOLS
+    assert mk.ROUTING_ONLY_TOOLS == "routing_only_tools"

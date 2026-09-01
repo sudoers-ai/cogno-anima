@@ -74,6 +74,24 @@ EGO_CORRECTION = "ego_correction"              # correction loop: {reason, attem
 # host that persists the metadata dict WHOLESALE would make the predicate answer True for every
 # remaining turn of the session, permanently disarming both repairs and the semantic cache.
 PRIOR_ATTEMPT_COMMITTED = "prior_attempt_committed"
+
+# ── the DOMAIN axis: which tools change our routing, not the contact's world ──────────────
+#
+# Host-declared set of tool NAMES whose successful execution changes nothing the contact can
+# see — a persona transfer moves the conversation between OUR personas; the contact's ledger,
+# agenda and inbox are untouched. Read ONLY by `wrote_for_the_contact`; `committed_this_turn`
+# deliberately ignores it (see the docstrings — they are two questions, not one).
+#
+# ABSENT means "declare nothing", and the predicate then answers exactly like
+# `committed_this_turn`. That default is not caution, it is the only one available: the same
+# value is RIGHT for one consumer and WRONG for another, so no filter can be applied by default
+# to all of them. Measured 2026-09-01 — the semantic cache must keep counting a transfer (a
+# cached reply replayed without the transfer promises what it does not do), while the ledger's
+# `committed` stamp must stop counting it (a turn that only transferred told the ledger it wrote).
+#
+# The host holds ONE list and both repos read it: `cogno_host.grounding.ROUTING_ONLY_TOOLS`,
+# which its own `_wrote_for_the_contact` already filters by. Same name here on purpose.
+ROUTING_ONLY_TOOLS = "routing_only_tools"
 # How many CONSECUTIVE turns the host's anti-repeat guard has fired on this session (repaired
 # or shipped). The guard already knows the conversation is circling; before this key, only the
 # turn it fired on knew — the NEXT turn started with a clean slate and re-earned the repeat.

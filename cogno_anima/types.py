@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Any
+from typing import Callable, Optional, Any
 from pydantic import BaseModel, Field
 
 
@@ -536,9 +536,24 @@ def is_fully_sequenced(metrics: "list[StageMetrics]") -> bool:
 # ``tests/unit/test_types.py`` pins the two equal, so they cannot drift.
 _PRIOR_ATTEMPT_COMMITTED = "prior_attempt_committed"
 
+# Mirrors ``metakeys.ROUTING_ONLY_TOOLS``, inlined for the same reason and pinned by the same
+# test. Read ONLY by `wrote_for_the_contact` — `committed_this_turn` ignores it on purpose.
+_ROUTING_ONLY_TOOLS = "routing_only_tools"
+
 
 def committed_this_turn(ctx: "PipelineContext") -> bool:
     """Did this turn SUCCESSFULLY run a mutating tool, on any attempt?
+
+    Read the name as *"did anything happen that makes REPEATING this turn unsafe?"* — that is
+    what it has always computed, and what its remaining callers want. It counts EVERY mutating
+    tool, routing included: a semantic cache that replays a reply whose turn transferred the
+    conversation promises the contact a handoff that never happens.
+
+    **The other question lives next door.** *"Did the CONTACT's world change?"* is
+    `wrote_for_the_contact`, and the two are not interchangeable — on 2026-09-01 a turn whose
+    only side-effecting call was `transfer_persona` told the ledger it had written. The split
+    was made by walking the eleven callers and asking which answer each one needs; the two
+    lists below are the result, and they are the record that the division exists.
 
     `ok` is required: a mutation that FAILED (the slot was taken between propose and commit)
     changed nothing. `side_effect` is a host hint set per tool NAME, so a no-op ("already
@@ -664,12 +679,29 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     # "this source says nothing", never to "nothing was committed" — the second would trade
     # raising for RELEASING, which is the very error this whole change exists to remove. The
     # other source still gets its say.
+    return _committed_over(ctx, _EVERY_TOOL)
+
+
+def _EVERY_TOOL(_name: str) -> bool:
+    """The filter `committed_this_turn` uses: it counts every tool, by design."""
+    return True
+
+
+def _committed_over(ctx: "PipelineContext", keep: "Callable[[str], bool]") -> bool:
+    """The source walk, in ONE place, with a filter on the tool NAME.
+
+    Both predicates read the SAME three sources with the SAME failure discipline; only the set
+    of tools they count differs. Written once because the comments below are the reason this
+    function is shaped the way it is, and a second copy of them is a second copy to get wrong —
+    which is the very failure `committed_this_turn` was created to end.
+    """
     for read in (lambda: getattr(ctx, "turn_executions", None) or [],
                  lambda: getattr(getattr(ctx, "ego_result", None),
                                  "tools_executed", None) or []):
         try:
             src = read()
-            hit = any(getattr(t, "side_effect", False) and getattr(t, "ok", False) for t in src)
+            hit = any(getattr(t, "side_effect", False) and getattr(t, "ok", False)
+                      and keep(str(getattr(t, "tool", "") or "")) for t in src)
         except Exception:      # noqa: BLE001 — a source that breaks must not cost the turn
             continue
         if hit:
@@ -682,6 +714,50 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
         return bool(getattr(ctx, "metadata", None).get(_PRIOR_ATTEMPT_COMMITTED))  # type: ignore[union-attr]
     except Exception:      # noqa: BLE001
         return False
+
+
+def wrote_for_the_contact(ctx: "PipelineContext") -> bool:
+    """Did this turn change something the CONTACT can see?
+
+    The OTHER question `committed_this_turn` was answering without saying so. They differ on
+    exactly one class of tool — the ones that move the conversation between OUR personas — and
+    the difference is not cosmetic: on 2026-09-01 a turn promised to delete a ledger entry,
+    deleted nothing, ran `transfer_persona` as its only side-effecting call, and told the
+    ledger's `committed` stamp that it had written.
+
+    **Which predicate a caller wants depends on what it does with the answer**, and the two
+    populations are real, not hypothetical:
+
+      * *"did the contact's world change?"* — this one. The ledger stamp, the anti-fabrication
+        net, the voice cues, the streak caps (whose comment says replacing the reply would hide
+        a write from the contact), soma's commit gate.
+      * *"did anything happen that makes REPEATING unsafe?"* — `committed_this_turn`. The
+        semantic cache and the two repair guards. **A transfer belongs there**: a cached reply
+        replayed without it promises the contact a handoff that never happens, which is the
+        same defect as the ledger's, pointing the other way.
+
+    The excluded set is HOST-DECLARED (``mk.ROUTING_ONLY_TOOLS``) because only the host knows
+    which of its tools are routing — the same reason, and the same channel, as
+    ``mk.PRIOR_ATTEMPT_COMMITTED`` two paragraphs down in that predicate.
+
+    **Absent metadata means this answers exactly like `committed_this_turn`**, and that default
+    is not caution: it is the only one available. The same value is RIGHT for one consumer and
+    WRONG for another, so there is no filter that could be applied by default to all of them.
+
+    KNOWN GAP, and it is named rather than papered over: the third source
+    (``PRIOR_ATTEMPT_COMMITTED``) is a bare bool the host declares, carrying no tool name — so
+    it CANNOT be filtered here. It is honoured anyway, because dropping it would lose a REAL
+    write whose own record died with its context, and losing a real write is the failure this
+    whole family exists to prevent. The fix belongs where that bool is computed.
+    """
+    try:
+        raw = (getattr(ctx, "metadata", None) or {}).get(_ROUTING_ONLY_TOOLS) or ()
+        routing = frozenset(str(x) for x in raw)
+    except Exception:      # noqa: BLE001 — an unusable declaration must not cost the turn
+        routing = frozenset()
+    if not routing:
+        return committed_this_turn(ctx)
+    return _committed_over(ctx, lambda name: name not in routing)
 
 
 class PipelineContext(BaseModel):
