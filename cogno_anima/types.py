@@ -542,12 +542,14 @@ _ROUTING_ONLY_TOOLS = "routing_only_tools"
 
 
 def committed_this_turn(ctx: "PipelineContext") -> bool:
-    """Did this turn SUCCESSFULLY run a mutating tool, on any attempt?
+    """Did anything happen that makes REPEATING this turn unsafe? (A mutating tool ran, on any
+    attempt — routing included.)
 
-    Read the name as *"did anything happen that makes REPEATING this turn unsafe?"* — that is
-    what it has always computed, and what its remaining callers want. It counts EVERY mutating
-    tool, routing included: a semantic cache that replays a reply whose turn transferred the
-    conversation promises the contact a handoff that never happens.
+    That first line is the whole point of this paragraph: the NAME says "committed", which reads
+    as "wrote", and the predicate means something wider. A summary line is often all a caller
+    ever sees — an IDE hover, `help()`, a docs index — so the correction has to live there and
+    not below. It counts EVERY mutating tool: a semantic cache that replays a reply whose turn
+    transferred the conversation promises the contact a handoff that never happens.
 
     **The other question lives next door.** *"Did the CONTACT's world change?"* is
     `wrote_for_the_contact`, and the two are not interchangeable — on 2026-09-01 a turn whose
