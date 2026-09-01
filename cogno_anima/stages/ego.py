@@ -224,6 +224,7 @@ class EgoStage:
             except Exception as exc:                              # stray → wrap + propagate
                 raise ToolExecutionError(name, args, exc) from exc
             r = self._refuse_if_still_asking(r, name)
+            self._warn_if_effect_without_success(r, name)
             ex = ToolExecution(tool=name, arguments=args, result=r.output, ok=r.ok,
                                error=r.error, side_effect=r.side_effect)
             steps.append(EgoStep(index=len(steps), path=path, assistant_text="", tool_calls=[ex]))
@@ -375,6 +376,7 @@ class EgoStage:
                                 "tool=%s", i, name)
                     continue
                 r = self._refuse_if_still_asking(r, name)
+                self._warn_if_effect_without_success(r, name)
                 execs.append(ToolExecution(tool=name, arguments=args, result=r.output,
                                            ok=r.ok, error=r.error, side_effect=r.side_effect))
 
@@ -625,6 +627,25 @@ class EgoStage:
             "error": (f"'{name}' was CONFIRMED by the user but the skill asked for confirmation "
                       "again and committed nothing — it did not receive the confirmation. "
                       "Do NOT report this as done.")})
+
+    @staticmethod
+    def _warn_if_effect_without_success(r: ToolResult, name: str) -> None:
+        """A dispatcher reporting a side effect on a FAILED call is describing the TOOL.
+
+        ``side_effect`` is decided per tool NAME, before the call runs, so a dispatcher that
+        copies it onto the failure branch says "this booking wrote something" about a booking
+        the server rejected. Both shipped dispatchers did exactly that until 2026-09-01.
+
+        The core does NOT rewrite it. A host's declaration is the host's, and silently
+        correcting it would decide for them without saying so — and would hide the next source
+        that arrives with the same defect, which is the one worth knowing about. So: read the
+        two fields conjointly (``EgoResult.has_side_effects``, `committed_this_turn`) and say
+        this loudly. The signal is the point; the reader is already safe.
+        """
+        if r.side_effect and not r.ok:
+            logger.warning("stage=ego event=side_effect_without_success tool=%s — the "
+                           "dispatcher stamped side_effect on a FAILED call; it is describing "
+                           "the tool, not the result", name)
 
     @staticmethod
     def _is_confirmed(confirmed: object, name: str) -> bool:
