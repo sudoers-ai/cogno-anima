@@ -100,7 +100,11 @@ def _assert_valid_noumeno_result(res: NoumenoResult, original_input: str, model_
 
 
 
-pytestmark = pytest.mark.asyncio
+# `perception` is the nightly SHARD this module belongs to (see .github/workflows/ci.yml).
+# The three shards are defined by COMPLEMENT — the third is `not perception and not
+# semantics` — so a new integration file with no marker lands in it and runs. That is the
+# point: the workflow names `tests/integration` and never a file, so nothing can fall out.
+pytestmark = [pytest.mark.asyncio, pytest.mark.perception]
 
 
 # ────────────────────────────────────────────────────────────────────
