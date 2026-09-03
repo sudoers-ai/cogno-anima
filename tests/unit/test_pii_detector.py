@@ -43,7 +43,9 @@ def det():
 
 @pytest.mark.parametrize("text, expected", [
     ("meu CPF é 111.444.777-35", "NATIONAL_ID"),
-    ("CNPJ 11.222.333/0001-81", "TAX_ID"),
+    # COMPANY_ID e nao TAX_ID: o numero e da EMPRESA, publico, e o tipo que o detector
+    # devolve e o que decide o risco — e o risco e o que decide a ROTA.
+    ("CNPJ 11.222.333/0001-81", "COMPANY_ID"),
     ("escreve pra joao.silva@example.com", "EMAIL"),
     ("cartão 4111 1111 1111 1111", "CREDIT_CARD"),
     ("o servidor é 192.168.0.1", "IP_ADDRESS"),
