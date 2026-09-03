@@ -110,6 +110,11 @@ jobs:
   # The two `llama3` sites are monkeypatched at the httpx layer and never reach Ollama, so
   # nothing pulls that 4.7 GB.
   ollama-integration:
+    # Without an explicit name GitHub builds one from EVERY matrix value, so the third shard
+    # announces itself as `ollama-integration (downstream, not perception and not semantics)`.
+    # The check list is where a red nightly gets read; it should say which shard, not repeat
+    # the marker expression.
+    name: ollama-integration (${{ matrix.shard }})
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     strategy:
