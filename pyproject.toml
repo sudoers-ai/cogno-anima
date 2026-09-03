@@ -68,6 +68,14 @@ cogno_anima = ["prompt_templates/**/*.txt"]
 # (which is only present transitively via httpx).
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Nightly shards for tests/integration. The workflow selects with `-m`, so the path it
+# hands pytest stays `tests/integration` — an ANCESTOR of every file in it — and the
+# third shard is the COMPLEMENT of the other two, so an unmarked new file still runs.
+# tests/unit/test_ci_runs_every_test_file.py holds that line.
+markers = [
+    "perception: NOUMENO — the nightly shard for tests/integration/test_noumeno.py",
+    "semantics: NER — the nightly shard for tests/integration/test_ner.py",
+]
 
 [tool.ruff]
 line-length = 110
