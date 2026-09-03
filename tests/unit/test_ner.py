@@ -505,3 +505,68 @@ async def test_empty_mandatory_tags_defaults_to_unknown_tag():
     payload["mandatory_tags"] = ["NONSENSE_TAG"]   # filtered out → none valid
     result = await _analyze(payload)
     assert result.mandatory_tags == ["NER.UNKNOWN"]
+
+
+# ── the carry crosses turns; the value that means "no subject" does not ────────────────
+#
+# `GENERAL` is what the prompt tells the model to answer when nothing fits, so carrying it
+# into `ACTIVE DOMAINS` states an absence as if it were an affirmation — and measured against
+# a real model the line reads as an anchor: "Registra uma compra de R$ 100,00 de supermercado"
+# scores FINANCE 8/20 with no line and 0/20 with `ACTIVE DOMAINS: GENERAL` (see
+# `carried_domains`). The pair below is deliberately a PAIR: the first test alone is passed by
+# dropping the carry entirely, which would kill the continuity the carry exists for.
+
+class _PromptCapturingBackend(StubBackend):
+    """Records the user prompt the stage actually rendered."""
+    async def generate(self, system: str, prompt: str) -> tuple[str, int, int]:
+        self.generated_prompt = prompt
+        return self.response, self.tokens_in, self.tokens_out
+
+
+async def _prompt_for(active_domains):
+    backend = _PromptCapturingBackend(response=json.dumps(PERFECT_JSON))
+    analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
+    await analyzer.analyze(make_noumeno_result(), active_domains=active_domains, turn_number=2)
+    return backend.generated_prompt
+
+
+@pytest.mark.asyncio
+async def test_general_does_not_cross_to_the_next_turn():
+    """A carry of only GENERAL renders NO domain line at all — an absence is not carried."""
+    prompt = await _prompt_for(["GENERAL"])
+    assert "ACTIVE DOMAINS" not in prompt
+    assert "GENERAL" not in prompt
+
+
+@pytest.mark.asyncio
+async def test_a_real_domain_still_crosses():
+    """THE TWIN. The carry is not the defect — a real subject must keep crossing, or
+    "and the month's total?" loses the thread the carry exists to hold."""
+    prompt = await _prompt_for(["FINANCE"])
+    assert "ACTIVE DOMAINS: FINANCE" in prompt
+
+
+@pytest.mark.asyncio
+async def test_mixed_carry_keeps_only_the_real_domain():
+    """`["FINANCE", "GENERAL"]` is a real production shape (10 of the reference
+    deployment's 493 traces). It must cross as FINANCE alone — otherwise the GENERAL it
+    carries is re-emitted next turn and keeps itself alive."""
+    prompt = await _prompt_for(["FINANCE", "GENERAL"])
+    assert "ACTIVE DOMAINS: FINANCE" in prompt
+    assert "GENERAL" not in prompt
+
+
+def test_fallback_domain_is_a_member_of_the_closed_list():
+    """The filter must name a value the model can actually answer, not a typo that
+    silently filters nothing."""
+    from cogno_anima.stages.ner import FALLBACK_DOMAIN
+    assert FALLBACK_DOMAIN in NER_KNOWLEDGE_DOMAINS
+
+
+def test_carried_domains_is_pure_and_total():
+    from cogno_anima.stages.ner import carried_domains
+    assert carried_domains(None) == []
+    assert carried_domains([]) == []
+    assert carried_domains(["GENERAL"]) == []
+    assert carried_domains(["FINANCE"]) == ["FINANCE"]
+    assert carried_domains(["FINANCE", "GENERAL", "HEALTH"]) == ["FINANCE", "HEALTH"]

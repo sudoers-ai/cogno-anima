@@ -387,3 +387,11 @@ NER_KNOWLEDGE_DOMAINS: set[str] = {
     "TECH", "SCIENCE", "HEALTH", "FINANCE", "LOGISTICS", "TRAVEL",
     "HISTORY", "LAW", "PHILOSOPHY", "EDUCATION", "CULTURE", "NEWS", "GENERAL",
 }
+
+# The member of the list above that is not a topic. The NER prompt instructs
+# "Use GENERAL if none fits", so a turn tagged GENERAL is a turn where NO domain
+# was identified — the value records an ABSENCE. It is a member of the closed
+# list because the LLM must be able to answer something, not because it names a
+# subject, and `carried_domains` (ner.py) is what keeps the difference from being
+# re-derived by every caller that carries domains across turns.
+FALLBACK_DOMAIN: str = "GENERAL"

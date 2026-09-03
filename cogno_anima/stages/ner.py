@@ -27,12 +27,53 @@ from cogno_anima.errors import StageParseError
 from cogno_anima.vocab import (  # noqa: F401
     VALID_INTENTS, VALID_SENTIMENTS, VALID_TEMPORAL, VALID_TRIAD,
     VALID_MODALITY, VALID_SPEECH_ACTS, VALID_PAROLE, VALID_MANDATORY,
-    VALID_ARISTOTELIAN, NER_KNOWLEDGE_DOMAINS,
+    VALID_ARISTOTELIAN, NER_KNOWLEDGE_DOMAINS, FALLBACK_DOMAIN,
 )
 
 logger = logging.getLogger("cogno_anima.ner")
 
 STAGE_NAME = "ner"
+
+
+def carried_domains(active_domains: Optional[list[str]]) -> list[str]:
+    """The prior turn's domains, minus the ones that carry no subject.
+
+    ``FALLBACK_DOMAIN`` ("GENERAL") is what the prompt tells the model to answer when
+    nothing fits, so it records that NO domain was identified. Rendering it into the
+    next turn's ``ACTIVE DOMAINS`` line states that absence as if it were an
+    affirmation, and the model reads that line as an anchor rather than as context.
+
+    Measured 2026-09-02 (`openai:gpt-4o-mini`, temperature 0.0, N=20, the same frozen
+    NOUMENO output in every draw — only this line varies):
+
+        "Registra uma compra de R$ 100,00 de supermercado"
+            no ACTIVE DOMAINS line        → FINANCE  8/20
+            ACTIVE DOMAINS: GENERAL       → FINANCE  0/20
+            ACTIVE DOMAINS: FINANCE       → FINANCE 20/20
+        "Qual o total das despesas?"
+            no ACTIVE DOMAINS line        → FINANCE 20/20
+            ACTIVE DOMAINS: GENERAL       → FINANCE  0/20
+            ACTIVE DOMAINS: FINANCE       → FINANCE 20/20
+
+    A greeting is classified GENERAL, so every conversation that opens with one seeded
+    the carry with an absence and the next turn was born anchored: 388 of the 493 turn
+    traces in the reference deployment (78.7%) are ``["GENERAL"]``, 275 of the
+    turn-to-turn transitions are ``["GENERAL"] → ["GENERAL"]``.
+
+    The carry itself is NOT the defect and is left intact — it is what keeps "and the
+    month's total?" on the previous subject. Only the value that means "no subject"
+    stops travelling; a real domain still crosses (20/20, unchanged), and a mixed
+    ``["FINANCE", "GENERAL"]`` carry crosses as ``FINANCE`` alone instead of
+    re-emitting the GENERAL that kept it alive.
+
+    Rejected alternative, also measured: keeping the line and rendering it as
+    non-binding ("previous turn's classification — background context only, NOT a
+    constraint on this message", and a second, blunter wording). Both left the anchor
+    exactly where it was — 0/20 on BOTH sentences, i.e. no movement at all against the
+    0/20 baseline. It is the presence of the token that anchors, not its framing.
+    """
+    return [d for d in (active_domains or []) if d != FALLBACK_DOMAIN]
+
 
 # Aliases mapping common LLM deviations onto the canonical closed list above.
 # Every target value MUST be a member of NER_KNOWLEDGE_DOMAINS.
@@ -198,7 +239,8 @@ class IntentAnalyzer:
         else:
             context_turn = noumeno.context_turn
             prior_goal_line = f"PRIOR GOAL: {prior_goal}" if prior_goal else ""
-            domain_context_line = f"ACTIVE DOMAINS: {', '.join(active_domains)}" if active_domains else ""
+            carried = carried_domains(active_domains)
+            domain_context_line = f"ACTIVE DOMAINS: {', '.join(carried)}" if carried else ""
             turn_context_line = f"TURN: {turn_number}" if turn_number is not None else ""
 
         # 2. Format the user prompt
