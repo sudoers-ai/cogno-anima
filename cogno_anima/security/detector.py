@@ -122,7 +122,7 @@ INTERNATIONAL_PATTERNS: list[PiiPattern] = [
 # Brazil-focused.
 BRAZIL_PATTERNS: list[PiiPattern] = [
     _p("NATIONAL_ID", r"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b", validator=cpf_valid, name="cpf"),
-    _p("TAX_ID", r"\b\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}\b", validator=cnpj_valid, name="cnpj"),
+    _p("COMPANY_ID", r"\b\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}\b", validator=cnpj_valid, name="cnpj"),
     # BR phone: +55, DDD in parens, or mobile 9xxxx-xxxx with a separator.
     _p("PHONE", r"(?:\+55\s?)?\(\d{2}\)\s?9?\d{4}[-\s]?\d{4}\b", name="phone_ddd"),
     _p("PHONE", r"\+55\s?\d{2}\s?9?\d{4}[-\s]?\d{4}\b", name="phone_intl"),

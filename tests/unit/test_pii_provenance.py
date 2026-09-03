@@ -348,7 +348,7 @@ _SAMPLE_PER_TYPE = {
     "EMAIL":       "escreva para outra.pessoa@example.com",
     "PHONE":       "o numero dele e (11) 98888-7777",
     "NATIONAL_ID": f"o CPF dele e {STAFF_CPF}",
-    "TAX_ID":      "o CNPJ e 11.222.333/0001-81",
+    "COMPANY_ID":  "o CNPJ e 11.222.333/0001-81",
     "ADDRESS":     "o CEP e 01310-100",
     "IP_ADDRESS":  "o servidor e 192.168.15.42",
     "CREDIT_CARD": "o cartao e 4539 1488 0343 6467",
@@ -362,8 +362,13 @@ def test_every_class_the_stamp_can_carry_is_reachable_AND_named():
 
     **Why the class is on the stamp at all.** Observation mode is only worth its name if the
     counts it produces can END it, and the classes have OPPOSITE verdicts: a withheld `ADDRESS`
-    or `TAX_ID` is almost always the tenant's own CEP/CNPJ (the frequent false positive), a
+    or `COMPANY_ID` is almost always the tenant's own CEP/CNPJ (the frequent false positive), a
     withheld `NATIONAL_ID` is almost always a person who is not the one reading (the leak).
+
+    The company number got its OWN class on 2026-09-03, and that sharpens exactly this: it used
+    to arrive as `TAX_ID`, sharing a bucket with a person's tax number, so the one class most
+    likely to be a false positive and one likely to be a leak were counted together — the
+    failure this docstring describes, inside the alphabet meant to prevent it.
     Counted together they say nothing, and "observing" quietly becomes "forgetting".
 
     * every type the SHIPPED detector can produce has a sample here and reaches a
@@ -427,7 +432,7 @@ def test_clean_text_stays_byte_identical_and_silent():
 # ── The residue, NAMED rather than discovered in production ──────────────────────────────────
 
 @pytest.mark.parametrize("reply,masked_type", [
-    ("Nosso CNPJ e 11.222.333/0001-81, pode faturar.", "TAX_ID"),
+    ("Nosso CNPJ e 11.222.333/0001-81, pode faturar.", "COMPANY_ID"),
     ("Estamos na Rua das Flores, 123 - CEP 01310-100.", "ADDRESS"),
     ("Estamos na versao 1.2.3.4 do sistema.", "IP_ADDRESS"),
 ])
@@ -445,6 +450,11 @@ def test_the_known_false_positives_are_named_here_not_found_by_a_contact(reply, 
 
     The trade was made with eyes open: a clinic's CNPJ is masked so a doctor's CPF is not. When
     the declaration lands, these three flip and this test is what says so.
+
+    (The CNPJ now arrives as `COMPANY_ID`. That changes what the observation COUNTS, not
+    what the enforcing mask DOES: provenance still decides, and a number the contact never
+    supplied is still withheld. The mask is about what goes OUT; the class split was about
+    what the ID does with what comes IN.)
     """
     out = redact_pii(reply, detector=DETECTOR, mode=vocab.PII_MODE_ENFORCE)
     assert out.redacted and [f.pii_type for f in out.findings] == [masked_type]

@@ -5,6 +5,7 @@ import re
 VALID_PII_TYPES: set[str] = {
     "NATIONAL_ID",
     "TAX_ID",
+    "COMPANY_ID",
     "EMAIL",
     "PHONE",
     "CREDIT_CARD",
@@ -32,7 +33,30 @@ PII_RISK_MAP: dict[str, str] = {
     "IP_ADDRESS":    "MEDIUM",
     "DATE_OF_BIRTH": "HIGH",
     "NATIONAL_ID":   "HIGH",
+    # A person's tax number — and it stays HIGH because the aliases that still feed it are
+    # ambiguous: a Portuguese `NIF` IS a natural person's number, and `TAX_NUMBER` /
+    # `TAXPAYER_ID` name no jurisdiction at all. Where the datum is unambiguously an
+    # ORGANISATION's, it is `COMPANY_ID` below.
     "TAX_ID":        "HIGH",
+    # An organisation's public registration number (CNPJ, EIN). MEDIUM, like an address or a
+    # phone: recorded and visible to the outgoing net, but not treated as a personal
+    # identifier — because it is not one. A CNPJ is printed on every invoice the company
+    # issues; a tenant's own is on their website.
+    #
+    # It was HIGH by inheritance, and that had a measured consequence far from privacy. The ID
+    # routes `pii_risk == "HIGH"` straight to the SUPEREGO, so the EGO never runs and NO TOOL
+    # IS OFFERED. Measured on the owner's own scenario (2026-09-03, session `1a6cb213`, turn 2):
+    # the contact sends the company's registration data, `pii=[EMAIL, PHONE, TAX_ID]` scores
+    # HIGH — email and phone alone are only MEDIUM, so the CNPJ is the whole of it — the turn
+    # is routed away from the executor, and the model, holding no tools, ANNOUNCES the write it
+    # cannot perform: *"Vou cadastrar a empresa …"*. Nothing is written, and the same sentence
+    # comes back on the confirmation turn.
+    #
+    # So the fabricated confirmation there is not the model inventing: it is the routing taking
+    # the tool off the table on the exact turn the data arrives. `company_registration` is on
+    # the surface one turn earlier and one turn later — measured in the same session. And the
+    # feature that accepts a CNPJ at all (#676) is disabled by the CNPJ arriving.
+    "COMPANY_ID":    "MEDIUM",
     "PASSPORT":      "HIGH",
     "CREDIT_CARD":   "HIGH",
     "BANK_ACCOUNT":  "HIGH",
@@ -95,7 +119,10 @@ def normalize_pii_types(raw: list[str]) -> list[str]:
         "NATIONAL_IDENTITY": "NATIONAL_ID", "IDENTITY_NUMBER": "NATIONAL_ID",
         "GOVERNMENT_ID": "NATIONAL_ID", "SOCIAL_SECURITY": "NATIONAL_ID",
         "SOCIAL_SECURITY_NUMBER": "NATIONAL_ID",
-        "CNPJ": "TAX_ID", "EIN": "TAX_ID", "NIF": "TAX_ID",
+        # CNPJ/EIN identify a COMPANY; NIF and the generic ones can be a person's — see the
+        # two risk entries. Splitting the alias is the whole of the change: the type a caller
+        # gets back is what decides the risk, and the risk is what decides the route.
+        "CNPJ": "COMPANY_ID", "EIN": "COMPANY_ID", "NIF": "TAX_ID",
         "TAX_NUMBER": "TAX_ID", "TAXPAYER_ID": "TAX_ID",
         "IBAN": "BANK_ACCOUNT", "ACCOUNT_NUMBER": "BANK_ACCOUNT",
         "BANK_DETAILS": "BANK_ACCOUNT", "ROUTING_NUMBER": "BANK_ACCOUNT",
