@@ -141,6 +141,16 @@ _EXECUTION_COMPLETENESS_NOTE = (
     "per-item detail is what exposes it.\n"
 )
 
+# ONE sentence, TWO branches. It is the whole of the conversational criteria's answer to
+# "the model could not do it" and — since 2026-09-03 — the core of the execution branch's
+# out-of-reach clause too. Written once because a copy of it in the other branch is a contract
+# that diverges silently: this house already keeps `test_voice_blocks_sync` and
+# `test_code_domains_match_prompt_domains_exactly` for exactly that failure mode.
+_ADMITTING_A_LIMIT = (
+    "Admitting a limit ('I don't know', 'that is not in our list') fully satisfies this — "
+    "demanding more is asking the model to invent."
+)
+
 _CONVERSATIONAL_CRITERIA = (
     "# This turn has NO tool to execute — the persona's job is to CONVERSE. Judge the DRAFT as "
     "a reply, never the absence of an execution.\n"
@@ -156,8 +166,7 @@ _CONVERSATIONAL_CRITERIA = (
     "2. CONSTRAINTS: the draft ignores a restriction the user stated, or does what they "
     "forbade.\n"
     "3. DUCKING A QUESTION: the user asked something concrete and the draft neither answers it "
-    "nor says plainly that it does not know. Admitting a limit ('I don't know', 'that is not "
-    "in our list') fully satisfies this — demanding more is asking the model to invent. When "
+    "nor says plainly that it does not know. " + _ADMITTING_A_LIMIT + " When "
     "the user asked NOTHING (they answered a question, greeted, or made small talk) this "
     "criterion DOES NOT APPLY — do not reject for it, and do not treat it as unverifiable.\n"
     "   Restating the user's own question back at them is the clearest form of ducking, and it "
@@ -168,6 +177,41 @@ _CONVERSATIONAL_CRITERIA = (
     "answer.\n"
     "4. SAFETY/LIMITS: the draft breaks the persona's limits or a policy.\n\n"
 )
+
+# The execution branch's answer to a turn whose honest reply is "I cannot do that here".
+#
+# Criterion #1 (GOAL↔EXECUTION) and #3 (COMPLETENESS) are UNSATISFIABLE on such a turn: there was
+# no tool to run, so no execution could have met the goal and no retry can produce one. Measured
+# live 2026-09-02/03 on the scheduling hub (a persona WITH tools, therefore never conversational):
+# the contact asked for a monthly expense total, `knowledge_search` returned OK with nothing
+# financial in it, the executor drafted the truth ("I have no access to a current expense ledger
+# or recorded total") — and the judge rejected it three times, each critique citing exactly those
+# two criteria ("did not provide the total expenses ... does not fulfill the user's request"), so
+# the retry loop exhausted and the contact got the handoff sentence instead of the correct answer
+# that already existed. The contrast is the SAME turn one tree earlier: a FABRICATED draft
+# ("Compra registrada" → "Prontinho, está tudo anotado!") was approved at the FIRST attempt.
+#
+# CONDITIONAL, and that is the whole design. It is rendered only when `_format_unavailable`
+# produced a `# NOT AVAILABLE this turn` block — i.e. only when the host actually computed a
+# capability gap for this turn. Without that block the judge cannot tell "there was no tool" from
+# "there was a tool and it went unused": both render as `(no tools executed)`, and only one of
+# them makes "I can't do that" honest. So the opening travels with its evidence; a turn with no
+# block is judged exactly as before, byte for byte.
+_OUT_OF_REACH = (
+    "OUT OF REACH is a VALID outcome, and it applies ONLY to what the '# NOT AVAILABLE this "
+    "turn' block above names. When the user asked for one of THOSE and the draft says plainly "
+    "that it cannot be done here, that is a CORRECT and COMPLETE answer — APPROVE it. "
+    + _ADMITTING_A_LIMIT +
+    " Do NOT reject it under GOAL↔EXECUTION or COMPLETENESS for that missing action: there was "
+    "no tool to run, so no execution could have satisfied it and the retry you would be asking "
+    "for cannot produce one. Two things this does NOT license. (a) FABRICATION: a draft that "
+    "claims the thing was done, scheduled, registered or confirmed stays REJECTED — it is the "
+    "worse defect, not the milder one. (b) A FALSE limit: 'I can't do that' about something the "
+    "block does NOT name is judged by the criteria above as usual, because the persona may well "
+    "have had the tool and simply not used it. Everything the turn COULD do is still judged in "
+    "full.\n\n"
+)
+
 
 _BLOCKED_FALLBACK = (
     "I detected sensitive personal information in your message and can't process "
@@ -892,9 +936,18 @@ class SuperegoStage:
         # valid turn in a handoff.
         injected = ctx.metadata.get(mk.EGO_CONTEXT)
         context = f"# Context (authoritative — clock/memories/history)\n{str(injected).strip()}\n\n" if injected else ""
+        conversational = bool(ctx.metadata.get(mk.JUDGE_CONVERSATIONAL))
         criteria = (_CONVERSATIONAL_CRITERIA
-                    if ctx.metadata.get(mk.JUDGE_CONVERSATIONAL)
+                    if conversational
                     else _EXECUTION_CRITERIA + _EXECUTION_COMPLETENESS_NOTE)
+        # The opening travels WITH its evidence: the clause renders only for a turn that
+        # actually carries a computed capability gap. `unavailable` is that block — the same
+        # string, not a second reading of the metadata — so the judge can never be told "the
+        # limit is a complete answer" without being shown WHICH limits. And only in the
+        # execution branch: the conversational one has no criterion #1/#3 to open (it is
+        # APPROVE-BY-DEFAULT over a closed list) and already carries `_ADMITTING_A_LIMIT` in
+        # its criterion 3, so putting it there would be a second copy of a settled rule.
+        out_of_reach = _OUT_OF_REACH if unavailable and not conversational else ""
         return (
             f'# User request\n"{ctx.user_input}"\n\n'
             f"{context}"
@@ -947,6 +1000,7 @@ class SuperegoStage:
             "not the entire goal. A read-only step that returned the right data is DONE for this "
             "turn. Reject only when the execution did the WRONG thing: ignored the request, used "
             "data that does not match it, fabricated, or claimed a mutation that never happened.\n\n"
+            f"{out_of_reach}"
             'Respond ONLY with: {"approved": true/false, "critique": '
             '"...if not approved, what is wrong, to guide a retry..."}'
         )
