@@ -334,6 +334,22 @@ def test_ner_vocab_is_sourced_from_vocab_module():
     assert ner.VALID_MANDATORY is vocab.VALID_MANDATORY
 
 
+def test_stop_reasons_keep_the_loop_and_the_contact_apart():
+    """The stop-reason alphabet is CLOSED, so it is pinned by equality and not by
+    membership: a new terminal signal is a contract change for every host that switches
+    on it, and it should cost a failing test rather than arrive unannounced.
+
+    The pair this pins is `judge_exhausted` (our correction budget ran out — a fact about
+    US) versus `needs_clarification` (the reply asks the contact something — a fact about
+    THEM). They were one value until 2026-09-03, and a host cap counting the merged signal
+    was deleting answers that were already written and correct."""
+    from cogno_anima import vocab
+    assert vocab.VALID_STOP_REASONS == {
+        "completed", "human_handoff", "semantic_cache", "scope_blocked", "pii_blocked",
+        "judge_exhausted", "needs_clarification",
+    }
+
+
 # ────────────────────────────────────────────────────────────────────
 #  No tool / skill routing in NER
 # ────────────────────────────────────────────────────────────────────

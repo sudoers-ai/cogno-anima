@@ -141,11 +141,26 @@ PII_MODE_DEFAULT = PII_MODE_OBSERVE
 # human, serve the cache, send a refusal) — the core only sets the signal.
 VALID_STOP_REASONS: set[str] = {
     "completed", "human_handoff", "semantic_cache", "scope_blocked", "pii_blocked",
-    # The judge rejected the EGO execution but nothing was committed (the EGO only ran
+    # ── two facts that used to share ONE name ────────────────────────────────────────
+    # Both are terminal and both fall through to a voiced reply; they differ in WHO the
+    # fact is about, and a host cap that cannot tell them apart deletes correct answers.
+    #
+    # The judge rejected the EGO execution and nothing was committed (the EGO only ran
     # READ tools — no mutating dispatch), so instead of dead-ending in a human handoff the
     # SUPEREGO voices a grounded continuation ("I found your appointment — change it to
-    # 11:00?"). The turn is still terminal for the core; the HOST owns the escalation
-    # policy (e.g. force a real handoff after N consecutive clarifications).
+    # 11:00?"). This is a fact about OUR loop: the correction budget ran out. It says
+    # nothing about what the contact needs next, and very often the reply is a complete,
+    # correct answer the judge simply would not sign.
+    "judge_exhausted",
+    # The reply ends by ASKING THE CONTACT something, because their own request could not
+    # be resolved (an ACTION whose referent this system cannot find). N of those in a row
+    # is a conversation going nowhere — which is what a host-side cap is for, and the only
+    # thing it should ever count. The HOST owns the escalation policy on both signals.
+    #
+    # These were one value until 2026-09-03: measured over the demo box's 406 persisted
+    # turns, 92 exhausted the loop and NOT ONE carried NER intent CLARIFICATION — so every
+    # signal the cap counted was the first fact wearing the second one's name, and 21 turns
+    # had an already-written voice thrown away for the tenant's fallback phrase.
     "needs_clarification",
 }
 
