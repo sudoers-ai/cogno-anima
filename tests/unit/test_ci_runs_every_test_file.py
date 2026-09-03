@@ -62,7 +62,8 @@ _TAKES_VALUE = frozenset({
     "-k", "-m", "-p", "-n", "-c", "-o", "-W", "-r", "--maxfail", "--rootdir", "--deselect",
     "--ignore", "--ignore-glob", "--confcutdir", "--import-mode", "--basetemp", "--junitxml",
     "--junit-xml", "--log-file", "--numprocesses", "--dist", "--cov", "--cov-report",
-    "--cov-config", "--timeout", "--durations", "--tb", "--color", "--capture", "--rootdir",
+    "--cov-config", "--cov-fail-under", "--timeout", "--durations", "--tb", "--color",
+    "--capture",
 })
 # Shell tokens that end one command and begin another.
 _SEPARATORS = frozenset({"|", "||", "&", "&&", ";", "(", ")", "<", ">", ">>", "|&", "&>"})
@@ -275,6 +276,7 @@ def test_an_option_value_is_never_mistaken_for_a_collection_path():
                  "pytest --deselect tests/integration tests/unit",
                  "pytest -c tests/pytest.ini tests/unit",
                  "pytest -o testpaths=tests tests/unit",
+                 "pytest --cov-fail-under 85 tests/unit",
                  "pytest -n 4 tests/unit"):
         assert _paths(_pytest_argv(_commands(line)[0])) == ["tests/unit"], line
 
