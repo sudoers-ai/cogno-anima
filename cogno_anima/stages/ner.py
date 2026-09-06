@@ -263,7 +263,7 @@ class IntentAnalyzer:
             raw_response = raw
             return self._decode(raw)
 
-        data, tokens_in, tokens_out = await generate_json_resilient(
+        data, tokens_in, tokens_out, cached_tokens = await generate_json_resilient(
             backend, self._system, prompt, _decode_capturing, stage=STAGE_NAME)
         elapsed_ms = (time.perf_counter() - t0) * 1000
 
@@ -272,6 +272,8 @@ class IntentAnalyzer:
             elapsed_ms=round(elapsed_ms, 2),
             tokens_in=tokens_in,
             tokens_out=tokens_out,
+            # A SUBSET of tokens_in, already counted in it — the provider's own prompt cache.
+            cached_tokens=cached_tokens,
             # The layer that AUTHORS a text owns its identity: this stage loads its own
             # templates, so nobody upstream can name them. Same rule that makes the EGO stamp
             # its own `attempt`. Computed once at construction — the templates are fixed per

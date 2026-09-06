@@ -38,7 +38,7 @@ from cogno_anima import vocab
 from cogno_anima.types import (
     PipelineContext, StageMetrics, SuperegoResult, ScopeCheckResult,
 )
-from cogno_synapse import LLMBackend
+from cogno_synapse import LLMBackend, cached_tokens_of
 from cogno_anima.utils import WarnOnce
 from cogno_anima.security.prompt_guard import sanitize_untrusted
 from cogno_anima.stages.drift import DriftCalculator
@@ -761,12 +761,14 @@ class SuperegoStage:
         t0 = time.perf_counter()
         model = getattr(backend, "model", "unknown")
 
-        def _result(blocked: bool, msg: str, ti: int = 0, to: int = 0) -> ScopeCheckResult:
+        def _result(blocked: bool, msg: str, ti: int = 0, to: int = 0,
+                    cached: int = 0) -> ScopeCheckResult:
             return ScopeCheckResult(
                 blocked=blocked, refusal_message=msg,
                 metrics=StageMetrics(stage="superego_scope",
                                      elapsed_ms=(time.perf_counter() - t0) * 1000,
-                                     tokens_in=ti, tokens_out=to, model=model),
+                                     tokens_in=ti, tokens_out=to, cached_tokens=cached,
+                                     model=model),
             )
 
         # No rules to enforce → ALLOW.
@@ -822,12 +824,16 @@ class SuperegoStage:
         prompt = self._build_scope_prompt(scope_prompt, ctx.user_input, language)
         try:
             raw, ti, to = await backend.generate(_SCOPE_SYSTEM, prompt)
+            # Read with NO await in between — the contract of ``cached_tokens_of``. The
+            # early-exit paths above pass no count on purpose: no call ran on them, and the
+            # backend is shared, so reading it there would bill this turn for another's cache.
+            cached = cached_tokens_of(backend)
             raw, _ = self.strip_cot(raw)
             data = self._parse_json(raw)
             blocked = bool(data.get("blocked", False))
             msg = str(data.get("refusal_message", "")) if blocked else ""
             logger.info("SUPEREGO scope blocked=%s", blocked)
-            return _result(blocked, msg, ti, to)
+            return _result(blocked, msg, ti, to, cached)
         except Exception as exc:  # noqa: BLE001 — fail-open: never refuse on error
             logger.warning("scope guard failed (%s) — allowing by default", exc)
             return _result(False, "")
@@ -872,12 +878,14 @@ class SuperegoStage:
         t0 = time.perf_counter()
         model = getattr(backend, "model", "unknown")
 
-        def _result(approved: bool, critique: Optional[str], ti: int = 0, to: int = 0) -> SuperegoResult:
+        def _result(approved: bool, critique: Optional[str], ti: int = 0, to: int = 0,
+                    cached: int = 0) -> SuperegoResult:
             return SuperegoResult(
                 approved=approved, critique=critique,
                 metrics=StageMetrics(stage="superego_judge",
                                      elapsed_ms=(time.perf_counter() - t0) * 1000,
-                                     tokens_in=ti, tokens_out=to, model=model),
+                                     tokens_in=ti, tokens_out=to, cached_tokens=cached,
+                                     model=model),
             )
 
         # Nothing executed → nothing to judge.
@@ -887,6 +895,7 @@ class SuperegoStage:
         prompt = self._build_judge_prompt(ctx, limits_prompt)
         try:
             raw, ti, to = await backend.generate(_JUDGE_SYSTEM, prompt)
+            cached = cached_tokens_of(backend)
             raw, _ = self.strip_cot(raw)
             data = self._parse_json(raw)
             approved = bool(data.get("approved", False))
@@ -897,7 +906,7 @@ class SuperegoStage:
                 # A rejection feeds the EGO↔SUPEREGO correction loop — surface it.
                 logger.warning("stage=superego event=judge approved=false critique=%s",
                                (critique or "")[:80])
-            return _result(approved, critique, ti, to)
+            return _result(approved, critique, ti, to, cached)
         except Exception as exc:  # noqa: BLE001 — fail-CLOSED: don't pass unverified
             logger.warning("judge failed (%s) — not approving (fail-closed)", exc)
             return _result(False, "could not verify the execution; please retry")
@@ -1212,6 +1221,7 @@ class SuperegoStage:
         prompt = self._build_voice_prompt(ctx, payload, rendered, traits)
         adjustments += [f"trait:{t}" for t in traits]
         raw, ti, to = await backend.generate(voice_prompt or "You are a helpful assistant.", prompt)
+        cached = cached_tokens_of(backend)
         response, cot_stripped = self.strip_cot(raw)
 
         # Deterministic envelope backstop: the voicer sometimes answers in JSON.
@@ -1270,7 +1280,8 @@ class SuperegoStage:
             cot_stripped=cot_stripped,
             metrics=StageMetrics(stage="superego_voice",
                                  elapsed_ms=(time.perf_counter() - t0) * 1000,
-                                 tokens_in=ti, tokens_out=to, model=model),
+                                 tokens_in=ti, tokens_out=to, cached_tokens=cached,
+                                 model=model),
         )
 
     def _build_voice_prompt(self, ctx: PipelineContext, payload: str,

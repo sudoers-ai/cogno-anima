@@ -39,6 +39,20 @@ class StageMetrics(BaseModel):
     # `tokens_total` so the stage's true token cost is a single number.
     embedding_tokens: int = 0  # tokens consumed by embedding calls (0 if cached/unreported)
     embedding_calls: int = 0   # number of embed() operations performed
+    # The SUBSET of ``tokens_in`` the provider served from its OWN prompt cache — not an extra
+    # amount, and deliberately NOT added to ``tokens_total``: it is already inside ``tokens_in``,
+    # and adding it would double-count the same tokens in every allowance and every dashboard.
+    #
+    # It exists because it is worth MONEY and nothing carried it. Measured live 2026-09-03: a
+    # second call with the same prefix reported 2432 cached of 2625 prompt tokens (92.6%), and
+    # that is the ordinary shape of a turn here — the EGO's correction retries re-send the same
+    # system prompt seconds apart, and repeats are 40.2% of the month's tokens. The provider
+    # bills those at a much lower per-token rate; a meter that cannot see them prices every
+    # retry as a fresh prompt and reports a cost we did not pay.
+    #
+    # 0 means "unknown or none", which downstream is the FULL input rate — today's behaviour.
+    # Only a backend that reports it (see ``cogno_synapse.cached_tokens_of``) makes it non-zero.
+    cached_tokens: int = 0
     tokens_total: int = 0
     model: str
 

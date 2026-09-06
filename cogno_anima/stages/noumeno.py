@@ -210,7 +210,7 @@ class Noumeno:
         # A response cut mid-stream is transient and buys exactly one more attempt; anything
         # else still raises on the first. Tokens are summed across attempts so a retry shows
         # up in metering instead of being billed invisibly.
-        data, tokens_in, tokens_out = await generate_json_resilient(
+        data, tokens_in, tokens_out, cached_tokens = await generate_json_resilient(
             llm, self._system, prompt, self._parse_json, stage=STAGE_NAME)
         rewritten = data.get("rewritten", "").strip() or user_input
 
@@ -235,11 +235,12 @@ class Noumeno:
                 "stage=noumeno event=few_shot_echo rewritten=%r — retrying without the "
                 "examples block", rewritten)
             try:
-                data2, t2, o2 = await generate_json_resilient(
+                data2, t2, o2, c2 = await generate_json_resilient(
                     llm, self._system_sans_examples, prompt, self._parse_json,
                     stage=STAGE_NAME)
                 tokens_in += t2
                 tokens_out += o2
+                cached_tokens += c2
                 retried = (data2.get("rewritten") or "").strip()
                 # The retry always wins when it produced anything: it ran without the
                 # examples, so its answer is the model's uncontaminated reading. Measured
@@ -313,6 +314,8 @@ class Noumeno:
             elapsed_ms=round(elapsed_ms, 2),
             tokens_in=tokens_in,
             tokens_out=tokens_out,
+            # A SUBSET of tokens_in, already counted in it — the provider's own prompt cache.
+            cached_tokens=cached_tokens,
             # The layer that AUTHORS a text owns its identity: this stage loads its own
             # templates, so nobody upstream can name them. Same rule that makes the EGO stamp
             # its own `attempt`. Computed once at construction — the templates are fixed per
