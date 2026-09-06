@@ -1,18 +1,15 @@
 """
-Integration test for CompositeDispatcher against a real EGO + Ollama model.
+Integration test for CompositeDispatcher against a real EGO + a real model.
 
 Proves the merge works end-to-end: two tools live in *separate* source
 dispatchers (as a finance module and a scheduling module would), are merged into
 one CompositeDispatcher, and the real EGO — seeing a single flat tool set — picks
-the right tool, which routes to the source that owns it. Auto-skipped without
-Ollama. temperature=0.0 for determinism.
+the right tool, which routes to the source that owns it. Auto-skipped when the
+configured model is unreachable. temperature=0.0 for determinism.
 """
 
-import os
-import httpx
 import pytest
 
-from cogno_synapse import OllamaBackend
 from cogno_anima.stages.ego import EgoStage
 from cogno_anima.tools import CompositeDispatcher
 from cogno_anima.types import (
@@ -22,16 +19,7 @@ from cogno_anima.types import (
     StageMetrics,
     ToolResult,
 )
-
-MODEL = os.environ.get("COGNO_TEST_MODEL", "qwen3:8b")
-
-
-async def is_ollama_available() -> bool:
-    try:
-        async with httpx.AsyncClient(timeout=1.0) as client:
-            return (await client.get("http://localhost:11434/")).status_code == 200
-    except Exception:
-        return False
+from tests.integration import backends
 
 
 class FinanceDispatcher:
@@ -94,9 +82,8 @@ def _ctx(task: str) -> PipelineContext:
 
 @pytest.mark.asyncio
 async def test_ego_executes_tool_from_merged_source():
-    if not await is_ollama_available():
-        pytest.skip("Local Ollama server (http://localhost:11434) is not running.")
-    backend = OllamaBackend(model=MODEL, temperature=0.0)
+    await backends.skip_unless_available()
+    backend = backends.text_backend()
 
     finance, scheduling = FinanceDispatcher(), SchedulingDispatcher()
     composite = CompositeDispatcher([finance, scheduling])

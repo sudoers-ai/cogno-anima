@@ -1,36 +1,27 @@
 """
-Integration tests for the EGO stage (Stage 4) against a real Ollama model.
+Integration tests for the EGO stage (Stage 4) against a real model.
 
-The default ``OllamaBackend`` does text generation only (no ``chat_with_tools``),
+The default (Ollama) backend does text generation only (no ``chat_with_tools``),
 so the EGO runs the **text-fallback path** — the model emits ``<TOOL_CALL>`` tags
-which ``parse_tool_calls_from_text`` reads. This is exactly the path the distilled
-student will use, so it is the one most worth exercising end-to-end.
+which ``parse_tool_calls_from_text`` reads. That is the path the distilled student
+will use, so it is the one most worth exercising end-to-end; point
+``COGNO_TEST_MODEL`` at a cloud model and the same test walks the native path
+instead, which is what the assertion below reads off the backend rather than
+assuming.
 
 Tool execution is delegated to an in-process ``InMemoryDispatcher`` test host (no
-DB/MCP). Auto-skipped if Ollama is unreachable. temperature=0.0 for determinism.
+DB/MCP). Auto-skipped when the configured model is unreachable (``backends``
+decides what that means). temperature=0.0 for determinism.
 """
 
-import os
-import httpx
 import pytest
 
-from cogno_synapse import OllamaBackend
 from cogno_synapse.base import ToolCallingBackend
 from cogno_anima.stages.ego import EgoStage
 from cogno_anima.types import (
     PipelineContext, IntentResult, NoumenoResult, StageMetrics, ToolResult,
 )
-
-MODEL = os.environ.get("COGNO_TEST_MODEL", "qwen3:8b")
-
-
-async def is_ollama_available() -> bool:
-    try:
-        async with httpx.AsyncClient(timeout=1.0) as client:
-            resp = await client.get("http://localhost:11434/")
-            return resp.status_code == 200
-    except Exception:
-        return False
+from tests.integration import backends
 
 
 # ── in-process host dispatcher (the "hands") ─────────────────────────
@@ -95,12 +86,14 @@ def _ctx(task: str, intent_class: str = "ACTION_REQUEST") -> PipelineContext:
 
 
 @pytest.mark.asyncio
-async def test_ego_executes_tool_via_fallback():
-    if not await is_ollama_available():
-        pytest.skip("Local Ollama server (http://localhost:11434) is not running.")
-    backend = OllamaBackend(model=MODEL, temperature=0.0)
-    # default OllamaBackend has no native FC → EGO uses the text-fallback path
-    assert not isinstance(backend, ToolCallingBackend)
+async def test_ego_executes_tool():
+    await backends.skip_unless_available()
+    backend = backends.text_backend()
+    # A text-only backend (the local default) has no native FC → the EGO takes the
+    # text-fallback path; a cloud backend satisfies ToolCallingBackend and takes the
+    # native one. Which one it is follows the CONFIGURED backend, so read it off the
+    # object instead of asserting the local case as if it were the only one.
+    expected_path = "native" if isinstance(backend, ToolCallingBackend) else "fallback"
 
     disp = InMemoryDispatcher()
     ctx = await EgoStage().process(
@@ -108,7 +101,7 @@ async def test_ego_executes_tool_via_fallback():
     res = ctx.ego_result
 
     assert res is not None
-    assert res.steps and res.steps[0].path == "fallback"
+    assert res.steps and res.steps[0].path == expected_path
     names = [t.tool for t in res.tools_executed]
     assert "record_expense" in names, f"expected record_expense, got {names}; draft={res.draft!r}"
     assert ("record_expense", ) in [(n,) for n, _ in disp.executed]
@@ -117,14 +110,13 @@ async def test_ego_executes_tool_via_fallback():
 
 @pytest.mark.asyncio
 async def test_ego_metrics_are_real():
-    if not await is_ollama_available():
-        pytest.skip("Local Ollama server is not running.")
-    backend = OllamaBackend(model=MODEL, temperature=0.0)
+    await backends.skip_unless_available()
+    backend = backends.text_backend()
     disp = InMemoryDispatcher()
     ctx = await EgoStage().process(
         _ctx("What is my current balance?"), backend, disp, system_prompt=SYSTEM)
     res = ctx.ego_result
-    assert res.metrics.model == MODEL
+    assert res.metrics.model == backend.model
     assert res.metrics.tokens_in > 0 and res.metrics.tokens_out > 0
     assert res.metrics.tokens_total == res.metrics.tokens_in + res.metrics.tokens_out
     # folds into the pipeline totals
@@ -133,9 +125,8 @@ async def test_ego_metrics_are_real():
 
 @pytest.mark.asyncio
 async def test_ego_produces_draft():
-    if not await is_ollama_available():
-        pytest.skip("Local Ollama server is not running.")
-    backend = OllamaBackend(model=MODEL, temperature=0.0)
+    await backends.skip_unless_available()
+    backend = backends.text_backend()
     disp = InMemoryDispatcher()
     ctx = await EgoStage().process(
         _ctx("Thanks, that's all for now.", intent_class="SOCIAL"),
@@ -160,9 +151,8 @@ async def test_a_real_model_stops_repeating_once_it_SEES_the_frustration():
     sees the frustration is its business; what the pipeline owes it is a task that is no longer
     identical. Pinning a phrase here would be pinning this model's taste.
     """
-    if not await is_ollama_available():
-        pytest.skip("Ollama unavailable")
-    backend = OllamaBackend(model=MODEL, temperature=0.0)
+    await backends.skip_unless_available()
+    backend = backends.text_backend()
     disp = InMemoryDispatcher()
 
     async def draft(sentiment: str) -> str:

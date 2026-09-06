@@ -1,8 +1,9 @@
 """
 tests/integration/test_noumeno.py — NOUMENO stage integration tests.
 
-Uses REAL LLM calls via OllamaBackend + OllamaEmbedder.
-Auto-skipped if Ollama is not available.
+Uses REAL LLM calls via the backend + embedder ``tests/integration/backends.py``
+builds from ``COGNO_TEST_MODEL`` / ``COGNO_TEST_EMBED_MODEL`` (local Ollama by
+default). Auto-skipped when the configured models are not available.
 
 Validates:
   - Dialogue flows extracted directly from Cogno turn database (PostgreSQL)
@@ -12,41 +13,30 @@ Validates:
   - Full structural validation of NoumenoResult outputs across all tests
 """
 
-import os
 import pytest
 import json
 import httpx
 from pathlib import Path
 
 from cogno_anima.stages.noumeno import Noumeno, NoumenoResult
-from cogno_synapse import OllamaBackend, OllamaEmbedder, CachingEmbedder
+from cogno_synapse import LLMBackend, OllamaBackend, OllamaEmbedder, CachingEmbedder
 from cogno_anima.types import PipelineContext
+from tests.integration import backends
 
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "cogno_anima" / "prompt_templates"
 SLANGS = {"vc": "você", "pq": "porque", "blz": "beleza", "pfv": "por favor"}
 
 
-async def is_ollama_available() -> bool:
-    try:
-        async with httpx.AsyncClient(timeout=1.0) as client:
-            resp = await client.get("http://localhost:11434/")
-            return resp.status_code == 200
-    except Exception:
-        return False
+# One place decides which models the whole integration run talks to — see
+# tests/integration/backends.py. It was hardcoded INSIDE the two helpers below, which is how a
+# CI job that pulled a different model still asked Ollama for `mistral` and got 404 on every
+# real test — invisible locally, where every model is already present.
 
 
-# Read from the env like the sibling suites, so one variable drives the whole integration run.
-# It was hardcoded INSIDE the two helpers below, which is how a CI job that pulled a different
-# model still asked Ollama for `mistral` and got 404 on every real test — invisible locally,
-# where every model is already present.
-MODEL = os.environ.get("COGNO_TEST_MODEL", "qwen3:8b")
-
-
-def _make_real_noumeno() -> tuple[Noumeno, OllamaBackend]:
-    # Using temperature=0.0 to prevent hallucinations and make integration tests deterministic
-    llm = OllamaBackend(model=MODEL, temperature=0.0)
-    embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text:latest"))
-    noumeno = Noumeno(embedder=embedder, prompts_dir=PROMPTS_DIR, slangs=SLANGS)
+def _make_real_noumeno() -> tuple[Noumeno, LLMBackend]:
+    # temperature=0.0 (set by `backends`) to prevent hallucinations and keep these deterministic
+    llm = backends.text_backend()
+    noumeno = Noumeno(embedder=backends.embedder(), prompts_dir=PROMPTS_DIR, slangs=SLANGS)
     return noumeno, llm
 
 
@@ -140,8 +130,7 @@ REAL_TURNS_INPUTS = [
 @pytest.mark.parametrize("desc,raw_input,expected_keywords", REAL_TURNS_INPUTS, ids=[d for d, _, _ in REAL_TURNS_INPUTS])
 async def test_noumeno_produces_valid_result(desc, raw_input, expected_keywords):
     """Each input type extracted from database should produce a valid rewrite containing the expected keywords."""
-    if not await is_ollama_available():
-        pytest.skip("Local Ollama server (http://localhost:11434) is not running.")
+    await backends.skip_unless_available(embed=True)
 
     noumeno, llm = _make_real_noumeno()
     ctx = PipelineContext(user_input=raw_input)
@@ -188,8 +177,7 @@ PTBR_DB_INPUTS = [
 @pytest.mark.parametrize("desc,raw_input", PTBR_DB_INPUTS, ids=[d for d, _ in PTBR_DB_INPUTS])
 async def test_noumeno_no_refusal_for_ptbr(desc, raw_input):
     """NOUMENO must rewrite PT-BR chat signals and confirmations without triggering LLM refusal templates."""
-    if not await is_ollama_available():
-        pytest.skip("Local Ollama server (http://localhost:11434) is not running.")
+    await backends.skip_unless_available(embed=True)
 
     noumeno, llm = _make_real_noumeno()
     ctx = PipelineContext(user_input=raw_input)
@@ -243,8 +231,7 @@ CONVERSATIONAL_FLOWS = {
 @pytest.mark.parametrize("flow_name", CONVERSATIONAL_FLOWS.keys())
 async def test_noumeno_conversational_flows(flow_name):
     """Verifies output quality and history injection behavior based on continuity decisions during conversation flows."""
-    if not await is_ollama_available():
-        pytest.skip("Local Ollama server (http://localhost:11434) is not running.")
+    await backends.skip_unless_available(embed=True)
 
     noumeno, base_llm = _make_real_noumeno()
     spy_llm = SpyLLM(base_llm)
@@ -341,7 +328,7 @@ async def test_noumeno_mocked_ollama_integration(monkeypatch):
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
 
     llm = OllamaBackend(model="llama3")   # mocked below — never pulled
-    embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text"))
+    embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text"))  # mocked too
     noumeno = Noumeno(embedder=embedder, prompts_dir=PROMPTS_DIR, slangs=SLANGS)
 
     ctx = PipelineContext(user_input="olá vc, como vai?")
@@ -381,8 +368,7 @@ async def test_noumeno_mocked_ollama_integration(monkeypatch):
 
 async def test_noumeno_determinism():
     """With temperature=0.0, running the same input twice must produce byte-identical rewrites."""
-    if not await is_ollama_available():
-        pytest.skip("Local Ollama server (http://localhost:11434) is not running.")
+    await backends.skip_unless_available(embed=True)
 
     noumeno, llm = _make_real_noumeno()
     raw = "Quero cadastrar meu cachorro Thor que é um Golden Retriever"
@@ -435,12 +421,11 @@ ANAPHORIC_CASES = [
 @pytest.mark.parametrize("case", ANAPHORIC_CASES, ids=[c["desc"] for c in ANAPHORIC_CASES])
 async def test_noumeno_anaphoric_reference_resolution(case):
     """Short references like 'isso', 'dele', 'ela' must be resolved using injected history."""
-    if not await is_ollama_available():
-        pytest.skip("Local Ollama server (http://localhost:11434) is not running.")
+    await backends.skip_unless_available(embed=True)
 
     # Using subject_threshold=0.40 to handle cross-lingual (PT input vs EN history) similarity
-    llm = OllamaBackend(model=MODEL, temperature=0.0)
-    embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text:latest"))
+    llm = backends.text_backend()
+    embedder = backends.embedder()
     noumeno = Noumeno(embedder=embedder, prompts_dir=PROMPTS_DIR, slangs=SLANGS, subject_threshold=0.40)
     spy_llm = SpyLLM(llm)
 
@@ -479,8 +464,7 @@ async def test_noumeno_anaphoric_reference_resolution(case):
 
 async def test_noumeno_slang_expansion_in_prompt():
     """Slang dictionary entries must be expanded in the prompt sent to the LLM."""
-    if not await is_ollama_available():
-        pytest.skip("Local Ollama server (http://localhost:11434) is not running.")
+    await backends.skip_unless_available(embed=True)
 
     noumeno, base_llm = _make_real_noumeno()
     spy_llm = SpyLLM(base_llm)
@@ -556,7 +540,7 @@ async def test_noumeno_drift_reconciliation(monkeypatch):
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
 
     llm = OllamaBackend(model="llama3")   # mocked below — never pulled
-    embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text"))
+    embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text"))  # mocked too
     noumeno = Noumeno(embedder=embedder, prompts_dir=PROMPTS_DIR, slangs=SLANGS)
 
     ctx = PipelineContext(user_input="Qual o preço do bitcoin?")
@@ -585,8 +569,7 @@ async def test_noumeno_context_used_consistency():
     Scenario B: Subject changes → context_used = False (even if LLM returns context_turn)
     Scenario C: No history at all → context_used = False
     """
-    if not await is_ollama_available():
-        pytest.skip("Local Ollama server (http://localhost:11434) is not running.")
+    await backends.skip_unless_available(embed=True)
 
     noumeno, llm = _make_real_noumeno()
 
@@ -681,8 +664,7 @@ async def test_noumeno_short_reply_resolution(case):
     resolved into a full statement carrying the question's content — the context-blind NER
     downstream cannot recover from a bare "Yes." (it classifies SOCIAL and the GoalManager
     wipes the goal)."""
-    if not await is_ollama_available():
-        pytest.skip("Local Ollama server (http://localhost:11434) is not running.")
+    await backends.skip_unless_available(embed=True)
 
     noumeno, llm = _make_real_noumeno()
 
