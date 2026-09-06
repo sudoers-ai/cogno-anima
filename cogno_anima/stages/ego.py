@@ -40,7 +40,7 @@ from cogno_anima.types import (
     EgoResult, ToolResult,
 )
 from cogno_anima.security.prompt_guard import sanitize_untrusted
-from cogno_synapse import LLMBackend
+from cogno_synapse import LLMBackend, cached_tokens_of
 from cogno_synapse.base import ToolCallingBackend
 from cogno_synapse.tool_parsing import parse_tool_calls_from_text
 from cogno_anima.tools import ToolDispatcher, ToolPolicyDispatcher
@@ -180,7 +180,7 @@ class EgoStage:
 
         steps: list[EgoStep] = []
         pending_confirmation: list[ToolExecution] = []
-        total_in = total_out = 0
+        total_in = total_out = total_cached = 0
         seen_calls: dict[str, int] = {}
         failed_calls: set[str] = set()
         consecutive_blocks = 0
@@ -256,13 +256,22 @@ class EgoStage:
             if fc_backend is not None:
                 tool_choice = "required" if (i == 0 and tools and force_first) else None
                 msg, ti, to = await fc_backend.chat_with_tools(messages, tools, tool_choice)
+                # Read with NO await in between — the contract of ``cached_tokens_of``.
+                cached = cached_tokens_of(fc_backend)
                 assistant_text = msg.get("content", "") or ""
                 raw_calls = msg.get("tool_calls") or parse_tool_calls_from_text(assistant_text, tools) or []
             else:
                 assistant_text, ti, to = await backend.generate(system, user_prompt)
+                cached = cached_tokens_of(backend)
                 raw_calls = parse_tool_calls_from_text(assistant_text, tools) or []
             total_in += ti
             total_out += to
+            # Summed per STEP, like the tokens beside it. This loop is where the money is:
+            # every step after the first re-sends the same system prompt and tool schemas, so
+            # the provider serves most of it from its cache — and the correction retries do it
+            # again seconds later. One read at the end would describe the last call while the
+            # tokens describe all of them.
+            total_cached += cached
 
             # ── natural termination: no tool calls → draft is the text ─
             if not raw_calls:
@@ -425,7 +434,8 @@ class EgoStage:
             tools_offered=sorted(valid_names),
             metrics=StageMetrics(
                 stage=STAGE_NAME, elapsed_ms=elapsed_ms,
-                tokens_in=total_in, tokens_out=total_out, model=getattr(backend, "model", "unknown"),
+                tokens_in=total_in, tokens_out=total_out, cached_tokens=total_cached,
+                model=getattr(backend, "model", "unknown"),
                 # The EGO knows which correction attempt it is — the line above proves it — so
                 # it stamps its OWN metrics rather than leaving a 0 for an orchestrator to fill.
                 # Left unset, `ego_result.attempt` said 2 while `ego_result.metrics.attempt`

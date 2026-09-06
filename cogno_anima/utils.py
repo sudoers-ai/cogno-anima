@@ -4,6 +4,8 @@ import math
 import string
 from typing import Optional, Any, Callable, Iterable
 
+from cogno_synapse import cached_tokens_of
+
 _logger = logging.getLogger("cogno_anima.utils")
 
 # What a stage records when the model OMITS its `confidence` key. Shared on purpose: the ID
@@ -285,12 +287,18 @@ async def generate_json_resilient(
     *,
     stage: str,
     attempts: int = 2,
-) -> "tuple[dict, int, int]":
+) -> "tuple[dict, int, int, int]":
     """``llm.generate`` + parse, retrying ONLY a response that arrived truncated.
 
-    Returns ``(data, tokens_in, tokens_out)`` with the token counts **summed across every
-    attempt**. A retry that bills silently would understate the turn in metering, and the
+    Returns ``(data, tokens_in, tokens_out, cached_tokens)`` with every count **summed across
+    every attempt**. A retry that bills silently would understate the turn in metering, and the
     stages fold these numbers straight into ``StageMetrics``.
+
+    ``cached_tokens`` is the part of ``tokens_in`` the provider served from its own prompt
+    cache (0 when the backend does not report it). It is summed per ATTEMPT, not read once at
+    the end, for the same reason the other two are: a truncation retry re-sends the same prefix,
+    so it is precisely the attempt most likely to be cached, and the number would otherwise
+    describe one call while the tokens describe two.
 
     The retry is deliberately narrow. ``looks_truncated`` separates a severed stream (worth
     one more call — the next one usually completes) from a model that answered prose or the
@@ -306,13 +314,16 @@ async def generate_json_resilient(
     degradation — a NOUMENO that quietly fell back to pass-through would hand the NER
     un-rewritten text and lose the rewrite without anyone knowing.
     """
-    total_in = total_out = 0
+    total_in = total_out = total_cached = 0
     for index in range(max(1, attempts)):
         raw, tokens_in, tokens_out = await llm.generate(system, prompt)
+        # Read with NO await in between — that is the contract of ``cached_tokens_of``, and it
+        # is what makes a per-instance value safe on a backend shared between concurrent turns.
+        total_cached += cached_tokens_of(llm)
         total_in += tokens_in
         total_out += tokens_out
         try:
-            return parse(raw), total_in, total_out
+            return parse(raw), total_in, total_out, total_cached
         except Exception:  # noqa: BLE001 — re-raised unless this is a retryable truncation
             if index + 1 >= max(1, attempts) or not looks_truncated(raw):
                 raise
