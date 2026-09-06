@@ -17,6 +17,7 @@ import pytest
 import json
 import httpx
 from pathlib import Path
+from typing import Optional
 
 from cogno_anima.stages.noumeno import Noumeno, NoumenoResult
 from cogno_synapse import LLMBackend, OllamaBackend, OllamaEmbedder, CachingEmbedder
@@ -292,19 +293,92 @@ async def test_noumeno_conversational_flows(flow_name):
 #  4. Hermetic Mocked Integration (no network)
 # ────────────────────────────────────────────────────────────────────
 
+class _MockResponse:
+    """The slice of ``httpx.Response`` the Ollama clients actually read."""
+
+    def __init__(self, data: dict):
+        self._data = data
+        self.status_code = 200
+
+    def json(self) -> dict:
+        return self._data
+
+    def raise_for_status(self) -> None:
+        pass
+
+
+# Ollama serves embeddings on TWO endpoints, and they answer in DIFFERENT SHAPES:
+#
+#     POST /api/embeddings  ->  {"embedding": [ ... ]}                       legacy, NO count
+#     POST /api/embed       ->  {"embeddings": [[ ... ]],
+#                                "prompt_eval_count": N}                     current, counts
+#
+# ``OllamaEmbedder`` posts to ``/api/embed`` — the legacy endpoint reports no
+# ``prompt_eval_count``, so ``StageMetrics.embedding_tokens`` could only ever meter 0 — and
+# falls back to the legacy one when a server too old for it answers 404/405. A mock that knows
+# only the legacy path therefore stops simulating ANYTHING the day the client moves: the
+# request matches no branch, the body comes back empty, every vector is ``[]`` and every
+# similarity 0.0. That is how a merge in a SIBLING repo turned this file red without a line
+# changing here — cogno-anima tracks cogno-synapse's main branch, unpinned.
+#
+# ORDER IS LOAD-BEARING, and it reads backwards: ``"/api/embed" in "/api/embeddings"`` is
+# TRUE, so a substring test for the CURRENT endpoint swallows the LEGACY URL as well. The
+# legacy branch has to be tried FIRST or it becomes unreachable and the 404-fallback path can
+# never be simulated here again. ``test_ollama_embedding_mock_knows_both_endpoints`` pins that
+# order in both directions — do not swap these two branches without reading it.
+_MOCK_EMBED_TOKENS = 7
+
+
+def _embedding_response(url_str: str, vector: list[float]) -> Optional[_MockResponse]:
+    """Answer an embedding request in the shape the requested endpoint really returns.
+
+    Returns ``None`` when ``url_str`` is not an embedding endpoint, so a caller falls through
+    to its own branches.
+    """
+    if "/api/embeddings" in url_str:     # LEGACY — singular key, ONE vector, no token count
+        return _MockResponse({"embedding": list(vector)})
+    if "/api/embed" in url_str:          # CURRENT — plural key, LIST of vectors, + the count
+        return _MockResponse({"embeddings": [list(vector)],
+                              "prompt_eval_count": _MOCK_EMBED_TOKENS})
+    return None
+
+
+async def test_ollama_embedding_mock_knows_both_endpoints():
+    """Both embedding endpoints are answered, each in ITS OWN shape — and the branch order is
+    what keeps the legacy one reachable.
+
+    The order is asserted here rather than assumed in a comment: swap the two branches in
+    ``_embedding_response`` and the legacy case below fails, because the new endpoint's
+    substring test matches the legacy URL too.
+    """
+    # The fact the whole ordering rests on. Stated as an assertion so nobody has to take the
+    # comment's word for it.
+    assert "/api/embed" in "/api/embeddings"
+
+    legacy = _embedding_response("http://localhost:11434/api/embeddings", [1.0, 0.0, 0.0])
+    assert legacy is not None
+    assert legacy.json() == {"embedding": [1.0, 0.0, 0.0]}, (
+        "the LEGACY endpoint was answered with the CURRENT shape — the /api/embed branch is "
+        "matching /api/embeddings, i.e. the two branches are in the wrong order"
+    )
+    # The legacy endpoint counts nothing at all; that absence is the reason /api/embed exists.
+    assert "prompt_eval_count" not in legacy.json()
+
+    current = _embedding_response("http://localhost:11434/api/embed", [1.0, 0.0, 0.0])
+    assert current is not None
+    assert current.json() == {
+        "embeddings": [[1.0, 0.0, 0.0]],
+        "prompt_eval_count": _MOCK_EMBED_TOKENS,
+    }
+
+    # Anything that is not an embedding endpoint falls through to the caller.
+    assert _embedding_response("http://localhost:11434/api/generate", [1.0, 0.0, 0.0]) is None
+
+
 async def test_noumeno_mocked_ollama_integration(monkeypatch):
     """Full pipeline with monkeypatched HTTP — validates wiring without network."""
 
     async def mock_post(client, url, *args, **kwargs):
-        class MockResponse:
-            def __init__(self, data):
-                self._data = data
-                self.status_code = 200
-            def json(self):
-                return self._data
-            def raise_for_status(self):
-                pass
-
         url_str = str(url)
         if "/api/generate" in url_str:
             resp_body = {
@@ -315,15 +389,17 @@ async def test_noumeno_mocked_ollama_integration(monkeypatch):
                 "preserved_terms": [],
                 "rewrite_warnings": []
             }
-            return MockResponse({
+            return _MockResponse({
                 "response": json.dumps(resp_body),
                 "prompt_eval_count": 25,
                 "eval_count": 15
             })
-        elif "/api/embeddings" in url_str:
-            return MockResponse({"embedding": [1.0, 0.0, 0.0]})
 
-        return MockResponse({})
+        embedding = _embedding_response(url_str, [1.0, 0.0, 0.0])
+        if embedding is not None:
+            return embedding
+
+        return _MockResponse({})
 
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
 
@@ -360,6 +436,16 @@ async def test_noumeno_mocked_ollama_integration(monkeypatch):
     assert res.metrics.tokens_out == 15
     assert res.metrics.model == "llama3"
     assert res.metrics.elapsed_ms > 0
+
+    # The embedding cost of the continuity + drift similarities reaches the ledger, because
+    # the embedder asks ``/api/embed`` and that endpoint reports ``prompt_eval_count``. Against
+    # the LEGACY endpoint this is 0 BY CONSTRUCTION — it counts nothing — so this is what makes
+    # the mock's ``/api/embed`` branch load-bearing rather than decorative: drop that branch and
+    # the vectors come back empty, which this file already learned the hard way.
+    assert res.metrics.embedding_calls == 4      # 2 similarities (continuity, drift) × 2 embeds
+    assert res.metrics.embedding_tokens == res.metrics.embedding_calls * _MOCK_EMBED_TOKENS
+    assert res.metrics.embedding_tokens > 0
+    assert res.metrics.tokens_total == 25 + 15 + res.metrics.embedding_tokens
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -502,15 +588,6 @@ async def test_noumeno_drift_reconciliation(monkeypatch):
     async def mock_post(client, url, *args, **kwargs):
         nonlocal call_count
 
-        class MockResponse:
-            def __init__(self, data):
-                self._data = data
-                self.status_code = 200
-            def json(self):
-                return self._data
-            def raise_for_status(self):
-                pass
-
         url_str = str(url)
         if "/api/generate" in url_str:
             # Return a rewrite that is semantically very different from the input
@@ -522,20 +599,23 @@ async def test_noumeno_drift_reconciliation(monkeypatch):
                 "preserved_terms": [],
                 "rewrite_warnings": []
             }
-            return MockResponse({
+            return _MockResponse({
                 "response": json.dumps(resp_body),
                 "prompt_eval_count": 10,
                 "eval_count": 8
             })
-        elif "/api/embeddings" in url_str:
+
+        # Coarse gate on purpose: this substring matches BOTH embedding endpoints (that is
+        # the very trap the helper exists to handle), and ``_embedding_response`` picks the
+        # right shape for whichever one was asked.
+        if "/api/embed" in url_str:
             call_count += 1
-            if call_count == 1:
-                # Embedding for the original input
-                return MockResponse({"embedding": [1.0, 0.0, 0.0]})
-            else:
-                # Embedding for the rewritten — deliberately orthogonal to simulate high drift
-                return MockResponse({"embedding": [0.0, 1.0, 0.0]})
-        return MockResponse({})
+            # First the original input, then the rewritten — deliberately orthogonal, to
+            # simulate high drift.
+            vector = [1.0, 0.0, 0.0] if call_count == 1 else [0.0, 1.0, 0.0]
+            return _embedding_response(url_str, vector)
+
+        return _MockResponse({})
 
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
 
@@ -555,6 +635,14 @@ async def test_noumeno_drift_reconciliation(monkeypatch):
         f"Drift reconciliation failed! drift_score={res.drift_score} "
         f"but changed={res.changed}"
     )
+    # The two assertions above are ALSO satisfied by two EMPTY vectors (cosine 0.0 -> drift
+    # 1.0). That is why this test stayed GREEN through the same breakage that turned its
+    # neighbour red: it was no longer simulating anything, and could not say so. The token
+    # count cannot be satisfied that way — it is 0 unless the vectors really came back from
+    # ``/api/embed``.
+    assert res.metrics.embedding_calls == 2      # 1 similarity (drift) × 2 embeds
+    assert res.metrics.embedding_tokens == res.metrics.embedding_calls * _MOCK_EMBED_TOKENS
+    assert res.metrics.embedding_tokens > 0
 
 
 # ────────────────────────────────────────────────────────────────────
