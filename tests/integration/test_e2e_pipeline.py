@@ -1,37 +1,24 @@
 """
 End-to-end integration test: the FULL pipeline through ReferencePipeline against
-a real Ollama model (NOUMENO → NER → ID → EGO ⇄ judge → voice).
+a real model (NOUMENO → NER → ID → EGO ⇄ judge → voice).
 
 This closes the gap where integration tests only exercised one stage at a time —
-here a real turn flows through every seam. Auto-skipped if Ollama is unreachable.
-temperature=0.0 for determinism. Assertions are INVARIANTS (valid route, terminal
-reached, no crash, no hallucinated dispatch) — never exact model wording.
+here a real turn flows through every seam. Auto-skipped when the configured model
+is unreachable. temperature=0.0 for determinism. Assertions are INVARIANTS (valid
+route, terminal reached, no crash, no hallucinated dispatch) — never exact model
+wording.
 """
 
-import os
-import httpx
 import pytest
 
-from cogno_synapse import OllamaBackend, OllamaEmbedder
-from cogno_synapse.cache import CachingEmbedder
 from cogno_anima.types import PipelineContext, ToolResult
 from cogno_anima.vocab import VALID_TRIAD, VALID_STOP_REASONS
 from cognobench.pipeline import ReferencePipeline
+from tests.integration import backends
 
 from pathlib import Path
 
 PROMPTS_DIR = Path(__file__).parent.parent.parent / "cogno_anima" / "prompt_templates"
-MODEL = os.environ.get("COGNO_TEST_MODEL", "qwen3:8b")
-BASE_URL = "http://localhost:11434"
-
-
-async def is_ollama_available() -> bool:
-    try:
-        async with httpx.AsyncClient(timeout=1.0) as client:
-            resp = await client.get(f"{BASE_URL}/")
-            return resp.status_code == 200
-    except Exception:
-        return False
 
 
 TOOLS = [
@@ -75,10 +62,7 @@ KW = dict(
 
 def _backends():
     """gen=JSON-constrained (NOUMENO/NER/scope/judge); ego/voice=free text (TOOL_CALL)."""
-    gen = OllamaBackend(model=MODEL, base_url=BASE_URL, temperature=0.0, format="json")
-    text = OllamaBackend(model=MODEL, base_url=BASE_URL, temperature=0.0)
-    embedder = CachingEmbedder(OllamaEmbedder(model="nomic-embed-text", base_url=BASE_URL))
-    return gen, text, embedder
+    return backends.json_backend(), backends.text_backend(), backends.embedder()
 
 
 def _assert_pipeline_invariants(ctx, dispatcher):
@@ -101,8 +85,7 @@ def _assert_pipeline_invariants(ctx, dispatcher):
 
 @pytest.mark.asyncio
 async def test_e2e_action_turn_full_pipeline():
-    if not await is_ollama_available():
-        pytest.skip("Local Ollama server (http://localhost:11434) is not running.")
+    await backends.skip_unless_available(embed=True)
     gen, text, embedder = _backends()
     pipe = ReferencePipeline(prompts_dir=PROMPTS_DIR, embedder=embedder)
     disp = InMemoryDispatcher()
@@ -119,8 +102,7 @@ async def test_e2e_action_turn_full_pipeline():
 
 @pytest.mark.asyncio
 async def test_e2e_social_turn_full_pipeline():
-    if not await is_ollama_available():
-        pytest.skip("Local Ollama server (http://localhost:11434) is not running.")
+    await backends.skip_unless_available(embed=True)
     gen, text, embedder = _backends()
     pipe = ReferencePipeline(prompts_dir=PROMPTS_DIR, embedder=embedder)
     disp = InMemoryDispatcher()

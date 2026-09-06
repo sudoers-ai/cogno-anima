@@ -1,8 +1,9 @@
 """
-NER integration suite — real LLM (Ollama), the critical-layer quality bar.
+NER integration suite — real LLM, the critical-layer quality bar.
 
-Baseline model: env COGNO_NER_MODEL (default qwen3:8b). Auto-skips if Ollama is
-unavailable. Language is forced to pt-BR (host/tenant-provided).
+Baseline model: env COGNO_NER_MODEL, else COGNO_TEST_MODEL, else qwen3:8b — the
+``provider:model`` grammar, so this suite is not pinned to the local box. Auto-skips
+when that model is unavailable. Language is forced to pt-BR (host/tenant-provided).
 
 Two tiers, by design:
   • STRICT tests assert what the baseline reliably produces (intent_class,
@@ -15,24 +16,26 @@ Two tiers, by design:
 
 Run: pytest tests/integration/test_ner.py
      COGNO_NER_MODEL=qwen2.5:7b pytest tests/integration/test_ner.py -k pii
+     COGNO_NER_MODEL=openai:gpt-4o-mini pytest tests/integration/test_ner.py
 """
 
 from __future__ import annotations
 
-import os
 import asyncio
 import pytest
 
-from cognobench.harness import CognitivePipeline, build_ollama, ollama_available
+from cognobench.harness import CognitivePipeline
 from cogno_anima.stages.ner import (
     VALID_INTENTS, VALID_SENTIMENTS, VALID_TEMPORAL, VALID_TRIAD,
     VALID_MODALITY, VALID_SPEECH_ACTS, VALID_PAROLE,
     NER_KNOWLEDGE_DOMAINS, VALID_MANDATORY,
 )
 from cogno_anima.security.pii import PII_RISK_LEVELS
+from tests.integration import backends
 
-MODEL = os.environ.get("COGNO_NER_MODEL",
-                       os.environ.get("COGNO_TEST_MODEL", "qwen3:8b"))
+# COGNO_NER_MODEL first — this suite has always been able to grade one stage on its own
+# model — then the run-wide COGNO_TEST_MODEL, then the shipped default.
+MODEL = backends.model_spec("COGNO_NER_MODEL", backends.model_spec())
 LANGUAGE = "pt-BR"
 
 
@@ -40,10 +43,13 @@ LANGUAGE = "pt-BR"
 
 @pytest.fixture(scope="module")
 def ner():
-    if not asyncio.run(ollama_available()):
-        pytest.skip("Ollama not available at localhost:11434")
-    backend, embedder = build_ollama(MODEL)
-    pipe = CognitivePipeline(backend, embedder)
+    reason = asyncio.run(backends.backend_unavailable_reason(MODEL))
+    if reason:
+        pytest.skip(reason)
+    reason = asyncio.run(backends.embedder_unavailable_reason())
+    if reason:
+        pytest.skip(reason)
+    pipe = CognitivePipeline(backends.json_backend(MODEL), backends.embedder())
     cache: dict[str, object] = {}
 
     def run(text: str):

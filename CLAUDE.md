@@ -22,9 +22,17 @@ python3 -m pytest tests/unit
 python3 -m pytest tests/unit/test_noumeno.py
 python3 -m pytest tests/unit/test_noumeno.py::TestNoumenoStage::test_metrics_populated
 
-# Run integration tests (require a local Ollama instance at localhost:11434;
-# auto-skip if Ollama is unavailable)
+# Run integration tests (default: a local Ollama at localhost:11434; auto-skip if
+# it is unavailable)
 python3 -m pytest tests/integration
+
+# ...or point them somewhere else entirely — `provider:model`, two axes, and the
+# skip then asks about THAT provider's key instead of the local server. Use this
+# when the box's GPU is busy serving real traffic: the suite asks for the same
+# qwen3:8b the deployment does, so a local run queues live turns behind it.
+COGNO_TEST_MODEL=openai:gpt-4o-mini \
+COGNO_TEST_EMBED_MODEL=openai:text-embedding-3-small \
+        python3 -m pytest tests/integration
 
 # Cognitive benchmark (CognoBench) — scores NOUMENO/NER/ID/Drift quality
 python3 cognobench.py                    # full run vs local Ollama
@@ -45,7 +53,9 @@ nuvem **recusava-se a começar** sem Ollama de pé: o único componente que nunc
 teste prendia a suíte à máquina. Medido de passagem, contra a expectativa: 100% nuvem pontuou
 melhor no `--only id` (98,1% vs 97,1%), não pior.
 
-Integration tests use real models via Ollama and are written to be deterministic (`temperature=0.0`). **CognoBench's default `--model` is `qwen3:8b`** (every local run uses it; `mistral:latest` remains the top ID-bench scorer but is not judge-capable — it approved a wrong execution 3/3); integration suites read `COGNO_TEST_MODEL` (NER also `COGNO_NER_MODEL`); embeddings use `nomic-embed-text:latest`.
+Integration tests use real models and are written to be deterministic (`temperature=0.0`). **CognoBench's default `--model` is `qwen3:8b`** (every local run uses it; `mistral:latest` remains the top ID-bench scorer but is not judge-capable — it approved a wrong execution 3/3).
+
+**The integration suites take a `provider:model` spec, on two axes** (2026-09-06): `COGNO_TEST_MODEL` (NER reads `COGNO_NER_MODEL` first) and `COGNO_TEST_EMBED_MODEL`, the same grammar CognoBench's `--model`/`--embed-model` already use, resolved through `cogno_synapse.create_backend`/`create_embedder` in the ONE place every suite now asks — `tests/integration/backends.py`. Defaults are unchanged: Ollama `qwen3:8b` and `nomic-embed-text:latest`, `temperature=0.0`, `format="json"` on the JSON-consuming ops, and Ollama's own `COGNO_OLLAMA_TIMEOUT` rather than the factory's constant — a unit test compares the built object attribute by attribute against a directly-constructed `OllamaBackend`. Until then every file built its own `OllamaBackend(model=…)`, so the run was **Ollama-only by construction** and this line — which said the suites read `COGNO_TEST_MODEL`, and was true — read as a choice it did not offer: the variable picked WHICH LOCAL MODEL. That is not cosmetic. The served box runs the same `qwen3:8b`, so a run puts every live turn in a queue behind the suite (measured: a host integration run sat 17 minutes on 5 seconds of CPU waiting for Ollama), and there was nowhere else to point it. **The skip travels with the spec** (`backend_unavailable_reason`): the local server for an Ollama spec, the provider's key for a cloud one — a suite pointed at OpenAI that skips itself saying "Ollama is not running" is an instrument lying about why it measured nothing.
 
 The **CognoBench** cognitive benchmark lives in `cognobench/` — see `cognobench/CLAUDE.md` for its design (loaded when working there).
 

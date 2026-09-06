@@ -1,20 +1,19 @@
 """
-Integration tests for the SUPEREGO stage (Stage 5) against a real Ollama model.
+Integration tests for the SUPEREGO stage (Stage 5) against a real model.
 
 Scope guard + judge consume JSON → use a json-constrained backend; voice writes
-free text → plain backend. Auto-skipped if Ollama is unreachable. temperature=0.0.
+free text → plain backend. Auto-skipped when the configured model is unreachable.
+temperature=0.0.
 """
 
-import os
-import httpx
 import pytest
 
-from cogno_synapse import OllamaBackend
 from cogno_anima.stages.superego import SuperegoStage
 from cogno_anima.types import (
     PipelineContext, NoumenoResult, IntentResult, StageMetrics,
     EgoResult, EgoStep, ToolExecution,
 )
+from tests.integration import backends
 
 # The judge is a reasoning role, and the model has to be able to do it. Measured on the
 # goal↔execution case below (user asked to record an EXPENSE, the EGO recorded INCOME),
@@ -22,23 +21,15 @@ from cogno_anima.types import (
 # empty critique; qwen3:8b rejected 3/3 with the correct critique, as did gpt-4o-mini.
 # The judge is fail-closed by design — never approve unverified — so on mistral it was the
 # exact inverse, a false-pass machine. The prompt was never at fault.
-MODEL = os.environ.get("COGNO_TEST_MODEL", "qwen3:8b")
-
-
-async def is_ollama_available() -> bool:
-    try:
-        async with httpx.AsyncClient(timeout=1.0) as client:
-            return (await client.get("http://localhost:11434/")).status_code == 200
-    except Exception:
-        return False
+# The model is whatever COGNO_TEST_MODEL names — see tests/integration/backends.py.
 
 
 def _json_backend():
-    return OllamaBackend(model=MODEL, temperature=0.0, format="json")
+    return backends.json_backend()
 
 
 def _text_backend():
-    return OllamaBackend(model=MODEL, temperature=0.0)
+    return backends.text_backend()
 
 
 def _m(s):
@@ -71,8 +62,7 @@ SCOPE = "You are a personal finance assistant. You only help with money, expense
 
 @pytest.mark.asyncio
 async def test_scope_blocks_off_topic():
-    if not await is_ollama_available():
-        pytest.skip("Ollama not running")
+    await backends.skip_unless_available()
     r = await SuperegoStage().check_input_scope(
         _ctx("Como faço um bolo de chocolate?", intent_class="INFORMATION_REQUEST"),
         _json_backend(), scope_prompt=SCOPE)
@@ -82,8 +72,7 @@ async def test_scope_blocks_off_topic():
 
 @pytest.mark.asyncio
 async def test_scope_allows_in_scope():
-    if not await is_ollama_available():
-        pytest.skip("Ollama not running")
+    await backends.skip_unless_available()
     r = await SuperegoStage().check_input_scope(
         _ctx("Quanto gastei esse mês?", intent_class="INFORMATION_REQUEST"),
         _json_backend(), scope_prompt=SCOPE)
@@ -92,8 +81,7 @@ async def test_scope_allows_in_scope():
 
 @pytest.mark.asyncio
 async def test_judge_approves_correct_execution():
-    if not await is_ollama_available():
-        pytest.skip("Ollama not running")
+    await backends.skip_unless_available()
     ctx = _ctx("registra uma despesa de 50 do almoço", goal="record an expense of 50 for lunch",
                tool="record_expense", args={"amount": 50, "description": "lunch"},
                result="Recorded expense of 50 BRL")
@@ -103,8 +91,7 @@ async def test_judge_approves_correct_execution():
 
 @pytest.mark.asyncio
 async def test_judge_rejects_goal_execution_mismatch():
-    if not await is_ollama_available():
-        pytest.skip("Ollama not running")
+    await backends.skip_unless_available()
     # asked to record an EXPENSE, but the EGO recorded INCOME → goal↔execution miss
     ctx = _ctx("registra uma despesa de 50 do almoço", goal="record an expense of 50 for lunch",
                tool="record_income", args={"amount": 50, "description": "lunch"},
@@ -116,8 +103,7 @@ async def test_judge_rejects_goal_execution_mismatch():
 
 @pytest.mark.asyncio
 async def test_voice_writes_grounded_response():
-    if not await is_ollama_available():
-        pytest.skip("Ollama not running")
+    await backends.skip_unless_available()
     ctx = _ctx("qual meu saldo?", intent_class="INFORMATION_REQUEST", goal="get balance",
                tool="get_balance", args={}, result="Current balance: 1000 BRL")
     r = await SuperegoStage().voice(ctx, _text_backend(), voice_prompt="You are a friendly finance assistant.")

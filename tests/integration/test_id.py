@@ -6,28 +6,20 @@ similarity at GoalManager Stage 2). Embeddings are deterministic, so these asser
 hard semantic properties (related goals score higher than unrelated ones, real
 embedding tokens are captured) rather than the flaky LLM bands the NER suite uses.
 
-Uses a REAL CachingEmbedder(OllamaEmbedder). Auto-skipped if Ollama is down.
+Uses a REAL cached embedder (local ``nomic-embed-text:latest`` unless
+``COGNO_TEST_EMBED_MODEL`` says otherwise). Auto-skipped when it is unreachable.
 """
 
-import httpx
 import pytest
 
-from cogno_synapse import OllamaEmbedder, CachingEmbedder
+from cogno_synapse import Embedder
 from cogno_anima.stages.id import IDStage
 from cogno_anima.types import PipelineContext, IntentResult, NoumenoResult, StageMetrics
+from tests.integration import backends
 
 
-async def is_ollama_available() -> bool:
-    try:
-        async with httpx.AsyncClient(timeout=1.0) as client:
-            resp = await client.get("http://localhost:11434/")
-            return resp.status_code == 200
-    except Exception:
-        return False
-
-
-def _make_embedder() -> CachingEmbedder:
-    return CachingEmbedder(OllamaEmbedder(model="nomic-embed-text:latest"))
+def _make_embedder() -> Embedder:
+    return backends.embedder()
 
 
 def _noumeno() -> NoumenoResult:
@@ -62,8 +54,7 @@ def _ctx(goal: str, id_state: dict | None = None) -> PipelineContext:
 
 @pytest.mark.asyncio
 async def test_first_turn_no_embedding_cost():
-    if not await is_ollama_available():
-        pytest.skip("Local Ollama server (http://localhost:11434) is not running.")
+    await backends.skip_unless_available(backend=False, embed=True)
     stage = IDStage()
     out = await stage.process(_ctx("configure docker on ubuntu"), _make_embedder())
     assert out.id_result.goal_status == "NEW"
@@ -75,8 +66,7 @@ async def test_first_turn_no_embedding_cost():
 @pytest.mark.asyncio
 async def test_related_goal_scores_higher_than_unrelated():
     """Core semantic property: a related follow-up is more similar than an unrelated one."""
-    if not await is_ollama_available():
-        pytest.skip("Local Ollama server (http://localhost:11434) is not running.")
+    await backends.skip_unless_available(backend=False, embed=True)
     embedder = _make_embedder()
     stage = IDStage()
 
@@ -106,8 +96,7 @@ async def test_related_goal_scores_higher_than_unrelated():
 @pytest.mark.asyncio
 async def test_related_continues_unrelated_abandons_with_tuned_threshold():
     """With a threshold between the two similarities, related → ONGOING, unrelated → ABANDONED."""
-    if not await is_ollama_available():
-        pytest.skip("Local Ollama server (http://localhost:11434) is not running.")
+    await backends.skip_unless_available(backend=False, embed=True)
     embedder = _make_embedder()
     stage = IDStage(goal_threshold=0.5)
 
@@ -131,8 +120,7 @@ async def test_related_continues_unrelated_abandons_with_tuned_threshold():
 @pytest.mark.asyncio
 async def test_caching_embedder_anchor_hit_across_turns():
     """The active-goal anchor repeats across turns → CachingEmbedder absorbs it."""
-    if not await is_ollama_available():
-        pytest.skip("Local Ollama server (http://localhost:11434) is not running.")
+    await backends.skip_unless_available(backend=False, embed=True)
     embedder = _make_embedder()
     stage = IDStage()
 
