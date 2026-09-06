@@ -57,6 +57,32 @@ VALID_GOAL_STATUS: set[str] = {"NEW", "ONGOING", "COMPLETED", "ABANDONED"}
 
 VALID_COMPLEXITY: set[str] = {"LOW", "MEDIUM", "HIGH", "EXPERT"}
 
+# ── NOUMENO drift tag + degradation alphabet (Stage 1) ───────────────────────
+# ``DRIFT_TAG_UNKNOWN`` is the answer to "what is the drift when it cannot be
+# computed?", and it exists because the two obvious answers are the two wrong
+# ones: 0.0 reads as "verified, nothing drifted" and lets an unchecked turn
+# through; 1.0 reads as "total drift", forces the DRIFT tag and can trip a
+# ``self_correct`` over a turn that was fine. UNKNOWN is a THIRD state, and the
+# drift chain already knew how to hold it — ``DriftMetrics`` documents
+# ``None`` as "stage not computed yet (distinct from 0.0 = computed, no drift)"
+# and ``compute_cumulative`` renormalizes over the components that are not
+# ``None``. Until now the epistemological component was the one component that
+# could not say it, which is exactly the component an embedder outage destroys.
+DRIFT_TAG_UNKNOWN = "UNKNOWN"
+
+VALID_DRIFT_TAGS: frozenset[str] = frozenset({
+    "PASS_THROUGH", "REWRITTEN", "COMPRESSED", "EXPANDED", "DRIFT",
+    DRIFT_TAG_UNKNOWN,
+})
+
+# What the NOUMENO could not do this turn, recorded on ``NoumenoResult.degradations``.
+# A CLOSED alphabet for the same reason the SUPEREGO's prompt-block slugs are one: the
+# list is written into traces, so its values must never come from an error message
+# (a transport error string can carry a URL, a host name, or a contact's text).
+EMBED_UNAVAILABLE = "embed:unavailable"
+
+VALID_NOUMENO_DEGRADATIONS: frozenset[str] = frozenset({EMBED_UNAVAILABLE})
+
 # ── Outgoing-PII provenance (SUPEREGO output backstop) ───────────────────────
 # Why a personal datum found in the OUTGOING text was, or was not, allowed to leave. The rule the
 # owner decided (2026-08-25): "PII may come IN, it must never go OUT" — except the contact's own,

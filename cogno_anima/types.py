@@ -73,19 +73,41 @@ class NoumenoResult(BaseModel):
     canonical_language: str = "en" # Default internal language (always "en")
 
     # ── Drift (rewrite distortion) ────────────────────────
-    drift_score: float          # 1.0 - cosine(embed(original), embed(rewritten)) → [0.0, 1.0]
-    drift_tag: str              # PASS_THROUGH | REWRITTEN | COMPRESSED | EXPANDED | DRIFT
+    # `None` = NOT MEASURABLE this turn (the embedder was unreachable), which is a
+    # THIRD state, distinct from 0.0 ("measured: nothing drifted") and from 1.0
+    # ("measured: everything drifted"). Both of those defaults are wrong in opposite
+    # directions — 0.0 waves through a turn nobody verified, 1.0 forces the DRIFT tag
+    # and can trip a `self_correct` over a turn that was fine — so the absence of a
+    # measurement is recorded as an absence. `drift_tag` then reads `UNKNOWN`
+    # (`vocab.DRIFT_TAG_UNKNOWN`) and `degradations` says why.
+    drift_score: Optional[float]  # 1.0 - cosine(embed(original), embed(rewritten)) → [0,1] | None
+    drift_tag: str              # PASS_THROUGH | REWRITTEN | COMPRESSED | EXPANDED | DRIFT | UNKNOWN
     changed: bool               # True if the LLM made active structural/semantic changes
     confidence: float           # LLM confidence in preserving the intent [0.0, 1.0]
 
     # ── Subject continuity ────────────────────────────────
+    # `change_subject` stays a bool because every consumer branches on it; when the
+    # similarity could not be taken it degrades to False — "assume continuity" — which
+    # is both the first-turn behaviour and the conservative side (dropping context on
+    # an unmeasured turn loses the thread; keeping it costs at most a stale hint, and
+    # the transcript is injected unconditionally anyway). `subject_similarity` is the
+    # measurement, so it says None rather than claiming a 1.0 nobody computed.
     change_subject: bool        # True if the subject changed vs. history
-    subject_similarity: float   # cosine(embed(input), embed(last_rewritten)) → [0.0, 1.0]
+    subject_similarity: Optional[float]  # cosine(input, last_rewritten) → [0,1] | None
     context_used: bool          # True if history was used (= bool(context_turn))
 
     # ── Preservation ──────────────────────────────────────
     preserved_terms: list[str]  # Terms preserved intact (names, URLs, emails...)
     rewrite_warnings: list[str] # Rewrite warnings (ambiguity, potential loss...)
+
+    # ── Degradation ───────────────────────────────────────
+    # What this stage could NOT do this turn, from the closed
+    # `vocab.VALID_NOUMENO_DEGRADATIONS` alphabet (today: `embed:unavailable`).
+    # Deliberately NOT folded into `rewrite_warnings`: those are the rewriter's own
+    # doubts about the rewrite, and the ID reads them as `clarification_suggested`
+    # — an embedder outage is not a reason to ask the contact to rephrase, and
+    # widening a shared predicate to carry a second meaning always has a victim.
+    degradations: list[str] = Field(default_factory=list)
 
     # ── Telemetry ─────────────────────────────────────────
     metrics: StageMetrics
@@ -172,7 +194,11 @@ class DriftMetrics(BaseModel):
     word_count_noumeno: int
     compression_ratio: float
     aristotelian_coverage: int
-    drift_score: float
+    # Stage 1 (NOUMENO). `None` here means the SAME thing it means for stages 2-5
+    # below — not computed — and `compute_cumulative` already excluded `None`
+    # components generically; this component was simply the one that could never be
+    # one. It happens when the embedder is unreachable: see `NoumenoResult.drift_score`.
+    drift_score: Optional[float]
 
     # Stages 2–5 drift. None = "stage not computed yet" (distinct from 0.0 =
     # "computed, no drift"). compute_cumulative renormalizes over the stages
@@ -191,7 +217,11 @@ class DriftMetrics(BaseModel):
         """Generate diagnostic tags based on drift."""
         tags: list[str] = []
 
-        if self.drift_score >= 0.4:
+        if self.drift_score is None:
+            # Says the measurement is MISSING. A reader that only sees tags must not
+            # infer "no NOUMENO.DRIFT tag" == "verified, no drift".
+            tags.append("NOUMENO.DRIFT_UNKNOWN")
+        elif self.drift_score >= 0.4:
             tags.append("NOUMENO.DRIFT")
 
         if self.compression_ratio == 1.0:

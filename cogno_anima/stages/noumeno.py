@@ -14,6 +14,7 @@ from cogno_anima.utils import (DEFAULT_CONFIDENCE, STOPWORDS, expand_slangs,
                                generate_json_resilient, parse_json_object)
 from cogno_anima.prompts import load_prompt, prompt_digest
 from cogno_anima.errors import StageParseError
+from cogno_anima.vocab import DRIFT_TAG_UNKNOWN, EMBED_UNAVAILABLE
 
 logger = logging.getLogger("cogno_anima.noumeno")
 
@@ -172,7 +173,7 @@ class Noumeno:
         last_rewritten = ctx.metadata.get(mk.LAST_REWRITTEN)
         last_context_turn = ctx.metadata.get(mk.LAST_CONTEXT_TURN)
 
-        subject_similarity = 1.0
+        subject_similarity: Optional[float] = 1.0
         change_subject = False
 
         # Accumulate embedding cost (tokens + call count) across every similarity
@@ -180,13 +181,23 @@ class Noumeno:
         # generate tokens do.
         emb_tokens = 0
         emb_calls = 0
+        # Closed-alphabet record of what this stage could NOT do (vocab.VALID_NOUMENO_DEGRADATIONS).
+        degradations: list[str] = []
 
         if last_rewritten:
             # Concurrent embed calls for input and history
             subject_similarity, t, c = await self._similarity(normalized_input, last_rewritten)
             emb_tokens += t
             emb_calls += c
-            change_subject = subject_similarity < self._subject_threshold
+            if subject_similarity is None:
+                # Unmeasured → assume continuity. Same value a first turn carries, and the
+                # conservative side: `change_subject=True` DROPS the thread's context, and
+                # this signal is already known to over-fire (8 of 10 real CLOSER turns).
+                change_subject = False
+                if EMBED_UNAVAILABLE not in degradations:
+                    degradations.append(EMBED_UNAVAILABLE)
+            else:
+                change_subject = subject_similarity < self._subject_threshold
 
         # 4. Formulate Prompt
         # The recent transcript (user + assistant) is injected UNCONDITIONALLY — a short reply
@@ -304,7 +315,13 @@ class Noumeno:
         sim, t, c = await self._similarity(user_input, rewritten)
         emb_tokens += t
         emb_calls += c
-        drift_score = round(1.0 - sim, 4)
+        # `None` = the embedder could not be reached, so drift is UNKNOWN — not 0.0
+        # ("verified, nothing drifted", which waves an unchecked turn through) and not
+        # 1.0 ("total drift", which forces the DRIFT tag and can trip a `self_correct`
+        # over a turn that was fine). See NoumenoResult.drift_score.
+        drift_score = None if sim is None else round(1.0 - sim, 4)
+        if drift_score is None and EMBED_UNAVAILABLE not in degradations:
+            degradations.append(EMBED_UNAVAILABLE)
 
         # Telemetry: build metrics after all embedding work so embedding cost and
         # elapsed time cover the whole stage.
@@ -326,8 +343,13 @@ class Noumeno:
             model=llm.model,
         )
 
-        # Reconciliation: if drift > 0.50, force changed = True & drift_tag = "DRIFT"
-        if drift_score > 0.50:
+        # Reconciliation: if drift > 0.50, force changed = True & drift_tag = "DRIFT".
+        # With no measurement there is nothing to reconcile AGAINST: the tag says UNKNOWN
+        # and `changed` keeps whatever the rewriter itself reported, because overriding a
+        # model's own answer needs evidence and this turn has none.
+        if drift_score is None:
+            drift_tag = DRIFT_TAG_UNKNOWN
+        elif drift_score > 0.50:
             changed = True
             drift_tag = "DRIFT"
         else:
@@ -382,12 +404,15 @@ class Noumeno:
             context_used=bool(context_turn) and not change_subject and bool(last_rewritten),
             preserved_terms=preserved_terms,
             rewrite_warnings=rewrite_warnings,
+            degradations=degradations,
             metrics=metrics
         )
 
         logger.info(
-            "NOUMENO lang=%s drift=%.2f tag=%s changed=%s change_subject=%s",
-            detected_lang, drift_score, drift_tag, changed, change_subject,
+            "NOUMENO lang=%s drift=%s tag=%s changed=%s change_subject=%s degraded=%s",
+            detected_lang,
+            "unknown" if drift_score is None else f"{drift_score:.2f}",
+            drift_tag, changed, change_subject, ",".join(degradations) or "-",
         )
         return ctx
 
@@ -413,20 +438,52 @@ class Noumeno:
                 return True
         return False
 
-    async def _similarity(self, a: str, b: str) -> tuple[float, int, int]:
+    async def _similarity(self, a: str, b: str) -> tuple[Optional[float], int, int]:
         """Cosine similarity plus embedding cost ``(similarity, tokens, calls)``.
 
         Prefers a usage-aware embedder (``similarity_with_usage``, e.g.
         CachingEmbedder/OllamaEmbedder); falls back to the plain ``similarity``
         protocol method (0 tokens) so any Embedder implementation still works.
         Each similarity is counted as 2 embed operations.
+
+        **An embedder failure returns ``None``; it never propagates.** Measured in
+        production 2026-09-06: two accepted contact messages out of 274 produced no
+        turn at all, both landing under a second past the embedding client's 120 s
+        read timeout — the ``httpx.ReadTimeout`` came out of here, crossed
+        ``process`` untouched, and killed the turn. The line that separates this
+        from ``generate_json_resilient``, which deliberately re-raises rather than
+        degrade: **the LLM PRODUCES the rewrite the whole pipeline then consumes,
+        while the embedder only MEASURES it.** Losing the rewrite loses the product
+        and must be loud; losing the measurement loses only the measurement — as
+        long as its absence is recorded AS an absence and never as a value. The
+        caller therefore turns ``None`` into ``drift_score=None`` /
+        ``subject_similarity=None`` plus an ``embed:unavailable`` degradation, and
+        the drift chain drops the component instead of averaging a fiction into it.
+
+        The same choice the ID stage already made (``routing/goal.py`` degrades any
+        embedder failure to Jaccard) and the one ``cogno_synapse.OllamaEmbedder``
+        states in its own docstring: "a raised exception is a dead turn — and an
+        embedder must never be the reason a turn dies."
+
+        ``BaseException`` is deliberately NOT caught, so an ``asyncio.CancelledError``
+        (a shutdown, a client hang-up) still unwinds the turn as it must.
         """
         usage_fn = getattr(self._embedder, "similarity_with_usage", None)
-        if usage_fn is not None:
-            sim, tokens = await usage_fn(a, b)
-            return sim, tokens, 2
-        sim = await self._embedder.similarity(a, b)
-        return sim, 0, 2
+        try:
+            if usage_fn is not None:
+                sim, tokens = await usage_fn(a, b)
+                return sim, tokens, 2
+            sim = await self._embedder.similarity(a, b)
+            return sim, 0, 2
+        except Exception as exc:  # noqa: BLE001 — any embedder failure degrades, see above
+            logger.warning(
+                "stage=noumeno event=embed_unavailable error=%s: %s — drift is UNKNOWN "
+                "for this turn (not 0.0, not 1.0); the turn continues.",
+                type(exc).__name__, exc,
+            )
+            # The round trip HAPPENED (in the measured case it burned the full 120 s), so
+            # it is counted as an attempt with 0 tokens rather than hidden from the trace.
+            return None, 0, 2
 
     def _parse_json(self, raw: str) -> dict:
         cleaned = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
