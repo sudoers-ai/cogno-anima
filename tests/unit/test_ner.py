@@ -570,3 +570,34 @@ def test_carried_domains_is_pure_and_total():
     assert carried_domains(["GENERAL"]) == []
     assert carried_domains(["FINANCE"]) == ["FINANCE"]
     assert carried_domains(["FINANCE", "GENERAL", "HEALTH"]) == ["FINANCE", "HEALTH"]
+
+
+# ── MARKETING: a domain exists so a persona can OWN it ───────────────────────────
+
+
+def test_marketing_is_a_domain_the_model_may_answer():
+    """The token is the JOIN between two libs, and neither half is enough alone.
+
+    A persona declares the subject it owns (``cogno_persona.Persona.domains``) in THIS
+    vocabulary, and a host hands a turn to the persona owning the turn's domain. With no
+    MARKETING in the closed list the NER cannot name that subject, so the owner cannot be
+    found and the persona is reachable only by NAME — which is what a live run measured.
+
+    ``test_code_domains_match_prompt_domains_exactly`` pins the two COPIES against each
+    other and would stay green if this token were deleted from both; this test is the one
+    that fails when the owner's subject is taken out from under it.
+    """
+    from cogno_anima.stages.ner import _canonical_domains
+
+    assert "MARKETING" in NER_KNOWLEDGE_DOMAINS
+    assert _canonical_domains(["MARKETING"]) == ["MARKETING"]
+
+
+def test_the_closed_list_is_still_closed_around_it():
+    """THE TWIN. The list grew by one TOKEN, not by a family: a neighbouring word the
+    model might reach for is still dropped, exactly as before."""
+    from cogno_anima.stages.ner import _canonical_domains
+
+    for near_miss in ("ADVERTISING", "BRANDING", "SOCIAL_MEDIA", "SALES", "MKT"):
+        assert near_miss not in NER_KNOWLEDGE_DOMAINS
+        assert _canonical_domains([near_miss]) == []

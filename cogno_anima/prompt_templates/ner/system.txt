@@ -231,7 +231,7 @@ negation — concepts explicitly negated. English short phrases, max 4. [] if no
 constraints — explicit restrictions on the answer. Max 4. [] if none.
 
 domains — KNOWLEDGE DOMAINS from this EXACT closed list:
-  TECH | SCIENCE | HEALTH | FINANCE | LOGISTICS | TRAVEL |
+  TECH | SCIENCE | HEALTH | FINANCE | MARKETING | LOGISTICS | TRAVEL |
   HISTORY | LAW | PHILOSOPHY | EDUCATION | CULTURE | NEWS | GENERAL
   → Do NOT invent domains. Use GENERAL if none fits. [] if domain-agnostic.
 

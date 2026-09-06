@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased — um assunto sem token na lista fechada não tem dono (2026-09-06)
+
+### Added
+
+- **`MARKETING` entra em `NER_KNOWLEDGE_DOMAINS`** (e, na mesma alteração, na lista `domains`
+  do prompt do NER — as duas cópias do facto que `test_code_domains_match_prompt_domains_exactly`
+  e `test_all_vocab_values_are_taught_by_the_prompt` obrigam a andar juntas).
+
+  **A lista é lida pelas duas pontas.** O NER responde o assunto do turno a partir dela; uma
+  persona declara o assunto que POSSUI no mesmo vocabulário (`cogno_persona.Persona.domains`,
+  o campo irmão desta alteração), e é assim que um host entrega um turno a quem é dono do
+  domínio. Um assunto que falta aqui não é só inclassificável: **não tem dono**, e a única
+  maneira de chegar à persona cujo trabalho ele é passa a ser dizer o nome dela. Medido numa
+  corrida viva — um pedido de planeamento mensal de campanhas não abriu delegação nenhuma
+  (`tokens=[]`, `target=''`).
+
+  **Cresceu um token, não uma família.** `ADVERTISING`, `BRANDING`, `SOCIAL_MEDIA`, `SALES` e
+  `MKT` continuam a cair no filtro da lista fechada (`_canonical_domains`), sem entrada nova em
+  `_DOMAIN_ALIASES` — um alias tem vítima e nenhum foi medido a fazer falta. Sonda de
+  sobre-aperto contra o corpus inteiro do bench e uma corrida `--only ner` de controlo contra
+  a base: números no PR.
 ## Unreleased — o cache do provider deixa de ser invisível ao medidor (2026-09-06)
 
 ### Added
