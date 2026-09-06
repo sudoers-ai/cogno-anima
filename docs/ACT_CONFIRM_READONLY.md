@@ -44,35 +44,53 @@ answer arrives immediately**, and reading it as one cost a real conversation. Th
 core is stateless: a hold lives in `EgoResult.pending_confirmation` for exactly one
 turn, and whether it exists on the NEXT turn is entirely the **host's** doing —
 `ego_confirmed` is something a host decides to stamp. Measured in `cogno-host` on
-2026-09-05: a proposal ("marco seu agendamento para 22/06 às 14h. Posso seguir?"),
-one unrelated question from the contact, then "sim" — and the host's session state
-was rebuilt from scratch each turn, so by the third message nothing was held. The
-"sim" ran as an ordinary turn and the model answered *"Vou agendar…"* with zero tool
-calls. **The contact heard a promise and nothing was written.**
+2026-09-05 over a 13-turn replay: a proposal ("Cadastro de Empresa — Padaria Sol
+Nascente. Posso seguir?"), one unrelated question from the contact ("Ah, antes disso:
+vocês atendem no sábado de manhã?"), then "Sim, pode seguir." — and the host's session
+state was rebuilt from scratch each turn, so by the third message nothing was held.
+The "sim" ran as an ordinary turn and the model answered *"Vou cadastrar…"* with zero
+tool calls. **The contact heard a promise and nothing was written.** Zero writes in
+thirteen turns.
 
 So the drawing needs a third line, and it belongs to the host:
 
 ```
 turn N   (proposal):   EGO holds → host asks "may I go ahead?" and PERSISTS the hold
 turn N+k (any other):  the hold is CARRIED, untouched — its clock does not restart
-turn N+k (agreement):  k == 0 → stamp `ego_confirmed` → the EGO executes it
-                       k >  0 → RE-PROPOSE the same question; only the answer to
-                                THAT one commits
+turn N+k (agreement):  stamp `ego_confirmed` → the EGO executes it
 ```
 
-**The property, which no host may break:** *nothing is executed that was not
-re-proposed to the contact.* It is what makes carrying a hold across turns safe
-instead of dangerous — an agreement that arrives after anything else was said is
-ambiguous ("yes to what?"), and the affirmative lexicons hosts use to detect one are
-measurably wrong in both directions. Carrying without the distance rule trades "the
-proposal is forgotten" for "an ambiguous yes commits", which is the worse defect of
-the two. `cogno-host`'s implementation is `assembler.decide_hold` + `_reask_gate`;
-its `docs/ANTI_FABRICATION.md` §2-bis carries the measurement.
+**Two properties, and they pull in opposite directions — which is why one rule
+decides both.** A proposal SURVIVES a turn that is about something else, so the
+contact may ask their side question and still say yes afterwards. And a hold ENDS: it
+executes, or it is dropped. It never re-asks.
+
+That second half is not a preference, it is a measurement. The first repair in
+`cogno-host` (#719) carried the hold but required the agreement to be adjacent to the
+proposal — any other distance RE-PROPOSED the same question instead of committing.
+The property it was defending sounds right (*nothing is executed that was not
+re-proposed*) and its implementation has no fixed point: a re-proposal is itself an
+interruption, the contact answers it with something else, the distance grows back, and
+the next agreement re-asks again. Measured over the same thirteen turns: **zero writes,
+the hold still open at the end, and the conversation blocked** — the persona answered
+every message with the same proposal. It was reverted (#724) and re-landed without the
+re-ask. What bounds a carried hold instead are two limits, one per axis: a maximum
+number of turns it may ride unanswered, and a wall clock that a passing turn does not
+restart.
+
+A hold is also **not** an answer to every affirmative-looking message. Two shapes were
+measured wrong in both directions and both are the host's to close: a message naming a
+time the held call does not have is a COUNTER-PROPOSAL, not a go-ahead; and a request
+for another persona by name ("Perfeito. Agora me transfira de volta para a Pam") is
+affirmative to any word lexicon and is not an answer at all — read as one, it hijacked
+the turn and the transfer never happened. `cogno-host`'s implementation is
+`assembler.decide_hold` (RELEASE / CARRY / DROP) plus `routing.explicit_persona_request`;
+its `docs/ANTI_FABRICATION.md` §2-bis carries the measurements.
 
 The same applies to **Fonte C**: the skill answered "I did not commit — ask first"
-about a specific call. That answer is about the data the skill just read, so a hold
-carried across turns must be re-proposed for the same reason, and for one more — the
-rows it read may have changed in between.
+about a specific call. The rows it read may have changed while the hold was carried,
+so a host that carries one across many turns is trading freshness for continuity — the
+turn and clock bounds above are where that trade is declared.
 
 ## Ownership (respects the existing layer boundaries)
 
