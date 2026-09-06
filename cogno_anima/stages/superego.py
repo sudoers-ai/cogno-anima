@@ -31,7 +31,7 @@ import re
 import time
 import json
 import logging
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from cogno_anima import metakeys as mk
 from cogno_anima import vocab
@@ -122,6 +122,16 @@ _EXECUTION_CRITERIA = (
     "5. SAFETY/LIMITS: within the persona's limits, no policy violation?\n\n"
 )
 
+# ── the three judge branches ──────────────────────────────────────────────────────────
+# A judge prompt is CHOSEN, not accumulated. Each label below swaps the CRITERIA block; the
+# unconditional tail (TRUST THE TOOLS / honest failure / NOTHING TO DO / MID-FLOW) is shared by
+# all three, because those say what a valid OUTCOME is and that does not vary with the shape of
+# the turn. ``JUDGE_READONLY`` is deliberately NOT a metakey beside ``mk.JUDGE_CONVERSATIONAL``
+# — see ``_is_readonly_turn`` for the measurement that decided it.
+JUDGE_EXECUTION = "execution"                  # a turn that acted — the original criteria
+JUDGE_CONVERSATIONAL_BRANCH = "conversational"  # host-declared: no tool to execute at all
+JUDGE_READONLY = "readonly"                    # computed HERE: it ran, every call a clean read
+
 # A persona with no tools (a seller, an SDR, a support agent) executes NOTHING by design, so
 # criteria 1 and 3 above are unsatisfiable: measured live, the judge rejected 100% of turns —
 # including replies that were correct and honest — and the retry loop then delivered a handoff
@@ -211,6 +221,63 @@ _OUT_OF_REACH = (
     "block does NOT name is judged by the criteria above as usual, because the persona may well "
     "have had the tool and simply not used it. Everything the turn COULD do is still judged in "
     "full.\n\n"
+)
+
+
+# The READ-ONLY branch. A turn that ran, whose every call SUCCEEDED and whose every call was a
+# READ, has no mutation to verify — so criteria #1 (GOAL<->EXECUTION) and #3 (COMPLETENESS)
+# have nothing to bind to and decay into "does the reply satisfy the user", which is a
+# judgement about the DRAFT wearing the vocabulary of execution.
+#
+# Measured over 730 production traces carrying a judge block (2026-08-25 -> 09-06; rows the
+# store had rewritten after creation excluded): a turn that WROTE was rejected at least once
+# 14.1% of the time [7.0-24.4]; a turn that only READ, 65.9% [61.0-70.6] — 4.6x, and half of
+# those were never approved at all, burning the correction budget on a reply that was already
+# right. The critiques say it in the judge's own vocabulary — "did not fully meet the user's
+# request", "did not fulfil the user's request" — and one of them concedes the point outright:
+# "the execution CORRECTLY stated that the business is closed on Saturdays, but it did not
+# fully meet...". It grants the correctness and rejects anyway.
+#
+# What this is NOT is a missing clause, and the branch would be indefensible if it were. A
+# deterministic probe over the rendered prompt (7 clauses x 3 cases = 21 cells) confirmed that
+# NOTHING TO DO and MID-FLOW — the two clauses that already describe exactly this outcome — are
+# UNCONDITIONAL and were present, verbatim, in the prompts that produced those rejections. So
+# the fix cannot be a fourth paragraph in a prompt whose third is already being ignored.
+# ``JUDGE_CONVERSATIONAL`` is the precedent and it is a MEASURED one (0/3 -> 3/3): it does not
+# argue with the criteria, it REPLACES them. Same move here.
+#
+# The one thing this branch must never become is a free pass, and that is why GROUNDING is not
+# relaxed but PROMOTED to criterion #1: the reads are the only ground truth the reply has, so a
+# draft that states anything they did not return is rejected exactly as hard as before. The
+# relaxation is confined to the single question "did the execution fulfil the goal", which on a
+# clean read has no honest answer other than "there was nothing to fulfil".
+_READONLY_CRITERIA = (
+    "# This turn executed READS ONLY - every tool call SUCCEEDED and none of them wrote "
+    "anything. Judge the DRAFT as an ANSWER to the user; do NOT judge the execution as a "
+    "fulfilment. There was no mutation to make, so its absence is not a failure, and 'the "
+    "request was not carried out' is not available to you as a finding.\n"
+    "APPROVE BY DEFAULT. Look for the violations below; if none of them is present, approve. "
+    "This overrides the general 'do not approve what you cannot verify' stance, which exists "
+    "for ACTIONS: nothing was acted on here. A truthful reply built out of what the reads "
+    "returned is a PASS, whether it is long or short.\n"
+    "REJECT only if one of these is TRUE:\n"
+    "1. FABRICATION / GROUNDING - the one fatal error, and it is FIRST here for a reason: the "
+    "reads are the only ground truth this reply has. Every figure, name, date, id, time, slot, "
+    "status or availability the draft states must trace to a tool result above. A tool that "
+    "returned NOTHING ('no rows', 'none found', an empty list) grounds a NEGATIVE answer and "
+    "nothing else - a draft that fills that emptiness with plausible content is fabricating. A "
+    "preserved term reproduced INCORRECTLY (a mangled figure, email or URL) counts as "
+    "fabrication too.\n"
+    "2. CONTRADICTS THE READ: the draft asserts something the tool results deny, or reports as "
+    "done, scheduled, registered or confirmed something no call here performed - nothing was "
+    "written this turn, so any claim that it was is false by construction.\n"
+    "3. CONSTRAINTS: the draft ignores a restriction the user stated, or does what they "
+    "forbade.\n"
+    "4. DUCKING A QUESTION: the user asked something concrete and the draft neither answers it "
+    "from the reads nor says plainly that it does not know. " + _ADMITTING_A_LIMIT + " "
+    "Reporting truthfully that the read came back empty IS an answer - it is the most common "
+    "correct answer on this kind of turn, and rejecting it asks the model to invent.\n"
+    "5. SAFETY/LIMITS: the draft breaks the persona's limits or a policy.\n\n"
 )
 
 
@@ -901,16 +968,115 @@ class SuperegoStage:
             data = self._parse_json(raw)
             approved = bool(data.get("approved", False))
             critique = None if approved else str(data.get("critique", "")) or "execution rejected"
+            # The BRANCH is logged beside the verdict, and it is the only place the choice
+            # becomes observable after the fact: the rendered prompt is deliberately not
+            # persisted (it carries contact data), so without this a reader of a rejection
+            # cannot tell which criteria produced it. Closed alphabet — the label comes from
+            # `_judge_branch`, never from the turn.
+            branch = self._judge_branch(ctx)
             if approved:
-                logger.info("stage=superego event=judge approved=true")
+                logger.info("stage=superego event=judge approved=true branch=%s", branch)
             else:
                 # A rejection feeds the EGO↔SUPEREGO correction loop — surface it.
-                logger.warning("stage=superego event=judge approved=false critique=%s",
-                               (critique or "")[:80])
+                logger.warning("stage=superego event=judge approved=false branch=%s critique=%s",
+                               branch, (critique or "")[:80])
             return _result(approved, critique, ti, to, cached)
         except Exception as exc:  # noqa: BLE001 — fail-CLOSED: don't pass unverified
             logger.warning("judge failed (%s) — not approving (fail-closed)", exc)
             return _result(False, "could not verify the execution; please retry")
+
+    @staticmethod
+    def _is_readonly_turn(ctx: PipelineContext) -> bool:
+        """Did this turn RUN, succeed, and change nothing?
+
+        Every executed call ``ok`` and non-writing, at least one of them, no proposal held back
+        and no interrupted loop. Conservative on purpose: this predicate is what lets the judge
+        stop asking "was the goal carried out", so every condition on it is a condition on a
+        relaxation. Measured over the same 730-trace corpus: of the 551 turns that executed a
+        tool, 348 pass ``ok`` + no side effect, and the three extra guards below (nothing
+        DECLARED mutating, not interrupted, nothing held for confirmation) cost **zero** of
+        those 348. They are free here and they are the difference between "read-only" and
+        "nothing happened to have written yet".
+
+        The WRITE half of that question is delegated, not re-asked: ``write_attempted_this_turn``
+        is the definition, it reads BOTH writing facts (``side_effect``, the call;
+        ``tool_mutating``, the name) and — the part that matters — it walks BOTH execution
+        lists. Deriving it a second time here is what put a write past this branch once
+        already; see the comment at the call below.
+
+        **Why this is computed HERE and is not a metakey beside ``mk.JUDGE_CONVERSATIONAL``.**
+        The host already publishes a signal of nearly this name — a pre-execution guess at
+        whether the user was READING, derived from the request text. Reusing it was the obvious
+        move and it is measured DEAD: across the same corpus that flag was ``false`` on **210
+        turns that were in fact read-only**, because it answers "did they ask a question", not
+        "did anything get written". The two questions diverge exactly where it matters — a user
+        who says "marca-me isso" and gets a turn that only looked things up is read-only in
+        fact and a write in intent. A signal that has to be RIGHT for a relaxation to be SAFE
+        cannot be a guess made before the evidence exists. ``mk.JUDGE_CONVERSATIONAL`` earns
+        its place as a metakey for the opposite reason: whether a persona was offered any tool
+        at all is knowledge only the host has, and it is a fact, not a prediction.
+        """
+        # THE WRITE QUESTION IS NOT ASKED HERE. `write_attempted_this_turn` already owns it —
+        # same per-call test (`side_effect is True or tool_mutating is True`), and crucially
+        # the same SOURCE WALK: `_any_execution` reads `ctx.turn_executions` in UNION with
+        # `ego_result.tools_executed`. This predicate walked only the second one, and that gap
+        # is not theoretical: measured on a turn whose attempt 1 WROTE and whose surviving
+        # attempt shows only clean reads, the two answered `True`/`readonly` — the judge would
+        # have been told "there was no mutation to verify" about a turn that mutated. It is
+        # the survivor-attempt-read-as-the-turn defect this repo already carries a docstring
+        # against, and the fix is the one that file prescribes: one definition, not a second
+        # reading. Its `unreadable=True` bias lands on the strict side here, which is the
+        # direction this predicate needs anyway.
+        if write_attempted_this_turn(ctx):
+            return False
+        ego = ctx.ego_result
+        if ego is None:
+            return False
+        missing = object()
+        try:
+            # Read through a SENTINEL, not a permissive default. An absent field is a silence,
+            # and a silence must not be spent as evidence FOR a relaxation: a stand-in that
+            # cannot say whether the loop was interrupted has not told us it was not.
+            # `EgoResult` always carries all three, so in the pipeline this never fires.
+            interrupted: Any = getattr(ego, "interrupted", missing)
+            held: Any = getattr(ego, "pending_confirmation", missing)
+            executed: Any = getattr(ego, "tools_executed", missing)
+            if interrupted is missing or held is missing or executed is missing:
+                return False
+            if interrupted or held:
+                return False
+            calls = list(executed or ())
+            # Only `ok` remains, and the split is deliberate: the judge judges the SURVIVING
+            # attempt's execution and draft, so "did every call succeed / was the loop clean"
+            # is a question about THIS attempt — but the WORLD was changed by the whole turn,
+            # so "did anything write" is asked of the union, above.
+            return bool(calls) and all(c.ok for c in calls)
+        except Exception:  # noqa: BLE001 — an unreadable trace is not a licence
+            # Fail towards the STRICTER branch, never towards the relaxation. This mirrors
+            # `_format_unavailable`'s rule that a judge prompt must never be the reason a turn
+            # dies, but the safe direction is the opposite one: there, a missing line degrades
+            # to today's behaviour; here, so does refusing to relax. `EgoResult` is typed, so
+            # this should be unreachable in the pipeline — it is reachable from anything that
+            # hands the stage a partial stand-in, and a predicate that RAISES on one would
+            # take the whole turn down to answer a question about criteria selection.
+            logger.warning("stage=superego event=judge_branch_undecidable — using %s",
+                           JUDGE_EXECUTION)
+            return False
+
+    @classmethod
+    def _judge_branch(cls, ctx: PipelineContext) -> str:
+        """Which criteria this turn is judged by. One definition, two readers.
+
+        Order is precedence. ``JUDGE_CONVERSATIONAL`` wins because it is the host asserting
+        there was no tool to run at all, which the trace of an empty execution cannot
+        distinguish from a model that chose not to act; and because deferring to it keeps every
+        conversational turn byte-identical to what it was before this branch existed.
+        """
+        if ctx.metadata.get(mk.JUDGE_CONVERSATIONAL):
+            return JUDGE_CONVERSATIONAL_BRANCH
+        if cls._is_readonly_turn(ctx):
+            return JUDGE_READONLY
+        return JUDGE_EXECUTION
 
     def _build_judge_prompt(self, ctx: PipelineContext, limits_prompt: str) -> str:
         ego = ctx.ego_result
@@ -946,10 +1112,12 @@ class SuperegoStage:
         # valid turn in a handoff.
         injected = ctx.metadata.get(mk.EGO_CONTEXT)
         context = f"# Context (authoritative — clock/memories/history)\n{str(injected).strip()}\n\n" if injected else ""
-        conversational = bool(ctx.metadata.get(mk.JUDGE_CONVERSATIONAL))
-        criteria = (_CONVERSATIONAL_CRITERIA
-                    if conversational
-                    else _EXECUTION_CRITERIA + _EXECUTION_COMPLETENESS_NOTE)
+        branch = self._judge_branch(ctx)
+        conversational = branch == JUDGE_CONVERSATIONAL_BRANCH
+        criteria = {
+            JUDGE_CONVERSATIONAL_BRANCH: _CONVERSATIONAL_CRITERIA,
+            JUDGE_READONLY: _READONLY_CRITERIA,
+        }.get(branch, _EXECUTION_CRITERIA + _EXECUTION_COMPLETENESS_NOTE)
         # The opening travels WITH its evidence: the clause renders only for a turn that
         # actually carries a computed capability gap. `unavailable` is that block — the same
         # string, not a second reading of the metadata — so the judge can never be told "the
