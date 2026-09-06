@@ -2,6 +2,22 @@
 
 ## Unreleased — o router encaminhava duas perguntas de política e não a terceira (2026-09-01)
 
+### Documentation
+
+- **`docs/ACT_CONFIRM_READONLY.md` desenhava dois turnos e nada sobre o terceiro.** A referência
+  dos três portões mostra «turno 1 propõe → turno 2 confirma → executa» e não dizia o que
+  acontece a uma retenção que atravessa uma pergunta pelo meio — e ler o desenho como promessa
+  custou uma conversa real. Medido em `cogno-host` a 2026-09-05: proposta («marco seu agendamento
+  para 22/06 às 14h. Posso seguir?»), uma pergunta lateral do contacto, depois «sim» — o estado
+  da sessão era reconstruído do zero a cada turno, à terceira mensagem não havia nada retido, e o
+  modelo respondeu «Vou agendar…» com ZERO chamadas de ferramenta. O contacto ouviu uma promessa
+  e nada foi escrito. O documento ganha a terceira linha do desenho (a que pertence ao host) e a
+  propriedade que nenhum host pode violar: **nunca executar algo que não foi re-proposto ao
+  contacto** — reter sem essa regra troca «a proposta é esquecida» por «um sim ambíguo comita»,
+  que é o pior dos dois. Sem alteração de código: o núcleo é sem estado por desenho, e o tempo de
+  vida de uma retenção é do host (`cogno-host`: `assembler.decide_hold` + `_reask_gate`,
+  `docs/ANTI_FABRICATION.md` §2-bis).
+
 ### Fixed
 
 - **A pergunta que faltava era a que uma protecção do host precisava de atravessar.** O

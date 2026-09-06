@@ -37,6 +37,43 @@ turn 2 (confirmed):  normal ACTION_REQUEST → full toolset → mutation execute
 This is essentially a **dry-run / propose mode**; the actual mutation happens on
 the next turn, after the user confirms.
 
+### What if the next turn is about something else?
+
+The two-turn drawing above is the shape of the handshake, **not a promise that the
+answer arrives immediately**, and reading it as one cost a real conversation. The
+core is stateless: a hold lives in `EgoResult.pending_confirmation` for exactly one
+turn, and whether it exists on the NEXT turn is entirely the **host's** doing —
+`ego_confirmed` is something a host decides to stamp. Measured in `cogno-host` on
+2026-09-05: a proposal ("marco seu agendamento para 22/06 às 14h. Posso seguir?"),
+one unrelated question from the contact, then "sim" — and the host's session state
+was rebuilt from scratch each turn, so by the third message nothing was held. The
+"sim" ran as an ordinary turn and the model answered *"Vou agendar…"* with zero tool
+calls. **The contact heard a promise and nothing was written.**
+
+So the drawing needs a third line, and it belongs to the host:
+
+```
+turn N   (proposal):   EGO holds → host asks "may I go ahead?" and PERSISTS the hold
+turn N+k (any other):  the hold is CARRIED, untouched — its clock does not restart
+turn N+k (agreement):  k == 0 → stamp `ego_confirmed` → the EGO executes it
+                       k >  0 → RE-PROPOSE the same question; only the answer to
+                                THAT one commits
+```
+
+**The property, which no host may break:** *nothing is executed that was not
+re-proposed to the contact.* It is what makes carrying a hold across turns safe
+instead of dangerous — an agreement that arrives after anything else was said is
+ambiguous ("yes to what?"), and the affirmative lexicons hosts use to detect one are
+measurably wrong in both directions. Carrying without the distance rule trades "the
+proposal is forgotten" for "an ambiguous yes commits", which is the worse defect of
+the two. `cogno-host`'s implementation is `assembler.decide_hold` + `_reask_gate`;
+its `docs/ANTI_FABRICATION.md` §2-bis carries the measurement.
+
+The same applies to **Fonte C**: the skill answered "I did not commit — ask first"
+about a specific call. That answer is about the data the skill just read, so a hold
+carried across turns must be re-proposed for the same reason, and for one more — the
+rows it read may have changed in between.
+
 ## Ownership (respects the existing layer boundaries)
 
 - **ID — detects & signals.** The `_act_confirm_caution` logic moves UP from the
