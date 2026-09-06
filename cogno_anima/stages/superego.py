@@ -37,6 +37,7 @@ from cogno_anima import metakeys as mk
 from cogno_anima import vocab
 from cogno_anima.types import (
     PipelineContext, StageMetrics, SuperegoResult, ScopeCheckResult,
+    write_attempted_this_turn,
 )
 from cogno_synapse import LLMBackend, cached_tokens_of
 from cogno_anima.utils import WarnOnce
@@ -1371,6 +1372,45 @@ class SuperegoStage:
                     "You may then ask ONE question to move forward.\n\n"
                 )
             else:
+                # The rejected EXECUTION. Two worlds arrive here wearing the same signal, and
+                # until 2026-09-06 the section spoke to only one of them. "NOTHING was
+                # committed" is true of both — of the booking the server refused AND of the
+                # turn that never called a writing tool at all — because every commit
+                # predicate in `types.py` conjoins ``ok``. The orchestrator's ``kind`` cannot
+                # tell them apart either: `cogno_soma` splits on whether ANY tool ran, so a
+                # turn whose only call was `resolve_date` and a turn whose booking failed both
+                # arrive as ``not_executed``. So the distinction is drawn HERE, from the
+                # trace, by `write_attempted_this_turn` — which is why this is a CONDITION on
+                # this variant and not a fourth ``kind``: a new kind would ask the host to
+                # re-derive a fact the core can already read, and this repo's standing lesson
+                # is that a rule each consumer re-derives is a rule each consumer gets wrong
+                # alone.
+                #
+                # Measured 2026-09-06 (production `turn_traces`, a 1094-row snapshot on the
+                # demo box; 1049 of a provable era under the `xmin` rewrite filter): the
+                # contact asked to record an expense, the EGO called `resolve_date` and asked
+                # for confirmation in prose, the judge rejected it with the RIGHT critique
+                # ("only asked for confirmation without recording") — and the voice, holding
+                # that critique, wrote "Não consegui registrar a despesa". Nothing was tried,
+                # nothing failed, and a person was told of a failure. That is worse than doing
+                # nothing: they act on it, and may not ask again. 225 turns carry this shape;
+                # 9 of them shipped exactly that sentence.
+                #
+                # The critique says what was MISSING. The voice was translating it into what
+                # was TRIED AND FAILED. Those are different claims and only one of them is
+                # true.
+                nothing_tried = "" if write_attempted_this_turn(ctx) else (
+                    "NOTHING WAS EVEN TRIED: no tool that changes anything ran this turn — "
+                    "not one that succeeded, and not one that failed. So you MUST NOT write "
+                    "that the requested action was attempted and did not work (\"I could not "
+                    "do it\", \"it failed\", \"it did not go through\"). No attempt was made, "
+                    "so such a sentence is FALSE, and the contact will act on it as if we had "
+                    "tried. The critique says what was MISSING, not what was tried: write "
+                    "THAT instead — the confirmation this request is still waiting for, or "
+                    "the ONE question whose answer is missing. Reporting truthfully what a "
+                    "READ did not return is still allowed, and so is saying plainly that this "
+                    "is not something you can do here; neither of those claims an attempt.\n"
+                )
                 rejection_section = (
                     "# Execution verdict (HARD RULE)\n"
                     "The execution of this turn was REJECTED by review and NOTHING was "
@@ -1378,7 +1418,9 @@ class SuperegoStage:
                     f"Reviewer critique: {reason}\n"
                     "You MUST NOT claim, imply or narrate that any action was performed or "
                     "completed this turn. Either state truthfully what was found in the "
-                    "executor data, or ask the user ONE clarifying question to move forward.\n\n"
+                    "executor data, or ask the user ONE clarifying question to move forward.\n"
+                    f"{nothing_tried}"
+                    "\n"
                 )
         # The reply language is a HARD instruction (leading the Task), not a soft signal —
         # a small model otherwise drifts into another language when the user's turn is short

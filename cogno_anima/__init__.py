@@ -14,6 +14,7 @@ except PackageNotFoundError:  # source tree without an installed dist (e.g. vend
 from cogno_anima.types import (
     committed_this_turn,
     wrote_for_the_contact,
+    write_attempted_this_turn,
     is_fully_sequenced,
     ordered_stage_metrics,
     StageMetrics,
@@ -80,6 +81,7 @@ __all__ = [
     "sanitize_voice_traits",
     "committed_this_turn",
     "wrote_for_the_contact",
+    "write_attempted_this_turn",
     "is_fully_sequenced",
     "ordered_stage_metrics",
     "StageMetrics",
