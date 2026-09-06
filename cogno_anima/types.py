@@ -601,8 +601,8 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     host is the only layer that knows, so it says so (``mk.PRIOR_ATTEMPT_COMMITTED``) and this
     predicate believes it.
 
-    Fixing it HERE and not in each caller is the whole point. FIVE places CALL this, measured
-    2026-09-01 rather than recalled — and it is FIVE, not eleven, because the enumeration SPLIT:
+    Fixing it HERE and not in each caller is the whole point. SIX places CALL this, measured
+    2026-09-06 rather than recalled — and it is SIX, not eleven, because the enumeration SPLIT:
     seven callers were asking a different question and moved to `wrote_for_the_contact` (its
     docstring carries that list). What stayed are the callers for whom the answer is *"repeating
     is unsafe"*, which is what this predicate means:
@@ -614,6 +614,15 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
         a second conversation;
       * the discard guard (`service.py::_finish_repair`) — an attempt that did something
         irreversible must not have its context thrown away;
+      * the one-more-pass gate (`pipeline.py::_owes_an_action`, soma) — the sixth, added
+        2026-09-06. It grants an EGO re-run to a turn the judge rejected for not ACTING, and
+        the whole question it has to answer before granting one is this predicate's own summary
+        line. It reads a stronger fact of its own first (no tool the host DECLARES mutating was
+        called on any pass), so the two on-context sources here are already covered; it calls
+        anyway, for the source they cannot carry — the host's cross-context declaration for an
+        attempt whose context died — and for the host whose `side_effect` and `is_mutating`
+        disagree on a tool. Same family as the two repair guards above: re-running a turn that
+        already acted commits a SECOND time;
       * and `wrote_for_the_contact` itself, which delegates here when the host declares no
         routing set. Named for the same reason as the others: a delegation the enumeration does
         not list is a re-derivation hiding behind a call.
