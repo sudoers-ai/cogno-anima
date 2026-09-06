@@ -398,8 +398,15 @@ VALID_ARISTOTELIAN: set[str] = {
 }
 
 # Knowledge-domain closed list — MUST match the `domains` list in the NER prompt.
+#
+# The list is read from BOTH ends: the NER answers a turn's subject out of it, and a
+# persona declares the subject it OWNS in the same vocabulary (`cogno_persona.Persona.
+# domains`), so a host can hand a turn to whoever owns its domain. A subject missing here
+# is therefore not merely unclassifiable — it has no owner, and the only way to reach the
+# persona whose job it is, is to say that persona's name. MARKETING was added for exactly
+# that reason (measured: a campaign-planning request resolved to no owner at all).
 NER_KNOWLEDGE_DOMAINS: set[str] = {
-    "TECH", "SCIENCE", "HEALTH", "FINANCE", "LOGISTICS", "TRAVEL",
+    "TECH", "SCIENCE", "HEALTH", "FINANCE", "MARKETING", "LOGISTICS", "TRAVEL",
     "HISTORY", "LAW", "PHILOSOPHY", "EDUCATION", "CULTURE", "NEWS", "GENERAL",
 }
 
