@@ -90,12 +90,25 @@ class ToolPolicyDispatcher(ToolDispatcher, Protocol):
     — ``getattr_static`` reads ``obj.__dict__``, so this satisfies both interpreters and
     keeps the probe honest about the source underneath::
 
+        from cogno_anima.tools import bind_delegated
+
         class MyWrapper:
             def __init__(self, inner):
                 self._inner = inner
-                for name in ("is_mutating", "requires_confirmation"):
-                    if hasattr(inner, name):
-                        setattr(self, name, getattr(inner, name))
+                bind_delegated(self, inner, "is_mutating", "requires_confirmation")
+
+            def __getattr__(self, name):        # everything else IS the inner's
+                return getattr(self._inner, name)
+
+    :func:`cogno_anima.tools.bind_delegated` ships that loop, because a rule every wrapper
+    author re-derives is a rule every wrapper author gets wrong alone — this docstring used
+    to teach it by hand, and the hand-written copies were the ones that failed. The
+    ``__getattr__`` beside it is NOT redundant with the binding and the two are not
+    interchangeable: it forwards everything the wrapper does not mediate (a counter, a finer
+    policy predicate a caller reaches down for), which is invisible to ``getattr_static``
+    and therefore useless for the probe, while the binding covers exactly the members the
+    probe reads. The wrappers this package ships — :class:`CommitRecordingDispatcher`,
+    :class:`ConfirmArgumentRecordingDispatcher` — are the worked example.
 
     The same applies to every ``runtime_checkable`` probe in this codebase — notably
     ``ToolCallingBackend`` (``cogno_synapse``), where the same mistake degrades a
