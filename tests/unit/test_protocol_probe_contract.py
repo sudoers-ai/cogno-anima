@@ -19,8 +19,16 @@ PROPRIEDADE que a outra verifica.
 
 **Por que existe:** a documentação desta lib ensinava `__getattr__` como *"a resposta certa
 para um WRAPPER"*, e a lib é pública. Quem seguisse a nossa própria documentação em 3.12
-herdava o buraco. As classes desta lib nunca o usaram — varrido: zero `__getattr__` em
-`cogno-core`, `cogno-synapse`, `cogno-cortex`, `cogno-praxis` — mas o texto ensinava-o.
+herdava o buraco.
+
+**Desde que os invólucros do host entraram nesta lib, ela TEM classes com `__getattr__`** —
+`CommitRecordingDispatcher`, `ConfirmArgumentRecordingDispatcher`, `IdProvenanceDispatcher` —
+e isso NÃO contradiz o que está escrito acima: nelas o `__getattr__` encaminha o que o
+invólucro não medeia (um contador, um predicado de política mais fino que um chamador vai
+buscar abaixo), enquanto os membros que DECIDEM a sonda são ligados à INSTÂNCIA por
+`bind_delegated`. As duas metades cobrem coisas diferentes, e o teste
+`test_every_wrapper_this_package_ships_binds_its_policy` abaixo prende essa distinção para
+o próximo invólucro que aqui entrar.
 """
 
 from __future__ import annotations
@@ -57,7 +65,9 @@ def test_the_composite_router_resolves_policy_statically(method):
     """SABOTAGEM: apagar `def is_mutating` do `CompositeDispatcher` e delegar por
     `__getattr__` -> este teste morre, e o `isinstance` do EGO passaria a False em 3.12.
 
-    O composto é a única classe desta lib que participa da sonda, e declara os métodos.
+    O composto declara-os na CLASSE, e é o ROTEADOR: responde os defaults conservadores do
+    EGO por uma fonte sem política, porque tem de escolher por ela. Os invólucros que esta
+    lib também traz fazem o oposto (ligação condicional à instância) — ver o teste seguinte.
     """
     comp = CompositeDispatcher([_Source()])
     assert _statically_resolvable(comp, method)
@@ -151,3 +161,82 @@ def test_the_docs_no_longer_teach_the_broken_pattern():
     assert "getattr_static" in composite and "the ground moved" in composite, (
         "o parágrafo do composto voltou a chamar `__getattr__` a resposta certa para um "
         "wrapper, sem a correcção ao lado")
+
+
+# ── os INVÓLUCROS que esta lib traz, DERIVADOS e não enumerados ────────────
+
+def _shipped_wrappers() -> "list[type]":
+    """As classes de `cogno_anima.tools` que embrulham UM interior.
+
+    Derivado do pacote, não escrito à mão: um invólucro NOVO que nasça sem ligar a política
+    fica vermelho aqui, e não em produção. O sinal de "invólucro sobre um interior" é o
+    `__getattr__` declarado na PRÓPRIA classe — o roteador não o tem (não saberia para que
+    fonte encaminhar), e é exactamente essa a assimetria que o `composite.py` documenta.
+    """
+    import cogno_anima.tools as pacote
+
+    return [obj for nome in pacote.__all__
+            for obj in [getattr(pacote, nome)]
+            if isinstance(obj, type) and "__getattr__" in obj.__dict__]
+
+
+def _build(klass, inner):
+    """Um invólucro de cada tipo, com o segundo argumento que cada um exige."""
+    from cogno_anima.tools import (CommitRecordingDispatcher,
+                                   ConfirmArgumentRecordingDispatcher,
+                                   IdProvenanceDispatcher)
+
+    fabricas = {
+        CommitRecordingDispatcher: lambda i: CommitRecordingDispatcher(i, []),
+        ConfirmArgumentRecordingDispatcher: lambda i: ConfirmArgumentRecordingDispatcher(i, {}),
+        IdProvenanceDispatcher: lambda i: IdProvenanceDispatcher(i, guarded={}),
+    }
+    assert klass in fabricas, (
+        f"`{klass.__name__}` é um invólucro novo desta lib e ninguém lhe deu construtor aqui — "
+        f"acrescente-o, senão ele fica FORA das duas asserções abaixo em silêncio")
+    return fabricas[klass](inner)
+
+
+def test_the_shipped_wrappers_are_actually_found():
+    """Guarda a guarda: um `_shipped_wrappers` que devolvesse `[]` deixaria os dois testes
+    seguintes verdes sobre um universo vazio — a forma de defeito que este ficheiro combate."""
+    assert len(_shipped_wrappers()) >= 3
+
+
+def test_every_wrapper_this_package_ships_binds_its_policy():
+    """SABOTAGEM: trocar o `bind_delegated` de qualquer invólucro por delegação só em
+    `__getattr__` -> este teste morre, e em 3.12 o portão de confirmação deixava de existir
+    para essa fonte, em silêncio."""
+    for klass in _shipped_wrappers():
+        wrapper = _build(klass, _Source())
+        for metodo in _POLICY_METHODS:
+            assert _statically_resolvable(wrapper, metodo), (
+                f"`{klass.__name__}.{metodo}` não resolve estaticamente — em 3.12 o "
+                f"`isinstance` do EGO responde False e o portão desaparece")
+        assert isinstance(wrapper, ToolPolicyDispatcher)
+
+
+def test_a_wrapper_that_adds_no_verdict_does_not_CLAIM_a_policy_the_source_lacks():
+    """A outra metade, e a que distingue os gravadores do ROTEADOR.
+
+    Quem declara os métodos na classe (o composto, o guarda de proveniência) responde os
+    defaults conservadores do EGO por uma fonte sem política — escolha deliberada, porque
+    ambos têm de responder por ela. Quem NÃO os declara está apenas a observar, e aí
+    responder "há política" seria uma mentira sobre a fonte: arma um portão sobre um palpite
+    e rebenta com `AttributeError` na primeira chamada.
+
+    SABOTAGEM: declarar `is_mutating` na classe de um gravador -> morre.
+    """
+    class _SemPolitica:
+        def tools_schema(self): return []
+        async def execute(self, n, a): return None
+
+    observadores = [k for k in _shipped_wrappers()
+                    if not any(m in k.__dict__ for m in _POLICY_METHODS)]
+    assert observadores, "nenhum invólucro delega a política — o teste deixou de discriminar"
+    for klass in observadores:
+        wrapper = _build(klass, _SemPolitica())
+        for metodo in _POLICY_METHODS:
+            assert not _statically_resolvable(wrapper, metodo), (
+                f"`{klass.__name__}` declarou `{metodo}` por uma fonte que não o tem")
+        assert not isinstance(wrapper, ToolPolicyDispatcher)
