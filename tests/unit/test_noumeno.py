@@ -403,8 +403,20 @@ class TestNoumenoStage:
         with pytest.raises(RuntimeError, match="Fatal API Error"):
             await noumeno.process(ctx, FailingLLM())
 
-    async def test_subject_similarity_failure_propagates(self):
-        """If embedder.similarity() raises during subject check, exception propagates."""
+    # These two used to assert that an embedder failure PROPAGATES, alongside the LLM
+    # one above, as a single blanket "errors are loud" contract from the initial commit.
+    # Production separated them on 2026-09-06: 2 accepted contact messages of 274 (0.73%)
+    # produced no turn at all, both a hair past the embedding client's 120 s read timeout.
+    # The property being protected — an embedder failure is never SWALLOWED — is kept and
+    # still asserted below; what changed is how it is kept. It is now RECORDED (an UNKNOWN
+    # drift, an `embed:unavailable` degradation, a WARNING) instead of billed to the
+    # contact as a dead turn. The LLM twin above is deliberately untouched: the LLM
+    # produces the rewrite the pipeline consumes, the embedder only measures it.
+    # Full coverage in tests/unit/test_embedder_never_kills_the_turn.py.
+
+    async def test_subject_similarity_failure_is_recorded_not_propagated(self):
+        """An embedder failure during the subject check degrades the MEASUREMENT and
+        leaves the turn intact — but is never silent."""
         class FailingEmbedder(StubEmbedder):
             async def similarity(self, a: str, b: str) -> float:
                 raise RuntimeError("Embedder down")
@@ -412,11 +424,16 @@ class TestNoumenoStage:
         noumeno = make_noumeno(embedder=FailingEmbedder())
         ctx = PipelineContext(user_input="ethereum")
         ctx.metadata["last_rewritten"] = "bitcoin"
-        with pytest.raises(RuntimeError, match="Embedder down"):
-            await noumeno.process(ctx, StubBackend())
+        ctx = await noumeno.process(ctx, StubBackend())
 
-    async def test_drift_similarity_failure_propagates(self):
-        """If embedder.similarity() raises during drift computation, exception propagates."""
+        assert ctx.noumeno.rewritten == "Hello."          # the turn was delivered
+        assert ctx.noumeno.subject_similarity is None     # not 1.0 — nobody measured it
+        assert ctx.noumeno.change_subject is False        # conservative: keep the thread
+        assert ctx.noumeno.degradations == ["embed:unavailable"]
+
+    async def test_drift_similarity_failure_is_recorded_not_propagated(self):
+        """Same for the drift measurement: UNKNOWN, which is neither 0.0 ("verified, no
+        drift") nor 1.0 ("total drift", which would force the DRIFT tag)."""
         class FailOnDrift(StubEmbedder):
             async def similarity(self, a: str, b: str) -> float:
                 if b == "rewritten text":
@@ -425,10 +442,14 @@ class TestNoumenoStage:
 
         noumeno = make_noumeno(embedder=FailOnDrift())
         ctx = PipelineContext(user_input="original")
-        with pytest.raises(RuntimeError, match="Drift computation failed"):
-            await noumeno.process(ctx, StubBackend(
-                response='{"rewritten": "rewritten text", "context_turn": "", "confidence": 0.9, "changed": false, "preserved_terms": [], "rewrite_warnings": []}'
-            ))
+        ctx = await noumeno.process(ctx, StubBackend(
+            response='{"rewritten": "rewritten text", "context_turn": "", "confidence": 0.9, "changed": false, "preserved_terms": [], "rewrite_warnings": []}'
+        ))
+
+        assert ctx.noumeno.rewritten == "rewritten text"
+        assert ctx.noumeno.drift_score is None
+        assert ctx.noumeno.drift_tag == "UNKNOWN"
+        assert ctx.noumeno.degradations == ["embed:unavailable"]
 
 
 

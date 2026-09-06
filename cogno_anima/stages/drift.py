@@ -127,8 +127,17 @@ class DriftCalculator:
             else 1.0
         )
 
-        epistemological_drift = clamp01(
-            safe_float(getattr(noumeno, "drift_score", 0.0), default=0.0)
+        # `None` survives as `None`. The two obvious defaults are the two wrong ones:
+        # coercing to 0.0 says "verified, nothing drifted" about a turn nobody measured,
+        # and 1.0 says "everything drifted" and can trip a `self_correct` over a turn
+        # that was fine. `compute_cumulative` below already renormalizes over the
+        # components that are NOT None, so an unmeasurable component is simply not
+        # voted on — the same thing `compute_ontological` does for a rewrite with no
+        # content words. See NoumenoResult.drift_score.
+        raw_epistemological = getattr(noumeno, "drift_score", None)
+        epistemological_drift = (
+            None if raw_epistemological is None
+            else clamp01(safe_float(raw_epistemological, default=0.0))
         )
 
         aristotelian = getattr(intent, "aristotelian", {}) or {}
@@ -139,8 +148,10 @@ class DriftCalculator:
             compression_ratio=round(compression_ratio, 3),
             aristotelian_coverage=len(aristotelian),
             # `drift_score` carries the epistemological drift (from NOUMENO),
-            # used as the Stage 1 component of cumulative drift.
-            drift_score=round(epistemological_drift, 3),
+            # used as the Stage 1 component of cumulative drift. `None` = the NOUMENO
+            # could not measure it (embedder unreachable), NOT "no drift".
+            drift_score=(None if epistemological_drift is None
+                         else round(epistemological_drift, 3)),
         )
 
     # ---------------------------------------------------------------------
@@ -311,13 +322,21 @@ class DriftCalculator:
         computed** (a `None` drift component means that stage has not run). This
         keeps cumulative on a full [0,1] scale — and the action thresholds
         meaningful — whether 2, 3, 4 or 5 stages have populated their drift.
-        Epistemological (`drift_score`) is always present.
+
+        Epistemological (`drift_score`) is USUALLY present but is not guaranteed: it
+        is `None` when the NOUMENO's embedder was unreachable, and it is then dropped
+        from the vote like any other uncomputed component rather than averaged in as a
+        0.0 that no one measured. When NOTHING is computed the action is `none` over an
+        empty vote — a caller that must distinguish "clean" from "unmeasured" reads the
+        components (or `to_tags()`, which emits `NOUMENO.DRIFT_UNKNOWN`), never the
+        action alone.
 
         The action is a signal for the caller/orchestrator. This class does not
         execute retries, ask the user, call tools, or self-correct by itself.
         """
         raw_components = {
-            "epistemological": drift.drift_score,        # always present
+            # None when the NOUMENO could not measure it — see the docstring above.
+            "epistemological": drift.drift_score,
             "ontological": drift.ontological_drift,
             "situational": drift.situational_drift,
             "execution": drift.execution_drift,
