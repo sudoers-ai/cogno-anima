@@ -712,25 +712,101 @@ def _EVERY_TOOL(_name: str) -> bool:
     return True
 
 
-def _committed_over(ctx: "PipelineContext", keep: "Callable[[str], bool]") -> bool:
-    """The source walk, in ONE place, with a filter on the tool NAME.
+def _any_execution(ctx: "PipelineContext", hit: "Callable[[Any], bool]", *,
+                   unreadable: bool = False) -> bool:
+    """Does ANY execution record of this turn satisfy ``hit``?
 
-    Both predicates read the SAME three sources with the SAME failure discipline; only the set
-    of tools they count differs. Written once because the comments below are the reason this
-    function is shaped the way it is, and a second copy of them is a second copy to get wrong —
-    which is the very failure `committed_this_turn` was created to end.
+    The SOURCE WALK, in one place. Every predicate in this family reads the same two lists —
+    `PipelineContext.turn_executions` (the turn's accumulator) in UNION with
+    ``ego_result.tools_executed`` (the surviving attempt, kept as a FLOOR for a single-shot
+    pipeline) — with the same failure discipline, and the comments below are the reason the
+    walk is shaped the way it is. A second copy of them is a second copy to get wrong, which
+    is the very failure `committed_this_turn` was created to end.
+
+    Each source is read LAZILY, inside its own ``try``: ``EgoResult.tools_executed`` is a
+    DERIVED property and derived can raise, so touching both eagerly would turn a turn that
+    answers True into a turn that RAISES. And ``continue``, never a blanket
+    ``except: return False``: a broken source must degrade to "this source says nothing".
+
+    ``unreadable`` is what to answer when EVERY source broke — i.e. when there is no evidence
+    at all, as opposed to evidence that says no. The two callers want opposite defaults and
+    each is safe in its own direction: a commit predicate must not release on a broken carrier
+    (False), while a rule that RESTRICTS what the voice may say must not fire on one (True) —
+    a new rule that cannot read its evidence leaves the behaviour exactly as it was.
     """
-    for read in (lambda: getattr(ctx, "turn_executions", None) or [],
-                 lambda: getattr(getattr(ctx, "ego_result", None),
-                                 "tools_executed", None) or []):
+    sources = (lambda: getattr(ctx, "turn_executions", None) or [],
+               lambda: getattr(getattr(ctx, "ego_result", None),
+                               "tools_executed", None) or [])
+    broken = 0
+    for read in sources:
         try:
-            src = read()
-            hit = any(getattr(t, "side_effect", False) and getattr(t, "ok", False)
-                      and keep(str(getattr(t, "tool", "") or "")) for t in src)
+            if any(hit(t) for t in read()):
+                return True
         except Exception:      # noqa: BLE001 — a source that breaks must not cost the turn
-            continue
-        if hit:
-            return True
+            broken += 1
+    return unreadable if broken == len(sources) else False
+
+
+def write_attempted_this_turn(ctx: "PipelineContext") -> bool:
+    """Did this turn RUN a tool that changes things — whether or not the change stuck?
+
+    The THIRD question in this family, and the one that separates *"nothing happened"* from
+    *"we tried and it did not work"*. `committed_this_turn` and `wrote_for_the_contact` both
+    conjoin ``ok``, so both answer False over a booking the server rejected AND over a turn
+    that never called a writing tool at all. Those two are the same answer to a very different
+    world, and one consumer needs them apart: the voice.
+
+    Measured 2026-09-06 on the demo box, over a 1094-row snapshot of the production
+    `turn_traces` (the box is live, so the denominator grows; 1049 of those rows are of a
+    provable era under the `xmin` rewrite filter): 225 turns carry a judge rejection with
+    NOTHING committed and not one call to a writing tool, and 9 of them shipped a reply
+    telling the contact that the action they asked for could not be done — over a turn in
+    which it was never attempted. An invented failure is a FALSE statement about the world
+    said to a person, and they act on it: in the measured scenario the expense was simply
+    never recorded, and the contact was told it had failed.
+
+    **The predicate is about what was EXECUTED**, deliberately — not "the persona had writing
+    tools on the table", not "the intent was ACTION_REQUEST". It reads the two execution lists
+    (see `_any_execution`) and counts a record when EITHER field says "this is a write":
+
+      ``side_effect is True``    this CALL wrote (known after it ran). ``ok`` is NOT conjoined
+                                 here: a write that FAILED is exactly the case this predicate
+                                 exists to keep sayable.
+      ``tool_mutating is True``  the TOOL is declared a writer (known per NAME, before the
+                                 call). It carries the answer for a failed write under the
+                                 dispatchers shipped since 2026-09-01, which stamp
+                                 ``side_effect=False`` on their failure branch — see
+                                 ``EgoStage._warn_if_effect_without_success``. ``None`` means
+                                 nobody declared, and answers nothing.
+
+    Reading BOTH is what makes it survive either dispatcher convention; reading only
+    ``side_effect`` would call a rejected booking "never attempted" and gag the truthful
+    report of it.
+
+    **It leans toward "attempted", and that direction is the point.** A held proposal (gate B,
+    gate C) is recorded with ``tool_mutating=True`` and therefore reads as attempted, and a
+    carrier whose execution lists cannot be read at all answers True as well
+    (``unreadable=True``). Both are the SAFE error: a False positive only leaves the voice with
+    the wording it already had, while a False negative would forbid a turn from reporting a
+    failure that really happened. Never widen it to make a rule fire more often — the whole
+    reason this predicate exists is that a rule fired on the wrong turn and lied to a person.
+    """
+    return _any_execution(
+        ctx, lambda t: getattr(t, "side_effect", False) is True
+        or getattr(t, "tool_mutating", None) is True, unreadable=True)
+
+
+def _committed_over(ctx: "PipelineContext", keep: "Callable[[str], bool]") -> bool:
+    """The commit walk, with a filter on the tool NAME.
+
+    Both commit predicates read the SAME three sources with the SAME failure discipline; only
+    the set of tools they count differs. The first two sources are `_any_execution`; the third
+    (the host's declaration) is here because only a commit can be declared after the fact.
+    """
+    if _any_execution(ctx, lambda t: getattr(t, "side_effect", False)
+                      and getattr(t, "ok", False)
+                      and keep(str(getattr(t, "tool", "") or ""))):
+        return True
     try:
         # The attribute read is INSIDE the try on purpose: `getattr` with a default swallows
         # AttributeError and nothing else, so a carrier whose `metadata` is a property that
