@@ -998,13 +998,11 @@ class SuperegoStage:
         those 348. They are free here and they are the difference between "read-only" and
         "nothing happened to have written yet".
 
-        Both writing facts are read, and that is not belt-and-braces for its own sake.
-        ``side_effect`` is a property of the CALL, known after it ran; ``tool_mutating`` is a
-        property of the tool NAME, declared before it. A dispatcher that forgets to set the
-        first on a tool the host declared destructive would otherwise hand this branch a write,
-        and the branch's whole licence is that there was none. ``tool_mutating`` is tri-state,
-        so the test is ``is not True``: a silence is not a denial, but it is also not a claim
-        that has to be believed.
+        The WRITE half of that question is delegated, not re-asked: ``write_attempted_this_turn``
+        is the definition, it reads BOTH writing facts (``side_effect``, the call;
+        ``tool_mutating``, the name) and — the part that matters — it walks BOTH execution
+        lists. Deriving it a second time here is what put a write past this branch once
+        already; see the comment at the call below.
 
         **Why this is computed HERE and is not a metakey beside ``mk.JUDGE_CONVERSATIONAL``.**
         The host already publishes a signal of nearly this name — a pre-execution guess at
@@ -1018,6 +1016,19 @@ class SuperegoStage:
         its place as a metakey for the opposite reason: whether a persona was offered any tool
         at all is knowledge only the host has, and it is a fact, not a prediction.
         """
+        # THE WRITE QUESTION IS NOT ASKED HERE. `write_attempted_this_turn` already owns it —
+        # same per-call test (`side_effect is True or tool_mutating is True`), and crucially
+        # the same SOURCE WALK: `_any_execution` reads `ctx.turn_executions` in UNION with
+        # `ego_result.tools_executed`. This predicate walked only the second one, and that gap
+        # is not theoretical: measured on a turn whose attempt 1 WROTE and whose surviving
+        # attempt shows only clean reads, the two answered `True`/`readonly` — the judge would
+        # have been told "there was no mutation to verify" about a turn that mutated. It is
+        # the survivor-attempt-read-as-the-turn defect this repo already carries a docstring
+        # against, and the fix is the one that file prescribes: one definition, not a second
+        # reading. Its `unreadable=True` bias lands on the strict side here, which is the
+        # direction this predicate needs anyway.
+        if write_attempted_this_turn(ctx):
+            return False
         ego = ctx.ego_result
         if ego is None:
             return False
@@ -1035,9 +1046,11 @@ class SuperegoStage:
             if interrupted or held:
                 return False
             calls = list(executed or ())
-            return bool(calls) and all(
-                c.ok and not c.side_effect and c.tool_mutating is not True for c in calls
-            )
+            # Only `ok` remains, and the split is deliberate: the judge judges the SURVIVING
+            # attempt's execution and draft, so "did every call succeed / was the loop clean"
+            # is a question about THIS attempt — but the WORLD was changed by the whole turn,
+            # so "did anything write" is asked of the union, above.
+            return bool(calls) and all(c.ok for c in calls)
         except Exception:  # noqa: BLE001 — an unreadable trace is not a licence
             # Fail towards the STRICTER branch, never towards the relaxation. This mirrors
             # `_format_unavailable`'s rule that a judge prompt must never be the reason a turn

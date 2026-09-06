@@ -196,3 +196,40 @@ def test_an_unreadable_trace_falls_to_the_STRICTER_branch():
 
     ctx.ego_result = Hostile()
     assert BRANCH(ctx) == JUDGE_EXECUTION
+
+
+def test_a_write_on_a_DISCARDED_attempt_still_blocks_the_branch():
+    """Two readings of one fact, and the second was wrong — found by review, not by a test.
+
+    ``write_attempted_this_turn`` (``types.py``) asks the same per-call question this branch
+    needs — ``side_effect is True or tool_mutating is True`` — but it walks BOTH execution
+    lists: ``ctx.turn_executions`` in UNION with ``ego_result.tools_executed``. The first cut
+    of ``_is_readonly_turn`` walked only the second, so a turn whose attempt 1 WROTE and whose
+    surviving attempt shows clean reads answered ``readonly``: the judge would have been told
+    "there was no mutation to verify" about a turn that mutated. Measured 1 divergence in 3
+    shapes before, 0 after. It is the survivor-attempt-read-as-the-turn defect, and the cure
+    is the one ``committed_this_turn`` prescribes — one definition, never a second reading.
+    """
+    ctx = _ctx([_read()])                       # o sobrevivente só leu
+    ctx.turn_executions = [_read("record_expense", side_effect=True, mutating=True), _read()]
+    assert BRANCH(ctx) == JUDGE_EXECUTION
+
+
+def test_the_two_readings_of_the_write_fact_cannot_disagree():
+    """The gate that keeps them one: whatever ``write_attempted_this_turn`` calls a write, this
+    branch must refuse. Asserted over the shapes, not over the source text."""
+    from cogno_anima.types import write_attempted_this_turn
+
+    shapes = []
+    for surv, acc in (([_read()], []),
+                      ([_read("record_expense", side_effect=True)], []),
+                      ([_read("cancel_appointment", mutating=True)], []),
+                      ([_read()], [_read("record_expense", side_effect=True, mutating=True)]),
+                      ([_read()], [_read()])):
+        ctx = _ctx(surv)
+        if acc:
+            ctx.turn_executions = acc
+        shapes.append((write_attempted_this_turn(ctx), BRANCH(ctx)))
+    assert shapes, "denominador vazio"
+    bad = [s for s in shapes if s[0] and s[1] == JUDGE_READONLY]
+    assert not bad, f"{len(bad)}/{len(shapes)} formas relaxam sobre uma escrita: {bad}"
