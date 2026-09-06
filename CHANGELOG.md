@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased — o cache do provider deixa de ser invisível ao medidor (2026-09-06)
+
+### Added
+
+- **`StageMetrics.cached_tokens` — a parte de `tokens_in` que o provider serviu do PRÓPRIO
+  cache.** Medido ao vivo a 2026-09-03: a 2.ª chamada com o mesmo prefixo devolveu **2432 em
+  cache de 2625** tokens de prompt (**92,6%**). O campo chegava em toda a resposta da OpenAI e
+  **não era lido em lado nenhum** — nem no `cogno-synapse`, nem no `cogno_meter/pricing.py` — e o
+  padrão de produção é exactamente o que activa o cache: as tentativas de correcção do EGO do
+  mesmo turno reenviam o mesmo prompt de sistema com segundos de intervalo (as repetições são
+  **40,2%** dos tokens do mês). O provider cobra-as a uma taxa muito menor; um medidor que não as
+  vê preça toda a retentativa como prompt novo e reporta um custo que não foi pago.
+
+  **É SUBCONJUNTO, não parcela nova, e por isso NÃO entra no `tokens_total`.** Já está dentro do
+  `tokens_in`: somá-lo contaria os mesmos tokens duas vezes na franquia, no rollup e em cada
+  painel que os lê.
+
+  Os cinco estágios que correm modelo gravam-no, e cada um soma no **mesmo eixo** em que já soma
+  os tokens — NOUMENO/NER por TENTATIVA (o `generate_json_resilient` passa a devolver quatro
+  valores; uma retentativa de truncamento reenvia o mesmo prefixo, logo é precisamente a chamada
+  com mais probabilidade de estar em cache), o EGO por PASSO do laço e nos **dois** caminhos
+  (FC nativo e fallback de texto), o SUPEREGO nas três chamadas. Os atalhos que **não** chamam
+  modelo passam 0 de propósito: o backend é partilhado, e ler o atributo ali cobraria a este
+  turno o cache de outro.
+
+  A leitura é sempre `cogno_synapse.cached_tokens_of(backend)` **imediatamente a seguir ao
+  `await`, sem outro `await` pelo meio** — é esse o contrato que torna um valor por instância
+  seguro num backend partilhado entre turnos concorrentes. Um backend que não reporta nada
+  (Ollama, um duplo, o aluno destilado) dá 0, e 0 a jusante é preço **cheio**: o comportamento de
+  hoje, byte a byte.
+
+  Requer `cogno-synapse` com `cached_tokens_of`. O preço vive no `cogno-meter`
+  (`cached_input` por modelo; sem taxa → preço cheio, declarado) e a coluna no `cogno-host`.
+
 ## Unreleased — o router encaminhava duas perguntas de política e não a terceira (2026-09-01)
 
 ### Documentation
