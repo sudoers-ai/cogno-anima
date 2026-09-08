@@ -22,7 +22,7 @@ def _repo(path, *, subject="first"):
     run = lambda *a: subprocess.run(["git", "-C", str(path), *a], check=True,  # noqa: E731
                                     capture_output=True)
     run("init", "-q", "-b", "main")
-    run("config", "user.email", "t@example.invalid")
+    run("config", "user.email", "t@example.com")   # enumerated in ALLOWED_EMAIL_DOMAINS
     run("config", "user.name", "T")
     (path / "cognobench").mkdir(exist_ok=True)
     (path / "cognobench" / "cases.py").write_text("CASES = [1]\n")
