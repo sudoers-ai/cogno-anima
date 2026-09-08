@@ -70,6 +70,13 @@ _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 # figure or is an email/URL — altering one of these silently corrupts the answer.
 _NUM_RE = re.compile(r"\d[\d.,]*\d|\d")
 _CRITICAL_TERM_RE = re.compile(r"\d|@|https?://", re.IGNORECASE)
+# A FIGURE, for the divergence backstop below: a number written with a decimal separator
+# and exactly two digits after it (``120,00``, ``1.234,56``, ``120.00``) — a rate, a total,
+# an amount. Deliberately NOT every numeral: ``_NUM_RE`` matches the "2" of "2 items" and
+# both halves of "08/09", and a net that re-voices a CORRECT reply because it wrote a date
+# in words becomes the mechanism it was built to stop. The measured divergences are all of
+# this shape (R$ 120,00 / 30,00 / 40,00 lost; R$ 45,00 invented).
+_FIGURE_RE = re.compile(r"\d{1,3}(?:[.\s]\d{3})*[.,]\d{2}(?!\d)")
 
 # The persona trait the modulation must never talk over: the tenant asked for an even
 # voice, and a courtesy addition (warmth, empathy) would be exactly that.
@@ -1171,15 +1178,29 @@ class SuperegoStage:
         # shape nobody has measured yet is how a relaxation arrives without its evidence.
         if write_attempted_this_turn(ctx):
             return False
+        return SuperegoStage._loop_ran_clean(ctx)
+
+    @staticmethod
+    def _loop_ran_clean(ctx: PipelineContext) -> bool:
+        """Did the EGO loop RUN and finish cleanly — every call ``ok``, nothing held, not cut?
+
+        The other half of :meth:`_is_readonly_turn`, extracted because a SECOND reader arrived
+        (the voice, deciding whether the approved draft is safe to hand over as content) and
+        this house's standing lesson is that a rule each consumer re-derives is a rule each
+        consumer gets wrong alone. What is NOT here is the write question: a turn that booked
+        successfully ran just as cleanly as one that only read, and the two callers differ on
+        exactly that one axis — ``_is_readonly_turn`` asks it, the voice does not.
+
+        Read through a SENTINEL, not a permissive default. An absent field is a silence, and a
+        silence must not be spent as evidence FOR a relaxation: a stand-in that cannot say
+        whether the loop was interrupted has not told us it was not. `EgoResult` always carries
+        all three, so in the pipeline this never fires.
+        """
         ego = ctx.ego_result
         if ego is None:
             return False
         missing = object()
         try:
-            # Read through a SENTINEL, not a permissive default. An absent field is a silence,
-            # and a silence must not be spent as evidence FOR a relaxation: a stand-in that
-            # cannot say whether the loop was interrupted has not told us it was not.
-            # `EgoResult` always carries all three, so in the pipeline this never fires.
             interrupted: Any = getattr(ego, "interrupted", missing)
             held: Any = getattr(ego, "pending_confirmation", missing)
             executed: Any = getattr(ego, "tools_executed", missing)
@@ -1191,19 +1212,38 @@ class SuperegoStage:
             # Only `ok` remains, and the split is deliberate: the judge judges the SURVIVING
             # attempt's execution and draft, so "did every call succeed / was the loop clean"
             # is a question about THIS attempt — but the WORLD was changed by the whole turn,
-            # so "did anything write" is asked of the union, above.
+            # so "did anything write" is asked of the union, in the caller above.
             return bool(calls) and all(c.ok for c in calls)
         except Exception:  # noqa: BLE001 — an unreadable trace is not a licence
-            # Fail towards the STRICTER branch, never towards the relaxation. This mirrors
+            # Fail towards the STRICTER answer, never towards the relaxation. This mirrors
             # `_format_unavailable`'s rule that a judge prompt must never be the reason a turn
             # dies, but the safe direction is the opposite one: there, a missing line degrades
             # to today's behaviour; here, so does refusing to relax. `EgoResult` is typed, so
             # this should be unreachable in the pipeline — it is reachable from anything that
             # hands the stage a partial stand-in, and a predicate that RAISES on one would
             # take the whole turn down to answer a question about criteria selection.
-            logger.warning("stage=superego event=judge_branch_undecidable — using %s",
-                           JUDGE_EXECUTION)
+            logger.warning("stage=superego event=execution_trace_unreadable — assuming unclean")
             return False
+
+    @staticmethod
+    def _judge_approved(ctx: PipelineContext) -> bool:
+        """Did REVIEW approve this turn's execution? ``mk.JUDGE_VERDICT``, strictly.
+
+        **The asymmetry this closes.** A judge REJECTION has always been a prompt input: the
+        orchestrator stamps ``mk.VOICE_CORRECTION`` and ``_build_voice_prompt`` renders a
+        verdict section telling the voice to DROP the draft. A judge APPROVAL was trace-only —
+        the orchestrator stamps ``{"approved": bool, "attempts": int}`` here and then calls
+        ``voice()``, which never read it. So the voice could be told *"the draft below was
+        refused, do not repeat it"* and could never be told *"the draft below was checked, say
+        it"*. One direction of the same verdict reached the model; the other did not.
+
+        Strict ``is True``: this key unlocks a relaxation, so an absent, malformed or merely
+        truthy carrier has to land on the side that changes nothing. A host that stamps no
+        verdict gets exactly the prompt it got before — absence of the signal makes the rule
+        STRICTER, never off, which is this package's standing convention for a host carrier.
+        """
+        verdict = ctx.metadata.get(mk.JUDGE_VERDICT)
+        return isinstance(verdict, dict) and verdict.get("approved") is True
 
     @classmethod
     def _judge_branch(cls, ctx: PipelineContext) -> str:
@@ -1514,6 +1554,93 @@ class SuperegoStage:
                 return True
         return False
 
+    # ── The approved draft, and the net under the promise it makes ───
+
+    @staticmethod
+    def _approved_draft(ctx: PipelineContext, payload: str) -> str:
+        """The draft this turn hands the voice as APPROVED CONTENT — ``""`` when it does not.
+
+        ONE definition, two readers: :meth:`_draft_section` renders it, and the divergence
+        backstop in :meth:`voice` guards it. The net must fire on exactly the turns where the
+        promise was made — a net that judged a reply against a draft the voice never saw would
+        have fired on all 650 turns of the measurement at once, which is not a net but a
+        second defect. A CONVERSATIONAL turn returns ``""`` here on purpose: that branch is
+        older than this net, unchanged by it, and nothing measured asks for it to be guarded.
+        """
+        if SuperegoStage._rejection(ctx) is not None:
+            return ""
+        if ctx.metadata.get(mk.JUDGE_CONVERSATIONAL):
+            return ""
+        draft = ((ctx.ego_result.draft if ctx.ego_result else "") or "").strip()
+        if not draft or draft in payload:
+            return ""
+        if not (SuperegoStage._judge_approved(ctx) and SuperegoStage._loop_ran_clean(ctx)):
+            return ""
+        return draft
+
+    @staticmethod
+    def _figure_keys(text: str) -> "dict[str, str]":
+        """Every FIGURE in ``text``, as ``all its digits -> the digits before the decimals``.
+
+        The second half is what stops the obvious false positive: a reply that answers
+        "R$ 120" is carrying the approved draft's "R$ 120,00", and a comparison on the full
+        digit string alone would read that as a loss and re-voice a correct answer.
+        """
+        out: "dict[str, str]" = {}
+        for raw in _FIGURE_RE.findall(text or ""):
+            digits = re.sub(r"\D", "", raw)
+            if digits:
+                out[digits] = digits[:-2] or digits
+        return out
+
+    @classmethod
+    def _draft_divergence(cls, draft: str, payload: str, response: str,
+                          user_input: str = "") -> "tuple[list[str], list[str]]":
+        """``(lost, invented)`` — how the delivered reply departs from the APPROVED draft.
+
+        * **lost** — a figure the approved draft states that the reply does not carry, in
+          either form (full, or just its integer part among the reply's numerals). This is the
+          measured shape of *"não consegui encontrar informações"* written over a draft that
+          found them: nothing is contradicted, the answer is simply not delivered.
+        * **invented** — a figure in the reply that is in NEITHER the approved draft NOR the
+          tool data NOR the contact's own message. The retrieved memories are deliberately
+          NOT a source here: the measured harm is exactly a rate lifted out of the
+          ``# Context`` block over an approved answer that said something else, and the whole
+          point of the section above is that the context is background, not the source.
+
+        Pure, deterministic, and scoped by ``_approved_draft`` to the turns where the voice was
+        actually handed the approved answer.
+        """
+        drafted = cls._figure_keys(draft)
+        replied = cls._figure_keys(response)
+        loose = {re.sub(r"\D", "", n) for n in _NUM_RE.findall(response or "")}
+        lost = sorted(k for k, whole in drafted.items()
+                      if k not in replied and whole not in loose)
+        grounded = set(cls._figure_keys(payload)) | set(cls._figure_keys(user_input))
+        invented = sorted(k for k in replied if k not in drafted and k not in grounded)
+        return lost, invented
+
+    @staticmethod
+    def _divergence_correction(lost: "Sequence[str]", invented: "Sequence[str]") -> str:
+        """The deterministic re-voice instruction. Appended AFTER ``# Task`` on purpose — the
+        last standing instruction the model reads, the same placement rule the HARD RULE
+        sections already follow — so it adds no top-level header and ``_VOICE_BLOCKS`` and the
+        persisted inventory stay exactly as they are."""
+        problems = []
+        if lost:
+            problems.append("it dropped figures that the approved answer states, or replaced "
+                            "them with a claim that you could not find them")
+        if invented:
+            problems.append("it reported a figure that appears in NEITHER the approved answer "
+                            "NOR the executor data — most likely taken from the background "
+                            "context, which is not a source for figures")
+        return ("HARD RULE — REWRITE. The reply you just wrote was rejected by a deterministic "
+                f"check because {'; and '.join(problems)}. Write it again. Every figure in the "
+                "approved executor's answer above must appear in your reply exactly as written "
+                "there, and no figure may appear that is not in that answer or in the executor "
+                "data. Do not say you could not find, do not have, or cannot access anything "
+                "the approved answer provides.")
+
     @staticmethod
     def _same_kind_altered(term: str, response: str) -> bool:
         """Does a same-kind token appear in ``response`` but differ from ``term``?"""
@@ -1625,16 +1752,62 @@ class SuperegoStage:
 
         prompt = self._build_voice_prompt(ctx, payload, rendered, traits)
         adjustments += [f"trait:{t}" for t in traits]
-        raw, ti, to = await backend.generate(voice_prompt or "You are a helpful assistant.", prompt)
-        cached = cached_tokens_of(backend)
-        response, cot_stripped = self.strip_cot(raw)
+        system = voice_prompt or "You are a helpful assistant."
 
-        # Deterministic envelope backstop: the voicer sometimes answers in JSON.
-        unwrapped = self.unwrap_envelope(response)
-        if unwrapped is not None:
-            adjustments.append("voice:json_unwrapped")
-            logger.warning("stage=superego event=voice_json_unwrapped")
-            response = unwrapped
+        async def _write(text_prompt: str) -> "tuple[str, bool, int, int, int]":
+            """One voicer call, through the deterministic envelope backstop.
+
+            Factored because there can now be TWO of them and the second must pass through
+            exactly the same net as the first — the JSON envelope is deterministic on the
+            INPUT, so a re-voice is every bit as able to produce one, and a backstop that
+            only guards the first call is a backstop with a hole the size of its own retry.
+            """
+            raw, in_, out_ = await backend.generate(system, text_prompt)
+            written, stripped = self.strip_cot(raw)
+            # Deterministic envelope backstop: the voicer sometimes answers in JSON.
+            opened = self.unwrap_envelope(written)
+            if opened is not None:
+                adjustments.append("voice:json_unwrapped")
+                logger.warning("stage=superego event=voice_json_unwrapped")
+                written = opened
+            return written, stripped, in_, out_, cached_tokens_of(backend)
+
+        response, cot_stripped, ti, to, cached = await _write(prompt)
+
+        # ── Deterministic divergence backstop: the reply against the APPROVED draft ──
+        # The net under the promise `_draft_section` now makes. The approved answer is the
+        # voice's PRIMARY source, so a delivered reply that drops its figures — or reports one
+        # that is in neither it nor the tool data — has not voiced the answer, it has replaced
+        # it. Measured on trace 1695: an approved draft stating the tenant's own rate, a reply
+        # saying "não consegui encontrar informações" (twice in three runs) and, once, a rate
+        # that exists only in the retrieved memories.
+        #
+        # It reads the VOICED text, like the preserved-term backstop beside it and for the
+        # same reason: the PII rule masks values below, and reading a mask back would make
+        # this guard accuse the previous guard of fabricating.
+        #
+        # ONE re-voice, never a refusal and never a handoff — a refusal costs the contact the
+        # answer and hands the turn to a loop already measured shipping a handoff over a
+        # correct reply. If the second attempt is not an improvement the FIRST reply is kept:
+        # a net that can make a turn worse is not a net. Both outcomes are recorded, because
+        # "is this net doing work" needs the denominator and a count of firings alone has none
+        # — the same closed-alphabet form `voice:json_unwrapped` established for this package.
+        approved = self._approved_draft(ctx, payload)
+        if approved and response:
+            lost, invented = self._draft_divergence(approved, payload, response, ctx.user_input)
+            if lost or invented:
+                adjustments.append("voice:diverged_from_approved_draft")
+                logger.warning("stage=superego event=voice_diverged_from_approved_draft "
+                               "lost=%d invented=%d", len(lost), len(invented))
+                retry_prompt = f"{prompt}\n\n{self._divergence_correction(lost, invented)}"
+                second, second_cot, ti2, to2, cached2 = await _write(retry_prompt)
+                ti += ti2
+                to += to2
+                cached += cached2
+                again = self._draft_divergence(approved, payload, second, ctx.user_input)
+                if second and len(again[0]) + len(again[1]) <= len(lost) + len(invented):
+                    adjustments.append("voice:revoiced_from_approved_draft")
+                    response, cot_stripped, prompt = second, second_cot, retry_prompt
 
         # Deterministic preserved-term backstop on the OUTPUT (2R-A) — flag-only,
         # never auto-inject. Fires only when a CRITICAL term (figure/email/URL)
@@ -1906,17 +2079,59 @@ class SuperegoStage:
         Omitted when the draft adds nothing (already the payload) and — importantly — when the
         review REJECTED it: there the draft is exactly what must not be repeated, and
         ``rejection_section`` says so.
+
+        **The execution branch, added 2026-09-08, and it is about WHICH draft, not about
+        dropping the rule above.** "Tool data is the only grounding" was written for an
+        UNVERIFIED draft, and on an execution turn every draft was treated as one. Measured on
+        the demo box over 1369 traces carrying a SUPEREGO block: **650 turns** where review
+        APPROVED an execution and the draft it approved never entered the voice prompt at all.
+        On 13 of them a figure the approved draft states is missing from the delivered reply,
+        on 22 the reply carries a figure that is in NEITHER the draft NOR the tool data, and on
+        54 the reply admits a limit the approved draft did not. Trace 1695 is all three at once:
+        under a delegation lock the specialist drafted the tenant's own rate, review approved it
+        at the FIRST attempt, and the hub voiced *"não consegui encontrar informações"* — twice
+        in three runs — and once answered a rate that exists only in the retrieved memories. The
+        voice prompt for that turn carried ``user_request, context, executor_data, traits,
+        signals, task``: the whole of ``executor_data`` was one lookup tool answering that it
+        found no records, 115 characters. **The voice was structurally incapable of delivering
+        the approved answer**, and no sharpening of its instructions could have changed that.
+
+        So the draft reaches the voice on an execution turn too — but ONLY when review
+        approved it (``_judge_approved``) AND the loop that produced it ran clean
+        (``_loop_ran_clean``). Those two conditions are what keep the anti-fabrication floor
+        where it is: ``test_voice_surfaces_a_failed_read_so_it_cannot_fabricate`` is a turn
+        whose ``check_availability`` FAILED and whose draft offers invented slots — a failed
+        call is not a clean loop, so that draft is still withheld, byte for byte as before.
+        A host that stamps no verdict also renders exactly as before.
         """
-        if not ctx.metadata.get(mk.JUDGE_CONVERSATIONAL):
-            return ""       # execution turn: tool data is the only grounding — see above
         draft = ((ctx.ego_result.draft if ctx.ego_result else "") or "").strip()
         if not draft or draft in payload:
             return ""
         if rejection is not None:      # validated by ``_rejection`` — one predicate, not two
             return ""       # a rejected draft is handled by rejection_section, not re-offered
-        return ("# Executor's answer (the CONTENT to convey — rewrite it in the persona's "
-                "voice; the executor data above wins on any figure, date or outcome)\n"
-                f"{draft}\n\n")
+        if ctx.metadata.get(mk.JUDGE_CONVERSATIONAL):
+            return ("# Executor's answer (the CONTENT to convey — rewrite it in the persona's "
+                    "voice; the executor data above wins on any figure, date or outcome)\n"
+                    f"{draft}\n\n")
+        approved = SuperegoStage._approved_draft(ctx, payload)
+        if not approved:
+            return ""       # unverified draft on an execution turn: tool data only — see above
+        return ("# Executor's answer (REVIEWED AND APPROVED — this is the CONTENT to convey; "
+                "rewrite it in the persona's voice)\n"
+                "Review compared this answer against the executor data and this persona's "
+                "limits and APPROVED it. It is this turn's answer and it is your PRIMARY "
+                "source for what to say; the context above is background.\n"
+                f"{approved}\n"
+                "Two rules, and both are HARD. (1) You MUST NOT tell the user that you could "
+                "not find, do not have, or cannot access something this answer provides. That "
+                "limit would be FALSE, and a false limit costs them the answer they were "
+                "already given. The executor data's SILENCE is not a contradiction either: a "
+                "fact stated here that the executor data simply does not mention has been "
+                "approved, and you must state it anyway. (2) But where the executor data does "
+                "SPEAK about the very thing this answer offers — it returned none, or empty, "
+                "or a different figure or date — then the executor data is what actually "
+                "happened and this answer is wrong about it: report what the executor data "
+                "says and drop the part that contradicts it.\n\n")
 
     @staticmethod
     def _tool_payload(ctx: PipelineContext) -> str:

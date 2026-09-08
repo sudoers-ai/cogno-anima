@@ -23,7 +23,7 @@ import pytest
 
 from cogno_anima import metakeys as mk
 from cogno_anima.stages.superego import SuperegoStage
-from cogno_anima.types import EgoResult, EgoStep
+from cogno_anima.types import EgoResult, EgoStep, ToolExecution
 from tests.unit.test_superego import _ctx
 
 # Every top-level header line the rendered prompt may carry.
@@ -44,10 +44,12 @@ def _configs():
     with_traits = _ctx()
     with_traits.metadata[mk.VOICE_TRAITS] = ["warm", "direct"]
 
-    # A CONVERSATIONAL turn is the only one that renders the executor's draft as its own
-    # section (`_draft_section` returns "" on an execution turn, where tool data is the only
-    # grounding). Leaving it out of this matrix is what the reverse-direction test caught the
-    # first time it ran — which is the whole reason that test exists.
+    # Two turns render the executor's draft as its own section, and they render DIFFERENT
+    # text under the same header: a CONVERSATIONAL turn (no tool to execute, so the draft is
+    # the only content there is) and an execution turn whose draft review APPROVED. Leaving
+    # the first out of this matrix is what the reverse-direction test caught the first time it
+    # ran — which is the whole reason that test exists; the second is here for the same reason
+    # before it can rot.
     conversational = _ctx()
     conversational.metadata[mk.JUDGE_CONVERSATIONAL] = True
     # `draft` is DERIVED from the steps (the trace is the source of truth), so the draft is set
@@ -57,8 +59,18 @@ def _configs():
                        assistant_text="posso explicar como funciona o atendimento")],
         metrics=conversational.ego_result.metrics)
 
+    approved_execution = _ctx()
+    approved_execution.metadata[mk.JUDGE_VERDICT] = {"approved": True, "attempts": 1}
+    approved_execution.ego_result = EgoResult(
+        steps=[EgoStep(index=0, path="native",
+                       assistant_text="a taxa configurada é de R$ 120,00 por hora",
+                       tool_calls=[ToolExecution(tool="lookup_rules", arguments={},
+                                                 result="No records found.", ok=True,
+                                                 side_effect=False)])],
+        metrics=approved_execution.ego_result.metrics)
+
     out = [("plain", plain), ("context", with_context), ("traits", with_traits),
-           ("conversational", conversational)]
+           ("conversational", conversational), ("approved_execution", approved_execution)]
     # The three rejection variants are mutually exclusive — each needs its own render.
     for kind in ("repeated_reply", "unverified_claim", "execution_rejected"):
         c = _ctx()
