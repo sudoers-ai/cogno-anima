@@ -197,8 +197,14 @@ def test_TWIN_3_the_clause_never_licenses_a_FABRICATED_completion():
     """
     for unavailable in (_GAP, None):
         prompt = _judge_prompt(unavailable, draft=_FABRICATED_DRAFT)
-        assert "4. GROUNDING: is everything backed by the tool results (no invented data)" \
-            in prompt
+        # Criterion #4 is present and still forbids invented data. Its SOURCE LIST widened on
+        # 2026-09-08 (`_GROUNDING_SOURCES`: the persona limits and the injected context ground
+        # a statement too), which is why this no longer reads "backed by the tool results" —
+        # the anti-fabrication half is what this twin protects, and both halves are asserted
+        # so a future widening cannot quietly take the floor with it.
+        assert "4. GROUNDING: is everything backed by the evidence in this prompt " \
+               "(no invented data)" in prompt
+        assert "appears in NONE of the three" in prompt
     with_block = _judge_prompt(_GAP, draft=_FABRICATED_DRAFT)
     assert "MUST NOT claim any of these was done, scheduled, registered or confirmed" in with_block
     assert "claims the thing was done, scheduled, registered or confirmed stays REJECTED" \
