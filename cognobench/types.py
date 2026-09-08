@@ -14,6 +14,7 @@ Two invariants live here (plan Fase 0):
 
 from __future__ import annotations
 
+import statistics
 from dataclasses import dataclass, field
 
 
@@ -192,6 +193,12 @@ def aggregate_runs(reports: list[BenchReport]) -> dict:
             "runs": n_runs,
             "invalid_runs": slot["invalid_runs"],
             "checks": len(results),
+            # The MEDIAN is the headline and the RANGE travels with it. A mean is
+            # dragged by the one bad draw a hosted provider hands you; a bare number of
+            # any kind invites the reading this bench has already paid for twice — 47.6%
+            # and 39.0%, same tree, same model, same day, read as a change.
+            "correct_median": (int(statistics.median(slot["correct"]))
+                               if slot["correct"] else 0),
             "correct_min": min(slot["correct"]) if slot["correct"] else 0,
             "correct_max": max(slot["correct"]) if slot["correct"] else 0,
             "stable_correct": stable_pass,

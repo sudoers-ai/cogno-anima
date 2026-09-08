@@ -182,7 +182,10 @@ python3 -m pytest tests/integration  # real Ollama; auto-skips if unavailable
 
 Unit tests run on a coverage gate (`--cov-fail-under=85`) and use the
 `StubBackend`/`StubEmbedder` doubles in `tests/conftest.py`. Integration tests
-use real models at `temperature=0.0` for determinism.
+use real models at `temperature=0.0` — reproducible against the default local
+Ollama (measured), but `temperature=0` only *requests* greedy decoding, so a
+suite pointed at a hosted provider via `COGNO_TEST_MODEL` is sampling, not
+replaying.
 
 ## Inspiration
 
