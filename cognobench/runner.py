@@ -36,6 +36,7 @@ from cognobench.dimensions import (
 from cognobench.types import BenchReport, aggregate_runs
 from cognobench.report import render, render_aggregate
 from cognobench import suites as suite_registry
+from cognobench import tree as bench_tree
 from cognobench.ner_cases import NER_CASES
 from cognobench.drift_cases import DRIFT_CASES
 from cognobench.noumeno_cases import NOUMENO_CASES
@@ -317,6 +318,11 @@ def _stamp_metadata(report: BenchReport, args: argparse.Namespace, repeat_index:
         "only": args.only, "limit": args.limit, "stub": args.stub,
         "calibrate": args.calibrate, "think": args.think, "mutate": args.mutate,
         "repeat_index": repeat_index, "repeat_total": args.repeat,
+        # WHICH TREE produced this — the fact the record was missing. Model, embedder
+        # and suite pin were all here; the code was not, so two numbers from two trees
+        # pooled under one label and a difference between trees read as a difference
+        # between runs. A dirty tree is stamped as dirty rather than refused.
+        "tree": bench_tree.identify().as_dict(),
     })
     registry = suite_registry.registry()
     for dim, info in registry.items():

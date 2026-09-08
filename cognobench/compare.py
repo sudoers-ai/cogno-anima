@@ -27,6 +27,12 @@ Join hygiene (each rule earned by a measured incident):
   was a review finding.
 * Different suite versions never join: per model within a dimension, and across
   models in --discriminate.
+* Different CODE TREES never join either (``--allow-tree-drift`` to override).
+  The suite pin answers "same cases?"; the tree sha answers "same bench and same
+  library?", and until it was recorded the second question had no answer at all:
+  two runs from two trees pooled under one model label and the difference between
+  the TREES was read as run-to-run noise. Absence is not drift — a run with no
+  stamp (every artifact predating it) is counted and NAMED, never silently paired.
 
 Usage:
     python -m cognobench.compare results/ --pair modelA modelB
@@ -81,7 +87,47 @@ def _label(run: dict) -> str:
     return label
 
 
-def _index(runs: list[dict]) -> dict[str, dict]:
+def _tree_key(run: dict) -> str | None:
+    """The code tree a run came out of, or None when it carries no stamp."""
+    tree = (run.get("config") or {}).get("tree") or {}
+    sha = tree.get("sha")
+    if not sha:
+        return None
+    return f"{sha}+dirty" if tree.get("dirty") else sha
+
+
+def _filter_tree_drift(label: str, runs: list[dict], allow: bool) -> list[dict]:
+    """Keep only the runs from the FIRST stamped tree seen — the same shape the suite
+    guard uses, for the same reason: pooling two trees turns a code difference into
+    noise. Unstamped runs are KEPT and named; absence of a stamp is not evidence of
+    drift, and every artifact written before the stamp existed has none."""
+    keys = {k for k in (_tree_key(r) for r in runs) if k}
+    unstamped = sum(1 for r in runs if _tree_key(r) is None)
+    if unstamped:
+        print(f"  ! {label}: {unstamped}/{len(runs)} run(s) carry NO tree stamp — "
+              f"pooled, but this comparison does not claim they ran the same code",
+              file=sys.stderr)
+    dirty = sorted(k for k in keys if k.endswith("+dirty"))
+    if dirty:
+        print(f"  ! {label}: measured on a DIRTY tree ({', '.join(k[:7] for k in dirty)})"
+              f" — the sha does not describe what ran", file=sys.stderr)
+    if len(keys) <= 1:
+        return runs
+    if allow:
+        print(f"  ! {label}: pooling {len(keys)} code trees "
+              f"({', '.join(sorted(k[:7] for k in keys))}) — --allow-tree-drift",
+              file=sys.stderr)
+        return runs
+    keep = next(k for k in (_tree_key(r) for r in runs) if k)
+    dropped = sorted(k[:7] for k in keys if k != keep)
+    print(f"  ! {label}: mixed code trees — keeping {keep[:7]}, dropping "
+          f"{', '.join(dropped)}. Two trees are not two runs; re-measure both sides on "
+          f"one tree, or pass --allow-tree-drift if the drift IS the question.",
+          file=sys.stderr)
+    return [r for r in runs if _tree_key(r) in (keep, None)]
+
+
+def _index(runs: list[dict], allow_tree_drift: bool = False) -> dict[str, dict]:
     """label → {suites: {dim: (id, hash)}, dims: {dim: {key: [votes]}}}.
 
     Collected per run first so a case_error can be expanded into FAIL votes for
@@ -95,6 +141,7 @@ def _index(runs: list[dict]) -> dict[str, dict]:
 
     out: dict[str, dict] = {}
     for label, label_runs in per_label.items():
+        label_runs = _filter_tree_drift(label, label_runs, allow_tree_drift)
         slot = {"suites": {}, "dims": defaultdict(lambda: defaultdict(list))}
         parsed: list[tuple[dict, dict, dict]] = []   # (dim→{key: bool}, dim→errored ids, run)
         for run in label_runs:
@@ -265,13 +312,16 @@ def main(argv: list[str] | None = None) -> int:
                     help="tag guard/discriminator/suspect across all models found")
     ap.add_argument("--include-stub", action="store_true",
                     help="index stub runs too (self-tests of the tool only)")
+    ap.add_argument("--allow-tree-drift", action="store_true",
+                    help="pool runs measured on DIFFERENT code trees (refused by "
+                         "default — a tree difference is not run-to-run noise)")
     args = ap.parse_args(argv)
 
     runs = load_runs(args.paths)
     if args.include_stub:
         for r in runs:
             r.setdefault("config", {})["stub"] = False
-    by_model = _index(runs)
+    by_model = _index(runs, allow_tree_drift=args.allow_tree_drift)
     if not by_model:
         print("no valid runs found (calibrate/mutate/stub runs are excluded)",
               file=sys.stderr)

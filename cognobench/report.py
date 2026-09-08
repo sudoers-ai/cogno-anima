@@ -18,6 +18,11 @@ def render(report: BenchReport, show_failures: bool = True) -> str:
     if report.run_id:
         header += f"   run={report.run_id}"
     lines.append(header)
+    tree = (report.config or {}).get("tree")
+    if tree:
+        # A score is only citable next to the tree that produced it (plan: the stamp).
+        from cognobench.tree import TreeId
+        lines.append("  " + TreeId(**tree).stamp())
     lines.append("═" * 60)
 
     for dim in report.dimensions:
