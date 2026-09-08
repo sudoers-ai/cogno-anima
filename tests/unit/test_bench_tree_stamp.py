@@ -177,9 +177,9 @@ def test_allow_tree_drift_pools_them_and_says_so(tmp_path, capsys):
     assert "--allow-tree-drift" in capsys.readouterr().err
 
 
-def test_an_unstamped_run_is_kept_and_named_not_treated_as_drift(tmp_path, capsys):
-    """Absence is not a change of side — every artifact written before the stamp
-    existed carries none, and dropping them would delete the entire history."""
+def test_an_unstamped_run_is_named_when_nothing_is_being_filtered(tmp_path, capsys):
+    """One tree plus an unstamped run: nothing to filter, but the reader is still told
+    that this comparison does not CLAIM the two ran the same code."""
     _run(tmp_path, "a.json", sha="a" * 40, correct=True)
     _run(tmp_path, "b.json", sha=None, correct=False)
     by_model = compare._index(compare.load_runs([tmp_path]))
@@ -187,6 +187,24 @@ def test_an_unstamped_run_is_kept_and_named_not_treated_as_drift(tmp_path, capsy
     err = capsys.readouterr().err
     assert "NO tree stamp" in err
     assert "mixed code trees" not in err
+
+
+def test_an_unstamped_run_survives_a_REAL_tree_split(tmp_path):
+    """Absence is not a change of side — and this is the only shape that proves it.
+
+    The twin above never reaches the filter at all: with one stamped tree the guard
+    returns early, so a mutation making absence count as drift left it GREEN (measured —
+    M3 survived the first cut of this file). The property only becomes reachable when two
+    stamped trees force a filter AND an unstamped run has to survive it. Every artifact
+    written before the stamp existed carries none; dropping them deletes the history."""
+    _run(tmp_path, "a.json", sha="a" * 40, correct=True)     # kept: first tree seen
+    _run(tmp_path, "b.json", sha="b" * 40, correct=True)     # dropped: the other tree
+    _run(tmp_path, "c.json", sha=None, correct=False)        # unstamped: must SURVIVE
+    votes = compare._index(compare.load_runs([tmp_path]))["m +e"]["dims"]["ner"][("c1", "f")]
+    assert sorted(votes) == [False, True], (
+        f"the unstamped run must survive the tree filter and the second tree must not; "
+        f"got {votes}"
+    )
 
 
 def test_the_same_tree_twice_is_one_tree(tmp_path, capsys):
