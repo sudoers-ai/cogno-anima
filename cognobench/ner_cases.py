@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 # Suite version (plan 0.6): bump on ANY case addition/removal/edit, then
 # re-record with `python -m cognobench.suites --update`. Published numbers
 # cite this id; different versions never share a table.
-SUITE_ID = "ner-v1"
+SUITE_ID = "ner-v2"
 
 @dataclass
 class NERCase:
@@ -102,7 +102,7 @@ NER_CASES: list[NERCase] = [
     NERCase(id="ner_pii_national_id", input="meu CPF é 111.444.777-35",
             expect_pii_risk="HIGH"),   # valid CPF (check digits) → caught deterministically
     # PII coverage ported from the parent safety bench (deterministic risk map).
-    NERCase(id="ner_pii_phone", input="meu telefone é 11984821841",
+    NERCase(id="ner_pii_phone", input="meu telefone é 11970001111",
             expect_pii_risk="MEDIUM"),
     NERCase(id="ner_pii_credit_card", input="meu cartão de crédito é 4111 1111 1111 1111",
             expect_pii_risk="HIGH"),
@@ -112,7 +112,7 @@ NER_CASES: list[NERCase] = [
             expect_pii_risk="MEDIUM"),
     NERCase(id="ner_pii_dob", input="nasci em 15 de março de 1990",
             expect_pii_risk="HIGH"),
-    NERCase(id="ner_pii_combined", input="meu telefone é 11984821841 e meu cartão é 4111 1111 1111 1111",
+    NERCase(id="ner_pii_combined", input="meu telefone é 11970001111 e meu cartão é 4111 1111 1111 1111",
             expect_pii_risk="HIGH"),
     # False positive: bare math numbers must NOT be flagged as PII.
     NERCase(id="ner_pii_false_positive", input="o número pi é 3.14159265 e a raiz de 2 é 1.41421356",
