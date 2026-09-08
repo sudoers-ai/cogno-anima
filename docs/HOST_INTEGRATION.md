@@ -186,11 +186,24 @@ The core never decides policy — it raises flags you act on:
 | `ctx.id_result.blocked` + `block_reason` | ID (PII-CRITICAL) | short-circuit, block message |
 | `ctx.stop_reason` (`vocab.VALID_STOP_REASONS`) | terminal | route/log the terminal (`completed`/`pii_blocked`/`scope_blocked`/`human_handoff`/`semantic_cache`) |
 | `ctx.needs_handoff` | host policy (e.g. judge exhaustion) | escalate to a human agent |
-| `ctx.drift.drift_action` (`none/warn/ask_user/self_correct`) | Drift | warn / ask clarification / trigger a correction |
+| `ctx.drift.drift_action` (`none/warn/ask_user/self_correct`) | Drift | warn / ask clarification / trigger a correction — but see the note below on what `none` means |
 | `ctx.ego_result.interrupted` + `interrupt_reason` | EGO | budget/convergence hit → surface partial result |
 
 The core *sets the vocabulary*; the host *implements the consequence* (the real
 handoff, the retry budget, the clarification text).
+
+> **`drift_action = "none"` means "nothing to act on", which is not the same as "measured, and
+> clean".** `compute_cumulative` votes only over the components that were actually computed and
+> renormalizes over them, so a turn where none was computed produces a cumulative of 0.0 and an
+> action of `none` — over an empty vote. That case is reachable now: since the NOUMENO stopped
+> letting an embedder failure kill the turn, the epistemological component is `None` when the
+> embedder was unreachable, and it used to be the one component that was always present.
+>
+> If your host only logs or warns on `drift_action`, nothing changes. If it uses `none` as
+> evidence that a turn was VERIFIED — gating a cheaper path, skipping a check, marking a reply
+> trusted — read the components or `ctx.drift.to_tags()` instead: the tags carry
+> `NOUMENO.DRIFT_UNKNOWN`, and `NoumenoResult.degradations` names the reason
+> (`vocab.EMBED_UNAVAILABLE`). The action alone cannot tell the two apart, by construction.
 
 ---
 
