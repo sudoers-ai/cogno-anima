@@ -1371,8 +1371,8 @@ class SuperegoStage:
             res = getattr(ctx, "consult_result", None)
             if res is None:
                 return None
-            calls = getattr(res, "tools_executed", missing)
-            return None if calls is missing else list(calls or ())
+            calls: Any = getattr(res, "tools_executed", missing)   # `Any`: the sentinel read,
+            return None if calls is missing else list(calls or ())  # typed as `_is_readonly_turn`
         except Exception:      # noqa: BLE001 — evidence that cannot be read is not a licence
             logger.warning("stage=superego event=consult_trace_unreadable")
             return None
