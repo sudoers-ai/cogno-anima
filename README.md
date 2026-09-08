@@ -27,7 +27,7 @@ NOUMENO  →  NER  →  ID  →  EGO  →  SUPEREGO        (+ Drift, woven throu
 - **NER** — semantic analysis: intent, sentiment, entities, PII (detected deterministically, never trusted from the LLM), domains — all coerced to a closed vocabulary.
 - **ID** — strategic router & continuity (heuristic, no LLM): goal lifecycle, BDI intentions, attention, safety gate, drift.
 - **EGO** — executor: runs an agent loop and dispatches tools (native function calling *or* a `<TOOL_CALL>` text fallback). It gathers data; it does **not** write the reply.
-- **SUPEREGO** — locutor: scope guard + judge (goal↔execution) + **writes** the final response in the persona's voice, grounded in the EGO's data.
+- **SUPEREGO** — locutor: scope guard + judge (three branches — goal↔execution, truth, grounding — chosen per turn) + **writes** the final response in the persona's voice, grounded in the EGO's data.
 - **Drift** — pure, no I/O: epistemological → ontological → situational → execution → synthesis → cumulative, emitting a `drift_action` signal.
 
 ## Philosophy: the core signals, the host decides
