@@ -1,5 +1,66 @@
 # Changelog
 
+## Unreleased — o critério de GROUNDING contradizia o bloco que estava no mesmo prompt (2026-09-08)
+
+### Fixed
+
+- **`_GROUNDING_SOURCES`: os ramos `execution` e `readonly` do juiz deixam de declarar os
+  resultados de ferramenta a ÚNICA verdade do turno.** O prompt do juiz sempre carregou mais
+  fundamento do que as chamadas: `# Persona limits` é onde o host renderiza as regras de
+  negócio configuradas pelo INQUILINO (e as enquadra, lá, como fundamento legítimo) e
+  `# Context` traz o relógio, as memórias e o histórico. O ramo `conversational` enumera os
+  três desde que foi escrito («NOT in the Context above, in the persona's limits, or in what
+  the user said»); os outros dois nunca o fizeram — e diziam o contrário, na forma mais forte
+  disponível: «the reads are the ONLY ground truth this reply has» / «backed by the tool
+  results».
+
+  **MEDIDO NO PROMPT RENDERIZADO** (`turn_traces` id=1440, host `b1901a6`, juiz
+  `gpt-5.6-luna`). As `custom_rules` do papel EMPLOYEE de um inquilino configuram o valor da
+  hora-aula e a tabela de bónus; o contacto perguntou exactamente isso; o executor respondeu
+  certo; as três leituras vieram vazias («No faculty records found.», «Nothing recorded
+  about…»). O juiz rejeitou: *«The draft fabricates the hourly rate, bonus amounts,
+  eligibility rules, invoice deadline, and payment date. The successful searches found no
+  faculty records or knowledge about teacher rates and bonus rules»* — que é o critério #1
+  APLICADO CORRECTAMENTE, palavra por palavra, a um prompt que também carregava, 120 linhas
+  acima, o bloco a dizer «An execution/answer grounded in them is CORRECTLY grounded».
+
+  **Não era uma cláusula em falta, e a distinção era o trabalho todo.** Uma sonda determinista
+  sobre o prompt renderizado encontrou a linha do próprio inquilino — `- Aula - R$ 120,00 por
+  hora` — presente, verbatim, sob `# Tenant rules (legitimate grounding)`, no mesmo prompt que
+  produziu aquela crítica. Logo o conserto não é fazer o bloco chegar (ele chega): é parar os
+  critérios de afirmarem o oposto. Acrescentar um quinto parágrafo a um prompt cujo
+  enquadramento já é ignorado é o movimento fraco — é o mesmo achado que decidiu o ramo
+  `JUDGE_READONLY`, e chega aqui pela outra porta.
+
+  **Não é uma flexibilização, e a última frase é o que a mantém honesta:** o conjunto de fontes
+  continua FECHADO e todos os seus membros estão DENTRO deste prompt. Um número que não aparece
+  em nenhuma das três continua a ser fabricação e continua rejeitado com a mesma dureza; a
+  leitura vazia continua a fundamentar apenas uma resposta NEGATIVA — agora sobre O QUE AQUELA
+  FERRAMENTA COBRE, que é a única correcção que a medição obriga. Escrito UMA vez, pela razão
+  por que `_ADMITTING_A_LIMIT` é escrito uma vez. O ramo `conversational` fica byte a byte
+  igual: era ele o precedente.
+
+### Added
+
+- **`SuperegoResult.judge_branch` + `SuperegoStage.judge_prompt_inventory`** — que critérios o
+  juiz recebeu, e que secções o prompt dele carregava, POR TENTATIVA. O ramo era uma linha de
+  LOG e nada mais, e ler UM turno rejeitado custou reconstruí-lo off-line contra a linha viva de
+  `tenant_personas`: nada do que ficou persistido dizia se as regras do inquilino tinham sequer
+  chegado ao prompt. «Em falta» e «ignorado» têm consertos OPOSTOS — um é fiação, o outro
+  substitui os critérios — e um traço que não os distingue manda o leitor seguinte pelo caminho
+  errado.
+
+  Gémeo exacto de `voice_prompt_inventory`, e com a mesma propriedade de segurança: o
+  **alfabeto de saída é FECHADO** (`_JUDGE_BLOCKS`), portanto o slug nunca sai do texto que
+  casou. Aqui isso pesa MAIS do que na voz, porque um dos blocos — `# Persona limits` — é onde
+  o host renderiza markdown escrito pelo inquilino: um cabeçalho forjado lá dentro compra uma
+  LINHA duplicada (visível, e reportada como duplicada em vez de fundida) e nada mais; nunca um
+  byte seu. O prompt renderizado continua a NÃO ser persistido pelo core.
+
+  Gravado em TODOS os caminhos que construíram um prompt, o *fail-CLOSED* incluído: «a chamada
+  rebentou» e «o juiz leu estes critérios e disse não» são falhas diferentes, e a segunda é a
+  comum.
+
 ## Unreleased — um assunto sem token na lista fechada não tem dono (2026-09-06)
 
 ### Added

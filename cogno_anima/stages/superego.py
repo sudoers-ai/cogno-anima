@@ -120,13 +120,61 @@ _JUDGE_SYSTEM = (
     "JSON only. Default to NOT approving when you cannot verify the criteria."
 )
 
+# WHERE GROUNDING COMES FROM — one sentence, every branch that judges it.
+#
+# The judge prompt has ALWAYS carried more ground truth than the tool results. Two of its
+# sections are evidence in exactly the same sense a tool result is, because both are text the
+# judge is holding while it decides: ``# Persona limits`` — where the host puts the persona's
+# limits AND the tenant's own configured business rules, framed there as legitimate grounding —
+# and ``# Context`` — the clock anchor, the retrieved memories, the history. Neither is a
+# guess; both were rendered into this prompt by the caller before the model saw a word.
+#
+# ``_CONVERSATIONAL_CRITERIA`` has enumerated all three since it was written ("NOT in the
+# Context above, in the persona's limits, or in what the user said"). The other two branches
+# never did, and both said the opposite ON PURPOSE and in the strongest available form: the
+# execution branch asked whether everything is "backed by the tool results", and the read-only
+# branch — where grounding is PROMOTED to criterion #1 — declared that "the reads are the ONLY
+# ground truth this reply has" and that every figure "must trace to a tool result above".
+#
+# MEASURED on the rendered prompt (2026-09-08, ``turn_traces`` id=1440, host ``b1901a6``, i.e.
+# with the #808 framing block shipped). A tenant's EMPLOYEE rules configure the teaching rate
+# and the bonus table; the contact asked for exactly those; the executor answered them
+# correctly; three reads came back empty ("No faculty records found.", "Nothing recorded
+# about…"). The judge rejected it — "The draft fabricates the hourly rate, bonus amounts,
+# eligibility rules, invoice deadline, and payment date. The successful searches found no
+# faculty records or knowledge about teacher rates and bonus rules" — which is criterion #1
+# APPLIED CORRECTLY, word for word, to a prompt that also carried, 120 lines above, the block
+# saying "An execution/answer grounded in them is CORRECTLY grounded".
+#
+# So the defect was never a MISSING clause — the deterministic probe found the tenant's own
+# ``- Aula - R$ 120,00 por hora`` present, verbatim, under ``# Tenant rules (legitimate
+# grounding)``, in the very prompt that produced that critique. It was a CONTRADICTED one, and
+# a fail-CLOSED judge reading an EXCLUSIVE claim inside its own numbered REJECT list resolves
+# the contradiction against a framing paragraph it read earlier. Adding a fifth paragraph to a
+# prompt whose framing is already ignored is the weak move; the strong one is to stop the
+# criteria from asserting the opposite, which is what this sentence does.
+#
+# It is not a relaxation, and the last line is what keeps it honest: the set stays CLOSED and
+# every member of it is IN THIS PROMPT. A figure that appears in none of the three is still
+# fabrication, and is still rejected exactly as hard. Written once, for the reason
+# ``_ADMITTING_A_LIMIT`` is written once: a copy of it in the other branch is a contract that
+# diverges silently.
+_GROUNDING_SOURCES = (
+    "What counts as GROUNDED: the tool results are not the only ground truth in this prompt. "
+    "The '# Persona limits' section above (which carries the tenant's own configured business "
+    "rules) and the '# Context' section (clock, memories, history) ground a statement exactly "
+    "as well as a tool result does. A search that returned nothing does NOT prove that a fact "
+    "stated in those sections is invented — it proves only that the search found nothing. "
+    "Reject a figure, name, date, policy or claim that appears in NONE of the three."
+)
+
 _EXECUTION_CRITERIA = (
     "# Judge the EXECUTION against these criteria (most important first):\n"
     "1. GOAL↔EXECUTION: did it do exactly what was asked (X, not Y)?\n"
     "2. CONSTRAINTS: did it honor every user restriction (and NOT do what was forbidden)?\n"
     "3. COMPLETENESS: was the goal fully met (not partial)?\n"
-    "4. GROUNDING: is everything backed by the tool results (no invented data), "
-    "and are the preserved terms (if any) reproduced exactly?\n"
+    "4. GROUNDING: is everything backed by the evidence in this prompt (no invented data), "
+    "and are the preserved terms (if any) reproduced exactly? " + _GROUNDING_SOURCES + "\n"
     "5. SAFETY/LIMITS: within the persona's limits, no policy violation?\n\n"
 )
 
@@ -255,10 +303,16 @@ _OUT_OF_REACH = (
 # argue with the criteria, it REPLACES them. Same move here.
 #
 # The one thing this branch must never become is a free pass, and that is why GROUNDING is not
-# relaxed but PROMOTED to criterion #1: the reads are the only ground truth the reply has, so a
-# draft that states anything they did not return is rejected exactly as hard as before. The
-# relaxation is confined to the single question "did the execution fulfil the goal", which on a
-# clean read has no honest answer other than "there was nothing to fulfil".
+# relaxed but PROMOTED to criterion #1: a draft that states something no evidence in this prompt
+# supports is rejected exactly as hard as before. The relaxation is confined to the single
+# question "did the execution fulfil the goal", which on a clean read has no honest answer other
+# than "there was nothing to fulfil".
+#
+# Criterion #1 used to name the reads as the reply's ONLY ground truth, and that sentence — not
+# the promotion — is what ``_GROUNDING_SOURCES`` above corrects (measured on id=1440: a tenant's
+# own configured rate called "fabricated" because a search came back empty). The set of sources
+# is still CLOSED and still entirely inside this prompt; what changed is that it stopped being
+# a set of one while the prompt carried three.
 _READONLY_CRITERIA = (
     "# This turn executed READS ONLY - every tool call SUCCEEDED and none of them wrote "
     "anything. Judge the DRAFT as an ANSWER to the user; do NOT judge the execution as a "
@@ -270,10 +324,13 @@ _READONLY_CRITERIA = (
     "returned is a PASS, whether it is long or short.\n"
     "REJECT only if one of these is TRUE:\n"
     "1. FABRICATION / GROUNDING - the one fatal error, and it is FIRST here for a reason: the "
-    "reads are the only ground truth this reply has. Every figure, name, date, id, time, slot, "
-    "status or availability the draft states must trace to a tool result above. A tool that "
-    "returned NOTHING ('no rows', 'none found', an empty list) grounds a NEGATIVE answer and "
-    "nothing else - a draft that fills that emptiness with plausible content is fabricating. A "
+    "reads are this reply's main evidence. Every figure, name, date, id, time, slot, "
+    "status or availability the draft states must trace to the evidence in this prompt. "
+    + _GROUNDING_SOURCES +
+    " A tool that "
+    "returned NOTHING ('no rows', 'none found', an empty list) grounds a NEGATIVE answer about "
+    "WHAT THAT TOOL COVERS and nothing else - a draft that fills that emptiness with plausible "
+    "content is fabricating. A "
     "preserved term reproduced INCORRECTLY (a mangled figure, email or URL) counts as "
     "fabrication too.\n"
     "2. CONTRADICTS THE READ: the draft asserts something the tool results deny, or reports as "
@@ -419,11 +476,15 @@ class SuperegoStage:
         return out
 
     @classmethod
-    def _block_positions(cls, prompt: str) -> "list[tuple[int, str]]":
+    def _block_positions(cls, prompt: str,
+                         blocks: "tuple[tuple[str, str], ...] | None" = None,
+                         ) -> "list[tuple[int, str]]":
         """Where each known section starts, in order. ONE parser for the inventory and the
-        slicer — two scans of the same headers is two chances to disagree."""
+        slicer — two scans of the same headers is two chances to disagree. ``blocks`` selects
+        WHICH closed table to scan for (the voice's, by default; the judge's passes its own):
+        the tables differ, the scanning rule must not."""
         found: "list[tuple[int, str]]" = []
-        for line, slug in cls._VOICE_BLOCKS:
+        for line, slug in (blocks if blocks is not None else cls._VOICE_BLOCKS):
             start = 0
             while True:
                 i = prompt.find(line, start)
@@ -459,6 +520,62 @@ class SuperegoStage:
             return ""
         after = [a for a in starts if a > i]
         return prompt[i:after[0]] if after else prompt[i:]
+
+    # The JUDGE prompt's top-level sections, same contract as `_VOICE_BLOCKS` and the same
+    # reason for being closed: the slugs come from this table, never from the text that
+    # matched. It matters MORE here than it does for the voice, because one of these blocks —
+    # `# Persona limits` — is where the host renders a tenant's own configured rules, and a
+    # tenant who writes a line reading `# EGO draft` would otherwise get to name a column.
+    # They cannot: a forged header can add a ROW (visible, and duplicated rows are reported as
+    # duplicates rather than merged) and shift a LENGTH; it can never contribute a byte of its
+    # own text to what is stored.
+    #
+    # The criteria headers are the three BRANCHES, and each is matched by its opening words
+    # only, because the branch constants continue in prose on the same line.
+    _JUDGE_BLOCKS = (
+        ("# User request", "user_request"),
+        ("# Context (authoritative", "context"),
+        ("# Active goal", "active_goal"),
+        ("# User constraints", "user_constraints"),
+        ("# NOT AVAILABLE this turn", "unavailable"),
+        ("# Preserved terms", "preserved_terms"),
+        ("# Persona limits", "persona_limits"),
+        ("# What the EGO executed", "executed"),
+        ("# EGO draft", "draft"),
+        ("# Judge the EXECUTION against these criteria", "criteria_execution"),
+        ("# This turn has NO tool to execute", "criteria_conversational"),
+        ("# This turn executed READS ONLY", "criteria_readonly"),
+    )
+
+    @classmethod
+    def judge_prompt_inventory(cls, prompt: str) -> "list[dict[str, object]]":
+        """Which sections the rendered JUDGE prompt carried, and how long each was — NO text.
+
+        The twin of :meth:`voice_prompt_inventory`, and it exists because the question it
+        answers was asked, live, and could not be answered. Measured 2026-09-08 on
+        ``turn_traces`` id=1440: a rejected turn whose critique cited only the tool results,
+        over a draft built from the tenant's own configured rules. Two incompatible readings
+        fit every byte the trace held — the rules never reached the judge's prompt, or they
+        reached it and the criteria overrode them — and settling it took reconstructing the
+        turn offline against the live ``tenant_personas`` row. With this recorded, that
+        question is a column lookup.
+
+        The distinction is worth naming because this house has paid for it: the SAME shape
+        decided the ``JUDGE_READONLY`` branch, where a deterministic probe over the rendered
+        prompt showed the clauses were PRESENT and being ignored. "Missing" and "ignored" have
+        opposite fixes — one is a wiring change, the other replaces the criteria — and a trace
+        that cannot tell them apart sends the next reader down the wrong one.
+
+        Order is as rendered, so two attempts of one turn diff as lists. That is the point of
+        recording it PER ATTEMPT: the branch can legitimately change between them (an attempt
+        that wrote is no longer read-only), and the criteria change with it.
+        """
+        found = cls._block_positions(prompt, cls._JUDGE_BLOCKS)
+        out: "list[dict[str, object]]" = []
+        for n, (at, slug) in enumerate(found):
+            end = found[n + 1][0] if n + 1 < len(found) else len(prompt)
+            out.append({"block": slug, "chars": end - at})
+        return out
 
     @staticmethod
     def strip_cot(text: str) -> tuple[str, bool]:
@@ -955,9 +1072,17 @@ class SuperegoStage:
         model = getattr(backend, "model", "unknown")
 
         def _result(approved: bool, critique: Optional[str], ti: int = 0, to: int = 0,
-                    cached: int = 0) -> SuperegoResult:
+                    cached: int = 0, prompt: str = "", branch: str = "") -> SuperegoResult:
             return SuperegoResult(
                 approved=approved, critique=critique,
+                # What this attempt was actually ASKED — the sections of the prompt it got and
+                # which criteria block it got. Carried on the RESULT rather than logged,
+                # because the caller is the one that keeps a per-attempt record and a log line
+                # is not one. Recorded on every path that built a prompt, the fail-CLOSED one
+                # included: "the judge call blew up" and "the judge read these criteria and
+                # said no" are different failures, and the second is the common one.
+                prompt_blocks=self.judge_prompt_inventory(prompt) if prompt else [],
+                judge_branch=branch,
                 metrics=StageMetrics(stage="superego_judge",
                                      elapsed_ms=(time.perf_counter() - t0) * 1000,
                                      tokens_in=ti, tokens_out=to, cached_tokens=cached,
@@ -969,6 +1094,7 @@ class SuperegoStage:
             return _result(True, None)
 
         prompt = self._build_judge_prompt(ctx, limits_prompt)
+        branch = self._judge_branch(ctx)
         try:
             raw, ti, to = await backend.generate(_JUDGE_SYSTEM, prompt)
             cached = cached_tokens_of(backend)
@@ -976,22 +1102,22 @@ class SuperegoStage:
             data = self._parse_json(raw)
             approved = bool(data.get("approved", False))
             critique = None if approved else str(data.get("critique", "")) or "execution rejected"
-            # The BRANCH is logged beside the verdict, and it is the only place the choice
-            # becomes observable after the fact: the rendered prompt is deliberately not
-            # persisted (it carries contact data), so without this a reader of a rejection
-            # cannot tell which criteria produced it. Closed alphabet — the label comes from
-            # `_judge_branch`, never from the turn.
-            branch = self._judge_branch(ctx)
+            # The BRANCH is logged beside the verdict AND returned on the result. The log
+            # line is for the operator watching now; the field is for the reader holding a
+            # trace three weeks later, and "«nothing in the log» means «nothing of what I
+            # searched for»" is why the second one had to exist. Closed alphabet — the label
+            # comes from `_judge_branch`, never from the turn.
             if approved:
                 logger.info("stage=superego event=judge approved=true branch=%s", branch)
             else:
                 # A rejection feeds the EGO↔SUPEREGO correction loop — surface it.
                 logger.warning("stage=superego event=judge approved=false branch=%s critique=%s",
                                branch, (critique or "")[:80])
-            return _result(approved, critique, ti, to, cached)
+            return _result(approved, critique, ti, to, cached, prompt, branch)
         except Exception as exc:  # noqa: BLE001 — fail-CLOSED: don't pass unverified
             logger.warning("judge failed (%s) — not approving (fail-closed)", exc)
-            return _result(False, "could not verify the execution; please retry")
+            return _result(False, "could not verify the execution; please retry",
+                           prompt=prompt, branch=branch)
 
     @staticmethod
     def _is_readonly_turn(ctx: PipelineContext) -> bool:

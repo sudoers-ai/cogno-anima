@@ -513,13 +513,26 @@ class SuperegoResult(BaseModel):
     # `preserved:mutated_in_output`, `voice:json_unwrapped`) — the last one counts how often the
     # voicer answered in a JSON envelope, so a prompt problem cannot hide behind its own net.
     adjustments: list[str] = Field(default_factory=list)
-    # Which sections the rendered VOICE prompt carried and how long each was — slugs from a
+    # Which sections the rendered prompt carried and how long each was — slugs from a
     # closed list, never the matched text, so there is no contact data here and no purge path
     # is needed. It answers the first question anyone asks about a bad reply ("did this turn
     # get the memories block? the rejection block?"), which was unanswerable after the fact
-    # because the rendered prompt is deliberately not persisted. Empty on `evaluate`/
-    # `check_input_scope` — only `voice` fills it.
+    # because the rendered prompt is deliberately not persisted.
+    #
+    # Filled by `voice` (from `_VOICE_BLOCKS`) and by `evaluate` (from `_JUDGE_BLOCKS`) — two
+    # closed tables, one field, because the caller always knows which op it invoked and a
+    # second field would only let the two drift. Empty on `check_input_scope`.
     prompt_blocks: list[dict[str, Any]] = Field(default_factory=list)
+    # Which CRITERIA the judge was given: `execution` | `conversational` | `readonly`, from
+    # `SuperegoStage._judge_branch`. Empty on `voice`/`check_input_scope`.
+    #
+    # It was a log line and nothing else, and a log line is not a record: measured 2026-09-08,
+    # reading a single rejected turn (`turn_traces` id=1440) required reconstructing its prompt
+    # offline because nothing persisted said which of the three criteria blocks produced the
+    # critique. The branch is chosen per ATTEMPT and can legitimately change between them (an
+    # attempt that wrote is no longer read-only), so the verdict alone cannot stand in for it.
+    # Closed alphabet — the value comes from `_judge_branch`, never from the turn.
+    judge_branch: str = ""
     # The rendered voice prompt, IN MEMORY, for the turn the host is holding right now.
     #
     # It carries contact data — the user's own words, retrieved memories, the graph block — and

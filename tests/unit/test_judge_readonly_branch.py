@@ -141,7 +141,13 @@ def test_grounding_is_promoted_not_relaxed():
     fabrication rule is criterion #1 and an empty read is declared to ground a NEGATIVE only."""
     out = _prompt(_ctx([_read()]))
     assert "1. FABRICATION / GROUNDING" in out
-    assert "grounds a NEGATIVE answer and nothing else" in out
+    # The empty read still grounds a negative and nothing else — narrowed on 2026-09-08 to the
+    # SCOPE of the tool that came back empty (`_GROUNDING_SOURCES`), because a search finding
+    # nothing was being read as proof that a figure configured in the persona's own limits was
+    # invented (`turn_traces` id=1440). The teeth are the second half of the sentence.
+    assert "grounds a NEGATIVE answer about WHAT THAT TOOL COVERS and nothing else" in out
+    assert "fills that emptiness with plausible content is fabricating" in out
+    assert "appears in NONE of the three" in out
     assert "CONTRADICTS THE READ" in out
 
 
