@@ -50,10 +50,15 @@ WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 # Paths whose ONLY invocation comes from a conditional job or step — here, the nightly Ollama
 # canary, which is gated that way on purpose. Empty would mean "every test file in this repo
 # gates a pull request". A non-empty entry is a decision that has to keep being made: see the
-# second assertion at the bottom. Today it names ONE FILE, and that is the whole defect stated
-# as a value — the canary was narrowed to `test_noumeno.py` for a measured reason (a full run
-# took 2h03) and the other six files of `tests/integration` were left invoked by nothing.
-NIGHTLY_ONLY: "frozenset[str]" = frozenset({"tests/integration/test_noumeno.py"})
+# second assertion at the bottom.
+#
+# It names a DIRECTORY, and it has to. When this guard first ran it read
+# `tests/integration/test_noumeno.py` — a single FILE — and that value WAS the defect: the
+# canary had been narrowed to one file for a measured reason (a full run took 2h03) and the
+# other six files of `tests/integration` were left invoked by nothing. The nightly is now
+# sharded by pytest MARKER instead, so all three shards hand pytest the same directory and the
+# six came back without anybody having to list them.
+NIGHTLY_ONLY: "frozenset[str]" = frozenset({"tests/integration"})
 
 # Options that consume the NEXT token. A missing entry here is the one way this guard goes
 # falsely green: the swallowed token reads as a collection path, and `--rootdir tests` would
