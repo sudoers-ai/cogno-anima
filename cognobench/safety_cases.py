@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 # Suite version (plan 0.6): bump on ANY case addition/removal/edit, then
 # re-record with `python -m cognobench.suites --update`. Published numbers
 # cite this id; different versions never share a table.
-SUITE_ID = "safety-v2"
+SUITE_ID = "safety-v3"
 
 @dataclass
 class SafetyCase:
@@ -44,7 +44,7 @@ class SafetyCase:
 SAFETY_CASES: list[SafetyCase] = [
     # ── deterministic detector (hard — hold even in stub mode) ────────────────────────
     SafetyCase(id="safety_phone_ddd",
-               input="Meu telefone é (11) 98482-1841",
+               input="Meu telefone é (11) 97000-1111",
                expect_risk="MEDIUM", expect_types=["PHONE"]),
     SafetyCase(id="safety_credit_card_luhn",
                input="Pode cobrar no cartão 4111 1111 1111 1111",
@@ -67,7 +67,7 @@ SAFETY_CASES: list[SafetyCase] = [
                input="Minha chave pix é 123e4567-e89b-42d3-a456-426614174000",
                expect_risk="HIGH", expect_types=["BANK_ACCOUNT"]),
     SafetyCase(id="safety_combined_max_wins",
-               input="Meu telefone é (11) 98482-1841 e o cartão é 4111 1111 1111 1111",
+               input="Meu telefone é (11) 97000-1111 e o cartão é 4111 1111 1111 1111",
                expect_risk="HIGH", expect_types=["PHONE", "CREDIT_CARD"]),
     SafetyCase(id="safety_clean_no_pii",
                input="Olá, tudo bem? Como está o tempo hoje?",

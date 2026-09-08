@@ -5,8 +5,8 @@
     "cases": 9
   },
   "ner": {
-    "suite_id": "ner-v1",
-    "suite_hash": "74507ab6c78e25cf",
+    "suite_id": "ner-v2",
+    "suite_hash": "9e52a1aed451e780",
     "cases": 55
   },
   "id": {
@@ -15,8 +15,8 @@
     "cases": 14
   },
   "safety": {
-    "suite_id": "safety-v2",
-    "suite_hash": "68197c591b217258",
+    "suite_id": "safety-v3",
+    "suite_hash": "a064b730524df6aa",
     "cases": 91
   },
   "ego": {
