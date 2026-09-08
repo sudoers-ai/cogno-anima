@@ -8,8 +8,16 @@ host injects whichever backend it wants for each; they may differ):
     skips the expensive EGO. Fail-OPEN (a cost guard must never refuse a
     legitimate user on error).
   * ``evaluate`` (post-EGO JUDGE) — approve the EGO's *execution* or send it back
-    with a critique. Criterion #1 is goal↔execution ("asked X, did X not Y").
-    Fail-CLOSED (never approve unverified — the cost of a false-pass is worse).
+    with a critique. The criteria are CHOSEN, not fixed: ``_judge_branch`` picks one
+    of three, and criterion #1 differs in each. EXECUTION (the default) asks
+    goal↔execution, "asked X, did X not Y", and is fail-CLOSED — never approve
+    unverified, a false pass costing more than a retry. CONVERSATIONAL (the host
+    declares no tool was offered) asks TRUTH. READ-ONLY (computed here: the turn ran,
+    every call succeeded, nothing was written) asks GROUNDING, and is the one branch
+    that approves by default — there was no mutation to verify, so "the request was
+    not carried out" is not a finding available to it. Fabrication is rejected as
+    hard in all three; only the question "did the execution fulfil the goal" is ever
+    relaxed, and only where it has no honest answer.
   * ``voice`` (post-EGO) — **writes** the final user response from the EGO's
     gathered data, in the persona's voice + limits; strips CoT, runs a
     deterministic PII backstop, and feeds synthesis drift.
