@@ -1,9 +1,11 @@
 # Design note — act_confirm → EGO read-only + confirmation gate (propose/commit)
 
-**Status:** IMPLEMENTED. Two host-driven capability gates in the EGO, both
+**Status:** IMPLEMENTED. **Three** confirmation gates in the EGO — A and B host-driven and
 validated end-to-end in CognoBench as HARD invariants (EGO 100%, see
-`cognobench/EGO_BENCH_RESULTS.md`). This note records the rationale + the
-decisions taken on the original open points.
+`cognobench/EGO_BENCH_RESULTS.md`), C raised by the SKILL itself. This note records the
+rationale + the decisions taken on the original open points. It was written when there were two
+and the third arrived later; §"Fonte A vs Fonte B vs Fonte C" below is the current list, and
+`CLAUDE.md` is the shorter statement of the same three.
 
 ## Problem
 
@@ -115,10 +117,10 @@ read-only gate makes them **hard invariants**:
 - **EGO:** `ego_readonly` set → the set of *mutating* tools dispatched is empty.
   A capability guarantee, asserted directly — not model goodwill.
 
-## Fonte A vs Fonte B — two sources of "needs confirmation"
+## Fonte A vs Fonte B vs Fonte C — three sources of "needs confirmation"
 
-These are **two different triggers** that converge on the same propose/commit
-outcome:
+These are **three different triggers** that converge on the same propose/commit
+outcome. They are ordered here from broadest to most specific:
 
 - **Fonte A — the USER is tentative** (framing): "*Should I* record 50?"
   (`speech_act=INTERROGATIVE`) / "I *maybe* spent 30?" (`modality=UNCERTAIN`).
@@ -128,6 +130,30 @@ outcome:
   commanding ("delete everything"), but the specific tool is irreversible.
   Detected in the **EGO** when the model picks a `requires_confirmation` tool →
   the EGO **holds that one call** (surgical). No `ego_readonly` involved.
+- **Fonte C — the SKILL asks**, about THIS call and what it just read: the tool RAN, decided it
+  must not commit, and returns `ToolResult(needs_confirmation=True)`. The EGO records it as
+  pending and stops, exactly like B, and the proposal text is the **skill's own `output`** —
+  grounded in the rows it read, not in the tool's name.
+
+**Why C exists when B is already there.** B decides by tool NAME and BEFORE execution, so it
+cannot know that cancelling *this* appointment is two hours away, or that *this* entry is a
+hundred times the usual one. The skill knows, because it read. That also makes C the **widest**
+of the three in reach even though it is the narrowest in scope: B only fires on a tool the host
+declared destructive, while C can be raised by any skill on any call, with no policy declared
+anywhere. And it supersedes A's trigger in practice — A guesses from how the user PHRASED the
+request and has no reader; C is a fact about what the skill found.
+
+**What C promises.** A `True` is a promise that nothing was committed, and the core enforces it
+rather than trusting it: the call is recorded `ok=False`, and `committed_this_turn` requires
+`ok` **and** `side_effect`, so a proposal can never be counted as a write however the skill
+filled the other fields. On the return trip, a call the host CONFIRMED whose skill still asks
+committed nothing and there is nobody left to ask — `_refuse_if_still_asking` fails it loudly
+(`ok=False`, named error) rather than shipping "done" over a turn that wrote nothing, on both
+routes a confirmed call arrives by.
+
+**B and C hold per CALL, not per turn** — they stop the LOOP, not the STEP. A step with two
+calls holds the one that asked and executes its sibling, so one turn can truthfully report both
+"I am holding this" and "I committed that".
 
 ## Decisions taken (the original open points)
 
@@ -148,14 +174,19 @@ outcome:
    `requires_confirmation` per-tool flag covers Fonte B (the originally-deferred
    "certain but destructive" cousin). DEFERRED: turning Fonte B into a richer
    "confirmation-required policy" object (per-arg thresholds etc.) — the boolean
-   tool flag suffices for now.
+   tool flag suffices for now. *(Fonte C landed later and is what that deferral turned into:
+   rather than teaching the host's per-NAME policy about arguments and thresholds, the decision
+   moved to the only party that can read the row — the skill. The deferred richer policy object
+   was not built and is not needed.)*
 
 ## Plumbing summary
 
 - `IdResult.needs_confirmation` (ID signal) · `ctx.metadata["ego_readonly"]`
   (host → EGO, Fonte A) · `ctx.metadata["ego_confirmed"]` (host → EGO, `True` or a
-  set of tool names, opens Fonte B) · `EgoResult.pending_confirmation` (EGO →
-  host, the held destructive calls).
+  set of tool names, opens Fonte B **and** Fonte C) · `ToolResult.needs_confirmation`
+  (skill → EGO, Fonte C) · `EgoResult.pending_confirmation` (EGO →
+  host, the held calls, from either gate — `_confirmation_stop` and anything else reading it
+  deliberately cannot tell which gate produced a hold, and does not need to).
 - Block 1 (judge constraints/negation) and Block 2 (parole→voice) shipped
   alongside (SUPEREGO 100%). The earlier advisory act-confirm hint in the EGO was
   removed (superseded by these capability gates).
