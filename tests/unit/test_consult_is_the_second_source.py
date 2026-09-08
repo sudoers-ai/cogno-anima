@@ -229,8 +229,24 @@ def test_the_carrier_tells_NO_CONSULT_apart_from_a_consult_that_ran_nothing():
 
 # ── the judge ──────────────────────────────────────────────────────────────────────────────
 
-def _judged(ctx: PipelineContext, limits: str = "persona limits") -> str:
+def _judged(ctx, limits: str = "persona limits") -> str:
     return SuperegoStage()._build_judge_prompt(ctx, limits)
+
+
+class _CarrierThatCannotSay:
+    """A duck-typed carrier whose ``consult_result`` RAISES — the shape `types.py` documents
+    (a replayed trace, a test double, a host's leaner context of its own)."""
+
+    user_input = "record 120 and tell me the balance"
+    metadata: dict = {}
+    intent = None
+    noumeno = None
+    turn_executions: list = []
+    ego_result = _trace(_read("resolve_date", result="2026-09-08"))
+
+    @property
+    def consult_result(self):
+        raise RuntimeError("a carrier that cannot say whether anyone was consulted")
 
 
 def test_a_write_by_the_CONSULTED_specialist_keeps_the_EXECUTION_criteria():
@@ -310,21 +326,41 @@ def test_the_specialists_output_goes_through_the_SAME_sanitizer():
         "the Format-3 payload survived: the sanitizer did not know the specialist's tools")
 
 
-def test_an_unreadable_consult_trace_never_costs_the_TURN():
+@pytest.mark.parametrize("broken", ["tools_executed", "the carrier itself", "not a trace"])
+def test_an_unreadable_consult_trace_never_costs_the_TURN_and_claims_NOTHING(broken):
     """A judge prompt must never be the reason a turn dies — the rule `_format_unavailable`
     already states, applied to the new block. Degrading to the prompt the judge always had is
-    the STRICT direction: less evidence can only make a fail-CLOSED gate refuse harder."""
-    class _Exploding:
+    the STRICT direction: less evidence can only make a fail-CLOSED gate refuse harder.
+
+    The second assertion is the one that took a rewrite. A trace that could not be read must NOT
+    render "she executed NO tool": that is a claim about the world we do not have, and asserting
+    it to the fail-CLOSED gate is the same error as asserting the opposite. Only one read of the
+    carrier decides — the first cut read it twice, so the raising-carrier case (below) slipped
+    past the guard and died on the second read.
+    """
+    class _ExplodingTrace:
         persona = SPECIALIST
 
         @property
         def tools_executed(self):
             raise RuntimeError("derived property over a partial trace")
 
-    ctx = _hub_only_read()
-    ctx.consult_result = _Exploding()
+    if broken == "the carrier itself":
+        # A DUCK-TYPED carrier — a replayed trace, a host's leaner context — which is the only
+        # shape that can actually raise here. A `PipelineContext` subclass cannot: pydantic
+        # takes a property that shadows a field as that field's DEFAULT VALUE, so the first
+        # draft of this case measured a `property` object instead of an exception, and reported
+        # green about a branch it never reached.
+        ctx = _CarrierThatCannotSay()
+    else:
+        ctx = _hub_only_read()
+        ctx.consult_result = _ExplodingTrace() if broken == "tools_executed" else object()
+
     prompt = _judged(ctx)
     assert isinstance(prompt, str) and "# What the EGO executed" in prompt
+    assert "executed NO tool" not in prompt, (
+        "an unreadable record was rendered as a specialist who ran nothing — a guard must not "
+        "assert what it failed to read")
 
 
 def test_a_persona_label_cannot_forge_a_SECTION_of_its_own():

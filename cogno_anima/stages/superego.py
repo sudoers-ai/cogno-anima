@@ -1233,7 +1233,7 @@ class SuperegoStage:
         # tool is exactly the payload this fencing exists for. On a turn that consulted nobody
         # the set is what it always was.
         consulted_calls = self._consulted_calls(ctx)
-        names = {t.tool for t in [*ego.tools_executed, *consulted_calls] if t.tool}
+        names = {t.tool for t in [*ego.tools_executed, *(consulted_calls or ())] if t.tool}
         executed = self._format_calls(ego.tools_executed, names) or "(no tools executed)"
         consulted = self._format_consulted(ctx, consulted_calls, names)
         draft = ego.draft or "(none)"
@@ -1343,23 +1343,42 @@ class SuperegoStage:
             for t in calls)
 
     @staticmethod
-    def _consulted_calls(ctx: PipelineContext) -> "list[Any]":
-        """What a specialist consulted MID-TURN executed — ``[]`` when nobody was consulted.
+    def _consulted_calls(ctx: PipelineContext) -> "Optional[list[Any]]":
+        """What a specialist consulted MID-TURN executed, or ``None`` for NO USABLE CONSULT.
 
-        Read defensively for the reason `_format_unavailable` states: a judge prompt must never
-        be the reason a turn dies. An unreadable carrier degrades to the prompt the judge always
-        had, which is the STRICT direction (the judge weighs the draft with less evidence, so it
-        can only refuse harder — never approve something it did not see).
+        ONE read of the carrier, and the tri-state is the point: a list (possibly empty) means a
+        consult ran and this is what she called; ``None`` means either nobody was consulted or
+        the record could not be read. Reading the carrier twice — once to decide presence, once
+        for the calls — is how a duck-typed carrier whose ``consult_result`` RAISES gets past the
+        first guard and kills the prompt build on the second.
+
+        Both ``None`` cases degrade to the prompt the judge always had, which is the STRICT
+        direction (`_format_unavailable`'s rule: a judge prompt must never be the reason a turn
+        dies, and less evidence can only make a fail-CLOSED gate refuse harder). An unreadable
+        trace deliberately does NOT render the empty-consult line: "she executed nothing" is a
+        claim about the world, and we do not know it — a guard must not assert what it failed
+        to read.
+
+        The trace is read through a SENTINEL for the reason `_is_readonly_turn` states two
+        methods up: an absent field is a SILENCE, and a silence must not be spent as evidence.
+        A carrier holding something that is not a trace at all has no ``tools_executed``, and a
+        permissive ``or []`` there would turn "this is not a trace" into "she ran nothing" —
+        the same false claim, arriving through the other door. `EgoResult` always carries the
+        property, so in the pipeline this never fires.
         """
+        missing = object()
         try:
             res = getattr(ctx, "consult_result", None)
-            return [] if res is None else list(getattr(res, "tools_executed", None) or ())
+            if res is None:
+                return None
+            calls = getattr(res, "tools_executed", missing)
+            return None if calls is missing else list(calls or ())
         except Exception:      # noqa: BLE001 — evidence that cannot be read is not a licence
             logger.warning("stage=superego event=consult_trace_unreadable")
-            return []
+            return None
 
     @classmethod
-    def _format_consulted(cls, ctx: PipelineContext, calls: "list[Any]",
+    def _format_consulted(cls, ctx: PipelineContext, calls: "Optional[list[Any]]",
                           names: "set[str]") -> str:
         """The consulted specialist's execution, under HER name — never folded into the EGO's.
 
@@ -1381,11 +1400,16 @@ class SuperegoStage:
         was no second executor" from "the second executor came back with nothing", because only
         the second one grounds a draft that says so.
         """
-        res = getattr(ctx, "consult_result", None)
-        if res is None:
+        if calls is None:      # nobody consulted, or a record this stage could not read
             return ""
-        # A catalogue token, host-declared — bounded and flattened before it enters a prompt.
-        persona = " ".join(str(getattr(res, "persona", "") or "").split())[:64]
+        # A catalogue token, host-declared — bounded and flattened before it enters a prompt,
+        # and read behind the same guard as the calls: a label this stage cannot read costs the
+        # label, never the block (the calls are the evidence; the name is the provenance on it).
+        try:
+            persona = " ".join(str(getattr(getattr(ctx, "consult_result", None),
+                                           "persona", "") or "").split())[:64]
+        except Exception:      # noqa: BLE001 — a prompt label must never cost the turn
+            persona = ""
         who = f"persona: {persona}" if persona else "persona not named"
         rows = cls._format_calls(calls, names) or (
             "(the specialist was consulted and executed NO tool — this is evidence that the "
