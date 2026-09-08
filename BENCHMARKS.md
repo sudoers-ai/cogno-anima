@@ -1,12 +1,21 @@
 # Cogno — measured cognition
 
 Every cognitive function in Cogno is benchmarked against real models with
-curated, reproducible suites (`cognobench/` here, plus sibling benches in
+curated suites (`cognobench/` here, plus sibling benches in
 [`cogno-persona`](https://github.com/sudoers-ai/cogno-persona) and
-[`cogno-engram`](https://github.com/sudoers-ai/cogno-engram)). All runs are
-local Ollama at `temperature=0.0`; hard invariants (valid vocab, no
-hallucinated tool dispatch, safety gates) are enforced on every model —
-the numbers below are the model-dependent quality on top of those guarantees.
+[`cogno-engram`](https://github.com/sudoers-ai/cogno-engram)). All runs are at
+`temperature=0.0`; hard invariants (valid vocab, no hallucinated tool dispatch,
+safety gates) are enforced on every model — the numbers below are the
+model-dependent quality on top of those guarantees.
+
+> **`temperature=0` REQUESTS greedy decoding; it does not oblige anyone to
+> deliver it.** Local Ollama does (measured: qwen3:8b, zero unstable checks over
+> three full sweeps). A hosted provider does not, and cannot be made to — batching,
+> non-deterministic kernels and silent model updates all sit between the request
+> and the sample. So **every number here is a median of n=3 with its interval and
+> its n beside it**, and a single run is reported as a single draw. This is not a
+> caution, it is a measurement: see
+> [Reading a number from this bench](#reading-a-number-from-this-bench).
 
 > Reproduce any cell: `python3 cognobench.py --only <dimension> --model <model>`
 >
@@ -78,6 +87,77 @@ Three findings the single-run era could not see:
   inherit model noise. The suffix means "the floor is deterministic", not
   "the ceiling is": a rename (`_floor`?) or a ceiling pin belongs to the next
   suite bump.
+
+## Reading a number from this bench
+
+**Three things travel together or the number is not citable: the median, the
+interval, and the n.** Each was added the day its absence produced a wrong
+reading.
+
+**Why a median of three and not one run.** `temperature=0` is a *request* for
+greedy decoding. Ollama honours it — qwen3:8b produced ZERO unstable checks over
+three full sweeps, every `min=max`. A hosted provider does not: the same
+`gpt-4o-mini` config flipped 9 checks over its three gate runs and 10 over four,
+and the count keeps growing with n because the source is provider-side
+(batching, kernel non-determinism, model updates behind a stable name) and
+therefore irreducible. Local repeats buy certainty; cloud repeats buy a floor
+estimate. **A cloud number from one run is one draw.**
+
+**Measured, 2026-09-08 — the run that made this section necessary.**
+`--only safety` (suite `safety-v3`, `gpt-4o-mini` + `text-embedding-3-small`),
+**six runs on ONE tree, one model, one afternoon** — two triples whose corpora
+differ in 2 of 91 cases:
+
+| | run 1 | run 2 | run 3 | median | interval | n |
+|---|---|---|---|---|---|---|
+| triple A | 45.1% | 39.6% | 46.3% | **45.1%** | [39.6 – 46.3] | 328 checks |
+| triple B | 42.7% | 45.1% | 42.7% | **42.7%** | [42.7 – 45.1] | 328 checks |
+
+Six draws span **6.7 points**; **30 of 328 checks flip** within triple A alone
+(36 within B, 54 across all six). The dimension's noise floor at this suite is
+therefore **~30 checks ≈ 9 points**, not the `2` the Fase-0 table records for
+the 44-check `safety-v1`. Two numbers 8.6 points apart are the SAME number here.
+
+**Why the interval decides and the decimal does not.** With n=328 one check is
+0.30 points, so a tenth of a point is finer than the instrument's quantum, and
+the floor is thirty times coarser than either. Quote the fraction the report
+already prints (`148/328`) and the interval; a bare `45.1%` claims a resolution
+nothing in this pipeline has. On a 28-check dimension the same digit is worse
+still: one check is 3.6 points, so `47.6%` and `39.0%` are two adjacent lattice
+points, not two measurements.
+
+**Where a mixed dimension hides both of its answers.** `safety` at `safety-v3`
+is two populations under one score, and there are two ways to cut it — **they are
+not the same cut**, and only the first is printed:
+
+| cut | | median of 3 | interval | n |
+|---|---|---|---|---|
+| by field suffix (**the report prints this**, `[det … · llm …]`) | `*_deterministic` | 100% | [94.6 – 100] | 37 |
+| | `*_llm` | 38.1% | [32.6 – 39.5] | 291 |
+| by case family (derive it from the ids) | `safety_*` | 100% | [95.5 – 100] | 44 |
+| | `health_*` | 36.6% | [31.0 – 38.0] | 284 |
+
+The two disagree by 7 checks: the original PII corpus contributes 37
+detector-decided checks **and 7 LLM-assisted ones** (NAME policy, DOB framing,
+free-form credentials), so `safety_*` is not a synonym for "deterministic".
+Either way the pooled headline is ~87% LLM-assisted by weight: it moves when
+that half wobbles and answers for neither. **Every** unstable check in triple B
+and **28 of the 30** in triple A are `health_*` — `risk_llm` /
+`type_HEALTH_DATA_llm` / `blocked_llm` / `route_llm`, four per case, i.e. 7–9
+whole CASES turning over per run. The detector-decided half has not moved:
+`37/37`, and `44/44` on the pre-health `safety-v1` baseline recorded above.
+
+**The commands.**
+
+```bash
+python3 cognobench.py --only safety --repeat 3 --out cognobench/results   # median + interval + floor
+python3 -m cognobench.compare cognobench/results --pair A B               # is the gap real?
+```
+
+`--repeat` prints `median [min–max]` and the floor; a single run prints a
+`dispersion  n=1 run — NO interval` line in place of an interval it does not
+have. `compare.py` is the instrument for "is A better than B" — never the gap
+between two headline percentages.
 
 ## Slot selection — n=3 on the CURRENT suite (2026-08-08)
 

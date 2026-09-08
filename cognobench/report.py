@@ -61,6 +61,17 @@ def render(report: BenchReport, show_failures: bool = True) -> str:
         f"{report.accuracy:5.1f}%  ({report.correct_count}/{report.total})"
         + ("  [excludes INVALID dims]" if report.invalid_dimensions else "")
     )
+    if (report.config or {}).get("repeat_total", 1) in (None, 1) and report.total:
+        # A number printed without its dispersion invites the reading this bench has
+        # already paid for: `temperature=0` asks a hosted provider for greedy decoding
+        # and nothing guarantees it, so one run is one draw. Measured 2026-09-08 on
+        # `--only safety` (safety-v3, gpt-4o-mini, ONE tree, one day): 39.6% / 45.1% /
+        # 46.3%, a 6.7-point spread and 30 of 328 checks flipping. The line says what is
+        # MISSING rather than dressing a single draw up as a measurement.
+        lines.append(
+            f"  {'dispersion':<15} n=1 run — NO interval. A single run is one draw, not "
+            f"a measurement; use --repeat 3 and cite median [min–max]."
+        )
     if report.llm_calls:
         lines.append(
             f"  {'tokens':<15} in={report.tokens_in:,}  out={report.tokens_out:,}  "
@@ -113,19 +124,25 @@ def render_aggregate(aggregate: dict) -> str:
     lines = ["", "═" * 72,
              "  AGGREGATE over repeats — stable score (majority) + noise floor",
              "═" * 72,
-             f"  {'dimension':<16} {'runs':>4} {'stable':>7} {'min':>5} {'max':>5} "
+             f"  {'dimension':<16} {'runs':>4} {'stable':>8} {'median [min–max]':>20} "
              f"{'unstable':>9} {'floor':>6}"]
     for name, s in aggregate.items():
+        n = s["checks"] or 1
+        span = (f"{s['correct_median']}/{s['checks']} "
+                f"[{s['correct_min']}–{s['correct_max']}]")
         lines.append(
             f"  {name:<16} {s['runs']:>4} {s['stable_correct']:>4}/{s['checks']:<4}"
-            f"{s['correct_min']:>4} {s['correct_max']:>5} {s['unstable_checks']:>9} "
-            f"{s['noise_floor']:>6}"
+            f"{span:>20} {s['unstable_checks']:>9} {s['noise_floor']:>6}"
+            + f"  ({100.0 * s['correct_median'] / n:.1f}% median, floor "
+              f"±{100.0 * s['noise_floor'] / n:.1f}pt)"
             + (f"  ⚠ {s['invalid_runs']} invalid runs" if s["invalid_runs"] else "")
         )
     lines.append("-" * 72)
     lines.append("  A difference between two models is REAL only when the paired")
     lines.append("  comparison clears both floors (compare.py) — never read a gap")
     lines.append("  smaller than the floor as a model difference.")
+    lines.append("  Cite the MEDIAN with the interval and the n, always: `temperature=0`")
+    lines.append("  asks a hosted provider for greedy decoding, it does not oblige it.")
     unstable = [f"{name}: {', '.join(s['unstable_detail'][:4])}"
                 + (" …" if len(s["unstable_detail"]) > 4 else "")
                 for name, s in aggregate.items() if s["unstable_detail"]]

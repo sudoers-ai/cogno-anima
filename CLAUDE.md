@@ -195,7 +195,7 @@ All cross-stage data is `pydantic.BaseModel`. Key types: `StageMetrics` (per-cal
 
 - `tests/conftest.py` provides `StubBackend` and `StubEmbedder` fixtures (`stub_backend`, `stub_embedder`) — zero-network test doubles for unit tests.
 - `tests/unit/` — pure unit tests using stubs, no network.
-- `tests/integration/` — real Ollama-backed tests; check `is_ollama_available()` and skip if unreachable. Always use `temperature=0.0` for determinism.
+- `tests/integration/` — real Ollama-backed tests; check `is_ollama_available()` and skip if unreachable. Always use `temperature=0.0` — it buys determinism against the local default (measured: zero unstable checks over three cognobench sweeps on qwen3:8b) but only REQUESTS greedy decoding from a hosted provider, which nothing obliges to deliver it; a suite pointed at one via `COGNO_TEST_MODEL` is sampling. See `BENCHMARKS.md` § *Reading a number from this bench*.
 - Async tests use `@pytest.mark.asyncio`.
 
 ### Language conventions
