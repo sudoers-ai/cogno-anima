@@ -636,8 +636,15 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     Falls back to `ego_result` for a turn whose orchestrator does not accumulate (a single-shot
     pipeline, or a host that reconstructs a context).
 
-    THIRD source, and it exists because the first two can both be gone. Both live ON the
-    context, so both die with it — and there is a path where the context dies mid-turn: the
+    And it reads the intra-turn CONSULT's own record (``ctx.consult_result``) beside those two,
+    because a specialist the hub consulted MID-TURN runs her tools inside this turn: a write she
+    lands is a write this turn made, and a predicate that cannot see it answers "repeating is
+    safe" about a turn that already committed. It is the same walk, not a fourth reading — the
+    whole family (`wrote_for_the_contact`, `write_attempted_this_turn`) gained it in the one
+    place they share, `_any_execution`, whose docstring carries the ``unreadable`` reasoning.
+
+    LAST source, and it exists because every list above can be gone. All of them live ON the
+    context, so they die with it — and there is a path where the context dies mid-turn: the
     host's model-routing fallback. The first attempt can commit an ordinary write and a LATER
     stage then raise; the exception takes that context and its execution record with it, and
     the retry is a fresh turn with a fresh context in which the write is nowhere. There the
@@ -768,35 +775,75 @@ def _any_execution(ctx: "PipelineContext", hit: "Callable[[Any], bool]", *,
                    unreadable: bool = False) -> bool:
     """Does ANY execution record of this turn satisfy ``hit``?
 
-    The SOURCE WALK, in one place. Every predicate in this family reads the same two lists —
-    `PipelineContext.turn_executions` (the turn's accumulator) in UNION with
+    The SOURCE WALK, in one place. Every predicate in this family reads the same lists — the
+    turn's OWN record, `PipelineContext.turn_executions` (the accumulator) in UNION with
     ``ego_result.tools_executed`` (the surviving attempt, kept as a FLOOR for a single-shot
-    pipeline) — with the same failure discipline, and the comments below are the reason the
-    walk is shaped the way it is. A second copy of them is a second copy to get wrong, which
-    is the very failure `committed_this_turn` was created to end.
+    pipeline), plus the intra-turn CONSULT's own record when a specialist ran one — with the
+    same failure discipline, and the comments below are the reason the walk is shaped the way
+    it is. A second copy of them is a second copy to get wrong, which is the very failure
+    `committed_this_turn` was created to end. That is also why the consult entered HERE and
+    not beside one predicate: a source only one member of the family reads is the defect this
+    walk exists to prevent, and the family is three predicates deep (`committed_this_turn`,
+    `wrote_for_the_contact` through `_committed_over`, and `write_attempted_this_turn`).
 
     Each source is read LAZILY, inside its own ``try``: ``EgoResult.tools_executed`` is a
     DERIVED property and derived can raise, so touching both eagerly would turn a turn that
     answers True into a turn that RAISES. And ``continue``, never a blanket
     ``except: return False``: a broken source must degrade to "this source says nothing".
 
-    ``unreadable`` is what to answer when EVERY source broke — i.e. when there is no evidence
-    at all, as opposed to evidence that says no. The two callers want opposite defaults and
-    each is safe in its own direction: a commit predicate must not release on a broken carrier
-    (False), while a rule that RESTRICTS what the voice may say must not fire on one (True) —
-    a new rule that cannot read its evidence leaves the behaviour exactly as it was.
+    ``unreadable`` is what to answer when the turn's OWN record could not be read at all — i.e.
+    when there is no evidence, as opposed to evidence that says no. The two callers want
+    opposite defaults and each is safe in its own direction: a commit predicate must not
+    release on a broken carrier (False), while a rule that RESTRICTS what the voice may say
+    must not fire on one (True) — a new rule that cannot read its evidence leaves the behaviour
+    exactly as it was.
+
+    **The consult is ADDITIVE and deliberately outside that denominator.** ``unreadable`` asks
+    *"did we fail to read THIS TURN's record?"*, and a second executor's clean trace cannot
+    vouch for the hub's unreadable one: a consult that provably ran nothing says nothing about
+    what the hub did. Counting it as a source that "spoke" would let an absent or empty consult
+    turn a True into a False — breaking the property `committed_this_turn`'s own comment states
+    about this union, that *adding a source can only turn False into True*. So the threshold
+    stays the turn's own two lists, and on a turn that consulted nobody every answer here is
+    byte-for-byte what it was before the consult existed.
     """
-    sources = (lambda: getattr(ctx, "turn_executions", None) or [],
-               lambda: getattr(getattr(ctx, "ego_result", None),
-                               "tools_executed", None) or [])
+    own = (lambda: getattr(ctx, "turn_executions", None) or [],
+           lambda: getattr(getattr(ctx, "ego_result", None),
+                           "tools_executed", None) or [])
     broken = 0
-    for read in sources:
+    for read in own + _consult_source(ctx):
         try:
             if any(hit(t) for t in read()):
                 return True
         except Exception:      # noqa: BLE001 — a source that breaks must not cost the turn
             broken += 1
-    return unreadable if broken == len(sources) else False
+    return unreadable if broken >= len(own) else False
+
+
+def _consult_source(ctx: "PipelineContext") -> "tuple[Callable[[], Any], ...]":
+    """The intra-turn consult's calls as a source for the walk — or NO source at all.
+
+    ``consult_result is None`` does not mean "she executed nothing", it means NOBODY WAS
+    CONSULTED — hence a tuple of zero or one source, so a consult that does not exist is not
+    listed as one that reported. Said exactly, because the shape claims no more than it does:
+    the two produce the same ANSWER here and always will, since this walk is existential and
+    "no source" and "a source with nothing in it" both fail to satisfy ``hit``. The place where
+    they are different ANSWERS is the judge (`SuperegoStage._format_consulted`), which must be
+    able to tell "there was no second executor" from "the second executor came back with
+    nothing" — one of those grounds a draft that says so and the other does not. This is where
+    the fact is READ; that is where it is USED.
+
+    The attribute read is inside the ``try`` for the reason `_committed_over` states: ``getattr``
+    with a default swallows AttributeError and nothing else, so a duck-typed carrier whose
+    ``consult_result`` is a property that RAISES would propagate straight through it.
+    """
+    try:
+        res = getattr(ctx, "consult_result", None)
+    except Exception:      # noqa: BLE001 — an unreadable carrier must not cost the turn
+        return ()
+    if res is None:
+        return ()
+    return (lambda: getattr(res, "tools_executed", None) or [],)
 
 
 def write_attempted_this_turn(ctx: "PipelineContext") -> bool:
@@ -818,8 +865,10 @@ def write_attempted_this_turn(ctx: "PipelineContext") -> bool:
     never recorded, and the contact was told it had failed.
 
     **The predicate is about what was EXECUTED**, deliberately — not "the persona had writing
-    tools on the table", not "the intent was ACTION_REQUEST". It reads the two execution lists
-    (see `_any_execution`) and counts a record when EITHER field says "this is a write":
+    tools on the table", not "the intent was ACTION_REQUEST". It reads the turn's execution
+    records through the shared walk (`_any_execution`: the turn's own two lists, plus the
+    intra-turn consult's when a specialist ran one) and counts a record when EITHER field says
+    "this is a write":
 
       ``side_effect is True``    this CALL wrote (known after it ran). ``ok`` is NOT conjoined
                                  here: a write that FAILED is exactly the case this predicate
@@ -851,9 +900,11 @@ def write_attempted_this_turn(ctx: "PipelineContext") -> bool:
 def _committed_over(ctx: "PipelineContext", keep: "Callable[[str], bool]") -> bool:
     """The commit walk, with a filter on the tool NAME.
 
-    Both commit predicates read the SAME three sources with the SAME failure discipline; only
-    the set of tools they count differs. The first two sources are `_any_execution`; the third
-    (the host's declaration) is here because only a commit can be declared after the fact.
+    Both commit predicates read the SAME sources with the SAME failure discipline; only the set
+    of tools they count differs. The EXECUTION sources are `_any_execution`'s — the turn's own
+    two lists plus the intra-turn consult's, so a source added there is a source added to both
+    predicates and to `write_attempted_this_turn`, in one edit. The host's DECLARATION is here
+    instead because only a commit can be declared after the fact.
     """
     if _any_execution(ctx, lambda t: getattr(t, "side_effect", False)
                       and getattr(t, "ok", False)
@@ -936,6 +987,33 @@ class PipelineContext(BaseModel):
     intent: Optional[IntentResult] = None
     id_result: Optional[IdResult] = None
     ego_result: Optional[EgoResult] = None
+    # The intra-turn CONSULT: a SECOND persona's `EgoStage` run, inside THIS turn, when the hub
+    # asks a specialist and consolidates the answer into its own reply. The tools she ran are
+    # this turn's tools — so every predicate in the `committed_this_turn` family reads this
+    # carrier as one of the turn's execution sources (`_any_execution`), and the judge is shown
+    # what she executed under her own heading (`SuperegoStage._format_consulted`). Without that
+    # the hub's turn reports half of itself: a write the specialist landed reads as a turn that
+    # never wrote, and the judge weighs a draft against an execution it cannot see.
+    #
+    # ``Optional[EgoResult]`` and NOT a bare ``list[ToolExecution]``, and the difference is the
+    # whole point: ``None`` says NOBODY WAS CONSULTED, while an `EgoResult` whose trace is empty
+    # says a specialist WAS consulted and executed nothing. A list collapses those two into
+    # ``[]`` — and they are opposite facts for the judge, which must be able to tell "there was
+    # no second executor" from "the second executor came back with nothing". `cogno-host`'s
+    # trace reader already depends on exactly this (`_consult_section`: ``ran = res is not
+    # None``); the same rule, one carrier.
+    #
+    # It is the CONSULT's own trace, not a merge: provenance travels with the data (a hub that
+    # presents a specialist's read as its own action is the fabrication path this repo already
+    # has a diagnosis for). An orchestrator that also appends her calls to `turn_executions` is
+    # harmless — the walk is a union and `any()` does not count — but it is not required, and
+    # keeping them here is what lets a trace tell her calls from a discarded attempt's.
+    #
+    # Cost rides on `retry_metrics` (the existing seam for a call that owns no canonical slot,
+    # already carrying the scope guard and every judge attempt), NOT on a sixth stage slot: the
+    # consult is a second EXECUTOR, not a sixth stage, and `stage_metrics` is an enumeration of
+    # stages that every reader of `seq` depends on.
+    consult_result: Optional[EgoResult] = None
     superego_result: Optional[SuperegoResult] = None
     drift: Optional[DriftMetrics] = None
     # EVERY tool this turn executed, across every correction attempt — `ego_result` holds only
