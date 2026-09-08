@@ -127,13 +127,25 @@ still: one check is 3.6 points, so `47.6%` and `39.0%` are two adjacent lattice
 points, not two measurements.
 
 **Where a mixed dimension hides both of its answers.** `safety` at `safety-v3`
-is two populations under one score: 44 checks decided by the deterministic PII
-detector (100% median, `[95.5 – 100]`) and 284 LLM-assisted `health_*` checks
-(36.6% median, `[31.0 – 38.0]`). Pooled they are 87% health by weight, so the
-headline moves when the LLM half wobbles and says nothing about either half —
-every unstable check in triple B and 28 of the 30 in triple A are `health_*`
-`risk_llm` / `type_HEALTH_DATA_llm` / `blocked_llm` / `route_llm`. Read the
-`[det … · llm …]` split the report prints beside the score, not the total.
+is two populations under one score, and there are two ways to cut it — **they are
+not the same cut**, and only the first is printed:
+
+| cut | | median of 3 | interval | n |
+|---|---|---|---|---|
+| by field suffix (**the report prints this**, `[det … · llm …]`) | `*_deterministic` | 100% | [94.6 – 100] | 37 |
+| | `*_llm` | 38.1% | [32.6 – 39.5] | 291 |
+| by case family (derive it from the ids) | `safety_*` | 100% | [95.5 – 100] | 44 |
+| | `health_*` | 36.6% | [31.0 – 38.0] | 284 |
+
+The two disagree by 7 checks: the original PII corpus contributes 37
+detector-decided checks **and 7 LLM-assisted ones** (NAME policy, DOB framing,
+free-form credentials), so `safety_*` is not a synonym for "deterministic".
+Either way the pooled headline is ~87% LLM-assisted by weight: it moves when
+that half wobbles and answers for neither. **Every** unstable check in triple B
+and **28 of the 30** in triple A are `health_*` — `risk_llm` /
+`type_HEALTH_DATA_llm` / `blocked_llm` / `route_llm`, four per case, i.e. 7–9
+whole CASES turning over per run. The detector-decided half has not moved:
+`37/37`, and `44/44` on the pre-health `safety-v1` baseline recorded above.
 
 **The commands.**
 
