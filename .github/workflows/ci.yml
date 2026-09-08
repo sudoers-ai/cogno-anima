@@ -49,7 +49,7 @@ jobs:
         # Integration tests need a live Ollama and are skipped in CI.
         run: pytest tests/unit -q --cov=cogno_anima --cov-report=term-missing --cov-fail-under=85
 
-  # ── the 96 integration tests, which until now ran nowhere ──────────────────────────────
+  # ── the 97 integration tests, and the six FILES of them that ran nowhere ───────────────
   #
   # They gate on a live Ollama and the `test` job has none, so they skipped silently in CI and
   # only ever ran when someone remembered to do it by hand. On 2026-08-03 that cost a real
@@ -72,8 +72,36 @@ jobs:
   #
   # The model matches what the deployment actually runs (`qwen3:8b`), so this exercises the real
   # configuration rather than a stand-in — worth more than a faster green. It is also BIGGER than
-  # the mistral that timed out, so the canary is deliberately one file instead of ninety-six
-  # tests; `model:` on a manual dispatch takes a smaller one if the runner cannot keep up.
+  # the mistral that timed out; `model:` on a manual dispatch takes a smaller one if the runner
+  # cannot keep up.
+  #
+  # That narrowing was RIGHT about the cost and WRONG about the scope. It cut the canary to one
+  # FILE, and the other six files of `tests/integration` — 56 node ids, including the five that
+  # pin the SUPEREGO judge fail-CLOSED and the two that run a whole turn through every seam —
+  # were then invoked by nothing at all. Merged, reviewed, never executed anywhere automated:
+  # the exact state this job was created to end, recreated one level down.
+  #
+  # SHARDED, and sharded so that no invocation names a FILE. Each shard runs the DIRECTORY
+  # `tests/integration` and selects with `-m`, so the path handed to pytest stays an ANCESTOR of
+  # every file in it. The third shard is the literal COMPLEMENT of the other two
+  # (`not perception and not semantics`), so a new integration file with no marker lands in it
+  # and RUNS — nothing can fall out the way those six did.
+  # `tests/unit/test_ci_runs_every_test_file.py` is the rule that holds this line; it is the
+  # reason the six were found, and it fails the day a shard starts naming files again.
+  #
+  # The split criterion is TIME, from the one measurement available: nightly run 33494160177
+  # (2026-09-01) ran `test_noumeno.py` — 41 node ids — in 17m49s on this runner with qwen3:8b,
+  # plus 78s of Ollama install + model pull. Budget: no shard over ~30 min. The unit of cost is
+  # the LLM GENERATION, not the node id, and the two differ wildly here: `test_ner.py` caches by
+  # INPUT (~37 distinct x 2 generations ≈ 74) so its 40 ids cost MORE than noumeno's 41, while
+  # `test_id.py` runs a heuristic stage and generates NOTHING. Hence perception (41 ids,
+  # 17m49s MEASURED) | semantics (40 ids, ~30 min PROJECTED) | the rest (16 ids, ~40 generations,
+  # ~16 min PROJECTED). The two projections are projections; the first run of this job is the
+  # measurement, and if `semantics` overruns it splits again — the shard names are a knob, the
+  # path is not.
+  #
+  # `fail-fast: false` because three shards that cancel each other report one failure and hide
+  # the other two.
   #
   # `COGNO_TEST_MODEL` is now real (the suite reads it, defaulting to mistral so local runs are
   # unchanged) — the first draft passed a model through an env var that nothing read, so every
@@ -82,8 +110,23 @@ jobs:
   # The two `llama3` sites are monkeypatched at the httpx layer and never reach Ollama, so
   # nothing pulls that 4.7 GB.
   ollama-integration:
+    # Without an explicit name GitHub builds one from EVERY matrix value, so the third shard
+    # announces itself as `ollama-integration (downstream, not perception and not semantics)`.
+    # The check list is where a red nightly gets read; it should say which shard, not repeat
+    # the marker expression.
+    name: ollama-integration (${{ matrix.shard }})
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: perception          # tests/integration/test_noumeno.py — 41 ids, 17m49s measured
+            select: "perception"
+          - shard: semantics           # tests/integration/test_ner.py — 40 ids, ~74 generations
+            select: "semantics"
+          - shard: downstream          # ID / EGO / SUPEREGO / e2e / composite — 16 ids
+            select: "not perception and not semantics"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -108,7 +151,7 @@ jobs:
           pip install "cogno-homeo @ git+https://github.com/sudoers-ai/cogno-homeo.git"
           pip install "cogno-synapse @ git+https://github.com/sudoers-ai/cogno-synapse.git"
           pip install -e ".[dev]"
-      - name: Canary — the contract tests, against a real model
+      - name: Canary (${{ matrix.shard }}) — the contract tests, against a real model
         env:
           COGNO_TEST_MODEL: "${{ github.event.inputs.model || 'qwen3:8b' }}"
           COGNO_NER_MODEL: "${{ github.event.inputs.model || 'qwen3:8b' }}"
@@ -117,8 +160,10 @@ jobs:
           # the 2026-08-04 nightly died on httpx.ReadTimeout with 40 of 41 tests PASSING.
           # Nothing was wrong but the clock. Needs cogno-synapse >= 0.1.2.
           COGNO_OLLAMA_TIMEOUT: "600"
-        # test_noumeno carries the case that caught the `context_used` defect. Answer-quality
-        # assertions live in cognobench, which is run deliberately and not on a CPU runner.
+        # The path is the DIRECTORY and the selection is a marker: `tests/integration` is an
+        # ancestor of every file in it, so a file added tomorrow is collected by one of these
+        # three shards without anybody editing this workflow. Answer-quality assertions live in
+        # cognobench, which is run deliberately and not on a CPU runner.
         #
         # The assert first: COGNO_OLLAMA_TIMEOUT only does anything on cogno-synapse >= 0.1.2,
         # and pip resolving an older one would silently restore the 120 s timeout and turn this
@@ -134,4 +179,4 @@ jobs:
               f"expected {want}) — needs >= 0.1.2, or this job times out on a CPU runner")
           print(f"ollama timeout = {got}s")
           EOF
-          pytest tests/integration/test_noumeno.py -q
+          pytest tests/integration -q -m "${{ matrix.select }}"

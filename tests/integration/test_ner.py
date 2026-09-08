@@ -38,6 +38,12 @@ from tests.integration import backends
 MODEL = backends.model_spec("COGNO_NER_MODEL", backends.model_spec())
 LANGUAGE = "pt-BR"
 
+# `semantics` is the nightly SHARD this module belongs to (see .github/workflows/ci.yml).
+# It gets one of its own because it is the most expensive file here: the fixture caches by
+# INPUT, so its cost is ~37 distinct inputs x 2 generations (NOUMENO rewrite + NER), not
+# its 40 node ids.
+pytestmark = pytest.mark.semantics
+
 
 # ── Shared, cached pipeline (one LLM run per distinct input) ───────────────
 
