@@ -88,6 +88,21 @@ def test_two_trees_that_differ_have_different_rulers(tmp_path):
     assert bench_ruler(a) != bench_ruler(b)
 
 
+def test_the_default_root_is_the_module_tree_not_the_cwd(tmp_path, monkeypatch):
+    """The cwd is not evidence of anything. `python3 /abs/path/script.py` puts the
+    SCRIPT's directory on `sys.path[0]` and the cwd nowhere, so a run can import one tree
+    while standing in another — and the honest answer to "which code produced this" is
+    where the code that ran came from."""
+    from cognobench.tree import REPO_ROOT
+
+    elsewhere = tmp_path / "not-a-repo"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    t = identify()
+    assert t.path == str(REPO_ROOT)
+    assert t.sha, "standing outside a repo must not erase the tree the code came from"
+
+
 def test_dirty_gets_its_own_join_key(tmp_path):
     """Two DIRTY runs at the same sha are not evidence of the same code."""
     clean = TreeId(path="/x", sha="a" * 40)
