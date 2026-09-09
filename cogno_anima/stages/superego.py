@@ -1988,11 +1988,65 @@ class SuperegoStage:
                     "READ did not return is still allowed, and so is saying plainly that this "
                     "is not something you can do here; neither of those claims an attempt.\n"
                 )
+                #
+                # ── AND THE CRITIQUE IS NOT ADDRESSED TO THE CONTACT ───────────────────
+                # The critique lands here VERBATIM under a header that says HARD RULE, and
+                # nothing around it says WHO it is written for. It is a note to the EXECUTOR
+                # about a turn that already ran; the voice was reading it as the brief for
+                # the reply. The two sentences below already say what may be claimed and what
+                # may not — neither of them forbids ADOPTING the critique's proposed remedy,
+                # and that is the move that was measured.
+                #
+                # Measured 2026-09-08 over the demo box's `turn_traces` (1514 rows of a
+                # provable era under the `xmin` rewrite filter; a row rewritten after creation
+                # is invisible to a naive read and ~4.5% of the corpus has that shape). Of the
+                # turns stamped `last_draft_voiced`, **11** delivered a reply that sends the
+                # contact somewhere else — to a person, a department, a channel — over a draft
+                # that did no such thing. **5 of the 11 are the same real professor**, asked
+                # over four days what he would earn, and each time told to go and find the
+                # bookkeeper. On the last two the system had ALREADY routed him there: the
+                # bookkeeper is who executed the turn, read its ledger, and drafted the
+                # truthful answer the contact never saw.
+                #
+                # The critique on those two says it outright — "deveria ter sido encaminhada
+                # ao Senhor Barriga" — and the voice turned a remark about who should have RUN
+                # the turn into an instruction for the person reading the reply.
+                #
+                # WHY THIS ONE IS UNCONDITIONAL AND `nothing_tried` IS NOT. That clause
+                # forbids a sentence that is sometimes TRUE (a write really can be attempted
+                # and fail), so it has to be gated on the fact that decides it. This one
+                # forbids a move the voice can never legitimately make ON THE CRITIQUE'S
+                # AUTHORITY: the critique is not, and cannot be, evidence about where a
+                # contact should be sent. A destination the PERSONA's own instructions or the
+                # EXECUTOR DATA names is untouched — a tenant that lists its finance office is
+                # still free to say so, and this clause is inert on a critique that proposes
+                # no destination at all.
+                #
+                # It does NOT re-offer the draft, and that is deliberate: two candidate rules
+                # were measured against this same corpus and BOTH were refused. "Voice the
+                # last draft on exhaustion" would have shipped fabrications — 4 of those 11
+                # turns were rejected precisely BECAUSE the draft invented its figures. And
+                # "fire when the surviving attempt has a successful read" does not
+                # discriminate: 203 of 239 exhausted turns have one, the 4 fabrications
+                # included. A rule matching 85% of the universe is not a rule. So the draft
+                # stays dropped, the grounding stays the executor data, and what changes is
+                # only that the critique stops being read as a destination.
+                #
+                # No new header, so `_VOICE_BLOCKS` and the persisted prompt inventory are
+                # untouched — the same shape `nothing_tried` took.
                 rejection_section = (
                     "# Execution verdict (HARD RULE)\n"
                     "The execution of this turn was REJECTED by review and NOTHING was "
                     "committed — no action was performed.\n"
                     f"Reviewer critique: {reason}\n"
+                    "That critique is a note about the EXECUTION, written for the executor. "
+                    "It is NOT content for this reply and NOT an instruction to the contact. "
+                    "When it says the request belongs to someone else — another persona, "
+                    "team, department or channel — it is describing who should have RUN this "
+                    "turn, and you MUST NOT turn that into the answer by sending the contact "
+                    "away. Name a destination only when the persona's own instructions or the "
+                    "executor data give you one; the critique alone is never a source for "
+                    "one.\n"
                     "You MUST NOT claim, imply or narrate that any action was performed or "
                     "completed this turn. Either state truthfully what was found in the "
                     "executor data, or ask the user ONE clarifying question to move forward.\n"
