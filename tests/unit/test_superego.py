@@ -1313,10 +1313,14 @@ async def test_voice_receives_the_draft_on_a_conversational_turn():
     b = ScriptedBackend(["resposta"])
     await SuperegoStage().voice(ctx, b, voice_prompt="x")
     prompt = b.calls[0]["prompt"]
-    assert "Cogno não integra com Bling e TOTVS." in prompt
-    assert "Executor's answer" in prompt
+    # Asked of the SECTION, through the closed `_VOICE_BLOCKS` table, not of a substring: the
+    # Task's own figures rule NAMES this header ("an '# Executor's answer' section when one is
+    # shown"), so `"Executor's answer" in prompt` would now be true on a prompt that rendered
+    # no draft at all — a green for the wrong reason, in both directions.
+    draft_section = SuperegoStage.voice_prompt_block(prompt, "draft")
+    assert "Cogno não integra com Bling e TOTVS." in draft_section
     # the tool data still outranks it — the draft is content, not grounding
-    assert "the executor data above wins" in prompt
+    assert "the executor data above wins" in draft_section
 
 
 @pytest.mark.asyncio
@@ -1335,7 +1339,7 @@ async def test_a_rejected_draft_is_not_re_offered_as_content():
     b = ScriptedBackend(["resposta"])
     await SuperegoStage().voice(ctx, b, voice_prompt="x")
     prompt = b.calls[0]["prompt"]
-    assert "Executor's answer" not in prompt
+    assert SuperegoStage.voice_prompt_block(prompt, "draft") == ""
     assert "UNVERIFIED" in prompt
 
 

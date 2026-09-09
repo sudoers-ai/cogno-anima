@@ -78,6 +78,88 @@ _CRITICAL_TERM_RE = re.compile(r"\d|@|https?://", re.IGNORECASE)
 # this shape (R$ 120,00 / 30,00 / 40,00 lost; R$ 45,00 invented).
 _FIGURE_RE = re.compile(r"\d{1,3}(?:[.\s]\d{3})*[.,]\d{2}(?!\d)")
 
+# ── WHERE A FIGURE IN THE REPLY IS ALLOWED TO COME FROM ───────────────────────────────
+#
+# Two production turns of the SAME conversation, minutes apart, same host revision
+# (``turn_traces`` 1779 and 1795 on the demo box, scope 019da7d2…/800915080190, host
+# ``f251c29``; rows verified un-rewritten by the ``xmin`` filter). A professor asked what he
+# earns. Both turns ended ``judge_rejected_all`` → ``last_draft_voiced``, so both rendered
+# ``# Execution verdict (HARD RULE)`` and both had their draft WITHHELD by
+# ``_draft_section`` — which means the reviewer's critique was, in each case, the only prose
+# in the prompt that spoke about money at all.
+#
+#   turn 3 — the judge critique: *"Remova esse valor calculado; informe apenas R$ 120 por
+#   hora e o mínimo de 4 horas por aula."* The delivered reply: *"não tenho informações
+#   específicas sobre o valor que um professor recebe por hora"* — while R$ 120,00/hora sat
+#   in the persona's own configured rules, in this stage's system prompt.
+#
+#   turn 4 — the judge critique: *"…setembro inclui NoSQL (16h) e Workshop de Abertura (4h),
+#   totalizando 20h = R$ 2.400,00…"*. The executor's draft said the opposite in as many
+#   words (*"não consigo fechar um valor confiável… permanece não determinado"*). The
+#   delivered reply: *"Totalizando 20h, o que resultaria em R$ 2.400,00."* — the critique's
+#   sentence, its figure, almost its punctuation. ``2.400`` appears in no tool result, in no
+#   draft and in no rule; the professor was quoted a fee that nothing in the system had
+#   computed, over a schedule where each of those dates is ONE session of a 16 h discipline,
+#   not the whole of it.
+#
+# n=1 on each side and no regression is claimed. What is legible is the MECHANISM, and it is
+# one mechanism: on a rejected turn the voice holds tool data, the persona's rules, the
+# context — and a critique. The Task told it to keep figures "verbatim from the executor
+# data" and said nothing about the other three, so the model resolved the silence twice, in
+# opposite directions, and was wrong both times: it withheld a figure it was holding, then
+# published one nobody had.
+#
+# THE DECISION, and it is the hard one: **is a total derived from two verified figures
+# fabrication, or arithmetic?** Neither pole survives its own measurement. Forbid all
+# arithmetic and turn 3 repeats — the contact asks what he earns per class, every input is on
+# the page, and he is told nothing. Permit it unbounded and turn 4 repeats — a bare total
+# ships that no one can check, and that one was not even right.
+#
+# So the axis is NOT arithmetic-versus-quotation. It is whether the person acting on the
+# number can CHECK it. A quoted figure carries its own provenance: it is in the evidence,
+# character for character, and anyone holding the trace can find it. A derived figure carries
+# none — unless the reply SHOWS the inputs and the operation, at which point it carries
+# exactly the same provenance the quoted one does, plus one visible step. Hence "show your
+# work", not "do not calculate": it converts an unverifiable claim into a verifiable one
+# instead of deleting the answer. And it degrades in the safe direction — a model that cannot
+# show the inputs cannot state the total, which is precisely the case where the inputs were
+# never on the page.
+#
+# The SOURCE SET is the judge's, minus one. ``_GROUNDING_SOURCES`` above settled the same
+# argument for the judge one day earlier (id=1440): the tool results are not the only ground
+# truth in the prompt; the persona's configured rules ground a statement as well as a tool
+# result does. A voice held to a NARROWER set than the judge approves is the two-doors defect
+# — the judge signs an answer the voice is forbidden to say — and turn 3 is what that costs.
+# The one member deliberately left out is the retrieved context: a rate lifted out of
+# ``# Context`` over an answer that said otherwise is already measured (see
+# ``_draft_divergence``), and background is not evidence.
+#
+# And the critique is not a member at all. It is a COMPLAINT ABOUT THE DRAFT: nothing
+# executed it, nothing verified it, and the layer that wrote it is the same layer that would
+# have to check it. A number that enters the reply from there has been checked by nobody.
+_FIGURES_HAVE_A_SOURCE = (
+    "FIGURES AND DATES (HARD RULE). Every amount, rate, quantity, count, date or identifier "
+    "you state must come from ONE of three places: the '# Data gathered by the executor' "
+    "section above, an '# Executor's answer' section when one is shown, or this persona's own "
+    "configured rules and limits — reproduced exactly as written there, never altered. A "
+    "figure you WORK OUT from those is allowed ONLY if you show the calculation in the reply, "
+    "every input and the operation, so the reader can check it "
+    "(\"4 h x R$ 120,00 = R$ 480,00\"); a bare total, or one whose inputs are not on this "
+    "page, is not. A figure you remember, assume or round is invented: leave it out and say "
+    "plainly which part is missing."
+)
+
+# Rendered wherever the reviewer's words are, and nowhere else — the clause is meaningless on
+# a turn with no critique, and a critique with no clause is the measured turn 4. One constant,
+# so a fourth rejection variant cannot quietly ship the critique without it; the pairing is
+# pinned by counting both strings in the rendered prompt.
+_CRITIQUE_IS_NOT_EVIDENCE = (
+    "That critique is a complaint about the draft, NOT evidence: nothing executed it and "
+    "nothing verified it. Do not carry any figure, total, date or fact from it into your "
+    "reply — not even one it states confidently, and not even when its arithmetic looks "
+    "right. Use it to understand what was wrong, never as a source.\n"
+)
+
 # The persona trait the modulation must never talk over: the tenant asked for an even
 # voice, and a courtesy addition (warmth, empathy) would be exactly that.
 _EVEN_TRAIT = "reserved"
@@ -1641,6 +1723,58 @@ class SuperegoStage:
                 "data. Do not say you could not find, do not have, or cannot access anything "
                 "the approved answer provides.")
 
+    @classmethod
+    def _figures_from_the_critique(cls, ctx: PipelineContext, response: str, payload: str,
+                                   system: str) -> "list[str]":
+        """Figures the reply states that exist ONLY in the reviewer's critique — flag-only.
+
+        The counted half of ``_CRITIQUE_IS_NOT_EVIDENCE``. A prompt sentence nobody counts
+        cannot answer the question that decides whether it worked, and this package's standing
+        rule is that a net without a denominator becomes the mechanism.
+
+        **It has to live HERE, in the turn, and that was measured rather than preferred.** The
+        obvious cheaper instrument is the persisted trace, and it cannot answer the question at
+        all: the host bounds a stored tool result at 240 characters and a stored critique at
+        400 (``cogno_host.trace._FIELD_CHARS`` / ``_CRITIQUE_CHARS``), which are precisely the
+        two fields "is this figure in the evidence, and is it in the critique" needs whole.
+        Over the demo box's 276 turns that ended ``last_draft_voiced``, only 120 carry both
+        fields uncut, and just 2 of those 120 have a critique that mentions a figure — while
+        the turn this exists for (``turn_traces`` 1795) is not among them: its critique is
+        exactly 400 characters and one of its tool results is exactly 240. The corpus excludes
+        the very shape it would be asked about. Read in-process, before anything is truncated,
+        the same question is decidable on every turn.
+
+        The evidence set is *everything the voice could see*: the tool payload, the contact's
+        own message, the host's context block, and the persona prompt itself (which is where a
+        tenant's configured rates live — the source ``_FIGURES_HAVE_A_SOURCE`` admits and
+        ``_GROUNDING_SOURCES`` already admits for the judge). A figure in the reply that is in
+        the critique and in NONE of those came from the critique, which is the measured turn 4.
+
+        Deliberately NOT symmetric with ``_draft_divergence``: that one may re-voice, this one
+        may not. This fires only on a turn the judge already rejected and whose budget the
+        orchestrator has already spent, and a second call there would be this stage arguing
+        with an exhaustion path it does not own. The prompt clause is the prevention; this is
+        the measurement.
+
+        Honest about what it cannot separate: a total the model DERIVED that the critique
+        happens to name as well reads the same as one copied out of it. Both are worth
+        counting — a derived total is exactly the shape that must show its work — and neither
+        is worth a re-voice, which is why this only ever appends a token.
+        """
+        rejection = cls._rejection(ctx)
+        if rejection is None or not response:
+            return []
+        critique = str(rejection.get("reason") or "")
+        in_critique = set(cls._figure_keys(critique))
+        if not in_critique:
+            return []
+        grounded: "set[str]" = set()
+        for evidence in (payload, ctx.user_input, str(ctx.metadata.get(mk.EGO_CONTEXT) or ""),
+                         system):
+            grounded |= set(cls._figure_keys(evidence))
+        return sorted(k for k in cls._figure_keys(response)
+                      if k in in_critique and k not in grounded)
+
     @staticmethod
     def _same_kind_altered(term: str, response: str) -> bool:
         """Does a same-kind token appear in ``response`` but differ from ``term``?"""
@@ -1822,6 +1956,18 @@ class SuperegoStage:
             adjustments.append("preserved:mutated_in_output")
             logger.warning("stage=superego event=preserved_mutated_in_output")
 
+        # Deterministic critique-provenance backstop — flag-only, never a re-voice. On a turn
+        # the judge REJECTED, the critique is prose IN the voice prompt that no one executed
+        # and no one verified; a figure that reaches the contact from there was checked by
+        # nobody. Measured on `turn_traces` 1795: "R$ 2.400,00" is verbatim in the critique and
+        # in nothing else the voice held. Read on the VOICED text, before the PII rule masks
+        # anything, for the same reason the guard above is.
+        from_critique = self._figures_from_the_critique(ctx, voiced, payload, system)
+        if from_critique:
+            adjustments.append("voice:figure_from_critique")
+            logger.warning("stage=superego event=voice_figure_from_critique count=%d",
+                           len(from_critique))
+
         # Deterministic outgoing-PII backstop — REDACT IN PLACE by provenance.
         # "May come in, must never go out": a value the contact themselves supplied (this turn,
         # or earlier in this session per the host's digest allowlist) may be said back to them;
@@ -1942,6 +2088,7 @@ class SuperegoStage:
                     "The draft below was REJECTED by review as UNVERIFIED — nothing was "
                     "executed this turn, so the draft is a claim, not a result.\n"
                     f"Reviewer critique: {reason}\n"
+                    f"{_CRITIQUE_IS_NOT_EVIDENCE}"
                     "You MUST NOT repeat the rejected claim, or any softened version of it. "
                     "Say ONLY what the Context above supports; when it supports nothing, say "
                     "plainly that you do not have that information — admitting a limit is a "
@@ -2039,6 +2186,7 @@ class SuperegoStage:
                     "The execution of this turn was REJECTED by review and NOTHING was "
                     "committed — no action was performed.\n"
                     f"Reviewer critique: {reason}\n"
+                    f"{_CRITIQUE_IS_NOT_EVIDENCE}"
                     "That critique is a note about the EXECUTION, written for the executor. "
                     "It is NOT content for this reply and NOT an instruction to the contact. "
                     "When it says the request belongs to someone else — another persona, "
@@ -2067,9 +2215,15 @@ class SuperegoStage:
             f"{rejection_section}"
             f"# Signals\n" + "\n".join(signals) + "\n\n"
             f"# Task\n{lang_rule}Write the final reply to the user in the persona's voice and "
-            "within its limits. Use the context for background, but keep exact "
-            "figures/dates verbatim from the executor data — do not invent or alter "
-            "them. Reply with the message text only."
+            "within its limits. Use the context for background. "
+            # The old wording here read "keep exact figures/dates verbatim from the
+            # executor data" — a source set NARROWER than the one review approves
+            # against, and the measured cost of that narrowness is turn 3 above. It is
+            # REPLACED rather than appended to, for the reason `_GROUNDING_SOURCES`
+            # gives: adding a clause to a prompt that asserts the opposite two lines
+            # earlier leaves the model to resolve a contradiction, and it resolves it
+            # against the newcomer.
+            f"{_FIGURES_HAVE_A_SOURCE} Reply with the message text only."
         )
 
     @staticmethod
