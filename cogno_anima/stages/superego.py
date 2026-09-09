@@ -1514,6 +1514,10 @@ class SuperegoStage:
         as its own action is the fabrication path this repo already has a diagnosis for, and a
         judge that cannot tell who read what cannot catch it.
 
+        The guarantee stops at this prompt, and saying where it stops is part of making it: the
+        host's anti-fabrication nets read a FLATTENED call list with no persona on it, so they
+        cannot draw the distinction this block draws. `docs/NETWORK_PERSONA_CHANNEL.md` §1.4.
+
         **A section that says "she executed nothing" is not the same as no section at all**, and
         that difference is the reason the carrier is an ``Optional[EgoResult]`` rather than a
         list. ``None`` (nobody was consulted) renders NOTHING, so a turn that consults nobody

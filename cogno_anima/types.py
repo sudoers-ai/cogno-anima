@@ -1005,7 +1005,16 @@ class PipelineContext(BaseModel):
     #
     # It is the CONSULT's own trace, not a merge: provenance travels with the data (a hub that
     # presents a specialist's read as its own action is the fabrication path this repo already
-    # has a diagnosis for). An orchestrator that also appends her calls to `turn_executions` is
+    # has a diagnosis for).
+    #
+    # **That sentence is true of THIS CARRIER and of the judge prompt built from it, and it is
+    # not a system-wide guarantee — the difference is written here because a reader of this repo
+    # alone would draw the stronger conclusion.** Downstream, `cogno-host`'s
+    # `company_focus.executions_of` merges this trace, `turn_executions` and the surviving
+    # attempt into ONE flat list, and `grounding._tool_calls` builds its records from it with no
+    # persona field at all — so every anti-fabrication net grants the hub its exemptions off
+    # calls the specialist made. Keeping the distinction here is what makes fixing that
+    # POSSIBLE; it is not the same as it being fixed. `docs/NETWORK_PERSONA_CHANNEL.md` §1.4. An orchestrator that also appends her calls to `turn_executions` is
     # harmless — the walk is a union and `any()` does not count — but it is not required, and
     # keeping them here is what lets a trace tell her calls from a discarded attempt's.
     #
