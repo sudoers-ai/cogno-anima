@@ -30,7 +30,7 @@ import pytest
 
 from cogno_anima import metakeys as mk
 from cogno_anima.stages.superego import (
-    _CRITIQUE_IS_NOT_EVIDENCE, _FIGURES_HAVE_A_SOURCE, SuperegoStage,
+    _CRITIQUE_IS_NOT_EVIDENCE, _DERIVED_FROM_EVIDENCE, _FIGURES_HAVE_A_SOURCE, SuperegoStage,
 )
 from tests.unit.test_superego import _ctx
 
@@ -71,9 +71,15 @@ def test_the_verified_figure_is_allowed_to_reach_the_contact():
     assert "this persona's own configured rules and limits" in prompt, (
         "the voice was held to a NARROWER source set than review approves against — the "
         "two-doors defect `_GROUNDING_SOURCES` closed for the judge, still open for the voice")
-    assert "allowed ONLY if you show the calculation" in prompt, (
+    # The permission and its condition moved into `_DERIVED_FROM_EVIDENCE` on 2026-09-09 —
+    # ONE constant, so the JUDGE is held to the same rule (it was not, and refused a correct
+    # `R$ 120 x 4 h = R$ 480`). The property is unchanged and both halves are still asserted;
+    # only the sentence has one home instead of two. `test_derivation_is_grounded.py` pins the
+    # shared reading and the arithmetic check that now decides it.
+    assert _DERIVED_FROM_EVIDENCE in prompt
+    assert "the reply must show the work" in prompt, (
         "a blanket ban on arithmetic answers 'how much per class?' with silence")
-    assert "a bare total, or one whose inputs are not on this page, is not" in prompt
+    assert "A bare result whose inputs are not on this page is NOT grounded" in prompt
 
 
 def test_the_critique_is_never_a_source_of_figures():

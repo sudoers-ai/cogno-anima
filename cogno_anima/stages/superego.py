@@ -78,6 +78,21 @@ _CRITICAL_TERM_RE = re.compile(r"\d|@|https?://", re.IGNORECASE)
 # this shape (R$ 120,00 / 30,00 / 40,00 lost; R$ 45,00 invented).
 _FIGURE_RE = re.compile(r"\d{1,3}(?:[.\s]\d{3})*[.,]\d{2}(?!\d)")
 
+# A CALCULATION the reply shows: two or more numerals joined by ONE repeated operator and
+# closed by ``=`` and a result — "4 h x R$ 120,00 = R$ 480,00". The filler between a numeral
+# and its operator is bounded and may hold no digit and no ``=``, so the scan cannot bridge
+# two unrelated sentences. Only a SINGLE operator kind is accepted per expression: reading
+# precedence out of "2 + 3 x 4" is guessing, and a wrong guess here would ADMIT a figure.
+_CALC_NUM = r"(?:\d[\d.,]*\d|\d)"
+_CALC_OP = r"[x\u00d7*+\-\u2212/\u00f7]"
+_CALC_RE = re.compile(
+    r"(?P<expr>" + _CALC_NUM + r"(?:[^\d=\n]{0,12}" + _CALC_OP + r"[^\d=\n]{0,12}"
+    + _CALC_NUM + r")+)[^\d=\n]{0,12}=[^\d\n]{0,12}(?P<res>" + _CALC_NUM + r")",
+    re.IGNORECASE)
+_CALC_TOKEN_RE = re.compile(_CALC_NUM + r"|" + _CALC_OP, re.IGNORECASE)
+_CALC_FOLD = {"x": "*", "\u00d7": "*", "*": "*", "+": "+", "-": "-", "\u2212": "-",
+              "/": "/", "\u00f7": "/"}
+
 # ── WHERE A FIGURE IN THE REPLY IS ALLOWED TO COME FROM ───────────────────────────────
 #
 # Two production turns of the SAME conversation, minutes apart, same host revision
@@ -137,15 +152,54 @@ _FIGURE_RE = re.compile(r"\d{1,3}(?:[.\s]\d{3})*[.,]\d{2}(?!\d)")
 # And the critique is not a member at all. It is a COMPLAINT ABOUT THE DRAFT: nothing
 # executed it, nothing verified it, and the layer that wrote it is the same layer that would
 # have to check it. A number that enters the reply from there has been checked by nobody.
+# ── THE ONE RULE ABOUT DERIVED VALUES, READ BY THE VOICE **AND** BY THE JUDGE ─────────
+#
+# It was written once already, on the voice side, on 2026-09-08
+# (``_FIGURES_HAVE_A_SOURCE``, below): a figure WORKED OUT from grounded inputs is allowed
+# when the reply shows the calculation. The judge was never told. ``_GROUNDING_SOURCES``
+# — the constant BOTH judging branches read — ends "Reject a figure, name, date, policy or
+# claim that appears in NONE of the three", and a derived total appears, character for
+# character, in none of the three: it was computed, not quoted.
+#
+# So the two doors disagreed, and the comment on ``_FIGURES_HAVE_A_SOURCE`` already names
+# that shape as the defect — "a voice held to a NARROWER set than the judge approves is the
+# two-doors defect". This is the same defect with the doors swapped, and it is the worse
+# arrangement of the two: when the VOICE is the narrow one the answer merely gets said less
+# well, but when the JUDGE is, the answer is REJECTED and the correction loop runs. Both
+# live cases this constant exists for are that: a correct ``R$ 120 x 4 h = R$ 480`` refused
+# under a "quote, never calculate" reading, and a correct "segunda a sexta" refused because
+# the tool said "sem sábados nem domingos" and not those three words.
+#
+# **The permission is granted by the ARITHMETIC, not by the format**, and this repo has the
+# measurement that decides it: turn 4 of ``turn_traces`` 1795 shipped
+# *"Totalizando 20h, o que resultaria em R$ 2.400,00"* — a sentence that SHOWS ITS WORK and
+# whose work does not come out (20 x 120 = 2 400 only if the rate is not the configured
+# R$ 120/h for 4 h, which is exactly the confusion). A rule that admitted a figure because
+# an "=" preceded it would admit that one. So the deterministic half
+# (``_shown_derivations``) checks three things before it admits anything — every operand is
+# in the evidence, the operation is written down, and the result is what the operation
+# actually produces — and the prose says the same, so the model is not asked to satisfy a
+# rule the checker does not hold it to.
+#
+# Written ONCE, for the reason ``_ADMITTING_A_LIMIT`` is written once: a copy in the other
+# branch is a contract that diverges silently, and this one has already diverged.
+_DERIVED_FROM_EVIDENCE = (
+    "DERIVED VALUES AND FACTS. Arithmetic over figures that are in this prompt, and a "
+    "restatement that follows necessarily from a fact that is in it (a schedule given as "
+    "'closed Saturdays and Sundays' restated as 'Monday to Friday'), are GROUNDED — they "
+    "are not inventions — ON ONE CONDITION: the reply must show the work, every input it "
+    "used and the operation or the stated fact it read them from, so the reader can check "
+    "it (\"4 h x R$ 120,00 = R$ 480,00\"). A bare result whose inputs are not on this page "
+    "is NOT grounded, and neither is one whose arithmetic does not come out."
+)
+
 _FIGURES_HAVE_A_SOURCE = (
     "FIGURES AND DATES (HARD RULE). Every amount, rate, quantity, count, date or identifier "
     "you state must come from ONE of three places: the '# Data gathered by the executor' "
     "section above, an '# Executor's answer' section when one is shown, or this persona's own "
-    "configured rules and limits — reproduced exactly as written there, never altered. A "
-    "figure you WORK OUT from those is allowed ONLY if you show the calculation in the reply, "
-    "every input and the operation, so the reader can check it "
-    "(\"4 h x R$ 120,00 = R$ 480,00\"); a bare total, or one whose inputs are not on this "
-    "page, is not. A figure you remember, assume or round is invented: leave it out and say "
+    "configured rules and limits — reproduced exactly as written there, never altered. "
+    + _DERIVED_FROM_EVIDENCE +
+    " A figure you remember, assume or round is invented: leave it out and say "
     "plainly which part is missing."
 )
 
@@ -254,7 +308,8 @@ _GROUNDING_SOURCES = (
     "rules) and the '# Context' section (clock, memories, history) ground a statement exactly "
     "as well as a tool result does. A search that returned nothing does NOT prove that a fact "
     "stated in those sections is invented — it proves only that the search found nothing. "
-    "Reject a figure, name, date, policy or claim that appears in NONE of the three."
+    "Reject a figure, name, date, policy or claim that appears in NONE of the three. "
+    + _DERIVED_FROM_EVIDENCE
 )
 
 _EXECUTION_CRITERIA = (
@@ -1679,6 +1734,100 @@ class SuperegoStage:
                 out[digits] = digits[:-2] or digits
         return out
 
+    @staticmethod
+    def _numeral_value(token: str) -> "Optional[float]":
+        """The VALUE of one numeral, read the way the rest of this module reads numerals.
+
+        Digits-only, like :meth:`_figure_keys`: a token that ends in a decimal separator plus
+        exactly two digits is a FIGURE (``120,00`` -> 120.0, ``2.400,00`` -> 2400.0), anything
+        else is a whole number with its grouping stripped (``4`` -> 4.0, ``1.250`` -> 1250.0).
+        Locale-free on purpose — the alphabet of every comparison in this stage is the digit
+        string, and a second convention here would disagree with ``_figure_keys`` on the very
+        tokens the two are asked about together."""
+        digits = re.sub(r"\D", "", token or "")
+        if not digits:
+            return None
+        if _FIGURE_RE.fullmatch(token.strip()):
+            return int(digits) / 100.0
+        return float(int(digits))
+
+    @staticmethod
+    def _numeral_forms(text: str) -> "set[str]":
+        """Every digit-string ``text`` offers as a possible OPERAND, in both readings.
+
+        ``_NUM_RE`` gives the numerals as written (``120,00`` -> ``12000``) and
+        :meth:`_figure_keys` adds the integer part (``120``), which is the same widening the
+        ``lost`` half already does for the reply — a payload that says "R$ 120,00 por hora"
+        grounds an operand the draft wrote as "120"."""
+        out: "set[str]" = set()
+        for raw in _NUM_RE.findall(text or ""):
+            digits = re.sub(r"\D", "", raw)
+            if digits:
+                out.add(digits)
+        for key, whole in SuperegoStage._figure_keys(text).items():
+            out.add(key)
+            out.add(whole)
+        return out
+
+    @classmethod
+    def _shown_derivations(cls, response: str, evidence: str) -> "set[str]":
+        """Figure keys the reply DERIVES in the open, from operands that are in ``evidence``.
+
+        The deterministic half of ``_DERIVED_FROM_EVIDENCE`` — see the constant for the two
+        live cases and for why the permission is granted by the ARITHMETIC and not by the
+        format. Three conditions, all of them necessary, checked in this order:
+
+        1. the operation is WRITTEN DOWN — numerals joined by one repeated operator, closed
+           by ``=`` and a result (``_CALC_RE``);
+        2. every operand's digit string is in ``evidence`` (:meth:`_numeral_forms`), so a
+           derivation whose inputs are nowhere on the page earns nothing;
+        3. the result is what that operation actually produces, to the cent.
+
+        It only ever REMOVES a key from ``invented``; it can never add one. So the failure
+        mode of every branch below — an expression it cannot parse, an operator mix it will
+        not guess at, a rounding it cannot match — is the behaviour that shipped before it,
+        which is the direction a relaxation has to fail in."""
+        grounded = cls._numeral_forms(evidence)
+        derived: "set[str]" = set()
+        for m in _CALC_RE.finditer(response or ""):
+            tokens = _CALC_TOKEN_RE.findall(m.group("expr"))
+            operands = [t for i, t in enumerate(tokens) if i % 2 == 0]
+            ops = [_CALC_FOLD.get(t.lower(), t) for i, t in enumerate(tokens) if i % 2 == 1]
+            # A LIST, folded from ``ops[0]``, and never a set popped at random: with mixed
+            # operators the set's pop order is not stable across processes (string hashing is
+            # seeded per run), so the same reply could be admitted on one worker and refused on
+            # the next. A guard whose verdict is not reproducible is not a guard.
+            if len(tokens) < 3 or len(tokens) % 2 == 0 or len(set(ops)) != 1:
+                continue
+            read = [cls._numeral_value(t) for t in operands]
+            if any(v is None for v in read):
+                continue
+            values = [v for v in read if v is not None]
+            op = ops[0]
+            total = values[0]
+            try:
+                for v in values[1:]:
+                    if op == "*":
+                        total *= v
+                    elif op == "+":
+                        total += v
+                    elif op == "-":
+                        total -= v
+                    else:
+                        total /= v
+            except ZeroDivisionError:
+                continue
+            result_key = re.sub(r"\D", "", m.group("res"))
+            claimed = cls._numeral_value(m.group("res"))
+            if claimed is None or not result_key:
+                continue
+            if abs(total - claimed) > 0.01:
+                continue
+            if not all(re.sub(r"\D", "", t) in grounded for t in operands):
+                continue
+            derived.add(result_key)
+        return derived
+
     @classmethod
     def _draft_divergence(cls, draft: str, payload: str, response: str,
                           user_input: str = "") -> "tuple[list[str], list[str]]":
@@ -1703,7 +1852,13 @@ class SuperegoStage:
         lost = sorted(k for k, whole in drafted.items()
                       if k not in replied and whole not in loose)
         grounded = set(cls._figure_keys(payload)) | set(cls._figure_keys(user_input))
-        invented = sorted(k for k in replied if k not in drafted and k not in grounded)
+        # …and a figure the reply WORKED OUT in the open, from operands that are themselves on
+        # the page. Without this line the net refused, verbatim, the example
+        # ``_FIGURES_HAVE_A_SOURCE`` gives as ALLOWED — the two constants shipped a day apart
+        # and the deterministic check was re-voicing what the prose permitted.
+        derived = cls._shown_derivations(response, "\n".join((draft, payload, user_input or "")))
+        invented = sorted(k for k in replied
+                          if k not in drafted and k not in grounded and k not in derived)
         return lost, invented
 
     @staticmethod
