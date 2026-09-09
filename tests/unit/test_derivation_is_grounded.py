@@ -135,6 +135,42 @@ def test_a_mixed_operator_expression_is_not_guessed_at():
     assert "48000" in invented
 
 
+def test_only_the_RESULT_of_a_calculation_is_ever_admitted():
+    """The hole a careless version would open: write any figure you like, put it in a
+    well-formed expression, and let the calculation carry it in.
+
+    Asserted on the helper's RETURN VALUE and not through ``_draft_divergence``, because
+    through that door the property is unfalsifiable: an operand only ever reaches the
+    admitted set after it has been found in the evidence, so it was already grounded and
+    admitting it changes nothing. Established by a mutation that turned out to be a no-op
+    (adding every operand beside the result moved no verdict anywhere). Read directly, the
+    set is exactly one key and that mutation kills this line."""
+    evidence = "4 hours at R$ 120,00 per hour"
+    assert SuperegoStage._shown_derivations("4 x R$ 120,00 = R$ 480,00", evidence) == {"48000"}
+
+
+@pytest.mark.parametrize("reply", [
+    "Your appointment is 12/09 = R$ 999,99.",
+    "12 / 09 = 1,33 and the fee is R$ 999,99.",
+])
+def test_a_date_is_not_an_operation(reply):
+    """``12/09`` reads as a division to any scanner that does not know what a date is, and
+    this one does not.
+
+    The two cases are refused by DIFFERENT mechanisms, which is why both are here:
+
+    * ``12/09 = R$ 999,99`` parses as a division and is refused TWICE OVER — the operands are
+      in no evidence, and 12/9 is not 999,99. **No single mutation kills this case**, and that
+      is the property rather than a gap in the battery: removing either condition alone leaves
+      the other holding. It takes ``arith_and_operands``, which removes both.
+    * ``12 / 09 = 1,33 and the fee is R$ 999,99`` is refused by the SHAPE: the scanner closes
+      the expression at the ``=`` that follows it, so ``1,33`` is the only result it can
+      admit and ``999,99`` is never a candidate. No mutation of the three conditions reaches
+      it, because none of them is what decides it."""
+    _, invented = _diverges(reply)
+    assert "99999" in invented
+
+
 def test_the_helper_can_only_ever_remove_a_figure_from_the_invented_set():
     """The structural property behind every inverse above: whatever ``_shown_derivations``
     answers, it is intersected OUT of a set the old code had already computed."""
