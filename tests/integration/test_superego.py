@@ -6,6 +6,8 @@ free text → plain backend. Auto-skipped when the configured model is unreachab
 temperature=0.0.
 """
 
+import re
+
 import pytest
 
 from cogno_anima.stages.superego import SuperegoStage
@@ -22,6 +24,42 @@ from tests.integration import backends
 # The judge is fail-closed by design — never approve unverified — so on mistral it was the
 # exact inverse, a false-pass machine. The prompt was never at fault.
 # The model is whatever COGNO_TEST_MODEL names — see tests/integration/backends.py.
+
+
+#: Numbers the reply STATES, as values — not as the substring the model happened to type.
+#:
+#: The grounding assertions here ask "is the figure the tool returned in the answer", and a
+#: substring test answers a different question: whether it is there IN THE WRITER'S FORMAT.
+#: Measured on the nightly canary (run 35207468672, 2026-09-17, qwen3:8b):
+#: `test_voice_writes_grounded_response` failed on the reply *"Seu saldo atual é de
+#: R$ 1.000,00."* — a perfectly grounded answer to a tool that returned `1000 BRL`, written in
+#: the pt-BR the turn asked for. The defect was the instrument's, not the voice's: `"1000" in
+#: response` is false for `1.000,00` and would be false for `1,000.00` too, so the test was
+#: pinning a LOCALE while claiming to pin GROUNDING.
+#:
+#: The decimal separator is taken to be the LAST `.` or `,` that is followed by one or two
+#: digits at the end of the token; every other separator is a thousands mark. That reads
+#: `1.000,00`, `1,000.00`, `1000` and `1000.00` all as 1000.0, which is the point — and it
+#: deliberately does NOT strip separators blindly, because that turns `1.000,00` into `100000`
+#: and would let a reply stating the wrong figure pass on a prefix match.
+_NUM = re.compile(r"\d[\d.,]*\d|\d")
+
+
+def stated_values(text: str) -> set[float]:
+    """Every number in ``text``, locale-normalised to its VALUE."""
+    out: set[float] = set()
+    for token in _NUM.findall(text or ""):
+        decimal = re.search(r"[.,](\d{1,2})$", token)
+        if decimal:
+            whole = token[:decimal.start()].replace(".", "").replace(",", "")
+            token = f"{whole or '0'}.{decimal.group(1)}"
+        else:
+            token = token.replace(".", "").replace(",", "")
+        try:
+            out.add(float(token))
+        except ValueError:      # a bare separator run, e.g. "1..2" — not a number
+            continue
+    return out
 
 
 def _json_backend():
@@ -114,7 +152,11 @@ async def test_voice_writes_grounded_response():
     ctx = _ctx("qual meu saldo?", intent_class="INFORMATION_REQUEST", goal="get balance",
                tool="get_balance", args={}, result="Current balance: 1000 BRL")
     r = await SuperegoStage().voice(ctx, _text_backend(), voice_prompt="You are a friendly finance assistant.")
-    assert r.response and "1000" in r.response, f"expected grounded figure; got {r.response!r}"
+    assert r.response, "the voice wrote nothing"
+    # The VALUE, not the rendering — `R$ 1.000,00` is this figure, correctly grounded and
+    # correctly localised. See `stated_values`.
+    assert 1000 in stated_values(r.response), \
+        f"expected the grounded figure 1000; got {r.response!r}"
     assert r.metrics.stage == "superego_voice"
     assert r.metrics.tokens_in > 0 and r.metrics.tokens_out > 0
 

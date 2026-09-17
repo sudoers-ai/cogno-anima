@@ -147,7 +147,17 @@ def test_grounding_is_promoted_not_relaxed():
     # invented (`turn_traces` id=1440). The teeth are the second half of the sentence.
     assert "grounds a NEGATIVE answer about WHAT THAT TOOL COVERS and nothing else" in out
     assert "fills that emptiness with plausible content is fabricating" in out
-    assert "appears in NONE of the three" in out
+    # The set stays CLOSED, and the closing line now counts the sources this prompt ACTUALLY
+    # carries. `_prompt` renders `limits_prompt=""` and injects no context, so `# Persona
+    # limits` and `# Context` are both absent and "the three" would be a count of one — the
+    # rendering that let the live twin approve an invented class list (see
+    # `_GROUNDING_SOURCE_SET_NONE`). The floor is what is asserted, not the numeral.
+    assert "appears in NONE of the tool results above" in out
+    # …and the escape hatch that named the two missing sections must be GONE with them: this
+    # is the half that turned the criterion into a licence, and asserting its absence is what
+    # stops the enumeration drifting back over a prompt that cannot support it.
+    assert "does NOT prove that a fact stated in those sections is invented" not in out
+    assert "the tool results above are the ONLY ground truth this reply has" in out
     assert "CONTRADICTS THE READ" in out
 
 

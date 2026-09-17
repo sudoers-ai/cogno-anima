@@ -121,7 +121,16 @@ def test_entities_present(ner, text, entity):
 
 @pytest.mark.parametrize("text, must_contain, risk", [
     ("meu CPF é 111.444.777-35", {"NATIONAL_ID"}, "HIGH"),
-    ("o CNPJ da empresa é 11.222.333/0001-81", {"TAX_ID"}, "HIGH"),
+    # COMPANY_ID / MEDIUM since #142 (`d06470d`), and the CODE is the truth here: a CNPJ is an
+    # organisation's public registration number, not a person's identifier. Measured by probing
+    # the pure detector either side of that commit — `TAX_ID`/HIGH at `d06470d^`,
+    # `COMPANY_ID`/MEDIUM at `d06470d` — and the split is pinned from five angles in
+    # `tests/unit/test_company_id_is_not_a_person.py` (detector, alias map, risk map, vocab,
+    # prompt). HIGH was not merely over-strict: the ID routes `pii_risk == "HIGH"` straight to
+    # the SUPEREGO, so the EGO never ran and the turn that CARRIES the CNPJ was the one turn
+    # that could not register the company. This line kept the pre-#142 answer for nine days
+    # because the canary invoked only `test_noumeno.py` until #138.
+    ("o CNPJ da empresa é 11.222.333/0001-81", {"COMPANY_ID"}, "MEDIUM"),
     ("manda um email pra joao.silva@example.com", {"EMAIL"}, "MEDIUM"),
     ("meu cartão é 4111 1111 1111 1111", {"CREDIT_CARD"}, "HIGH"),
     ("o servidor fica em 192.168.0.1", {"IP_ADDRESS"}, "MEDIUM"),

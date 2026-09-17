@@ -204,7 +204,12 @@ def test_TWIN_3_the_clause_never_licenses_a_FABRICATED_completion():
         # so a future widening cannot quietly take the floor with it.
         assert "4. GROUNDING: is everything backed by the evidence in this prompt " \
                "(no invented data)" in prompt
-        assert "appears in NONE of the three" in prompt
+        # The closure, counted over the sources THIS prompt carries. `_judge_prompt` renders
+        # `limits_prompt=""` and injects no context, so the two sections the widened list names
+        # are both absent and the closed set is a set of one (`_GROUNDING_SOURCE_SET_NONE`).
+        # The floor this twin protects is unchanged — a claim grounded in nothing is rejected —
+        # and it is now asserted over the wording the judge is actually handed.
+        assert "appears in NONE of the tool results above" in prompt
     with_block = _judge_prompt(_GAP, draft=_FABRICATED_DRAFT)
     assert "MUST NOT claim any of these was done, scheduled, registered or confirmed" in with_block
     assert "claims the thing was done, scheduled, registered or confirmed stays REJECTED" \
