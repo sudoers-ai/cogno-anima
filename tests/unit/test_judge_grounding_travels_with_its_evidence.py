@@ -120,6 +120,34 @@ def test_the_alibi_sentence_goes_with_the_sections_it_names(kw):
 
 
 @pytest.mark.parametrize("kw", [{}, {"wrote": True}])
+def test_the_criterion_does_not_contradict_itself(kw):
+    """The defect the FIRST cut of this fix shipped, measured on the canary (PR #167, run
+    35285170724): substituting only the enumeration left criterion #1 opening "the reads are
+    this reply's MAIN evidence" while ending "the tool results above are the ONLY ground
+    truth". Both readings in one paragraph is the contradiction #156 diagnosed, rebuilt by the
+    patch meant to answer it — and the judge went on approving the invented listing."""
+    _, prompt = _prompt(**kw)
+    assert "main evidence" not in prompt, prompt[prompt.find("1. FABRICATION"):][:400]
+    assert "must trace to the evidence in this prompt" not in prompt
+    assert "backed by the evidence in this prompt" not in prompt
+
+
+def test_the_substitution_table_actually_matches():
+    """`str.replace` that matches nothing does not raise — it returns the string unchanged.
+
+    A future rewording of either criteria constant would therefore turn this entire guard into
+    a silent no-op, green and doing nothing, which is the same invisible failure as a `needs.`
+    reference that does not resolve. So: every LEFT side must really occur in the criteria it
+    targets, and no RIGHT side may already be there."""
+    from cogno_anima.stages.superego import (
+        _EXECUTION_CRITERIA, _NO_OTHER_SOURCES, _READONLY_CRITERIA)
+    both = _READONLY_CRITERIA + _EXECUTION_CRITERIA
+    for widened, original in _NO_OTHER_SOURCES:
+        assert widened in both, f"substitution never fires; nothing matches {widened[:60]!r}"
+        assert original not in both, f"already substituted?! {original[:60]!r}"
+
+
+@pytest.mark.parametrize("kw", [{}, {"wrote": True}])
 def test_the_set_is_still_CLOSED(kw):
     """The floor, unchanged in force and re-counted in wording: a claim grounded in nothing is
     still rejected. Drop this and the substitution stops being a correction."""

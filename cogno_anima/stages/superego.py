@@ -360,6 +360,37 @@ _GROUNDING_SOURCE_SET_NONE = (
 
 _GROUNDING_SOURCES = _GROUNDING_SOURCE_SET + _DERIVED_FROM_EVIDENCE
 
+# EVERY phrasing #156 widened, paired with the original it widened FROM.
+#
+# The first cut of this fix substituted only the enumeration and left the two sentences around
+# it alone, and that was measured WRONG on the canary (PR #167, run 35285170724: the twin still
+# approved). It was wrong for a reason worth writing down, because it is this file's own
+# diagnosis arriving from a third side: criterion #1 then opened "the reads are this reply's
+# MAIN evidence" and continued, four lines later, "the tool results above are the ONLY ground
+# truth this reply has". A prompt that says both is not a stricter prompt — it is a
+# CONTRADICTED one, which is exactly what #156 identified as the thing a fail-CLOSED judge
+# resolves against the clause it read first.
+#
+# So the substitution is all-or-nothing: on a turn carrying neither section, criterion #1 reads
+# word for word as it did before #156 — the state in which the twin was written and reviewed —
+# plus `_DERIVED_FROM_EVIDENCE`, which is orthogonal to WHICH sections exist.
+#
+# `test_the_substitution_table_actually_matches` is not optional garnish: `str.replace` that
+# matches nothing does not raise, it returns the string unchanged, so a future rewording of
+# either constant would turn this whole guard into a silent no-op — the same invisible failure
+# as the `needs.` reference in the workflow.
+_NO_OTHER_SOURCES: "tuple[tuple[str, str], ...]" = (
+    (_GROUNDING_SOURCE_SET, _GROUNDING_SOURCE_SET_NONE),
+    # read-only branch, criterion #1
+    ("the reads are this reply's main evidence. Every figure, name, date, id, time, slot, "
+     "status or availability the draft states must trace to the evidence in this prompt. ",
+     "the reads are the only ground truth this reply has. Every figure, name, date, id, time, "
+     "slot, status or availability the draft states must trace to a tool result above. "),
+    # execution branch, criterion #4
+    ("is everything backed by the evidence in this prompt (no invented data)",
+     "is everything backed by the tool results (no invented data)"),
+)
+
 _EXECUTION_CRITERIA = (
     "# Judge the EXECUTION against these criteria (most important first):\n"
     "1. GOAL↔EXECUTION: did it do exactly what was asked (X, not Y)?\n"
@@ -1502,7 +1533,8 @@ class SuperegoStage:
         # the read-only twin approved an invented class list on a prompt with neither block).
         # The conversational branch enumerates its own sources and is untouched, as in #156.
         if not limits and not context:
-            criteria = criteria.replace(_GROUNDING_SOURCE_SET, _GROUNDING_SOURCE_SET_NONE)
+            for widened, original in _NO_OTHER_SOURCES:
+                criteria = criteria.replace(widened, original)
         return (
             f'# User request\n"{ctx.user_input}"\n\n'
             f"{context}"
