@@ -273,6 +273,29 @@ _TRAIT_DIRECTIVES: dict[str, str] = {
 #: the whole record exists to end. One definition, imported by whoever renders it.
 SCOPE_TOOL_TABLE_HEADER = "## Tools this persona can actually run on this turn"
 
+#: The OTHER sub-section a host may render into the same slot: the MATERIAL this business has
+#: published and this turn can read — document titles, never their content.
+#:
+#: Declared here for the reason the table above is, and kept APART from it for a reason of its
+#: own. The table names what the turn can RUN; this names what there is to run it OVER, and the
+#: two answer different halves of "is this request ours?". A front desk holding a corpus reader
+#: is told, by the table, that it can read published material; only this block says the material
+#: it holds is a timetable, a syllabus and a reading list — which is what a request naming one
+#: of those has to be matched against.
+#:
+#: **Its own row in :data:`SuperegoStage._SCOPE_BLOCKS`, and not more characters on an existing
+#: one.** A host composing a slot out of several capabilities grows ``# Scope Definition`` —
+#: prose joined to prose, one section, one row. This is not prose: it is the tenant's runtime
+#: data, present or absent per turn, and "the guard was shown the titles" is a question a reader
+#: holding a trace must be able to answer without inferring it from a length. The closed
+#: alphabet survives it because the slug comes from that tuple and never from the text matched:
+#: a forged header can at worst add a visible row.
+#:
+#: ``##`` for the same reason the table is — it sits INSIDE the guard's own section, wherever
+#: :meth:`SuperegoStage._build_scope_prompt` puts that section on this turn.
+SCOPE_TENANT_FACTS_HEADER = (
+    "## Material this business has published and this persona can read on this turn")
+
 
 # ── The guard's decision rule, and why it is an ORDER and not another sentence ─────────────
 #
@@ -891,10 +914,18 @@ class SuperegoStage:
     # capability-first layout", and its absence beside a ``tool_table`` row would be the
     # anomaly. ``scope_definition`` is matched by its opening words only — the header
     # continues on the same line when the rule promoted a table above it.
+    #
+    # ``tenant_facts`` is the same shape as ``tool_table`` — a host renders it, this module only
+    # NAMES it (:data:`SCOPE_TENANT_FACTS_HEADER`) and counts it. It has a row of its own rather
+    # than being folded into ``scope_definition`` because it is the tenant's runtime DATA and
+    # not a second paragraph of the definition's prose: a slot composed out of several
+    # capabilities legitimately makes ``scope_definition`` longer, so its length cannot also be
+    # made to answer "were the document titles in front of the guard".
     _SCOPE_BLOCKS = (
         ("# Decision Rule", "decision_rule"),
         ("# Scope Definition", "scope_definition"),
         (SCOPE_TOOL_TABLE_HEADER, "tool_table"),
+        (SCOPE_TENANT_FACTS_HEADER, "tenant_facts"),
         ("# User Input", "user_input"),
         ("# Task", "task"),
         ("# Examples", "examples"),

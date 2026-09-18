@@ -26,7 +26,7 @@ import re
 
 import pytest
 
-from cogno_anima import SCOPE_TOOL_TABLE_HEADER
+from cogno_anima import SCOPE_TENANT_FACTS_HEADER, SCOPE_TOOL_TABLE_HEADER
 from cogno_anima.stages.superego import SuperegoStage
 
 # Every header line a rendered guard prompt may carry, `#` or `##` (the table is a sub-section
@@ -40,6 +40,12 @@ _TABLE = (f"{SCOPE_TOOL_TABLE_HEADER}\n"
           "A request one of these serves IS in scope.\n"
           "- consult_material — reads the published corpus")
 
+# The OTHER host-rendered section. Same standing as the table: the core names it and counts it,
+# a host fills it. It carries TITLES and never a document's content.
+_FACTS = (f"{SCOPE_TENANT_FACTS_HEADER}\n"
+          "- Grade de Horários\n"
+          "- Ementas")
+
 
 def _known(header_line: str) -> bool:
     return any(header_line.startswith(known) for known, _ in SuperegoStage._SCOPE_BLOCKS)
@@ -51,6 +57,10 @@ def _configs():
         ("skeleton", _NEUTRAL, "que materiais posso usar para estudar?", "pt-BR"),
         ("no_language", _NEUTRAL, "quanto custa?", ""),
         ("with_table", f"{_NEUTRAL}\n\n{_TABLE}", "que materiais posso usar?", "pt-BR"),
+        # A composed slot: the definition, the tenant's published titles, then the table. The
+        # ORDER is the host's (`cogno_host.scope_compose`) and is asserted there; what this
+        # renders for is the row — a host-rendered header the inventory has to be able to see.
+        ("with_facts", f"{_NEUTRAL}\n\n{_FACTS}\n\n{_TABLE}", "qual é a grade?", "pt-BR"),
         # The host's own no-op: an empty table leaves the slot byte-identical.
         ("table_absent", _NEUTRAL, "olá", "en"),
     ]
@@ -92,6 +102,27 @@ def test_the_header_a_host_renders_is_the_header_this_table_counts():
     inventory cannot see — under-reporting in silence, which is the single failure this whole
     record exists to end. The row and the exported constant are therefore the same object."""
     assert dict(SuperegoStage._SCOPE_BLOCKS)[SCOPE_TOOL_TABLE_HEADER] == "tool_table"
-    assert SCOPE_TOOL_TABLE_HEADER.startswith("## "), (
-        "the table is a SUB-section of `# Scope Definition`; a top-level header here would "
-        "read as a fourth section competing with `# User Input`.")
+    assert dict(SuperegoStage._SCOPE_BLOCKS)[SCOPE_TENANT_FACTS_HEADER] == "tenant_facts"
+    for header in (SCOPE_TOOL_TABLE_HEADER, SCOPE_TENANT_FACTS_HEADER):
+        assert header.startswith("## "), (
+            f"{header!r} is a SUB-section of `# Scope Definition`; a top-level header here "
+            "would read as a section competing with `# User Input`.")
+
+
+def test_the_two_host_rendered_sections_are_counted_apart():
+    """They answer different halves of the guard's question and must not collapse into one row.
+
+    The table says what the turn can RUN; the facts say what there is to run it OVER. A reader
+    holding a trace of a refused turn asks both — "was the tool offered" and "was the material
+    named" — and one row cannot answer two questions. Pinned as a DISTINCTION, because the
+    cheapest way to add this feature is to append the titles under the table's own header, and
+    that ships as a green suite while deleting the second question.
+    """
+    slugs = dict(SuperegoStage._SCOPE_BLOCKS)
+    assert slugs[SCOPE_TOOL_TABLE_HEADER] != slugs[SCOPE_TENANT_FACTS_HEADER]
+    assert not SCOPE_TENANT_FACTS_HEADER.startswith(SCOPE_TOOL_TABLE_HEADER)
+    assert not SCOPE_TOOL_TABLE_HEADER.startswith(SCOPE_TENANT_FACTS_HEADER)
+    prompt = SuperegoStage._build_scope_prompt(
+        f"{_NEUTRAL}\n\n{_FACTS}\n\n{_TABLE}", "qual é a grade?", "pt-BR")
+    rows = [r["block"] for r in SuperegoStage.scope_prompt_inventory(prompt)]
+    assert rows.count("tool_table") == 1 and rows.count("tenant_facts") == 1, rows
