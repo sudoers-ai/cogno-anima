@@ -68,6 +68,42 @@ jobs:
         # Integration tests need a live Ollama and are skipped in CI.
         run: pytest tests/unit -q --cov=cogno_anima --cov-report=term-missing --cov-fail-under=85
 
+  # ── which PRs the canary is worth paying for ──────────────────────────────────────────
+  #
+  # Underscored, not hyphenated, and deliberately: this job id is DEREFERENCED below as
+  # `needs.canary_scope.outputs.hit`, and an underscore cannot be read as a minus by the
+  # expression parser. Please do not "tidy" it to match the hyphenated job beside it — if
+  # that reference ever fails to resolve it does not error, it is simply never true, and the
+  # canary goes back to running on schedule only. That is the exact silence this job exists
+  # to end, and it would be invisible.
+  #
+  # Deliberately NOT `on.pull_request.paths`: that filter gates the WHOLE workflow, so a PR
+  # touching only `tests/` would stop running the `test` job too — the gate that actually
+  # protects main. The decision is per-JOB, so it is computed in a job.
+  canary_scope:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      hit: ${{ steps.paths.outputs.hit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # the diff needs both ends; a shallow clone has neither
+      - id: paths
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # The two directories whose content the canary is the only automated reader of:
+          # stage logic and the prompt text the stages send. A prompt is CODE here — the
+          # three defects this change was written for were all prose in `stages/`.
+          if git diff --name-only "$BASE...HEAD" \
+              | grep -qE '^cogno_anima/(stages|prompt_templates)/'; then
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "hit=false" >> "$GITHUB_OUTPUT"
+          fi
+          git diff --name-only "$BASE...HEAD" | head -50
+
   # ── the 97 integration tests, and the six FILES of them that ran nowhere ───────────────
   #
   # They gate on a live Ollama and the `test` job has none, so they skipped silently in CI and
@@ -134,7 +170,28 @@ jobs:
     # The check list is where a red nightly gets read; it should say which shard, not repeat
     # the marker expression.
     name: ollama-integration (${{ matrix.shard }})
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    #
+    # ── ALSO ON PRs THAT TOUCH THE STAGES OR THE PROMPTS ────────────────────────────────
+    #
+    # The comment above says this is "NOT a PR gate, on purpose", and the reasoning behind it
+    # still holds for the general case: these assert on the behaviour of a REAL model, so
+    # gating every merge on them makes "main is always green" depend on sampling. What that
+    # reasoning did not account for is the OTHER failure mode, and it has now been measured:
+    # the canary ran ONLY on `schedule`, so three real defects sat red for eight consecutive
+    # nightlies (2026-09-09 → 2026-09-17) while every push and every PR went green. One of
+    # them was the SUPEREGO judge approving a fabricated listing — the fail-CLOSED guarantee
+    # gone — and it was introduced by a PR whose own CI could not have run it.
+    #
+    # So: scheduled and manual runs are unchanged, and a PR that touches the stage logic or
+    # the prompt text now runs it too. A PR that touches neither does not pay for it, which is
+    # most of them. `needs` + `!cancelled()` because `canary-scope` is skipped on a schedule,
+    # and a skipped dependency would otherwise skip this job with it.
+    needs: [canary_scope]
+    if: >-
+      !cancelled() && (
+        github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'pull_request' && needs.canary_scope.outputs.hit == 'true')
+      )
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -142,10 +199,23 @@ jobs:
         include:
           - shard: perception          # tests/integration/test_noumeno.py — 41 ids, 17m49s measured
             select: "perception"
+            timeout: 0
+          # 1h49m03s MEASURED (run 35207468672, 2026-09-17) against the ~30 min PROJECTED
+          # above — the projection the comment itself flagged as a projection. `timeout` is a
+          # PER-TEST cap, read by pytest-timeout from `PYTEST_TIMEOUT`, and it is worth being
+          # exact about what it does and does not buy: it bounds a single HUNG test, not the
+          # job. The 1h49 is the SUM of ~74 generations that each returned; no per-test cap
+          # shortens that, and one set low enough to would start failing tests that work.
+          # 1500s is deliberately just above the transport ceiling: a test here makes at most
+          # two sequential generations and `COGNO_OLLAMA_TIMEOUT` caps each at 600s, so
+          # anything past ~1200s is a hang, not a slow model. If the shard is to get FASTER it
+          # splits again — "the shard names are a knob, the path is not".
           - shard: semantics           # tests/integration/test_ner.py — 40 ids, ~74 generations
             select: "semantics"
+            timeout: 1500
           - shard: downstream          # ID / EGO / SUPEREGO / e2e / composite — 16 ids
             select: "not perception and not semantics"
+            timeout: 0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -179,6 +249,11 @@ jobs:
           # the 2026-08-04 nightly died on httpx.ReadTimeout with 40 of 41 tests PASSING.
           # Nothing was wrong but the clock. Needs cogno-synapse >= 0.1.2.
           COGNO_OLLAMA_TIMEOUT: "600"
+          # Per-TEST cap, per shard. pytest-timeout reads this natively, so the pytest command
+          # line below is untouched — `tests/unit/test_ci_runs_every_test_file.py` lexes that
+          # line to prove the path stays a DIRECTORY, and a flag is one more thing to get
+          # wrong there. `0` means no timeout, which is what the two shards inside budget get.
+          PYTEST_TIMEOUT: "${{ matrix.timeout }}"
         # The path is the DIRECTORY and the selection is a marker: `tests/integration` is an
         # ancestor of every file in it, so a file added tomorrow is collected by one of these
         # three shards without anybody editing this workflow. Answer-quality assertions live in

@@ -42,6 +42,8 @@ dev = [
     "pyyaml>=6.0",
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=5.0",
+    # Per-test cap for the nightly `semantics` shard (PYTEST_TIMEOUT in .github/workflows/ci.yml).
+    "pytest-timeout>=2.3",
     "hypothesis>=6.0",
     "ruff>=0.5",
     "mypy>=1.8",

@@ -302,14 +302,93 @@ _JUDGE_SYSTEM = (
 # fabrication, and is still rejected exactly as hard. Written once, for the reason
 # ``_ADMITTING_A_LIMIT`` is written once: a copy of it in the other branch is a contract that
 # diverges silently.
-_GROUNDING_SOURCES = (
+_GROUNDING_SOURCE_SET = (
     "What counts as GROUNDED: the tool results are not the only ground truth in this prompt. "
     "The '# Persona limits' section above (which carries the tenant's own configured business "
     "rules) and the '# Context' section (clock, memories, history) ground a statement exactly "
     "as well as a tool result does. A search that returned nothing does NOT prove that a fact "
     "stated in those sections is invented — it proves only that the search found nothing. "
     "Reject a figure, name, date, policy or claim that appears in NONE of the three. "
-    + _DERIVED_FROM_EVIDENCE
+)
+
+# ── THE ENUMERATION TRAVELS WITH ITS EVIDENCE ────────────────────────────────────────────
+#
+# The sentence above names two sections, and on a turn where NEITHER of them rendered every
+# one of its clauses is FALSE about the prompt the judge is holding: the tool results ARE the
+# only ground truth there, and "a search that returned nothing does NOT prove that a fact
+# stated in those sections is invented" offers an alibi to a draft whose invention has no
+# section to have come from. That is not a smaller version of the fix — it is the fix pointed
+# at nothing, and it reads to the model as a licence.
+#
+# MEASURED, on the nightly canary this repo runs against the served model. The twin written to
+# die if this branch ever went lax — `test_judge_still_rejects_a_read_whose_draft_invents`, an
+# empty `get_schedule` plus a draft listing "Algebra" and "Physics" — APPROVED, with no
+# critique, on qwen3:8b: run 35207468672 of 2026-09-17, and the same failure on every scheduled
+# run back to 2026-09-09. A deterministic probe over the RENDERED prompt for that exact turn
+# (no model) says why: its only top-level sections are `# User request`, `# Active goal`,
+# `# What the EGO executed`, `# EGO draft` and the criteria. `# Persona limits` and `# Context`
+# are BOTH absent — `limits_prompt` is empty and no host context is injected — so the judge was
+# told, in its own numbered REJECT list, that two sections it cannot see might be holding the
+# classes up.
+#
+# So this is the rule `_OUT_OF_REACH` already follows one screen below, applied to the clause
+# that needed it just as badly: render the opening ONLY when the block it depends on is really
+# there. `_OUT_OF_REACH` renders only when `_format_unavailable` produced its block, "because
+# without it the judge cannot tell 'there was no tool' from 'there was a tool and it went
+# unused'"; here, without the same guard, the judge cannot tell "the rules are elsewhere in
+# this prompt" from "there is nowhere else in this prompt".
+#
+# It does NOT undo #156. That defect (id=1440) is a turn where `# Persona limits` WAS rendered
+# and carried the tenant's own `- Aula - R$ 120,00 por hora`; this substitution cannot reach
+# it, and cannot reach any turn where either section is present — those render byte for byte
+# as they did, which is why every assertion in `test_judge_grounding_sources.py` still holds
+# unchanged. The two changes are the same principle from opposite sides: name every source
+# that IS in the prompt, and never name one that is not. The file's own test said so first —
+# "a source the judge cannot read is worse than none, it is an invitation to guess" — but it
+# checked the names against the `_JUDGE_BLOCKS` TABLE, i.e. against what the prompt CAN render,
+# never against what THIS prompt DID.
+#
+# The floor it restores is the pre-#156 sentence, which was never wrong — only over-general.
+_GROUNDING_SOURCE_SET_NONE = (
+    "What counts as GROUNDED: this prompt carries NO '# Persona limits' section and NO "
+    "'# Context' section, so on this turn the tool results above are the ONLY ground truth "
+    "this reply has. There is no configured rule, memory or history here that could support a "
+    "statement the reads do not — an empty read leaves NOTHING for the draft to have read it "
+    "from. Reject a figure, name, date, policy or claim that appears in NONE of the tool "
+    "results above. "
+)
+
+_GROUNDING_SOURCES = _GROUNDING_SOURCE_SET + _DERIVED_FROM_EVIDENCE
+
+# EVERY phrasing #156 widened, paired with the original it widened FROM.
+#
+# The first cut of this fix substituted only the enumeration and left the two sentences around
+# it alone, and that was measured WRONG on the canary (PR #167, run 35285170724: the twin still
+# approved). It was wrong for a reason worth writing down, because it is this file's own
+# diagnosis arriving from a third side: criterion #1 then opened "the reads are this reply's
+# MAIN evidence" and continued, four lines later, "the tool results above are the ONLY ground
+# truth this reply has". A prompt that says both is not a stricter prompt — it is a
+# CONTRADICTED one, which is exactly what #156 identified as the thing a fail-CLOSED judge
+# resolves against the clause it read first.
+#
+# So the substitution is all-or-nothing: on a turn carrying neither section, criterion #1 reads
+# word for word as it did before #156 — the state in which the twin was written and reviewed —
+# plus `_DERIVED_FROM_EVIDENCE`, which is orthogonal to WHICH sections exist.
+#
+# `test_the_substitution_table_actually_matches` is not optional garnish: `str.replace` that
+# matches nothing does not raise, it returns the string unchanged, so a future rewording of
+# either constant would turn this whole guard into a silent no-op — the same invisible failure
+# as the `needs.` reference in the workflow.
+_NO_OTHER_SOURCES: "tuple[tuple[str, str], ...]" = (
+    (_GROUNDING_SOURCE_SET, _GROUNDING_SOURCE_SET_NONE),
+    # read-only branch, criterion #1
+    ("the reads are this reply's main evidence. Every figure, name, date, id, time, slot, "
+     "status or availability the draft states must trace to the evidence in this prompt. ",
+     "the reads are the only ground truth this reply has. Every figure, name, date, id, time, "
+     "slot, status or availability the draft states must trace to a tool result above. "),
+    # execution branch, criterion #4
+    ("is everything backed by the evidence in this prompt (no invented data)",
+     "is everything backed by the tool results (no invented data)"),
 )
 
 _EXECUTION_CRITERIA = (
@@ -1446,6 +1525,16 @@ class SuperegoStage:
         # APPROVE-BY-DEFAULT over a closed list) and already carries `_ADMITTING_A_LIMIT` in
         # its criterion 3, so putting it there would be a second copy of a settled rule.
         out_of_reach = _OUT_OF_REACH if unavailable and not conversational else ""
+        # …and the GROUNDING enumeration travels with its evidence the same way. `limits` and
+        # `context` are the two sections `_GROUNDING_SOURCE_SET` names, and they are the very
+        # strings rendered below — not a second reading of the metadata, so the criterion can
+        # never name a section this prompt does not carry. When neither is here the closed set
+        # is a set of ONE, and saying otherwise hands a fabricating draft an alibi (measured:
+        # the read-only twin approved an invented class list on a prompt with neither block).
+        # The conversational branch enumerates its own sources and is untouched, as in #156.
+        if not limits and not context:
+            for widened, original in _NO_OTHER_SOURCES:
+                criteria = criteria.replace(widened, original)
         return (
             f'# User request\n"{ctx.user_input}"\n\n'
             f"{context}"
