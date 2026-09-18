@@ -126,8 +126,14 @@ def test_an_empty_table_and_an_absent_table_are_not_the_same_record():
 
 
 def test_order_is_as_rendered_so_two_turns_diff_as_lists():
+    """As RENDERED, which is why this list changed when the layout did: a turn carrying a
+    table now opens with the decision rule and the table, and the definition follows them.
+    `test_scope_capability_outranks_the_definition.py` is where that order is the PROPERTY;
+    here it is the demonstration that the inventory reports position rather than a fixed
+    table order."""
     prompt = _BUILD(f"{_SCOPE}\n\n{_TABLE}", "quanto custa?", "pt-BR")
-    assert _slugs(prompt) == ["scope_definition", "tool_table", "user_input", "task", "examples"]
+    assert _slugs(prompt) == ["decision_rule", "tool_table", "scope_definition",
+                              "user_input", "task", "examples"]
     assert _slugs(_BUILD(_SCOPE, "quanto custa?", "")) == [
         "scope_definition", "user_input", "task", "examples"]
 
@@ -152,7 +158,8 @@ async def test_a_consulted_guard_records_what_it_was_asked_on_both_verdicts():
         # The ALLOWED turn is the comparison half — a capture that only fires on the anomaly has
         # nothing to compare the anomaly against.
         assert [b["block"] for b in r.prompt_blocks] == [
-            "scope_definition", "tool_table", "user_input", "task", "examples"]
+            "decision_rule", "tool_table", "scope_definition",
+            "user_input", "task", "examples"]
 
 
 @pytest.mark.asyncio
@@ -180,7 +187,8 @@ async def test_the_fail_open_path_records_the_prompt_it_had_already_built():
         ctx, RaisingBackend(), scope_prompt=f"{_SCOPE}\n\n{_TABLE}")
     assert r.blocked is False
     assert [b["block"] for b in r.prompt_blocks] == [
-        "scope_definition", "tool_table", "user_input", "task", "examples"]
+        "decision_rule", "tool_table", "scope_definition",
+        "user_input", "task", "examples"]
 
 
 @pytest.mark.asyncio

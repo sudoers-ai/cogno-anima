@@ -260,15 +260,67 @@ _TRAIT_DIRECTIVES: dict[str, str] = {
 #: therefore ships the MECHANISM — a name for the section and an inventory that counts it — and
 #: takes the declaration as a parameter, which is this repo's standing split.
 #:
-#: It is ``##`` and not ``#``: the whole ``scope_prompt`` is wrapped by ``_build_scope_prompt``
-#: under ``# Scope Definition``, so a top-level header here would read as a fourth section
-#: competing with ``# User Input``.
+#: It is ``##`` and not ``#`` because it is always a SUB-section, never a peer of
+#: ``# User Input``. Which section it sits under depends on the layout
+#: ``_build_scope_prompt`` chooses: with a table it is promoted under ``# Decision Rule``,
+#: whose two steps are written about it; with no table the slot is wrapped whole under
+#: ``# Scope Definition``, exactly as before. Either way a top-level header here would read
+#: as a section competing with the guard's own.
 #:
 #: **The reason it is a constant and not a literal in the host** is the inventory below. A host
 #: that spells its own header renders a section :meth:`SuperegoStage.scope_prompt_inventory`
 #: cannot see, and the inventory then under-reports in silence — which is the one failure mode
 #: the whole record exists to end. One definition, imported by whoever renders it.
 SCOPE_TOOL_TABLE_HEADER = "## Tools this persona can actually run on this turn"
+
+
+# ── The guard's decision rule, and why it is an ORDER and not another sentence ─────────────
+#
+# The table header above ships with a rubric the HOST renders beside it, and that rubric has
+# said the right thing since the day it was written: "A request that one of these tools serves
+# IS in scope, even when the definition above does not name it." It is the correct instruction,
+# in the correct words, and it did not work.
+#
+# Measured 2026-09-17 on a rehearsal tenant, guard on ``gpt-4o-mini``: a contact asking «que
+# materiais posso usar para estudar?» was BLOCKED on a turn whose rendered prompt carried
+# ``[scope_definition 2389, tool_table 1658, user_input 55, task 387, examples 309]`` and
+# fifteen offered tools, ``consult_material`` — the tool whose entire job is that question —
+# among them. The inventory added the day before is what settled it: the table WAS there, with
+# the right tool in it, and the classifier refused anyway. That is the branch the inventory
+# calls a PROMPT defect rather than wiring, and the fix for a prompt defect that is already
+# spelled out correctly cannot be to spell it out again.
+#
+# So the change is POSITIONAL. The old layout opened with the tenant's scope definition —
+# 2389 characters written for a reception desk, in the voice of "you handle only this" — and
+# appended the capabilities afterwards as a footnote to it. A small classifier obeys the most
+# restrictive instruction it read FIRST, and everything after it is read as an exception
+# begging to be denied. The two blocks therefore swap places and the relationship between them
+# is stated before either: capability first, and the definition is explicitly subordinate to it.
+#
+# This is the same move ``JUDGE_CONVERSATIONAL`` and ``_READONLY_CRITERIA`` make in this file —
+# REPLACE the criteria rather than argue with them inside a prompt that is already being
+# ignored. Adding a fourth paragraph to a prompt whose third is ignored is the weak move, and
+# this house has the measurement to say so.
+#
+# It renders ONLY when a table with rows arrived (see ``_split_tool_table``): a persona with no
+# tools gets the prompt it has always got, byte for byte, because Step 1 would then be a rule
+# about an empty list and Step 2 the whole of the guard.
+_SCOPE_DECISION_RULE = (
+    "# Decision Rule (apply in this order)\n"
+    "Step 1 — CAPABILITY. If ANY tool in the table below serves the User Input, the input IS "
+    "in scope: answer blocked=false. The Scope Definition does not apply to it.\n"
+    "Step 2 — TOPIC. Only if NO tool below serves the User Input, judge it against the Scope "
+    "Definition."
+)
+
+#: The definition's header WHEN a table was promoted above it — the subordination said on the
+#: header line itself, where it cannot be read as a footnote. It narrows TOPICS; it is not a
+#: list of capabilities and it withdraws none. ``_SCOPE_BLOCKS`` matches this row by its
+#: opening words, so the slug and the stored inventory are unchanged.
+_SCOPE_DEFINITION_SUBORDINATE = (
+    "# Scope Definition (Step 2 only — it narrows TOPICS; it NEVER removes a capability "
+    "listed above)"
+)
 
 
 _SCOPE_SYSTEM = (
@@ -832,7 +884,15 @@ class SuperegoStage:
     # ``scope_prompt`` it hands in, under :data:`SCOPE_TOOL_TABLE_HEADER`, which is why that
     # header is a constant of this module and not a literal of that host. It is listed here
     # because the question this whole record exists to answer is about that block.
+    #
+    # ``decision_rule`` is the CONDITIONAL row: it renders only on a turn that carried a
+    # non-empty table, because it is the sentence that subordinates the definition to it. Its
+    # presence in a stored inventory is therefore the answer to "did this turn get the
+    # capability-first layout", and its absence beside a ``tool_table`` row would be the
+    # anomaly. ``scope_definition`` is matched by its opening words only — the header
+    # continues on the same line when the rule promoted a table above it.
     _SCOPE_BLOCKS = (
+        ("# Decision Rule", "decision_rule"),
         ("# Scope Definition", "scope_definition"),
         (SCOPE_TOOL_TABLE_HEADER, "tool_table"),
         ("# User Input", "user_input"),
@@ -1363,8 +1423,16 @@ class SuperegoStage:
         lang_rule = (f"the refusal_message MUST be written in {language} "
                      "(the user's language), no other language") if language else \
                     "the refusal_message must be in the user's language"
+        # CAPABILITY FIRST, TOPIC SECOND — the decision rule, then the table it is written
+        # about, then the definition it subordinates. With no table to promote there is no
+        # hierarchy to state and the slot is wrapped whole, which is the layout this function
+        # has always produced; see `_SCOPE_DECISION_RULE` for what was measured.
+        definition, table = SuperegoStage._split_tool_table(scope_prompt)
+        head = (f"{_SCOPE_DECISION_RULE}\n\n{table}\n\n"
+                f"{_SCOPE_DEFINITION_SUBORDINATE}\n{definition}\n\n") if table else (
+                f"# Scope Definition\n{scope_prompt}\n\n")
         return (
-            f"# Scope Definition\n{scope_prompt}\n\n"
+            head +
             f'# User Input\n"{user_input}"\n\n'
             "# Task\nIs the User Input IN-SCOPE or OUT-OF-SCOPE? Rules:\n"
             "- Block ONLY what is clearly, obviously unrelated to the scope.\n"
@@ -1380,6 +1448,45 @@ class SuperegoStage:
             'Respond ONLY with: {"blocked": true/false, "refusal_message": '
             f'"...polite refusal in {lang_name} if blocked, else empty..."}}'
         )
+
+    @staticmethod
+    def _split_tool_table(scope_prompt: str) -> "tuple[str, str]":
+        """The slot's two halves: ``(definition, table)``, split at the tool-table header.
+
+        The guard takes a ``scope_prompt`` STRING and no dispatcher, so the host renders the
+        table into that string — which is why reordering the two blocks has to happen here, by
+        cutting the slot at the one line both sides already agree on
+        (:data:`SCOPE_TOOL_TABLE_HEADER`, a constant of this module precisely so there is one).
+
+        **An empty table is not a table**, and the caller must be able to tell: a header with
+        nothing under it returns ``("", ...)`` for the table, so the whole slot travels back
+        untouched and the prompt renders exactly as it did before this split existed — header
+        included, so the inventory still reports the short ``tool_table`` row that separates
+        "no tool" from "no table". That distinction is this file's own precedent (the judge's
+        consult section) and the emptiness is the host's no-op, not ours.
+
+        **The LAST occurrence at a line start wins.** The table is APPENDED
+        (``cogno_host.scope_table.scope_with_the_table``), so the last one is the one the host
+        put there; an earlier copy is a tenant's own prose echoing the line. That costs the
+        tenant nothing they did not already have — the slot is their text either way — and it
+        stays VISIBLE, because the inventory reports a duplicated header as two rows rather
+        than merging them.
+        """
+        at = -1
+        start = 0
+        while True:
+            i = scope_prompt.find(SCOPE_TOOL_TABLE_HEADER, start)
+            if i < 0:
+                break
+            if i == 0 or scope_prompt[i - 1] == "\n":
+                at = i
+            start = i + len(SCOPE_TOOL_TABLE_HEADER)
+        if at < 0:
+            return scope_prompt, ""
+        table = scope_prompt[at:].rstrip()
+        if not table[len(SCOPE_TOOL_TABLE_HEADER):].strip():
+            return scope_prompt, ""
+        return scope_prompt[:at].rstrip("\n"), table
 
     # ── Quality gate / JUDGE (post-EGO) ──────────────────────────────
 
