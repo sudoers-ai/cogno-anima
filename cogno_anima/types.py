@@ -464,6 +464,24 @@ class ScopeCheckResult(BaseModel):
     """
     blocked: bool = False
     refusal_message: str = ""
+    # Which sections the rendered GUARD prompt carried and how long each was — slugs from the
+    # closed `SuperegoStage._SCOPE_BLOCKS`, never the matched text, so there is no tenant rule
+    # and no contact sentence here and the record needs no purge path of its own.
+    #
+    # This guard is the only stage that can end a turn by itself, and a turn it ends leaves
+    # almost nothing behind: no execution, no judge, no voice inventory, and a canned refusal
+    # that reads the same whatever the cause. The block that motivated the record is the
+    # HOST-rendered tool table (`SCOPE_TOOL_TABLE_HEADER`), whose presence separates "the
+    # classifier was told what this turn can do and blocked anyway" from "it was never told" —
+    # a prompt defect from a wiring one, with different fixes.
+    #
+    # **Empty means NO PROMPT WAS BUILT** — the guard never consulted the model (no scope rules,
+    # or one of the NER/continuity bypasses). It does NOT mean "a prompt with no sections": a
+    # built prompt always carries at least `scope_definition`/`user_input`/`task`/`examples`.
+    # The fail-OPEN error path records the blocks like every other, for the reason the judge's
+    # fail-CLOSED one does: "the call blew up" and "the classifier read this and allowed" are
+    # different facts and only one of them is about the prompt.
+    prompt_blocks: list[dict[str, Any]] = Field(default_factory=list)
     metrics: StageMetrics
 
 
@@ -521,7 +539,10 @@ class SuperegoResult(BaseModel):
     #
     # Filled by `voice` (from `_VOICE_BLOCKS`) and by `evaluate` (from `_JUDGE_BLOCKS`) — two
     # closed tables, one field, because the caller always knows which op it invoked and a
-    # second field would only let the two drift. Empty on `check_input_scope`.
+    # second field would only let the two drift. Empty on `check_input_scope`, which returns a
+    # `ScopeCheckResult` and carries its own inventory there (`_SCOPE_BLOCKS`) — a third table
+    # on a third type, and NOT a third meaning for this field: a reader of a `SuperegoResult`
+    # never has to ask which of three prompts it is holding.
     prompt_blocks: list[dict[str, Any]] = Field(default_factory=list)
     # Which CRITERIA the judge was given: `execution` | `conversational` | `readonly`, from
     # `SuperegoStage._judge_branch`. Empty on `voice`/`check_input_scope`.
