@@ -10,6 +10,7 @@ import re
 
 import pytest
 
+from cogno_anima import metakeys as mk
 from cogno_anima.stages.superego import SuperegoStage
 from cogno_anima.types import (
     PipelineContext, NoumenoResult, IntentResult, StageMetrics,
@@ -75,7 +76,7 @@ def _m(s):
 
 
 def _ctx(user, intent_class="ACTION_REQUEST", goal="", tool=None, args=None, result="",
-         side_effect=False, mutating=None, draft="done"):
+         side_effect=False, mutating=None, draft="done", preserved=()):
     """``side_effect``/``mutating`` were omitted here until the READ-ONLY judge branch existed,
     because nothing read them — and a `record_expense` that answers "Recorded expense of 50 BRL"
     was being described to the judge as a call that WROTE NOTHING. That is a defect in the
@@ -85,7 +86,7 @@ def _ctx(user, intent_class="ACTION_REQUEST", goal="", tool=None, args=None, res
         original=user, rewritten=user, context_turn="", language="pt",
         canonical_language="en", drift_score=0.0, drift_tag="PASS_THROUGH", changed=False,
         confidence=1.0, change_subject=False, subject_similarity=1.0, context_used=False,
-        preserved_terms=[], rewrite_warnings=[], metrics=_m("noumeno"),
+        preserved_terms=list(preserved), rewrite_warnings=[], metrics=_m("noumeno"),
     )
     intent = IntentResult(
         intent_class=intent_class, sentiment="NEUTRAL", confidence=1.0,
@@ -202,3 +203,87 @@ async def test_judge_still_rejects_a_read_whose_draft_invents():
     r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
     assert r.approved is False, "an empty read grounds a negative answer, never a listing"
     assert r.critique
+
+
+# ── a preserved term is a VALUE, not a spelling (model half) ──────────────────────────
+# The deterministic half — which terms render, and what criterion #4 asks — is pinned in
+# `tests/unit/test_judge_preserved_is_a_value.py` and needs no model. These two are the half
+# only a model can answer, and they are a PAIR for the same reason the read-only pair above is:
+# the first says the judge stops rejecting a correct English draft, the second says the
+# narrowing did not blind the grounding gate. Shipping only the first would be shipping a
+# rubber stamp, and the fabrication twin directly above (`..._whose_draft_invents`) is the
+# third control on the same axis.
+
+
+@pytest.mark.asyncio
+async def test_judge_approves_a_draft_that_TRANSLATES_a_preserved_term():
+    """THE p0, measured in the rehearsal tenant on 2026-09-18 against the served code.
+
+    The contact asked for a course syllabus by its Portuguese name; the read returned it; the
+    draft answered correctly, in the English the whole pipeline works in. The judge rejected it
+    with ONE reason — the preserved term "should have been reproduced exactly" — the draft was
+    dropped, and the contact was told the syllabus could not be accessed. Judging the
+    TRANSLATION is not judging the grounding.
+    """
+    await backends.skip_unless_available()
+    ctx = _ctx("qual e a ementa de Modelagem de Dados?", intent_class="INFORMATION_REQUEST",
+               goal="get the syllabus of the Modelagem de Dados course",
+               tool="consult_material", args={"course": "Modelagem de Dados"},
+               result="Modelagem de Dados - 60 hours. Units: relational model, normalisation.",
+               draft="The Data Modeling syllabus is 60 hours and covers the relational model "
+                     "and normalisation.",
+               preserved=["Modelagem de Dados"])
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
+@pytest.mark.asyncio
+async def test_judge_still_rejects_a_draft_that_MANGLES_a_preserved_figure():
+    """The twin that keeps the narrowing from being a removal — and the one that must die if it
+    becomes one. Same shape, but the preserved term is a FIGURE and the draft states a
+    different one. A mangled figure, email or URL is what the criterion is FOR.
+    """
+    await backends.skip_unless_available()
+    ctx = _ctx("transfere 1234.56 para a conta do curso",
+               goal="transfer 1234.56 to the course account",
+               tool="transfer", args={"amount": "1234.56"},
+               result="Transferred 1234.56 BRL to the course account",
+               side_effect=True, mutating=True,
+               draft="Done - I transferred 1234.65 BRL to the course account.",
+               preserved=["1234.56"])
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
+    assert r.approved is False, "a preserved FIGURE stated differently is the defect this keeps"
+    assert r.critique
+
+
+# ── the voice does not deny a read that worked (model half) ───────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_voice_does_not_tell_the_contact_the_lookup_failed():
+    """The other end of the same p0: holding a critique about WORDING, the voice wrote "I could
+    not access the syllabus" over a read that had returned it.
+
+    Asserted as an ABSENCE of the denial, and only of its narrowest forms. The carve-outs are
+    deliberately not asserted here: their model half would have to pin a particular Portuguese
+    phrasing for "I found nothing", which is a LOCALE pin wearing the clothes of a property —
+    the defect `stated_values` at the top of this file exists to record. Those twins are
+    deterministic, over the rendered prompt, in
+    `tests/unit/test_voice_does_not_deny_a_read_that_worked.py`.
+    """
+    await backends.skip_unless_available()
+    ctx = _ctx("qual e a ementa de Modelagem de Dados?", intent_class="INFORMATION_REQUEST",
+               goal="get the syllabus of the Modelagem de Dados course",
+               tool="consult_material", args={"course": "Modelagem de Dados"},
+               result="Modelagem de Dados - 60 hours. Units: relational model, normalisation.",
+               draft="The Data Modeling syllabus is 60 hours.")
+    ctx.metadata[mk.VOICE_CORRECTION] = {
+        "reason": 'the preserved term "Modelagem de Dados" should have been reproduced exactly'}
+    r = await SuperegoStage().voice(ctx, _text_backend(),
+                                    voice_prompt="You are a friendly course assistant.")
+    assert r.response, "the voice wrote nothing"
+    denials = ("nao consegui acess", "não consegui acess", "nao consegui obter",
+               "não consegui obter", "could not access", "was unable to access")
+    low = r.response.lower()
+    assert not any(d in low for d in denials), (
+        f"the read returned the syllabus; the reply claims it could not be reached: {r.response!r}")

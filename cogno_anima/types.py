@@ -804,8 +804,12 @@ def _any_execution(ctx: "PipelineContext", hit: "Callable[[Any], bool]", *,
     it is. A second copy of them is a second copy to get wrong, which is the very failure
     `committed_this_turn` was created to end. That is also why the consult entered HERE and
     not beside one predicate: a source only one member of the family reads is the defect this
-    walk exists to prevent, and the family is three predicates deep (`committed_this_turn`,
-    `wrote_for_the_contact` through `_committed_over`, and `write_attempted_this_turn`).
+    walk exists to prevent, and the family is FOUR predicates deep (`committed_this_turn`,
+    `wrote_for_the_contact` through `_committed_over`, `write_attempted_this_turn`, and — since
+    2026-09-18, the first one that asks about READING — `read_succeeded_this_turn`). The count
+    is derived rather than remembered: `tests/unit/test_consult_is_the_second_source.py` walks
+    this module's AST for every public function whose call graph reaches here and fails on any
+    that is not in its list, which is how the fourth one announced itself.
 
     Each source is read LAZILY, inside its own ``try``: ``EgoResult.tools_executed`` is a
     DERIVED property and derived can raise, so touching both eagerly would turn a turn that
@@ -916,6 +920,65 @@ def write_attempted_this_turn(ctx: "PipelineContext") -> bool:
     return _any_execution(
         ctx, lambda t: getattr(t, "side_effect", False) is True
         or getattr(t, "tool_mutating", None) is True, unreadable=True)
+
+
+def read_succeeded_this_turn(ctx: "PipelineContext") -> bool:
+    """Did this turn LOOK SOMETHING UP and get an answer — with nothing failing on the way?
+
+    The FOURTH question in this family, and the first one about reading. Its consumer is the
+    voice: a turn whose lookup WORKED must not tell the contact that the lookup failed. That
+    is the mirror of `write_attempted_this_turn`'s defect — there, a failure was invented over
+    an action never tried; here, over a read that came back.
+
+    **Two conditions, and the second one is what keeps this from becoming a muzzle.**
+
+      1. at least one executed call is a SUCCESSFUL READ — ``ok is True`` and neither writing
+         fact set (``side_effect``/``tool_mutating``), so a write is never counted as evidence
+         that a lookup worked;
+      2. NO executed record of the turn FAILED. One failed call is enough to make "I could not
+         get that" a TRUE sentence about *that* call, and a rule that fires next to a true
+         sentence is a rule that will delete it.
+
+    Measured 2026-09-18 over 218 production turns carrying a judge block (the ``xmin`` rewrite
+    filter applied, the rehearsal tenant excluded). The shape this predicate gates — a turn
+    that read successfully, was rejected, and delivered a failure sentence — is **13** turns;
+    4 are the canonical exhaustion handoff and 9 are other sentences. Classified one by one
+    against their traces, those 9 are **5 honest capability limits** (ids 360, 362, 366, 467,
+    661 — e.g. "I have no access to financial information" from a persona whose twenty tools
+    include no financial one), **3 honest empty reads** (ids 859, 1039, 1754 — a directory
+    lookup that returned three names and not the one asked for; a summary returning
+    ``Income R$0,00 (0 entries)``), **1 undecidable** (id 855: the persisted result is
+    truncated at 246 chars, so whether the named resource was in it cannot be read off the
+    trace — it is left unclassified rather than forced) and **ZERO falsehoods**.
+
+    So eight of those nine are replies a broad prohibition would have DELETED, every one of
+    them true. That is why this predicate only ever opens the DOOR: what it gates is a clause
+    scoped to *a resource the executor data actually contains*, and the two classes above are
+    carved out of that clause in so many words. The predicate is the cheap, deterministic half;
+    the containment question ("is the thing they were told about IN the data") is the model's,
+    because it is the only reader that can ask it.
+
+    **The unreadable direction is FALSE, and that is the same principle as
+    `write_attempted_this_turn`'s ``True``, not its opposite.** Both say: a carrier this rule
+    cannot read leaves the prompt exactly as it was. There, the rule is suppressed by answering
+    True; here, by answering False. The constant differs because the polarity does; the rule
+    does not.
+
+    It is carried TWICE, and that is recorded rather than tidied away: question 1 short-circuits
+    an unreadable carrier to ``False`` before question 2 is ever asked, so question 2's
+    ``unreadable=False`` is unreachable from this function today. It is written anyway because
+    it is the right answer to ITS OWN question — *"is there a successful read here"* over a
+    carrier nobody can read is No — and because the alternative is a call whose parameter is
+    correct only by virtue of the line above it. The cost is honest and stated in
+    ``test_an_unreadable_carrier_leaves_the_behaviour_exactly_as_it_was``: no SINGLE mutation of
+    this function turns that test red, because either question alone still answers False.
+    """
+    if _any_execution(ctx, lambda t: getattr(t, "ok", None) is not True, unreadable=True):
+        return False
+    return _any_execution(
+        ctx, lambda t: getattr(t, "ok", None) is True
+        and getattr(t, "side_effect", False) is not True
+        and getattr(t, "tool_mutating", None) is not True, unreadable=False)
 
 
 def _committed_over(ctx: "PipelineContext", keep: "Callable[[str], bool]") -> bool:

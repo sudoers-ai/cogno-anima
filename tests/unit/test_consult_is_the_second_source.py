@@ -39,6 +39,7 @@ from cogno_anima.types import (
     StageMetrics,
     ToolExecution,
     committed_this_turn,
+    read_succeeded_this_turn,
     write_attempted_this_turn,
     wrote_for_the_contact,
 )
@@ -82,17 +83,28 @@ def _hub_only_read() -> PipelineContext:
     return ctx
 
 
-# ── the three predicates, not one ──────────────────────────────────────────────────────────
+# ── the four predicates, not one ───────────────────────────────────────────────────────────
+#
+# TWO tuples, because the file asks TWO different questions and only one of them is answered by
+# the same fixture for every member. `_FAMILY` is the membership set — who reads this turn's
+# executions at all — and it is what the derived phantom test below compares against. `_WRITES`
+# is the set for which *a write the specialist landed* is the discriminating evidence.
+#
+# `read_succeeded_this_turn` asks about READS, so the write fixture proves nothing about it: the
+# hub's own successful read already satisfies it, and the assertion would stay green with
+# ``_consult_source`` deleted — a control that dies with the feature it guards. Its own guard is
+# below, and it is built the way this file builds all of them: the evidence sits EXCLUSIVELY in
+# the consult.
+_WRITES = (committed_this_turn, wrote_for_the_contact, write_attempted_this_turn)
+_FAMILY = _WRITES + (read_succeeded_this_turn,)
 
-_FAMILY = (committed_this_turn, wrote_for_the_contact, write_attempted_this_turn)
 
-
-@pytest.mark.parametrize("predicate", _FAMILY, ids=lambda p: p.__name__)
+@pytest.mark.parametrize("predicate", _WRITES, ids=lambda p: p.__name__)
 def test_every_predicate_in_the_family_counts_the_CONSULTED_specialists_write(predicate):
     """THE mutation guard for "the second source stops being read".
 
-    Parametrized over the family on purpose: the walk is shared, so a fix that reached only
-    `committed_this_turn` would leave the voice (`write_attempted_this_turn`) and the ledger
+    Parametrized over the write predicates on purpose: the walk is shared, so a fix that reached
+    only `committed_this_turn` would leave the voice (`write_attempted_this_turn`) and the ledger
     (`wrote_for_the_contact`) reading a different turn from the cache. Drop
     ``_consult_source(ctx)`` from `_any_execution` and all three go red together, which is the
     proof that they are one definition and not three.
@@ -100,6 +112,29 @@ def test_every_predicate_in_the_family_counts_the_CONSULTED_specialists_write(pr
     ctx = _hub_only_read()
     ctx.consult_result = _trace(_wrote(), persona=SPECIALIST)
     assert predicate(ctx) is True
+
+
+def test_the_read_predicate_counts_the_CONSULTED_specialists_FAILURE():
+    """The same mutation guard, for the member whose evidence is a FAILED call.
+
+    `read_succeeded_this_turn` gates a voice clause that forbids reporting a lookup as failed,
+    so the reading it must never get wrong is *"one of this turn's calls DID fail"* — and half
+    of this turn belongs to the specialist. The hub's own record is clean, the specialist's
+    call came back ``ok=False``, and the honest reply is that that lookup did not work. Drop
+    ``_consult_source(ctx)`` from `_any_execution` and this flips to True: the clause would
+    render, and a true sentence would be forbidden over a failure nobody could see.
+
+    The PAIR is what measures — the second half proves the fixture can produce True at all, so
+    the first half is not passing because the predicate is stuck on False.
+    """
+    failed = _hub_only_read()
+    failed.consult_result = _trace(_call("consult_material", ok=False, result=""),
+                                   persona=SPECIALIST)
+    assert read_succeeded_this_turn(failed) is False
+
+    clean = _hub_only_read()
+    clean.consult_result = _trace(_read("consult_material"), persona=SPECIALIST)
+    assert read_succeeded_this_turn(clean) is True
 
 
 def test_the_routing_FILTER_still_applies_to_the_consulted_write():
@@ -432,7 +467,7 @@ def test_the_derivation_actually_finds_the_family():
     """Guard the guard: a `_reaches_the_walk` that returned an empty set would make the
     assertion below pass over an empty universe — the defect shape this pair exists against."""
     found = _reaches_the_walk()
-    assert len(found) >= 3, f"the derivation found {found!r} — it is measuring nothing"
+    assert len(found) >= 4, f"the derivation found {found!r} — it is measuring nothing"
     assert "committed_this_turn" in found, (
         "the AST closure no longer reaches the walk's most-quoted caller; the derivation is "
         "broken, not the family")
