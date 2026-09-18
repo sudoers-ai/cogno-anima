@@ -251,6 +251,26 @@ _TRAIT_DIRECTIVES: dict[str, str] = {
 }
 
 
+#: The sub-section header under which a HOST may render this turn's tool surface INSIDE the
+#: guard's ``# Scope Definition`` slot — declared here because the slot is rendered here.
+#:
+#: ``check_input_scope`` takes a ``scope_prompt`` string and no dispatcher: what a turn can
+#: actually DO is decided in layers that all run after the persona's slots are rendered (source
+#: builders, per-tenant allow lists, RBAC), so only the host can name the tools. The core
+#: therefore ships the MECHANISM — a name for the section and an inventory that counts it — and
+#: takes the declaration as a parameter, which is this repo's standing split.
+#:
+#: It is ``##`` and not ``#``: the whole ``scope_prompt`` is wrapped by ``_build_scope_prompt``
+#: under ``# Scope Definition``, so a top-level header here would read as a fourth section
+#: competing with ``# User Input``.
+#:
+#: **The reason it is a constant and not a literal in the host** is the inventory below. A host
+#: that spells its own header renders a section :meth:`SuperegoStage.scope_prompt_inventory`
+#: cannot see, and the inventory then under-reports in silence — which is the one failure mode
+#: the whole record exists to end. One definition, imported by whoever renders it.
+SCOPE_TOOL_TABLE_HEADER = "## Tools this persona can actually run on this turn"
+
+
 _SCOPE_SYSTEM = (
     "You are a scope classifier for a business AI assistant. Detect ONLY clearly "
     "off-topic requests (recipes, trivia, homework, politics). Default stance: "
@@ -800,6 +820,66 @@ class SuperegoStage:
             out.append({"block": slug, "chars": end - at})
         return out
 
+    # The SCOPE guard prompt's sections, third of the same closed-table family and closed for
+    # the same reason — HARDER here than for either of the other two. This prompt is the one
+    # whose every block is written by somebody else: the tenant's own ``scope.txt`` fills
+    # ``# Scope Definition`` and the CONTACT fills ``# User Input`` verbatim. An inventory that
+    # echoed what it matched would be a store of contact sentences under a name nobody thinks of
+    # as a message log. It cannot: the slugs come from this tuple, and a forged header can at
+    # worst add a visible row and shift a length.
+    #
+    # ``tool_table`` is NOT rendered by ``_build_scope_prompt`` — a host renders it into the
+    # ``scope_prompt`` it hands in, under :data:`SCOPE_TOOL_TABLE_HEADER`, which is why that
+    # header is a constant of this module and not a literal of that host. It is listed here
+    # because the question this whole record exists to answer is about that block.
+    _SCOPE_BLOCKS = (
+        ("# Scope Definition", "scope_definition"),
+        (SCOPE_TOOL_TABLE_HEADER, "tool_table"),
+        ("# User Input", "user_input"),
+        ("# Task", "task"),
+        ("# Examples", "examples"),
+    )
+
+    @classmethod
+    def scope_prompt_inventory(cls, prompt: str) -> "list[dict[str, object]]":
+        """Which sections the rendered SCOPE-GUARD prompt carried, and how long each was — NO text.
+
+        The third of the family, and the one whose absence was costing the most per question,
+        because the guard is the only stage that can end a turn on its own: it BLOCKS before the
+        EGO runs, so a blocked turn leaves ``ego.ran=false``, ``judge=null`` and an empty voice
+        inventory, and the canned ``refusal_message`` is the only byte of evidence there is.
+
+        Measured 2026-09-17: a GUEST asking «que materiais posso usar para estudar?» was refused
+        by this guard on a turn whose persona held ``consult_material`` — the tool whose entire
+        job is that question. Four readings fit every byte the trace held, and they have
+        DIFFERENT fixes:
+
+          1. the turn's path never appended the tool table;
+          2. the dispatcher probe answered empty;
+          3. the identity's RBAC scope emptied it;
+          4. all of it arrived and the classifier blocked anyway.
+
+        A ``tool_table`` row separates (4) — a prompt defect — from (1)(2)(3), which are wiring.
+        That is the same split the judge's inventory exists for ("missing" vs "ignored"), and
+        this house has already paid for reading one as the other.
+
+        **A block that rendered EMPTY is not a block that did not render**, and the record keeps
+        them apart because it keys on the HEADER, never on what follows it: a table naming no
+        tool is a short row, a table nobody appended is no row at all. The precedent is the
+        judge's consult section, where "there was no second executor" and "the second executor
+        came back with nothing" had to stop rendering the same way.
+
+        Order is as rendered, so two turns diff as lists; a header that appears twice is
+        reported twice rather than merged, which is how a tenant's ``scope.txt`` echoing one of
+        these lines shows up as the anomaly it is.
+        """
+        found = cls._block_positions(prompt, cls._SCOPE_BLOCKS)
+        out: "list[dict[str, object]]" = []
+        for n, (at, slug) in enumerate(found):
+            end = found[n + 1][0] if n + 1 < len(found) else len(prompt)
+            out.append({"block": slug, "chars": end - at})
+        return out
+
     @staticmethod
     def strip_cot(text: str) -> tuple[str, bool]:
         """Remove <think>/<thinking> CoT blocks. Returns (clean, was_stripped)."""
@@ -1174,13 +1254,32 @@ class SuperegoStage:
     async def check_input_scope(
         self, ctx: PipelineContext, backend: LLMBackend, *, scope_prompt: str,
     ) -> ScopeCheckResult:
+        """Cheap pre-EGO ALLOW/BLOCK relevance guard. Fail-OPEN on any error.
+
+        ``scope_prompt`` is the persona's scope slot, rendered by the host; a host may append
+        this turn's tool surface to it under :data:`SCOPE_TOOL_TABLE_HEADER`.
+
+        Writes ``ctx.metadata[mk.SCOPE_PROMPT_BLOCKS]`` on every path — the prompt inventory
+        also carried on the result, stamped where a trace writer can reach it because this
+        result is consumed by the orchestrator and dropped.
+        """
         t0 = time.perf_counter()
         model = getattr(backend, "model", "unknown")
 
         def _result(blocked: bool, msg: str, ti: int = 0, to: int = 0,
-                    cached: int = 0) -> ScopeCheckResult:
+                    cached: int = 0, prompt: str = "") -> ScopeCheckResult:
+            # What this call was actually ASKED. Built on every path that BUILT a prompt, the
+            # fail-OPEN one included — the early bypasses below pass none because none was
+            # built, and that is the distinction the empty list carries.
+            blocks = self.scope_prompt_inventory(prompt) if prompt else []
+            # ...and stamped where a trace writer can reach it. This result is consumed by the
+            # orchestrator and dropped, so the field alone would be a record with no reader —
+            # and this gate ends turns, which is when the rest of the trace is emptiest. Every
+            # path stamps, so while the guard runs the key is always THIS turn's; see
+            # ``metakeys.SCOPE_PROMPT_BLOCKS`` for why it must never be carried between turns.
+            ctx.metadata[mk.SCOPE_PROMPT_BLOCKS] = blocks
             return ScopeCheckResult(
-                blocked=blocked, refusal_message=msg,
+                blocked=blocked, refusal_message=msg, prompt_blocks=blocks,
                 metrics=StageMetrics(stage="superego_scope",
                                      elapsed_ms=(time.perf_counter() - t0) * 1000,
                                      tokens_in=ti, tokens_out=to, cached_tokens=cached,
@@ -1249,10 +1348,10 @@ class SuperegoStage:
             blocked = bool(data.get("blocked", False))
             msg = str(data.get("refusal_message", "")) if blocked else ""
             logger.info("SUPEREGO scope blocked=%s", blocked)
-            return _result(blocked, msg, ti, to, cached)
+            return _result(blocked, msg, ti, to, cached, prompt)
         except Exception as exc:  # noqa: BLE001 — fail-open: never refuse on error
             logger.warning("scope guard failed (%s) — allowing by default", exc)
-            return _result(False, "")
+            return _result(False, "", prompt=prompt)
 
     @staticmethod
     def _build_scope_prompt(scope_prompt: str, user_input: str, language: str = "") -> str:

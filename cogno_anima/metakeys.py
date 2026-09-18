@@ -269,6 +269,28 @@ LAST_GOAL = "last_goal"                        # previous turn's goal (NER carry
 ACTIVE_DOMAINS = "active_domains"              # active domains (NER carry-over)
 CONVERSATION_HISTORY = "conversation_history"  # raw transcript for NOUMENO/NER
 
+# The scope guard's own prompt inventory — written by ``SuperegoStage.check_input_scope``,
+# read by whoever writes the turn's trace.
+#
+# Every other stage's record reaches the host on a RESULT the orchestrator keeps. The scope
+# guard's does not: ``ScopeCheckResult`` is consumed inside the orchestrator (its metrics are
+# appended, its refusal becomes a `SuperegoResult`) and then dropped, so the typed field alone
+# would be a record nobody can read — and this is the one gate that ENDS turns, where the trace
+# is thinnest precisely when the question is loudest.
+#
+# **A PER-TURN fact, never carry-over.** It is stamped on every path the guard takes, the
+# bypasses included (as `[]`, meaning no prompt was built), so while the guard runs the key is
+# always this turn's. A carrier that persists metadata between turns must NOT carry it: the
+# guard is skipped outright on some turns, and a stale inventory there would describe a prompt
+# that was never rendered — the one lie the whole record exists to prevent. (cogno-soma's
+# ``SessionRunner`` carries a WHITELIST and this key is not on it, which is why no change was
+# needed there; a different carrier must make the same choice deliberately.)
+#
+# Safe to persist for the reason the voice/judge inventories are: closed slug alphabet, integer
+# lengths, not one byte of the tenant's rules or the contact's sentence. See
+# ``SuperegoStage.scope_prompt_inventory``.
+SCOPE_PROMPT_BLOCKS = "scope_prompt_blocks"
+
 # ── session stamps (soma stamps; host/telemetry read) ────────────────────────
 ACTIVE_PERSONA_ID = "active_persona_id"
 ACTIVE_MCP_MODULE = "active_mcp_module"
