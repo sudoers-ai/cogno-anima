@@ -45,6 +45,7 @@ from cogno_anima import metakeys as mk
 from cogno_anima import vocab
 from cogno_anima.types import (
     PipelineContext, StageMetrics, SuperegoResult, ScopeCheckResult,
+    read_succeeded_this_turn,
     write_attempted_this_turn,
 )
 from cogno_synapse import LLMBackend, cached_tokens_of
@@ -486,13 +487,66 @@ _NO_OTHER_SOURCES: "tuple[tuple[str, str], ...]" = (
      "is everything backed by the tool results (no invented data)"),
 )
 
+# ── A PRESERVED TERM IS A VALUE, AND "EXACTLY" IS ABOUT THE VALUE ─────────────────────────
+#
+# The NOUMENO preserves the terms a rewrite must not touch, and the judge has always been shown
+# them under a header reading "must be reproduced verbatim". Read against the DRAFT that is a
+# demand the draft cannot honour and was never meant to: the draft is written in ENGLISH BY
+# DESIGN — the NOUMENO rewrites every request into canonical English and the EGO executes and
+# drafts in that language — so a request naming a thing in Portuguese and a draft naming it in
+# English is the pipeline working, not a grounding defect.
+#
+# Measured in the rehearsal tenant on 2026-09-18 against the SERVED code, and NOT in production
+# (see `read_succeeded_this_turn`: the shape is 0/218 there). The contact asked for a course
+# syllabus by its Portuguese name, `consult_material` returned the document `ok=True`, the draft
+# answered correctly and in full — and the judge rejected it with ONE reason: that the preserved
+# term "should have been reproduced exactly" while the draft used its English name. The turn
+# ended at `attempts=1` (the correction budget is 1 on every plan), the draft was dropped, and
+# the contact was told the system could not access the syllabus. The right answer was already
+# written.
+#
+# WHY THE CLAUSE IS NARROWED AND NOT REMOVED. Dropping preserved terms from the judge entirely
+# would blind the only REJECTING check on a mangled figure, email or URL. The one other guard is
+# `_preserved_mutated` below, and it is deliberately weaker in three ways: it is FLAG-ONLY (an
+# adjustment on the trace, never a rejection), it fires only on a MUTATION OF A TERM ALREADY
+# PRESENT in the executor payload, and it reads the VOICED text — after the decision to ship.
+# Trading a gate for a flag is not a narrowing, it is a removal.
+#
+# So the criterion keeps its question and loses the half that was never true, and the scope it
+# keeps is the one this file ALREADY uses for exactly this purpose: `_CRITICAL_TERM_RE` — a
+# figure, an email, a URL. The other two judge branches already worded it that way ("a mangled
+# figure, email or URL") and are untouched byte for byte; the execution branch is the one whose
+# criterion still said the bald thing, and `_format_preserved` is the block that said it
+# unconditionally to all three.
+_PRESERVED_IS_A_VALUE = (
+    "These are VALUES, and 'exactly' is about the value — never about spelling, wording or "
+    "language. The draft is written in ENGLISH BY DESIGN (the request was rewritten into "
+    "canonical English before the executor ever saw it), so a thing the user named in another "
+    "language and the draft names in English is CORRECT. Reject a value that DIFFERS from one "
+    "listed above; never reject a translation."
+)
+
+# Criterion #4's preserved clause, spliced in as its own literal so it can be REMOVED on a turn
+# that carries no preserved values — the rule `_OUT_OF_REACH` and `_GROUNDING_SOURCE_SET_NONE`
+# already follow: a criterion that names evidence this prompt does not carry is an invitation to
+# guess, and the measured turn is exactly that turn (its preserved term is a phrase, so after
+# the filter below it has no block at all). Spliced BY REFERENCE, not copied, so the `replace`
+# cannot miss — `test_the_preserved_clause_substitution_matches` pins exactly that, and its
+# docstring records the mutation that proved the weaker claim wrong: rewording this constant
+# leaves the suite green, because the criterion reads it. What springs the trap `str.replace`
+# always carries — a match of nothing does not raise, it returns the string unchanged — is a
+# hand-written copy in `_EXECUTION_CRITERIA` that DRIFTS from this one.
+_PRESERVED_CLAUSE = (
+    "Is every preserved VALUE (the figures/emails/URLs listed above) reproduced exactly? "
+)
+
 _EXECUTION_CRITERIA = (
     "# Judge the EXECUTION against these criteria (most important first):\n"
     "1. GOAL↔EXECUTION: did it do exactly what was asked (X, not Y)?\n"
     "2. CONSTRAINTS: did it honor every user restriction (and NOT do what was forbidden)?\n"
     "3. COMPLETENESS: was the goal fully met (not partial)?\n"
-    "4. GROUNDING: is everything backed by the evidence in this prompt (no invented data), "
-    "and are the preserved terms (if any) reproduced exactly? " + _GROUNDING_SOURCES + "\n"
+    "4. GROUNDING: is everything backed by the evidence in this prompt (no invented data)? "
+    + _PRESERVED_CLAUSE + _GROUNDING_SOURCES + "\n"
     "5. SAFETY/LIMITS: within the persona's limits, no policy violation?\n\n"
 )
 
@@ -1772,6 +1826,15 @@ class SuperegoStage:
         if not limits and not context:
             for widened, original in _NO_OTHER_SOURCES:
                 criteria = criteria.replace(widened, original)
+        # …and so does the PRESERVED clause. `_format_preserved` renders only CRITICAL values
+        # (figure/email/URL) and renders nothing when the turn has none — which is the measured
+        # turn, whose preserved term was a course name. Leaving criterion #4 asking whether "the
+        # preserved values listed above" were reproduced, over a prompt that lists none, is the
+        # same defect `_GROUNDING_SOURCE_SET_NONE` was written for one screen up: a criterion
+        # pointed at a section that is not there. Only the execution branch carries the literal;
+        # the other two never did, so on them this replace is a no-op by construction.
+        if not preserved:
+            criteria = criteria.replace(_PRESERVED_CLAUSE, "")
         return (
             f'# User request\n"{ctx.user_input}"\n\n'
             f"{context}"
@@ -1998,11 +2061,27 @@ class SuperegoStage:
 
     @staticmethod
     def _format_preserved(ctx: PipelineContext) -> str:
-        """Render NOUMENO preserved terms as grounding evidence for the judge."""
-        terms = [t for t in (ctx.noumeno.preserved_terms if ctx.noumeno else []) if (t or "").strip()]
+        """Render the preserved VALUES as grounding evidence for the judge.
+
+        CRITICAL terms only — a figure, an email, a URL — filtered by :data:`_CRITICAL_TERM_RE`,
+        the SAME definition :meth:`_preserved_mutated` applies to the output. One definition,
+        two readers: the block the judge rejects against and the backstop that flags the voiced
+        reply can no longer disagree about what is worth guarding, and until 2026-09-18 they
+        did — the backstop ignored a name or a phrase (correctly: "Acme" written "Acmee" is a
+        typo, not a corrupted answer) while this block told the judge that same name "must be
+        reproduced verbatim".
+
+        A non-critical term loses NOTHING by leaving: the user's own words are already in this
+        prompt, verbatim, under ``# User request``. What the block adds over the request is the
+        MARKING of which values must survive intact, and that marking is only meaningful for
+        values that can be corrupted. See :data:`_PRESERVED_IS_A_VALUE`.
+        """
+        terms = [t for t in (ctx.noumeno.preserved_terms if ctx.noumeno else [])
+                 if (t or "").strip() and _CRITICAL_TERM_RE.search(t)]
         if not terms:
             return ""
-        return "# Preserved terms (must be reproduced verbatim)\n" + ", ".join(terms) + "\n"
+        return ("# Preserved terms — VALUES (figures, emails, URLs)\n"
+                + ", ".join(terms) + "\n" + _PRESERVED_IS_A_VALUE + "\n")
 
     @staticmethod
     def _preserved_mutated(preserved: list[str], payload: str, response: str) -> bool:
@@ -2621,6 +2700,45 @@ class SuperegoStage:
                     "is not something you can do here; neither of those claims an attempt.\n"
                 )
                 #
+                # ── AND THE LOOKUP THAT WORKED MAY NOT BE REPORTED AS A FAILURE ────────
+                # `nothing_tried` forbids inventing a failed ACTION. This forbids inventing a
+                # failed ACCESS, and it is the same defect one step earlier in the sentence:
+                # the contact is told the system could not GET something it did get, acts on
+                # it, and has no way to check.
+                #
+                # Measured in the rehearsal tenant on 2026-09-18 against the SERVED code — the
+                # p0 this clause exists for. The contact asked for a course syllabus,
+                # `consult_material` returned the document `ok=True`, the draft answered from
+                # it correctly, the judge rejected that draft over the spelling of a preserved
+                # term (the defect `_PRESERVED_IS_A_VALUE` closes), and the voice — holding a
+                # critique about WORDING — wrote "I could not access the syllabus". The system
+                # reached it, read it and had the answer written.
+                #
+                # THE SCOPE IS THE READ RESOURCE, AND THAT IS COUNTED, NOT PREFERRED. In
+                # production this exact shape is 0/218 turns; the broad family (a successful
+                # read + a rejection + a failure sentence) is 13, of which 9 are not the
+                # handoff line — and all 9 were classified against their traces as 5 honest
+                # capability limits, 3 honest empty reads, 1 undecidable and ZERO falsehoods.
+                # A clause forbidding "I could not get X" on any turn that read successfully
+                # would have DELETED eight true replies to buy a defect production has never
+                # produced. So the prohibition is tied to a resource the executor data actually
+                # CONTAINS, and the two classes that were measured are carved out of it by
+                # name. `read_succeeded_this_turn` opens the door; the containment question is
+                # the model's, because it is the only reader that can ask it.
+                read_worked = "" if not read_succeeded_this_turn(ctx) else (
+                    "THE LOOKUPS WORKED: every tool that ran this turn SUCCEEDED, and what "
+                    "they returned is in the executor data above. You MUST NOT tell the "
+                    "contact that you could not access, find, obtain, consult or retrieve "
+                    "something that IS in that data — it was retrieved, and saying otherwise "
+                    "is a false statement about the world, which they will act on. Say what "
+                    "was read (correcting whatever the critique says was wrong with how it "
+                    "was put), or ask the ONE question that is missing. Two things this does "
+                    "NOT touch, and both stay sayable in full: reporting truthfully that a "
+                    "read came back EMPTY or did not contain what they asked for, and saying "
+                    "plainly that something is not a capability you have here. Neither of "
+                    "those claims a lookup failed.\n"
+                )
+                #
                 # ── AND THE CRITIQUE IS NOT ADDRESSED TO THE CONTACT ───────────────────
                 # The critique lands here VERBATIM under a header that says HARD RULE, and
                 # nothing around it says WHO it is written for. It is a note to the EXECUTOR
@@ -2684,6 +2802,7 @@ class SuperegoStage:
                     "completed this turn. Either state truthfully what was found in the "
                     "executor data, or ask the user ONE clarifying question to move forward.\n"
                     f"{nothing_tried}"
+                    f"{read_worked}"
                     "\n"
                 )
         # The reply language is a HARD instruction (leading the Task), not a soft signal —

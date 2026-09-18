@@ -52,6 +52,15 @@ def _ego(*calls: ToolExecution) -> EgoResult:
         metrics=_m("ego"))
 
 
+def _without_the_neighbour(prompt: str) -> str:
+    """The prompt minus the OTHER conditional clause on this variant (``THE LOOKUPS WORKED``,
+    `read_succeeded_this_turn`, 2026-09-18). This file guards `nothing_tried`; a control that
+    goes red when a neighbour is edited has started watching something else."""
+    line = next((ln for ln in prompt.split("\n")
+                 if ln.startswith("THE LOOKUPS WORKED")), None)
+    return prompt if line is None else prompt.replace(line + "\n", "")
+
+
 def _read_only_turn():
     """The measured turn: one READ ran, no writing tool was ever called."""
     ctx = _ctx(with_ego=False)
@@ -176,12 +185,28 @@ def test_the_clause_is_purely_additive_on_a_turn_that_did_attempt():
     included. No new section: `_VOICE_BLOCKS` (and the inventory the host persists) is
     untouched, which is why this is a CONDITION on the execution verdict and not a fourth
     ``kind`` the orchestrator would have to learn.
+
+    A SECOND conditional clause arrived on the same variant on 2026-09-18 — ``THE LOOKUPS
+    WORKED`` (``read_succeeded_this_turn``) — and this fixture's turn satisfies both: its only
+    call is a `resolve_date` that neither wrote nor failed, so it attempted nothing AND read
+    successfully. It is therefore stripped too, but OPTIONALLY: this test guards
+    ``nothing_tried``, and a control that goes red when the OTHER clause is deleted is a control
+    that has started watching something else. (Measured: the strict version did exactly that —
+    mutation "delete the read clause" turned this test red, which would have reported a
+    regression in `nothing_tried` that had not happened.)
     """
     attempted = _rendered(_ctx())            # the default fixture commits `record_expense`
     tried = _rendered(_read_only_turn())
-    clause = next(line for line in tried.split("\n")
-                 if line.startswith("NOTHING WAS EVEN TRIED"))
-    assert tried.replace(clause + "\n", "") == attempted
+    # the clause under test: strictly required
+    stripped = tried.replace(next(
+        line for line in tried.split("\n")
+        if line.startswith("NOTHING WAS EVEN TRIED")) + "\n", "")
+    # the neighbour: removed from BOTH sides if it is there, demanded on neither. Symmetric
+    # because the comparison is between two turns and the neighbour's own condition
+    # (`read_succeeded_this_turn`) differs between them — subtracting it from one side only
+    # would make this test report on the neighbour's gating instead of on `nothing_tried`.
+    stripped, attempted = (_without_the_neighbour(p) for p in (stripped, attempted))
+    assert stripped == attempted
     assert "# Execution verdict (HARD RULE)" in tried
     assert sum(h.startswith("# ") for h in tried.split("\n")) == \
            sum(h.startswith("# ") for h in attempted.split("\n"))
