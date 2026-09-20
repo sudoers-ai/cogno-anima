@@ -4,7 +4,7 @@ import math
 import string
 from typing import Optional, Any, Callable, Iterable
 
-from cogno_synapse import cached_tokens_of
+from cogno_synapse import cached_tokens_of, served_model_of, system_fingerprint_of
 
 _logger = logging.getLogger("cogno_anima.utils")
 
@@ -287,11 +287,11 @@ async def generate_json_resilient(
     *,
     stage: str,
     attempts: int = 2,
-) -> "tuple[dict, int, int, int]":
+) -> "tuple[dict, int, int, int, Optional[str], Optional[str]]":
     """``llm.generate`` + parse, retrying ONLY a response that arrived truncated.
 
-    Returns ``(data, tokens_in, tokens_out, cached_tokens)`` with every count **summed across
-    every attempt**. A retry that bills silently would understate the turn in metering, and the
+    Returns ``(data, tokens_in, tokens_out, cached_tokens, system_fingerprint, served_model)``
+    with every COUNT **summed across every attempt**. A retry that bills silently would understate the turn in metering, and the
     stages fold these numbers straight into ``StageMetrics``.
 
     ``cached_tokens`` is the part of ``tokens_in`` the provider served from its own prompt
@@ -299,6 +299,12 @@ async def generate_json_resilient(
     the end, for the same reason the other two are: a truncation retry re-sends the same prefix,
     so it is precisely the attempt most likely to be cached, and the number would otherwise
     describe one call while the tokens describe two.
+
+    The last two are NOT counts and are NOT summed: they name WHO answered (see
+    ``StageMetrics.system_fingerprint``), and the rule for a helper that may call twice is
+    **last attempt wins**, the honest case included — a retry that reports nothing yields
+    ``None``, not the first attempt's value. They are read immediately after the ``await``,
+    with no suspension point in between, exactly like ``cached_tokens`` above.
 
     The retry is deliberately narrow. ``looks_truncated`` separates a severed stream (worth
     one more call — the next one usually completes) from a model that answered prose or the
@@ -315,15 +321,22 @@ async def generate_json_resilient(
     un-rewritten text and lose the rewrite without anyone knowing.
     """
     total_in = total_out = total_cached = 0
+    fingerprint: Optional[str] = None
+    served: Optional[str] = None
     for index in range(max(1, attempts)):
         raw, tokens_in, tokens_out = await llm.generate(system, prompt)
         # Read with NO await in between — that is the contract of ``cached_tokens_of``, and it
         # is what makes a per-instance value safe on a backend shared between concurrent turns.
         total_cached += cached_tokens_of(llm)
+        # Assigned, never accumulated: this attempt's answer REPLACES the previous one, so a
+        # second attempt that reports nothing leaves ``None`` behind rather than the first
+        # attempt's fingerprint.
+        fingerprint = system_fingerprint_of(llm)
+        served = served_model_of(llm)
         total_in += tokens_in
         total_out += tokens_out
         try:
-            return parse(raw), total_in, total_out, total_cached
+            return parse(raw), total_in, total_out, total_cached, fingerprint, served
         except Exception:  # noqa: BLE001 — re-raised unless this is a retryable truncation
             if index + 1 >= max(1, attempts) or not looks_truncated(raw):
                 raise

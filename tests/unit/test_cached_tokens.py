@@ -248,7 +248,7 @@ async def test_the_truncation_retry_sums_the_cache_it_spent_on_both_attempts():
     from cogno_anima.utils import generate_json_resilient
 
     backend = CachingBackend(['{"a": 1', '{"a": 1}'], cached=[400, 2000])
-    data, tin, tout, cached = await generate_json_resilient(
+    data, tin, tout, cached, _fp, _served = await generate_json_resilient(
         backend, "sys", "prompt", json.loads, stage="noumeno")
     assert data == {"a": 1} and backend.calls == 2
     assert (tin, tout) == (200, 20)

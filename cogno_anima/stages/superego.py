@@ -48,7 +48,9 @@ from cogno_anima.types import (
     read_succeeded_this_turn,
     write_attempted_this_turn,
 )
-from cogno_synapse import LLMBackend, cached_tokens_of
+from cogno_synapse import (LLMBackend, cached_tokens_of, served_model_of,
+                           system_fingerprint_of)
+from cogno_anima.prompts import prompt_digest
 from cogno_anima.utils import WarnOnce
 from cogno_anima.security.prompt_guard import sanitize_untrusted
 from cogno_anima.stages.drift import DriftCalculator
@@ -1412,22 +1414,44 @@ class SuperegoStage:
         model = getattr(backend, "model", "unknown")
 
         def _result(blocked: bool, msg: str, ti: int = 0, to: int = 0,
-                    cached: int = 0, prompt: str = "") -> ScopeCheckResult:
+                    cached: int = 0, prompt: str = "",
+                    fingerprint: Optional[str] = None,
+                    served: Optional[str] = None) -> ScopeCheckResult:
             # What this call was actually ASKED. Built on every path that BUILT a prompt, the
             # fail-OPEN one included — the early bypasses below pass none because none was
             # built, and that is the distinction the empty list carries.
             blocks = self.scope_prompt_inventory(prompt) if prompt else []
+            # ...and the digest of the WHOLE thing, for the same reason and with the same rule:
+            # `None` means NO PROMPT WAS BUILT. ``_SCOPE_SYSTEM`` first, then the user part,
+            # joined by ``prompt_digest``'s own newline — i.e. exactly the two arguments handed
+            # to ``backend.generate`` below, in that order. See ``ScopeCheckResult.prompt_sha``.
+            sha = prompt_digest(_SCOPE_SYSTEM, prompt) if prompt else None
             # ...and stamped where a trace writer can reach it. This result is consumed by the
             # orchestrator and dropped, so the field alone would be a record with no reader —
             # and this gate ends turns, which is when the rest of the trace is emptiest. Every
             # path stamps, so while the guard runs the key is always THIS turn's; see
             # ``metakeys.SCOPE_PROMPT_BLOCKS`` for why it must never be carried between turns.
             ctx.metadata[mk.SCOPE_PROMPT_BLOCKS] = blocks
+            # The digest says the same thing by being ABSENT (the blocks key says it with an
+            # empty list), so on a bypass it is POPPED rather than left alone: a carrier that
+            # holds metadata between turns would otherwise make a turn that built no prompt
+            # wear an earlier turn's digest, which is the one lie this record exists to
+            # prevent. Absence is the value here, so it is produced, not assumed.
+            if sha:
+                ctx.metadata[mk.SCOPE_PROMPT_SHA] = sha
+            else:
+                ctx.metadata.pop(mk.SCOPE_PROMPT_SHA, None)
             return ScopeCheckResult(
-                blocked=blocked, refusal_message=msg, prompt_blocks=blocks,
+                blocked=blocked, refusal_message=msg, prompt_blocks=blocks, prompt_sha=sha,
                 metrics=StageMetrics(stage="superego_scope",
                                      elapsed_ms=(time.perf_counter() - t0) * 1000,
                                      tokens_in=ti, tokens_out=to, cached_tokens=cached,
+                                     # WHO answered. Passed in only by the path that AWAITED:
+                                     # the backend is shared between stages and turns, so
+                                     # reading it on a bypass would stamp this row with
+                                     # somebody else's call — the same rule as `cached`, and a
+                                     # worse lie, since these values exist to be compared.
+                                     system_fingerprint=fingerprint, served_model=served,
                                      model=model),
             )
 
@@ -1488,14 +1512,20 @@ class SuperegoStage:
             # early-exit paths above pass no count on purpose: no call ran on them, and the
             # backend is shared, so reading it there would bill this turn for another's cache.
             cached = cached_tokens_of(backend)
+            fingerprint = system_fingerprint_of(backend)
+            served = served_model_of(backend)
             raw, _ = self.strip_cot(raw)
             data = self._parse_json(raw)
             blocked = bool(data.get("blocked", False))
             msg = str(data.get("refusal_message", "")) if blocked else ""
             logger.info("SUPEREGO scope blocked=%s", blocked)
-            return _result(blocked, msg, ti, to, cached, prompt)
+            return _result(blocked, msg, ti, to, cached, prompt, fingerprint, served)
         except Exception as exc:  # noqa: BLE001 — fail-open: never refuse on error
             logger.warning("scope guard failed (%s) — allowing by default", exc)
+            # The PROMPT is recorded (it was built: blocks and digest both) and the per-call
+            # numbers are not — no fingerprint, no tokens — because this path cannot say which
+            # of them, if any, describe a completed call. Same trade the token counts have
+            # always made here.
             return _result(False, "", prompt=prompt)
 
     @staticmethod
@@ -1586,7 +1616,9 @@ class SuperegoStage:
         model = getattr(backend, "model", "unknown")
 
         def _result(approved: bool, critique: Optional[str], ti: int = 0, to: int = 0,
-                    cached: int = 0, prompt: str = "", branch: str = "") -> SuperegoResult:
+                    cached: int = 0, prompt: str = "", branch: str = "",
+                    fingerprint: Optional[str] = None,
+                    served: Optional[str] = None) -> SuperegoResult:
             return SuperegoResult(
                 approved=approved, critique=critique,
                 # What this attempt was actually ASKED — the sections of the prompt it got and
@@ -1600,6 +1632,10 @@ class SuperegoStage:
                 metrics=StageMetrics(stage="superego_judge",
                                      elapsed_ms=(time.perf_counter() - t0) * 1000,
                                      tokens_in=ti, tokens_out=to, cached_tokens=cached,
+                                     # WHO answered — passed in only by the path that awaited;
+                                     # the no-call and fail-CLOSED paths leave it `None`
+                                     # rather than inherit the shared backend's last call.
+                                     system_fingerprint=fingerprint, served_model=served,
                                      model=model),
             )
 
@@ -1612,6 +1648,8 @@ class SuperegoStage:
         try:
             raw, ti, to = await backend.generate(_JUDGE_SYSTEM, prompt)
             cached = cached_tokens_of(backend)
+            fingerprint = system_fingerprint_of(backend)
+            served = served_model_of(backend)
             raw, _ = self.strip_cot(raw)
             data = self._parse_json(raw)
             approved = bool(data.get("approved", False))
@@ -1627,7 +1665,8 @@ class SuperegoStage:
                 # A rejection feeds the EGO↔SUPEREGO correction loop — surface it.
                 logger.warning("stage=superego event=judge approved=false branch=%s critique=%s",
                                branch, (critique or "")[:80])
-            return _result(approved, critique, ti, to, cached, prompt, branch)
+            return _result(approved, critique, ti, to, cached, prompt, branch,
+                           fingerprint, served)
         except Exception as exc:  # noqa: BLE001 — fail-CLOSED: don't pass unverified
             logger.warning("judge failed (%s) — not approving (fail-closed)", exc)
             return _result(False, "could not verify the execution; please retry",
@@ -2452,7 +2491,9 @@ class SuperegoStage:
         adjustments += [f"trait:{t}" for t in traits]
         system = voice_prompt or "You are a helpful assistant."
 
-        async def _write(text_prompt: str) -> "tuple[str, bool, int, int, int]":
+        async def _write(
+            text_prompt: str,
+        ) -> "tuple[str, bool, int, int, int, Optional[str], Optional[str]]":
             """One voicer call, through the deterministic envelope backstop.
 
             Factored because there can now be TWO of them and the second must pass through
@@ -2468,9 +2509,12 @@ class SuperegoStage:
                 adjustments.append("voice:json_unwrapped")
                 logger.warning("stage=superego event=voice_json_unwrapped")
                 written = opened
-            return written, stripped, in_, out_, cached_tokens_of(backend)
+            # Read with NO await in between — the contract these three share. The last two
+            # name WHO answered and are not counts: a re-voice REPLACES them (see below).
+            return (written, stripped, in_, out_, cached_tokens_of(backend),
+                    system_fingerprint_of(backend), served_model_of(backend))
 
-        response, cot_stripped, ti, to, cached = await _write(prompt)
+        response, cot_stripped, ti, to, cached, fingerprint, served_model = await _write(prompt)
 
         # ── Deterministic divergence backstop: the reply against the APPROVED draft ──
         # The net under the promise `_draft_section` now makes. The approved answer is the
@@ -2498,10 +2542,15 @@ class SuperegoStage:
                 logger.warning("stage=superego event=voice_diverged_from_approved_draft "
                                "lost=%d invented=%d", len(lost), len(invented))
                 retry_prompt = f"{prompt}\n\n{self._divergence_correction(lost, invented)}"
-                second, second_cot, ti2, to2, cached2 = await _write(retry_prompt)
+                second, second_cot, ti2, to2, cached2, fp2, sm2 = await _write(retry_prompt)
                 ti += ti2
                 to += to2
                 cached += cached2
+                # The counts are the turn's, so they accumulate; WHO answered is the LAST
+                # call's, so it is replaced — `None` included — whichever of the two replies
+                # the divergence check then keeps. The row names the backend of the last call,
+                # not of the surviving text.
+                fingerprint, served_model = fp2, sm2
                 again = self._draft_divergence(approved, payload, second, ctx.user_input)
                 if second and len(again[0]) + len(again[1]) <= len(lost) + len(invented):
                     adjustments.append("voice:revoiced_from_approved_draft")
@@ -2569,6 +2618,7 @@ class SuperegoStage:
             metrics=StageMetrics(stage="superego_voice",
                                  elapsed_ms=(time.perf_counter() - t0) * 1000,
                                  tokens_in=ti, tokens_out=to, cached_tokens=cached,
+                                 system_fingerprint=fingerprint, served_model=served_model,
                                  model=model),
         )
 
