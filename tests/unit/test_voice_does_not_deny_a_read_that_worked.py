@@ -36,6 +36,12 @@ two measured classes are carved out of it by name. `read_succeeded_this_turn` op
 and refuses on any turn where something failed; the containment question — *is the thing they
 were told about IN the data* — is the model's, because it is the only reader that can ask it.
 
+**One narrowing since (2026-09-19):** the clause also requires that the prompt RENDER one of
+those successful reads (`SuperegoStage._payload_shows_a_read`). The predicate walks the whole
+turn; `_tool_payload` renders only the surviving attempt, so a read from a discarded attempt or
+from a consulted specialist made the sentence "it is in the executor data above" false. See
+`test_a_read_THIS_PROMPT_does_not_carry_leaves_the_clause_off` below.
+
 Deterministic: every assertion below is on the RENDERED voice prompt.
 """
 
@@ -193,6 +199,28 @@ def test_a_successful_WRITE_is_not_evidence_that_a_LOOKUP_worked():
                                         ok=True, side_effect=True, tool_mutating=True))
     assert read_succeeded_this_turn(ctx) is False
     assert FORBIDS not in _rendered(ctx)
+
+
+def test_a_read_THIS_PROMPT_does_not_carry_leaves_the_clause_off():
+    """The clause says the result "is in the executor data above", and that is a claim about
+    the PROMPT. `read_succeeded_this_turn` answers a TURN question over three sources;
+    `_tool_payload` renders ONE of them (`ego_result.tools_executed`, the surviving attempt).
+    A read that succeeded on a DISCARDED attempt, or that the CONSULTED specialist ran,
+    answers the turn question True while its result is nowhere in the prompt — so the clause
+    would assert a false premise and then forbid the honest "I did not find that".
+
+    Gated since 2026-09-19 on `SuperegoStage._payload_shows_a_read` as well; the full matrix
+    (both verdict variants x four shapes, plus the invariant itself) is in
+    `test_voice_review_verdict_after_a_read.py`.
+    """
+    discarded = _turn()
+    discarded.turn_executions = [_read("consult_material", "…")]
+    consulted = _turn()
+    consulted.consult_result = _ego(_read("consult_material", "…"))
+    for ctx in (discarded, consulted):
+        assert read_succeeded_this_turn(ctx) is True
+        assert SuperegoStage._payload_shows_a_read(ctx) is False
+        assert FORBIDS not in _rendered(ctx)
 
 
 def test_a_turn_that_ran_nothing_leaves_the_clause_off():

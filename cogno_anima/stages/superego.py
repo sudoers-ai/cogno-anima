@@ -44,7 +44,7 @@ from typing import Any, Optional, Sequence
 from cogno_anima import metakeys as mk
 from cogno_anima import vocab
 from cogno_anima.types import (
-    PipelineContext, StageMetrics, SuperegoResult, ScopeCheckResult,
+    PipelineContext, StageMetrics, SuperegoResult, ScopeCheckResult, ToolExecution,
     read_succeeded_this_turn,
     write_attempted_this_turn,
 )
@@ -2697,6 +2697,28 @@ class SuperegoStage:
         rejection_section = ""
         if rejection is not None:
             reason = str(rejection["reason"]).strip()
+            # ── THE LOOKUPS WORKED *AND THE PROMPT SHOWS IT* ──────────────────────────
+            # ONE fact for both verdict variants, and it is a conjunction because the two
+            # clauses make two claims: that the turn's lookups succeeded (a fact about the
+            # TURN — `read_succeeded_this_turn`, which also carries the boundary: anything
+            # failed anywhere and the clause stays off) and that what they returned is in the
+            # executor data above (a fact about THIS PROMPT — `_payload_shows_a_read`, over
+            # the very list `_tool_payload` renders).
+            #
+            # Gated on the turn-level predicate alone the second claim can be FALSE, and both
+            # shapes were measured deterministically over the rendered prompt: a successful
+            # read that belongs to a DISCARDED attempt (`ctx.turn_executions`), and one the
+            # CONSULTED specialist ran (`ctx.consult_result`) — each answers the turn question
+            # True while its result is nowhere in the prompt. The voice was then told the data
+            # was "above" and forbidden the honest "I did not find that": a false premise plus
+            # a muzzle, which is the pair these clauses exist to prevent.
+            #
+            # The payload is deliberately NOT widened to carry those records. Rendering a
+            # discarded attempt's data, or another persona's, raises provenance questions of
+            # its own (see `_format_consulted` on the judge side, and
+            # `docs/NETWORK_PERSONA_CHANNEL.md` §1.4) and is a larger change than a clause.
+            # Narrowing the clause costs nothing that was ever true.
+            read_is_visible = read_succeeded_this_turn(ctx) and self._payload_shows_a_read(ctx)
             # Two kinds of final rejection, and the wording above only ever covered the first.
             # When NOTHING executed (a conversational persona), the verdict is about what the
             # draft CLAIMS, not about an action it never took — so "do not say you did it" is
@@ -2749,10 +2771,11 @@ class SuperegoStage:
                 # gives one screen below — asking the host to re-derive a fact the core can
                 # read off the trace is the re-derivation this repo keeps paying for, and
                 # here the host's `kind` has just been measured WRONG about this very fact.
-                # `read_succeeded_this_turn` answers it from the executed records, and its
-                # boundary is the point: ANY failed record makes it False, because then "I
-                # could not get that" may be TRUE of that call and this section stays exactly
-                # as it was. No new header either, so `_VOICE_BLOCKS` and the persisted
+                # `read_is_visible` answers it from the executed records (see its definition
+                # above), and its boundary is the point: ANY failed record makes it False,
+                # because then "I could not get that" may be TRUE of that call, and a read
+                # this PROMPT does not carry makes it False too. Either way this section
+                # stays exactly as it was. No new header either, so `_VOICE_BLOCKS` and the persisted
                 # inventory are untouched — the slug is still `review_verdict`.
                 #
                 # WHAT IT DOES NOT DO: it does not re-offer the rejected claim in any form,
@@ -2760,7 +2783,7 @@ class SuperegoStage:
                 # cannot know whether the flagged claim was right, and the net that judged it
                 # is the host's. The instruction is "say what was READ", which answers the
                 # contact truthfully without ever re-stating the contested sentence.
-                if read_succeeded_this_turn(ctx):
+                if read_is_visible:
                     rejection_section = (
                         "# Review verdict (HARD RULE)\n"
                         "The draft below was REJECTED by review as UNVERIFIED — not because "
@@ -2859,15 +2882,16 @@ class SuperegoStage:
                 # would have DELETED eight true replies to buy a defect production has never
                 # produced. So the prohibition is tied to a resource the executor data actually
                 # CONTAINS, and the two classes that were measured are carved out of it by
-                # name. `read_succeeded_this_turn` opens the door; the containment question is
-                # the model's, because it is the only reader that can ask it.
+                # name. `read_is_visible` opens the door — the turn's lookups succeeded AND
+                # this prompt renders one of them; the containment question is the model's,
+                # because it is the only reader that can ask it.
                 #
                 # The premise and the prohibition are `_EVERY_TOOL_SUCCEEDED` /
                 # `_NEVER_DENY_WHAT_WAS_READ` — spliced, not copied, because the review-verdict
                 # variant needs the same two sentences (2026-09-19) and a hand-written second
                 # copy is the divergence `_ADMITTING_A_LIMIT` exists to prevent. The REMEDY
                 # below stays here: it is this branch's, and the other branch's is different.
-                read_worked = "" if not read_succeeded_this_turn(ctx) else (
+                read_worked = "" if not read_is_visible else (
                     f"THE LOOKUPS WORKED: {_EVERY_TOOL_SUCCEEDED} "
                     f"{_NEVER_DENY_WHAT_WAS_READ} Say what "
                     "was read (correcting whatever the critique says was wrong with how it "
@@ -3085,14 +3109,65 @@ class SuperegoStage:
                 "says and drop the part that contradicts it.\n\n")
 
     @staticmethod
+    def _payload_records(ctx: PipelineContext) -> "list[ToolExecution]":
+        """The executions the `# Data gathered by the executor` block RENDERS — one definition.
+
+        The SURVIVING attempt's calls, and only those. It is deliberately NARROWER than the
+        turn: `types._any_execution` also walks `ctx.turn_executions` (every attempt of the
+        turn, discarded ones included) and `ctx.consult_result` (what a consulted specialist
+        executed), and neither of those reaches this prompt.
+
+        It exists because a voice clause that says "its result is in the executor data above"
+        is a claim about THIS PROMPT, not about the turn, and the two were conflated — see
+        :meth:`_payload_shows_a_read`. Both the renderer and that predicate read this list, so
+        a future change of source moves them together; `test_the_gate_and_the_payload_share_a
+        _source` fails if they ever stop agreeing.
+        """
+        return list(ctx.ego_result.tools_executed) if ctx.ego_result else []
+
+    @classmethod
+    def _payload_shows_a_read(cls, ctx: PipelineContext) -> bool:
+        """Does the executor data THIS PROMPT renders carry a successful, non-writing read?
+
+        The voice-side half of the gate on both "the lookups worked" clauses. `# Execution
+        verdict` and `# Review verdict` each tell the voice that what the tools returned **is
+        in the executor data above** and then forbid it from reporting a failure to find it.
+        Gated on `read_succeeded_this_turn` ALONE that premise can be false: measured
+        deterministically over the rendered prompt, a turn whose only successful read was on a
+        DISCARDED attempt, and a turn whose only successful read was the CONSULTED specialist's,
+        both answered the turn-level predicate True while the read's result was nowhere in the
+        prompt — a false premise plus a muzzle, which is the exact pair both clauses exist to
+        prevent.
+
+        So the clause now also asks this, over `_payload_records`, and the sentence becomes true
+        by construction: the record it finds is the record the renderer renders.
+
+        **Only the POSITIVE half lives here.** "Nothing failed" is NOT re-asked: that boundary
+        belongs to `read_succeeded_this_turn`, whose first question already covers this list
+        (it is one of its sources) and covers the rest of the turn besides. A second copy here
+        would make the turn-level boundary removable without a test noticing, and a rule each
+        reader re-derives is a rule each reader gets wrong alone.
+
+        The payload is passed to `_build_voice_prompt` as a parameter, so a caller CAN hand it
+        text unrelated to ``ctx``; production never does (`voice()` renders `_tool_payload(ctx)`
+        and hands that same string over), and the invariant is asserted through `voice()` itself
+        rather than through the helper.
+        """
+        return any(getattr(t, "ok", None) is True
+                   and getattr(t, "side_effect", False) is not True
+                   and getattr(t, "tool_mutating", None) is not True
+                   for t in cls._payload_records(ctx))
+
+    @staticmethod
     def _tool_payload(ctx: PipelineContext) -> str:
         if not ctx.ego_result:
             return "(no execution)"
         parts = []
         # Same untrusted-data rule as the judge: what a tool returned is third-party text and this
         # payload is what the voicer reads to write the user's reply.
-        names = {t.tool for t in ctx.ego_result.tools_executed if t.tool}
-        for t in ctx.ego_result.tools_executed:
+        records = SuperegoStage._payload_records(ctx)
+        names = {t.tool for t in records if t.tool}
+        for t in records:
             if t.ok:
                 parts.append(f"{t.tool}: {sanitize_untrusted(t.result or t.error or '', names)}")
             elif t.side_effect:

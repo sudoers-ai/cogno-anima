@@ -233,15 +233,38 @@ def test_a_successful_WRITE_is_not_evidence_that_a_LOOKUP_worked():
     assert _verdict(ctx, reason="R") == MAIN_REVIEW_VERDICT
 
 
-def test_the_consulted_specialists_read_counts():
-    """The intra-turn CONSULT is the turn's third execution source, and the predicate walks it:
-    a hub whose specialist did the reading has the data in front of it exactly as if it had
-    read it itself. A predicate blind to that source would leave the hub denying her answer."""
-    ctx = _turn()                       # the hub itself ran nothing
-    ctx.consult_result = _ego(_read())  # the specialist did
+def test_the_consulted_specialists_read_does_NOT_open_the_clause():
+    """REPLACES `test_the_consulted_specialists_read_counts`, which pinned the defect as if it
+    were the feature.
+
+    That test asserted that a read performed by the CONSULTED specialist opens this section,
+    on the true premise that `read_succeeded_this_turn` walks `ctx.consult_result`. What it
+    missed is that the section makes a claim about THIS PROMPT — "what they returned is in the
+    executor data above" — and `_tool_payload` renders only `ctx.ego_result.tools_executed`.
+    The specialist's result is nowhere in the prompt, so the old behaviour told the voice the
+    data was above AND forbade it the honest "I did not find that": a false premise plus a
+    muzzle, the exact pair this family exists to prevent.
+
+    The predicate is right and unchanged — the TURN did read successfully, and other readers
+    depend on that answer. What changed is the clause's gate. Widening the payload to carry
+    another persona's reads is a larger change with provenance questions of its own and was
+    deliberately not made.
+    """
+    ctx = _shape_consult_only()
+    assert read_succeeded_this_turn(ctx) is True          # the TURN read…
+    assert SuperegoStage._payload_shows_a_read(ctx) is False   # …this PROMPT does not show it
+    assert _verdict(ctx, reason="R") == MAIN_REVIEW_VERDICT
+
+
+def test_a_read_from_a_DISCARDED_attempt_does_not_open_the_clause_either():
+    """The same defect through the other source. `ctx.turn_executions` accumulates EVERY
+    attempt of the turn; `_tool_payload` renders the SURVIVING one. A read that succeeded on
+    an attempt the correction loop then replaced is not in front of the voice, so the premise
+    would be false about it too."""
+    ctx = _shape_discarded_only()
     assert read_succeeded_this_turn(ctx) is True
-    section = _verdict(ctx)
-    assert NOTHING_RAN not in section and SAY_WHAT_WAS_READ in section
+    assert SuperegoStage._payload_shows_a_read(ctx) is False
+    assert _verdict(ctx, reason="R") == MAIN_REVIEW_VERDICT
 
 
 # ── NO NEW HEADER, NO NEW SLUG ───────────────────────────────────────
@@ -276,8 +299,40 @@ _MAIN_SECTIONS = {
     "write|other|execution_verdict": "91faad424d9ef189",
 }
 
-_SHAPES = {"no_exec": (), "read_ok": (_read,), "read_plus_failed": (_read, _failed),
-           "write": (_write,)}
+def _shape_no_exec():
+    return _turn()
+
+
+def _shape_read_ok():
+    """(0) the control: the SURVIVING attempt read, so the result IS in the rendered payload."""
+    return _turn(_read())
+
+
+def _shape_read_plus_failed():
+    return _turn(_read(), _failed())
+
+
+def _shape_write():
+    return _turn(_write())
+
+
+def _shape_discarded_only():
+    """(i) the only successful read belongs to an attempt the turn later replaced."""
+    ctx = _turn()
+    ctx.turn_executions = [_read()]
+    return ctx
+
+
+def _shape_consult_only():
+    """(ii) the only successful read is the consulted specialist's."""
+    ctx = _turn()
+    ctx.consult_result = _ego(_read())
+    return ctx
+
+
+_SHAPES = {"no_exec": _shape_no_exec, "read_ok": _shape_read_ok,
+           "read_plus_failed": _shape_read_plus_failed, "write": _shape_write,
+           "discarded_only": _shape_discarded_only, "consult_only": _shape_consult_only}
 
 
 def _kinds_from_the_code() -> "list[str]":
@@ -308,7 +363,7 @@ def test_every_other_rendering_is_exactly_mains(label):
     four execution shapes, the write-attempted condition on either side — renders byte for
     byte as it did."""
     shape, kind, slug = label.split("|")
-    ctx = _turn(*(call() for call in _SHAPES[shape]))
+    ctx = _SHAPES[shape]()
     prompt = _render(ctx, kind="not_executed" if kind == "other" else kind, reason="R")
     section = SuperegoStage.voice_prompt_block(prompt, slug)
     assert section, f"{label}: the section did not render at all"
@@ -363,3 +418,98 @@ async def test_the_condition_reaches_the_prompt_voice_actually_sends():
     assert SAY_WHAT_WAS_READ in sent and NOTHING_RAN not in sent
     assert SAY_WHAT_WAS_READ in (result.prompt_text or "")
     assert "review_verdict" in [b["block"] for b in result.prompt_blocks]
+
+
+# ── THE PREMISE IS A CLAIM ABOUT THIS PROMPT, NOT ABOUT THE TURN ─────
+#
+# Both verdict sections tell the voice that what the tools returned "is in the executor data
+# above" and then forbid it from reporting a failure to find it. `read_succeeded_this_turn`
+# answers a TURN question and walks three sources; `_tool_payload` renders ONE of them. The
+# three rows below are the measured shapes, for BOTH kinds — the review verdict (this file's
+# variant) and the execution verdict (the clause that landed first and had the same defect).
+
+_KIND_TO_SLUG = {"unverified_claim": "review_verdict", "not_executed": "execution_verdict"}
+
+
+@pytest.mark.parametrize("kind", sorted(_KIND_TO_SLUG))
+def test_row_0_the_surviving_attempts_read_opens_the_clause(kind):
+    """(0) The control. The read is in the payload the voice receives, so the premise is true
+    and both clauses fire — this is the behaviour the whole family exists for."""
+    ctx = _shape_read_ok()
+    assert SuperegoStage._payload_shows_a_read(ctx) is True
+    section = SuperegoStage.voice_prompt_block(_render(ctx, kind=kind, reason="R"),
+                                               _KIND_TO_SLUG[kind])
+    assert _se._EVERY_TOOL_SUCCEEDED in section
+
+
+@pytest.mark.parametrize("kind", sorted(_KIND_TO_SLUG))
+@pytest.mark.parametrize("shape", ["discarded_only", "consult_only"])
+def test_rows_i_and_ii_a_read_this_prompt_cannot_SHOW_leaves_the_section_as_it_was(shape, kind):
+    """(i) and (ii). The turn read successfully and the prompt does not carry the result, so
+    the sentence "it is in the executor data above" would be FALSE and the prohibition that
+    follows it would be a muzzle over an honest "I did not find that".
+
+    Pinned as byte equality against the rendering of a turn with no read at all — not by
+    substring — so a reworded clause that still leaks into these shapes cannot pass.
+    """
+    ctx = _SHAPES[shape]()
+    assert read_succeeded_this_turn(ctx) is True           # the TURN did read…
+    assert SuperegoStage._payload_shows_a_read(ctx) is False   # …this PROMPT shows nothing
+    slug = _KIND_TO_SLUG[kind]
+    got = SuperegoStage.voice_prompt_block(_render(ctx, kind=kind, reason="R"), slug)
+    none_at_all = SuperegoStage.voice_prompt_block(
+        _render(_shape_no_exec(), kind=kind, reason="R"), slug)
+    assert got == none_at_all, f"{shape}/{kind}: the section is not the no-read rendering"
+    assert _se._EVERY_TOOL_SUCCEEDED not in got
+
+
+# ── THE INVARIANT, STATED DIRECTLY ───────────────────────────────────
+
+@pytest.mark.parametrize("kind", sorted(_KIND_TO_SLUG))
+@pytest.mark.parametrize("shape", sorted(_SHAPES))
+def test_whenever_the_section_claims_the_data_is_above_it_really_IS(shape, kind):
+    """The property both clauses depend on, over every shape and both kinds — and asserted
+    against the payload `_tool_payload` actually builds, not the fixture string the other
+    tests pass in.
+
+    The canary is inside the READ's result, so "the data is above" is checked as *this
+    successful read's result reached the prompt*, which is what the sentence promises.
+    """
+    ctx = _SHAPES[shape]()
+    payload = SuperegoStage._tool_payload(ctx)
+    prompt = _render(ctx, kind=kind, reason="R", payload=payload)
+    section = SuperegoStage.voice_prompt_block(prompt, _KIND_TO_SLUG[kind])
+    if _se._EVERY_TOOL_SUCCEEDED in section:
+        assert TIMETABLE in payload, (
+            f"{shape}/{kind}: the section says the result is in the executor data and the "
+            f"payload does not carry it — payload={payload!r}")
+
+
+def test_the_gate_and_the_payload_share_a_source():
+    """`_payload_shows_a_read` and `_tool_payload` must never disagree about WHICH executions
+    the prompt shows. They read one list (`_payload_records`); this is the assertion that
+    fails the day they stop doing so.
+
+    SABOTAGE: point `_payload_records` at `ctx.turn_executions` -> `discarded_only` turns the
+    gate True while the payload still renders nothing, and this test goes red.
+    """
+    for name, build in sorted(_SHAPES.items()):
+        ctx = build()
+        assert SuperegoStage._payload_shows_a_read(ctx) is (TIMETABLE in
+                                                            SuperegoStage._tool_payload(ctx)), (
+            f"{name}: the gate and the rendered payload disagree about the read")
+
+
+@pytest.mark.asyncio
+async def test_the_invariant_holds_through_the_path_that_ships():
+    """`voice()` is where the payload and the prompt are built together; a helper-level
+    invariant that the real path can break is not an invariant."""
+    for shape in ("read_ok", "discarded_only", "consult_only"):
+        ctx = _SHAPES[shape]()
+        ctx.metadata[mk.VOICE_CORRECTION] = {"reason": CRITIQUE, "kind": "unverified_claim"}
+        backend = ScriptedBackend(["ok"])
+        result = await SuperegoStage().voice(ctx, backend, voice_prompt="persona")
+        sent = backend.calls[0]["prompt"]
+        if _se._EVERY_TOOL_SUCCEEDED in sent:
+            assert TIMETABLE in sent, f"{shape}: the prompt claims data it does not carry"
+        assert (result.prompt_text or "") == sent
