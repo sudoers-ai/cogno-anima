@@ -104,6 +104,11 @@ async def test_every_block_of_the_closed_table_changes_the_digest():
     rendered = [b["block"] for b in result.prompt_blocks]
     assert set(rendered) == {slug for _, slug in SuperegoStage._SCOPE_BLOCKS}, (
         "the fixture no longer renders every block — extend `_SLOT`, do not trim the table")
+    # The IDENTITY anchor, repeated here on purpose: "a byte inside this block moves the
+    # recorded digest" is only a statement about coverage once the recorded digest is known to
+    # be the digest of these bytes. Without it a slot-only implementation would pass the loop
+    # below trivially — every mutation differs from a digest of something else.
+    assert result.prompt_sha == prompt_digest(sent["system"], sent["prompt"])
 
     for header, slug in SuperegoStage._SCOPE_BLOCKS:
         at = sent["prompt"].find(header)
