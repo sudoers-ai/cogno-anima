@@ -267,11 +267,23 @@ def test_the_clause_is_purely_additive():
 
 
 @pytest.mark.parametrize("kind", ["repeated_reply", "unverified_claim"])
-def test_the_other_two_rejection_variants_are_untouched(kind):
-    """`repeated_reply` is the host's anti-repeat guard (the content was fine) and
-    `unverified_claim` is a turn where nothing ran at all — whose own text already tells the
-    voice to drop the claim. Neither is the measured defect."""
-    assert FORBIDS not in _rendered(_turn(_read("consult_material", "…")), kind=kind)
+def test_this_clause_stays_inside_the_execution_verdict(kind):
+    """THIS clause — premise, prohibition and the remedy that follows them — belongs to
+    `# Execution verdict (HARD RULE)` and renders nowhere else.
+
+    Its opening is the identity of the branch, so that is what is asserted. The PROHIBITION
+    itself is no longer branch-private: since 2026-09-19 `# Review verdict (HARD RULE)` splices
+    the same two sentences on a turn whose read succeeded (`_NEVER_DENY_WHAT_WAS_READ`,
+    `test_voice_review_verdict_after_a_read`) — the fact is the same in both worlds and so is
+    what may not be said about it. What stays per branch is the remedy, and this file's
+    `FORBIDS` check moved up one level accordingly: it is asserted for `repeated_reply`, where
+    nothing about a successful read is rendered at all.
+    """
+    prompt = _rendered(_turn(_read("consult_material", "…")), kind=kind)
+    assert "THE LOOKUPS WORKED" not in prompt
+    assert "Say what was read (correcting whatever the critique says" not in prompt
+    if kind == "repeated_reply":
+        assert FORBIDS not in prompt
 
 
 def test_an_approved_turn_never_sees_the_clause():

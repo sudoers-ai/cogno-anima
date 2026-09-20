@@ -217,6 +217,31 @@ _CRITIQUE_IS_NOT_EVIDENCE = (
     "right. Use it to understand what was wrong, never as a source.\n"
 )
 
+# ── WHAT A TURN THAT READ SUCCESSFULLY MAY NOT BE TOLD TO SAY ─────────────────────────────
+#
+# Two sentences the verdict sections BOTH need, written once for the reason `_ADMITTING_A_LIMIT`
+# and `_PRESERVED_CLAUSE` are written once: a copy in the second branch is a contract that
+# diverges silently, and the second branch here arrived three weeks after the first. They are
+# spliced BY REFERENCE into `# Execution verdict (HARD RULE)` and `# Review verdict (HARD
+# RULE)`, so a rewording reaches both or neither.
+#
+# The fact is the SAME in both worlds and so is the prohibition — a lookup returned the thing,
+# and the contact may not be told it did not. What differs is what the voice is asked to do
+# next, and THAT is written per branch: the execution verdict sends it to "say what was read,
+# correcting what the critique says was wrong"; the review verdict sends it to "drop the one
+# claim the data does not carry and say the rest". Sharing the premise is not sharing the
+# remedy.
+_EVERY_TOOL_SUCCEEDED = (
+    "every tool that ran this turn SUCCEEDED, and what they returned is in the executor "
+    "data above."
+)
+
+_NEVER_DENY_WHAT_WAS_READ = (
+    "You MUST NOT tell the contact that you could not access, find, obtain, consult or "
+    "retrieve something that IS in that data — it was retrieved, and saying otherwise is a "
+    "false statement about the world, which they will act on."
+)
+
 # The persona trait the modulation must never talk over: the tenant asked for an even
 # voice, and a courtesy addition (warmth, empathy) would be exactly that.
 _EVEN_TRAIT = "reserved"
@@ -2697,18 +2722,79 @@ class SuperegoStage:
                     "do. Do NOT re-ask a question they already answered.\n\n"
                 )
             elif (rejection.get("kind") or "") == "unverified_claim":
-                rejection_section = (
-                    "# Review verdict (HARD RULE)\n"
-                    "The draft below was REJECTED by review as UNVERIFIED — nothing was "
-                    "executed this turn, so the draft is a claim, not a result.\n"
-                    f"Reviewer critique: {reason}\n"
-                    f"{_CRITIQUE_IS_NOT_EVIDENCE}"
-                    "You MUST NOT repeat the rejected claim, or any softened version of it. "
-                    "Say ONLY what the Context above supports; when it supports nothing, say "
-                    "plainly that you do not have that information — admitting a limit is a "
-                    "COMPLETE answer and is always preferable to repeating an unverified one. "
-                    "You may then ask ONE question to move forward.\n\n"
-                )
+                # ── THE VARIANT WHOSE OPENING SENTENCE CAN BE FALSE ────────────────────
+                # "nothing was executed this turn" is the premise of the wording below, and
+                # this kind does not carry that fact — the host stamps it from a DIFFERENT
+                # one. Its repair fires when its anti-fabrication net flags the reply AND the
+                # turn did not COMMIT; a read-only turn never commits, so EVERY flagged read
+                # turn arrives here wearing a kind whose text was written for the opposite
+                # world (a persona with no tools asserting an integration that does not
+                # exist — that case is below, byte for byte, and must keep working).
+                #
+                # Measured on a persisted trace, read 2026-09-19: the contact asked how long a
+                # class lasts, scope ALLOWED the turn, a knowledge-read tool ran and returned
+                # `ok=True` with the timetable, and the draft answered from it verbatim. The
+                # host's net flagged the reply anyway — it judges provenance by WHICH tool was
+                # called (only the scheduling vertical's own reads legitimise a schedule
+                # claim) and not by what the tool RETURNED, so the read holding those very
+                # times did not count — and re-voiced the turn under `unverified_claim`. The
+                # voice then obeyed this section word for word: told that nothing had been
+                # executed and steered to "say plainly that you do not have that
+                # information", it replied that the duration was unavailable. The first reply
+                # had been correct and fully grounded. (The provenance-by-tool-name rule is
+                # the HOST's and is a separate, larger fix; this section must be honest about
+                # the turn either way.)
+                #
+                # WHY A CONDITION AND NOT A FOURTH `kind`: the same reason `nothing_tried`
+                # gives one screen below — asking the host to re-derive a fact the core can
+                # read off the trace is the re-derivation this repo keeps paying for, and
+                # here the host's `kind` has just been measured WRONG about this very fact.
+                # `read_succeeded_this_turn` answers it from the executed records, and its
+                # boundary is the point: ANY failed record makes it False, because then "I
+                # could not get that" may be TRUE of that call and this section stays exactly
+                # as it was. No new header either, so `_VOICE_BLOCKS` and the persisted
+                # inventory are untouched — the slug is still `review_verdict`.
+                #
+                # WHAT IT DOES NOT DO: it does not re-offer the rejected claim in any form,
+                # and it says nothing about whether a DERIVED value is grounded. The core
+                # cannot know whether the flagged claim was right, and the net that judged it
+                # is the host's. The instruction is "say what was READ", which answers the
+                # contact truthfully without ever re-stating the contested sentence.
+                if read_succeeded_this_turn(ctx):
+                    rejection_section = (
+                        "# Review verdict (HARD RULE)\n"
+                        "The draft below was REJECTED by review as UNVERIFIED — not because "
+                        f"nothing ran: {_EVERY_TOOL_SUCCEEDED} What review flagged is a CLAIM "
+                        "in the draft that this data does not support.\n"
+                        f"Reviewer critique: {reason}\n"
+                        f"{_CRITIQUE_IS_NOT_EVIDENCE}"
+                        "You MUST NOT repeat the rejected claim, or any softened version of "
+                        "it: DROP the claim the data does not contain — do not restate it, do "
+                        "not hedge it, do not apologise for it — and change NOTHING else. "
+                        "Write the reply from what the executor data DOES contain, "
+                        "reproducing every figure, time, date, name or identifier in it "
+                        "exactly as written there. If what is left answers the request, that "
+                        "IS the answer and you must give it. "
+                        f"{_NEVER_DENY_WHAT_WAS_READ} Only when the data holds nothing "
+                        "relevant to the request do you say plainly what was looked up and "
+                        "that it did not contain the answer — that is a COMPLETE and honest "
+                        "reply, and it is the one case where a limit is the answer here. You "
+                        "may then ask ONE question to move forward.\n\n"
+                    )
+                else:
+                    rejection_section = (
+                        "# Review verdict (HARD RULE)\n"
+                        "The draft below was REJECTED by review as UNVERIFIED — nothing was "
+                        "executed this turn, so the draft is a claim, not a result.\n"
+                        f"Reviewer critique: {reason}\n"
+                        f"{_CRITIQUE_IS_NOT_EVIDENCE}"
+                        "You MUST NOT repeat the rejected claim, or any softened version of "
+                        "it. Say ONLY what the Context above supports; when it supports "
+                        "nothing, say plainly that you do not have that information — "
+                        "admitting a limit is a COMPLETE answer and is always preferable to "
+                        "repeating an unverified one. "
+                        "You may then ask ONE question to move forward.\n\n"
+                    )
             else:
                 # The rejected EXECUTION. Two worlds arrive here wearing the same signal, and
                 # until 2026-09-06 the section spoke to only one of them. "NOTHING was
@@ -2775,12 +2861,15 @@ class SuperegoStage:
                 # CONTAINS, and the two classes that were measured are carved out of it by
                 # name. `read_succeeded_this_turn` opens the door; the containment question is
                 # the model's, because it is the only reader that can ask it.
+                #
+                # The premise and the prohibition are `_EVERY_TOOL_SUCCEEDED` /
+                # `_NEVER_DENY_WHAT_WAS_READ` — spliced, not copied, because the review-verdict
+                # variant needs the same two sentences (2026-09-19) and a hand-written second
+                # copy is the divergence `_ADMITTING_A_LIMIT` exists to prevent. The REMEDY
+                # below stays here: it is this branch's, and the other branch's is different.
                 read_worked = "" if not read_succeeded_this_turn(ctx) else (
-                    "THE LOOKUPS WORKED: every tool that ran this turn SUCCEEDED, and what "
-                    "they returned is in the executor data above. You MUST NOT tell the "
-                    "contact that you could not access, find, obtain, consult or retrieve "
-                    "something that IS in that data — it was retrieved, and saying otherwise "
-                    "is a false statement about the world, which they will act on. Say what "
+                    f"THE LOOKUPS WORKED: {_EVERY_TOOL_SUCCEEDED} "
+                    f"{_NEVER_DENY_WHAT_WAS_READ} Say what "
                     "was read (correcting whatever the critique says was wrong with how it "
                     "was put), or ask the ONE question that is missing. Two things this does "
                     "NOT touch, and both stay sayable in full: reporting truthfully that a "

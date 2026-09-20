@@ -287,3 +287,70 @@ async def test_voice_does_not_tell_the_contact_the_lookup_failed():
     low = r.response.lower()
     assert not any(d in low for d in denials), (
         f"the read returned the syllabus; the reply claims it could not be reached: {r.response!r}")
+
+
+# ── the review verdict after a read that worked (model half) ──────────────────────────
+#
+# The PAIR for the condition on the ``unverified_claim`` variant. Its deterministic half is
+# `tests/unit/test_voice_review_verdict_after_a_read.py`; what needs a model here is whether the
+# new instruction actually produces the reply the contact should have had, and whether the old
+# world still behaves.
+
+
+@pytest.mark.asyncio
+async def test_voice_says_what_the_read_returned_when_review_flags_a_claim():
+    """The measured turn: a read returned the class times, a downstream net flagged the reply
+    anyway and re-voiced it as ``unverified_claim`` — and the contact was told the information
+    was unavailable.
+
+    Asserted on VALUES (``stated_values``), never on a format: "19h", "19:00" and "19.00" are
+    the same answer, and pinning one of them would be the locale defect recorded at the top of
+    this file. Whether the reply also states the DURATION is asserted neither way — the core
+    takes no position on a derived value, and the net that judged this one is the host's.
+    """
+    await backends.skip_unless_available()
+    ctx = _ctx("quanto tempo dura a aula?", intent_class="INFORMATION_REQUEST",
+               goal="how long the class lasts",
+               tool="consult_material", args={"course": "data modelling"},
+               result="Class schedule: Wednesday 19:00-22:30; Tuesday 08:00-11:30.",
+               draft="The class runs Wednesday 19:00-22:30 and Tuesday 08:00-11:30.")
+    ctx.metadata[mk.VOICE_CORRECTION] = {
+        "kind": "unverified_claim",
+        "reason": "the reply states class times that no scheduling read confirmed"}
+    r = await SuperegoStage().voice(ctx, _text_backend(),
+                                    voice_prompt="You are a friendly course assistant.")
+    assert r.response, "the voice wrote nothing"
+    assert {19.0, 22.0} <= stated_values(r.response), (
+        f"the read returned the class times and the reply does not state them: {r.response!r}")
+    low = r.response.lower()
+    unavailable = ("nao tenho essa informacao", "não tenho essa informação",
+                   "nao possuo essa informacao", "não possuo essa informação",
+                   "do not have that information", "don't have that information")
+    assert not any(u in low for u in unavailable), (
+        f"the data holds the answer and the reply denies having it: {r.response!r}")
+
+
+@pytest.mark.asyncio
+async def test_voice_still_drops_an_unverified_claim_when_nothing_executed():
+    """The control, and the world this kind was written for: a persona that executed NOTHING
+    and whose draft asserts an integration. The reply must not carry that claim.
+
+    Narrow by design — an affirmative "yes … integrates" and nothing else. A hedged mention
+    ("I cannot confirm that it integrates with …") is a CORRECT reply and must not fail here.
+    """
+    await backends.skip_unless_available()
+    ctx = _ctx("voces integram com o ACME ERP?", intent_class="INFORMATION_REQUEST",
+               goal="does the product integrate with ACME ERP")
+    ctx.ego_result = EgoResult(
+        steps=[EgoStep(index=0, path="native",
+                       assistant_text="Yes, the product integrates with ACME ERP.")],
+        metrics=_m("ego"))
+    ctx.metadata[mk.VOICE_CORRECTION] = {
+        "kind": "unverified_claim",
+        "reason": "no source confirms an ACME ERP integration"}
+    r = await SuperegoStage().voice(ctx, _text_backend(),
+                                    voice_prompt="You are a product assistant.")
+    assert r.response, "the voice wrote nothing"
+    affirms = re.search(r"\b(sim|yes)\b[^.?!]{0,80}(integra|integrat)", r.response.lower())
+    assert not affirms, (
+        f"nothing executed and nothing verified the claim; the reply asserts it: {r.response!r}")
