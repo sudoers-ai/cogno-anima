@@ -55,6 +55,20 @@ async def _guard(*, slot=_SLOT, user=_USER, language="pt-BR", backend=None):
     return result, ctx, backend
 
 
+def test_the_absence_is_None_on_the_type_itself_and_not_an_empty_string():
+    """The default a caller inherits when it builds a result without one. ``""`` is a VALUE —
+    it compares equal to another ``""`` and, in a store, is indistinguishable from a digest
+    that was recorded as blank; ``None`` is the claim the record actually makes, which is that
+    no prompt was built. The same rule ``prompt_blocks`` carries with ``[]``, and the one
+    ``StageMetrics.system_fingerprint`` carries beside it."""
+    from cogno_anima.types import ScopeCheckResult, StageMetrics
+
+    empty = ScopeCheckResult(metrics=StageMetrics(stage="superego_scope", elapsed_ms=0.0,
+                                                  tokens_in=0, tokens_out=0, model="m"))
+    assert empty.prompt_sha is None
+    assert empty.prompt_blocks == []
+
+
 # ── identity: the digest is of the bytes that were SENT ───────────────────────────────────
 
 @pytest.mark.asyncio
