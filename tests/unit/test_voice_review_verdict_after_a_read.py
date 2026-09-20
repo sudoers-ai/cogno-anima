@@ -490,8 +490,15 @@ def test_the_gate_and_the_payload_share_a_source():
     the prompt shows. They read one list (`_payload_records`); this is the assertion that
     fails the day they stop doing so.
 
-    SABOTAGE: point `_payload_records` at `ctx.turn_executions` -> `discarded_only` turns the
-    gate True while the payload still renders nothing, and this test goes red.
+    WHAT IT DOES AND DOES NOT CATCH, measured rather than asserted — the first version of this
+    docstring named the wrong mutation and the run said so. Repointing `_payload_records`
+    itself at `ctx.turn_executions` leaves this test GREEN, and correctly: both readers move
+    together, which is the whole point of the shared source (what that mutation breaks is the
+    CLAUSE, and `test_rows_i_and_ii…` and the invariant test go red for it — 40 failures).
+    What kills THIS test is the readers DIVERGING: iterating `ctx.turn_executions` inside
+    `_payload_shows_a_read` while the renderer keeps reading `_payload_records` turns it red
+    (verified 2026-09-19), which is exactly the shape of the defect it guards — a gate that
+    believes the prompt shows something the prompt does not show.
     """
     for name, build in sorted(_SHAPES.items()):
         ctx = build()
