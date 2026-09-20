@@ -242,6 +242,17 @@ async def test_the_ego_records_it_on_the_TEXT_fallback_path_too():
     assert ctx.ego_result.metrics.system_fingerprint == "fp_last"
     assert ctx.ego_result.metrics.served_model == "snap-2"
 
+    # ...and its stale twin, which the native path has of its own: the branch is separate
+    # code, so "the last call wins" has to be pinned on it separately or half the deployments
+    # keep an earlier step's identity.
+    silent = _TextOnly([_tool_turn("book"), {"content": "done"}],
+                       fingerprints=["fp_first", None], models=["snap-1", None])
+    ctx = _ctx()
+    await EgoStage().process(ctx, silent, _Dispatcher("book"), system_prompt="do it")
+    assert silent.calls == 2
+    assert ctx.ego_result.metrics.system_fingerprint is None
+    assert ctx.ego_result.metrics.served_model is None
+
 
 # ── the twin that matters: a row never keeps an EARLIER call's identity ────────────────────
 
