@@ -53,6 +53,39 @@ class StageMetrics(BaseModel):
     # 0 means "unknown or none", which downstream is the FULL input rate — today's behaviour.
     # Only a backend that reports it (see ``cogno_synapse.cached_tokens_of``) makes it non-zero.
     cached_tokens: int = 0
+    # ── WHO answered this call (provider-reported; never a count) ────────────────────
+    # ``system_fingerprint`` is the provider's identifier for the backend configuration that
+    # served the call; ``served_model`` is the model id it ECHOED BACK — for OpenAI the dated
+    # snapshot (``gpt-4o-mini-2024-07-18``) that the alias in ``model`` resolved to. Read
+    # through ``cogno_synapse.system_fingerprint_of`` / ``served_model_of`` IMMEDIATELY after
+    # the await that produced the call. Neither is summable and neither touches
+    # ``tokens_total``: they are strings, and the only operation ever performed on them is a
+    # COMPARISON between two calls.
+    #
+    # Why they exist. At ``temperature=0`` a hosted provider only REQUESTS greedy decoding, and
+    # the snapshot behind a model alias can move without the name changing. Measured on a
+    # downstream host: the same scope-guard input classified ALLOW 4/4 and, forty-five minutes
+    # later, BLOCK 7/7 — stable inside each period, across process restarts of the same build,
+    # with the host-written prompt slot proven byte-identical by digest and this library at one
+    # revision throughout. "Was it the same backend that answered?" was unanswerable from the
+    # persisted trace; with these two recorded per call it is a string comparison.
+    #
+    # ``None`` = the provider did not say / no call ran / the stage did not run. It is never
+    # ``""`` and never a stand-in constant, because two blanks comparing EQUAL would assert
+    # that two calls were served by the same configuration when neither said anything at all
+    # (``cogno_synapse`` normalises a blank echo to ``None`` for that reason).
+    #
+    # **SEVERAL CALLS, ONE ROW → LAST CALL WINS**, and a single ``Optional[str]`` rather than a
+    # list. The call the measured defect lives in — the scope guard — makes exactly ONE LLM
+    # call, so its row is unambiguous; the correction loop already gives one row per attempt;
+    # and a list (or a joined string) would inflate every row in the trace and hand every
+    # reader a parsing problem in exchange for a distinction the multi-call stages can already
+    # make by attempt. Last-call-wins includes the honest case: **if the last call reported
+    # nothing the row says ``None``**, never the stale value of an earlier call — a stale
+    # fingerprint is a false statement about who answered, which is the one failure a field
+    # that exists only to be compared must not have.
+    system_fingerprint: Optional[str] = None
+    served_model: Optional[str] = None
     tokens_total: int = 0
     model: str
 
@@ -482,6 +515,32 @@ class ScopeCheckResult(BaseModel):
     # fail-CLOSED one does: "the call blew up" and "the classifier read this and allowed" are
     # different facts and only one of them is about the prompt.
     prompt_blocks: list[dict[str, Any]] = Field(default_factory=list)
+    # The digest of the WHOLE prompt this guard sent — system part then user part, through
+    # ``prompts.prompt_digest`` (the one digest algorithm in the ecosystem). The inventory
+    # above says WHICH sections rendered and how long each was; this says whether the bytes
+    # were the same ones, which is the question a host cannot answer for itself: it can digest
+    # the slot it writes, and the blocks assembled around that slot — decision rule, the
+    # contact's sentence, task, examples — are composed here and never leave the function.
+    #
+    # Measured on a downstream host: the same guard input allowed 4/4 and, forty-five minutes
+    # later, blocked 7/7, with the host-written slot proven byte-identical by digest. "Was the
+    # WHOLE prompt the same?" had no record at all, so the slot's digest was being read as if
+    # it answered it.
+    #
+    # **Only the digest leaves the function, never a byte of the prompt** — the rendered text
+    # carries the contact's own sentence and the tenant's rules (the same reason
+    # ``metakeys.PROMPT_SHAS`` digests the TEMPLATE and not the rendering).
+    #
+    # **It is a PER-TURN label, not a deployment one**, and that is the consequence of
+    # including the contact's words: it groups repeats of the SAME question — exactly what an
+    # A/B over one fixed sentence needs — and nothing else. ``StageMetrics.prompt_sha`` is the
+    # deployment-level label and stays the one to group by across contacts; these two must
+    # never be read as the same kind of thing. Being per-turn, it is also not carry-over: on a
+    # path that built no prompt it is ``None`` here and the metadata key is ABSENT.
+    #
+    # ``None`` = NO PROMPT WAS BUILT (a bypass), the same rule as an empty ``prompt_blocks``.
+    # The fail-OPEN error path DID build one and records its digest like every other path.
+    prompt_sha: Optional[str] = None
     metrics: StageMetrics
 
 

@@ -26,6 +26,14 @@ dependencies = [
     "langdetect>=1.0.9",
     # Model transport (LLM/embedding backends, factory, fallback) lives in
     # cogno-synapse; it brings httpx + cogno-homeo transitively.
+    #
+    # The floor CANNOT yet name what this package needs: the stages import
+    # `system_fingerprint_of`/`served_model_of` (who served each call — see
+    # `StageMetrics.system_fingerprint`), which are on cogno-synapse main and are NOT in the
+    # published 0.1.2. CI installs that lib from git, so it has them; an install resolving to
+    # 0.1.2 from an index raises ImportError at import time, which is the intended failure —
+    # a reader that silently degrades to `None` forever would make every row say "the provider
+    # did not say" about providers that did. Raise this floor to the release that carries them.
     "cogno-synapse>=0.1,<0.2",
 ]
 

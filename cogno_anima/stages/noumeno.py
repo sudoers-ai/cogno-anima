@@ -221,7 +221,8 @@ class Noumeno:
         # A response cut mid-stream is transient and buys exactly one more attempt; anything
         # else still raises on the first. Tokens are summed across attempts so a retry shows
         # up in metering instead of being billed invisibly.
-        data, tokens_in, tokens_out, cached_tokens = await generate_json_resilient(
+        (data, tokens_in, tokens_out, cached_tokens,
+         fingerprint, served_model) = await generate_json_resilient(
             llm, self._system, prompt, self._parse_json, stage=STAGE_NAME)
         rewritten = data.get("rewritten", "").strip() or user_input
 
@@ -246,12 +247,18 @@ class Noumeno:
                 "stage=noumeno event=few_shot_echo rewritten=%r — retrying without the "
                 "examples block", rewritten)
             try:
-                data2, t2, o2, c2 = await generate_json_resilient(
+                data2, t2, o2, c2, fp2, sm2 = await generate_json_resilient(
                     llm, self._system_sans_examples, prompt, self._parse_json,
                     stage=STAGE_NAME)
                 tokens_in += t2
                 tokens_out += o2
                 cached_tokens += c2
+                # Counts accumulate; the identity of WHO answered does not — the retry is the
+                # last call, so its answer replaces the first one's, ``None`` included. On the
+                # failure branch below nothing is reassigned, and that is the same rule seen
+                # from the other side: the retry's tokens are lost there too, so the row goes
+                # on describing exactly the one call it describes.
+                fingerprint, served_model = fp2, sm2
                 retried = (data2.get("rewritten") or "").strip()
                 # The retry always wins when it produced anything: it ran without the
                 # examples, so its answer is the model's uncontaminated reading. Measured
@@ -333,6 +340,9 @@ class Noumeno:
             tokens_out=tokens_out,
             # A SUBSET of tokens_in, already counted in it — the provider's own prompt cache.
             cached_tokens=cached_tokens,
+            # WHO answered — last call wins (the few-shot retry, when there was one).
+            system_fingerprint=fingerprint,
+            served_model=served_model,
             # The layer that AUTHORS a text owns its identity: this stage loads its own
             # templates, so nobody upstream can name them. Same rule that makes the EGO stamp
             # its own `attempt`. Computed once at construction — the templates are fixed per

@@ -291,6 +291,27 @@ CONVERSATION_HISTORY = "conversation_history"  # raw transcript for NOUMENO/NER
 # ``SuperegoStage.scope_prompt_inventory``.
 SCOPE_PROMPT_BLOCKS = "scope_prompt_blocks"
 
+# The digest of the guard's WHOLE rendered prompt — same writer, same reader, same reason as
+# the inventory above: the ``ScopeCheckResult`` carrying it is consumed by the orchestrator and
+# dropped, and this is the gate that ends turns.
+#
+# It answers the question the inventory cannot: a host can digest the SLOT it writes, and the
+# blocks this library assembles around that slot are invisible to it — so two turns with an
+# identical slot digest and identical block lengths can still have been sent different bytes.
+#
+# **ABSENT means no prompt was built** (a bypass), which is what the inventory says with `[]`.
+# The key is actively REMOVED on those paths rather than left untouched, because absence is
+# only a true statement if nothing stale is sitting there: a carrier that holds metadata
+# between turns would otherwise make a bypassed turn wear an earlier turn's digest. A PER-TURN
+# fact, never carry-over — see ``SCOPE_PROMPT_BLOCKS`` above for the same rule and the note on
+# cogno-soma's whitelist.
+#
+# Safe to persist, for a different reason than the inventory's closed alphabet: it is a digest,
+# so not one byte of the tenant's rules or of the contact's sentence is in it. It is derived
+# from the contact's words, though, which is what makes it a per-turn LABEL — it groups repeats
+# of the same question and nothing wider. See ``types.ScopeCheckResult.prompt_sha``.
+SCOPE_PROMPT_SHA = "scope_prompt_sha"
+
 # ── session stamps (soma stamps; host/telemetry read) ────────────────────────
 ACTIVE_PERSONA_ID = "active_persona_id"
 ACTIVE_MCP_MODULE = "active_mcp_module"

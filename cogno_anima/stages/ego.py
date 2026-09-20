@@ -40,7 +40,8 @@ from cogno_anima.types import (
     EgoResult, ToolResult,
 )
 from cogno_anima.security.prompt_guard import sanitize_untrusted
-from cogno_synapse import LLMBackend, cached_tokens_of
+from cogno_synapse import (LLMBackend, cached_tokens_of, served_model_of,
+                           system_fingerprint_of)
 from cogno_synapse.base import ToolCallingBackend
 from cogno_synapse.tool_parsing import parse_tool_calls_from_text
 from cogno_anima.tools import ToolDispatcher, ToolPolicyDispatcher
@@ -181,6 +182,10 @@ class EgoStage:
         steps: list[EgoStep] = []
         pending_confirmation: list[ToolExecution] = []
         total_in = total_out = total_cached = 0
+        # WHO answered — the LAST step's call, not a sum (see
+        # ``StageMetrics.system_fingerprint``). ``None`` until a call runs.
+        fingerprint: Optional[str] = None
+        served_model: Optional[str] = None
         seen_calls: dict[str, int] = {}
         failed_calls: set[str] = set()
         consecutive_blocks = 0
@@ -258,11 +263,15 @@ class EgoStage:
                 msg, ti, to = await fc_backend.chat_with_tools(messages, tools, tool_choice)
                 # Read with NO await in between — the contract of ``cached_tokens_of``.
                 cached = cached_tokens_of(fc_backend)
+                fingerprint = system_fingerprint_of(fc_backend)
+                served_model = served_model_of(fc_backend)
                 assistant_text = msg.get("content", "") or ""
                 raw_calls = msg.get("tool_calls") or parse_tool_calls_from_text(assistant_text, tools) or []
             else:
                 assistant_text, ti, to = await backend.generate(system, user_prompt)
                 cached = cached_tokens_of(backend)
+                fingerprint = system_fingerprint_of(backend)
+                served_model = served_model_of(backend)
                 raw_calls = parse_tool_calls_from_text(assistant_text, tools) or []
             total_in += ti
             total_out += to
@@ -272,6 +281,9 @@ class EgoStage:
             # again seconds later. One read at the end would describe the last call while the
             # tokens describe all of them.
             total_cached += cached
+            # ...while the two above are REASSIGNED each step, never summed: a fingerprint is
+            # not an amount, and the row names the last call — including when that call
+            # reported nothing, which is `None` and not the previous step's value.
 
             # ── natural termination: no tool calls → draft is the text ─
             if not raw_calls:
@@ -435,6 +447,7 @@ class EgoStage:
             metrics=StageMetrics(
                 stage=STAGE_NAME, elapsed_ms=elapsed_ms,
                 tokens_in=total_in, tokens_out=total_out, cached_tokens=total_cached,
+                system_fingerprint=fingerprint, served_model=served_model,
                 model=getattr(backend, "model", "unknown"),
                 # The EGO knows which correction attempt it is — the line above proves it — so
                 # it stamps its OWN metrics rather than leaving a 0 for an orchestrator to fill.
