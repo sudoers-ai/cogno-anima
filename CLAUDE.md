@@ -12,10 +12,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Install with dev dependencies (editable)
 pip install -e ".[dev]"
 
-# Run the full test suite
+# A bare pytest runs ONLY the unit suite (`testpaths = ["tests/unit"]`); integration is
+# asked for by path, below. Why: it uses the local GPU, which serves real traffic.
 python3 -m pytest
 
-# Run only unit tests (fast, no network/LLM required)
+# The same unit suite, named explicitly (fast, no network/LLM required)
 python3 -m pytest tests/unit
 
 # Run a single test file / test

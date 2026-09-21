@@ -175,10 +175,13 @@ you can assemble a body of your own.
 ## Testing
 
 ```bash
-python3 -m pytest                  # everything
-python3 -m pytest tests/unit       # fast, no network (stubs)
+python3 -m pytest                  # the unit suite ONLY (testpaths = tests/unit)
+python3 -m pytest tests/unit       # the same, named: fast, no network (stubs)
 python3 -m pytest tests/integration  # real Ollama; auto-skips if unavailable
 ```
+
+A bare `pytest` never collects `tests/integration`: integration is opt-in by path because
+it uses the local GPU, which may be serving real traffic.
 
 Unit tests run on a coverage gate (`--cov-fail-under=85`) and use the
 `StubBackend`/`StubEmbedder` doubles in `tests/conftest.py`. Integration tests

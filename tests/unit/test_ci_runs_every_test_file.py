@@ -241,11 +241,14 @@ def test_the_workflows_parse_and_invoke_pytest_at_all(pytestconfig):
 
 
 def test_a_bare_pytest_means_testpaths_and_not_nothing(pytestconfig):
-    """The ``cogno-engram`` shape, and the one this repo should drift towards. Reading
-    ``pytest -q`` as invoking no path would make the only form that is immune by construction
-    look exactly like the defect."""
+    """The ``cogno-engram`` shape. Reading ``pytest -q`` as invoking no path would make the
+    only form that is immune by construction look exactly like the defect.
+
+    Here ``testpaths`` is ``tests/unit``, on purpose: a bare run must never reach the
+    model-backed ``tests/integration`` (``test_bare_pytest_collects_no_integration.py``), so a
+    bare ``pytest`` in a workflow covers the unit tree and integration is handed over by path."""
     assert _paths(_pytest_argv(["pytest", "-q"])) == []
-    assert _fallback_scope(pytestconfig) == ["tests"]
+    assert _fallback_scope(pytestconfig) == ["tests/unit"]
     env_prefixed = _commands("FOO_DSN=postgresql://u:p@h:5432/d pytest -q")
     assert _pytest_argv(env_prefixed[0]) == ["-q"]
 
