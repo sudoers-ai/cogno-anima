@@ -68,7 +68,11 @@ NEVER_DENY = "MUST NOT tell the contact that you could not access, find, obtain"
 # The new section's rule, in the order it must be read: the DATA is the authority, what it holds
 # is stated even when flagged, and only what it does not hold is dropped.
 ONLY_AUTHORITY = "the executor data above is the ONLY authority here"
-STATE_WHAT_IT_CONTAINS = "Whatever in the executor data answers the request, state exactly"
+STATE_WHAT_IT_CONTAINS = ("If the executor data answers the request, write the reply from what "
+                          "it DOES contain")
+# EXHAUSTIVE, not "whatever answers": the narrowed wording let the model pick "the answer" and
+# derive it (CI canary, qwen3:8b: "A aula dura 3 horas e 30 minutos", both times dropped).
+EVERY_VALUE_IN_IT = "reproducing every figure, time, date, name or identifier in it"
 EVEN_WHEN_FLAGGED = "even when it is part of what review flagged"
 DROP_ONLY = ("Whatever the flagged claim says that the data does NOT contain, you MUST NOT say, "
              "restate, soften or hedge: drop it")
@@ -258,6 +262,28 @@ def test_the_60h_twin_what_the_data_holds_is_stated_even_when_review_flagged_it(
     # …and no absolute prohibition comes before it to contradict it
     assert ABSOLUTE_PROHIBITION not in section
     assert section.index(EVEN_WHEN_FLAGGED) < section.index("MUST NOT")
+
+
+def test_once_the_data_answers_EVERY_value_in_it_is_reproduced_not_a_chosen_one():
+    """Measured on the model-backed canary, not guessed. The review rewrite said "WHATEVER in the
+    executor data answers the request, state exactly" — and on the class-duration turn (data:
+    two class times) qwen3:8b at temperature 0 replied *"A aula dura 3 horas e 30 minutos"*: a
+    bare DERIVED figure, both times the contact could check dropped. The sentence before it,
+    "reproducing every figure, time, date, name or identifier IN IT", had passed that same test.
+
+    So the relevance judgement gates the WHOLE sentence and the reproduction stays exhaustive.
+    Asserted by identity on ONE rendered sentence: the condition, the exhaustive reproduction
+    and the "even when flagged" clause are the same sentence.
+
+    MUTATION: restore the "Whatever … answers the request, state exactly" wording -> red here.
+    """
+    section = _verdict(_turn(_read()))
+    sentence = next(x for x in _sentences(section) if EVEN_WHEN_FLAGGED in x)
+    assert sentence.startswith(STATE_WHAT_IT_CONTAINS)
+    assert EVERY_VALUE_IN_IT in sentence, (
+        "the reproduction was narrowed to the values the model decides 'answer' the request — "
+        "the shape that shipped a bare derived duration instead of the times")
+    assert "Whatever in the executor data answers the request" not in section
 
 
 def test_the_CLOSER_with_only_resolve_date_run_gets_the_new_section_and_its_two_limits():

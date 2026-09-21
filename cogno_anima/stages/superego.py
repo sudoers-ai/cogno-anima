@@ -2804,6 +2804,19 @@ class SuperegoStage:
                 # plainly that you do not have that information" — the denial this branch exists
                 # to stop. So the wording asks the model to judge what ANSWERS THE REQUEST, and
                 # forbids building a reply out of a retrieval that does not.
+                #
+                # THE REPRODUCTION IS EXHAUSTIVE, AND THE CONDITION IS ON THE WHOLE SENTENCE.
+                # The review rewrite first read "WHATEVER in the executor data answers the
+                # request, state exactly" — and the model-backed canary (CI, qwen3:8b,
+                # temperature 0) answered the class-duration turn with "A aula dura 3 horas e
+                # 30 minutos": a bare DERIVED figure, both class times dropped. The wording
+                # before it ("reproducing every figure, time, date, name or identifier IN IT")
+                # had passed the same test. Scoping WHICH values to state let the model choose
+                # "the answer" and compute it; so the relevance judgement now gates the whole
+                # sentence ("if the data answers the request…") and, once it does, every value
+                # in the data is reproduced. The two conditionals are complementary — the data
+                # answers, or nothing in it does — so neither contradicts the other on a
+                # `resolve_date`-only turn.
                 if read_is_visible:
                     rejection_section = (
                         "# Review verdict (HARD RULE)\n"
@@ -2813,9 +2826,10 @@ class SuperegoStage:
                         "executor data above is the ONLY authority here.\n"
                         f"Reviewer critique: {reason}\n"
                         f"{_CRITIQUE_IS_NOT_EVIDENCE}"
-                        "Whatever in the executor data answers the request, state exactly as "
-                        "written there — every figure, time, date, name or identifier — even "
-                        "when it is part of what review flagged. Whatever the flagged claim "
+                        "If the executor data answers the request, write the reply from what "
+                        "it DOES contain, reproducing every figure, time, date, name or "
+                        "identifier in it exactly as written there — even when it is part of "
+                        "what review flagged. Whatever the flagged claim "
                         "says that the data does NOT contain, you MUST NOT say, restate, "
                         "soften or hedge: drop it, and change NOTHING else. If what is left "
                         "answers the request, that IS the answer and you must give it. "
