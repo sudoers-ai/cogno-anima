@@ -64,10 +64,20 @@ CRITIQUE = "the reply states class times without a scheduling read"
 # half.
 NOTHING_RAN = "nothing was executed this turn"
 OLD_DEFAULT = "say plainly that you do not have that information"
-SAY_WHAT_WAS_READ = "Write the reply from what the executor data DOES contain"
-DROP_ONLY = "DROP the claim the data does not contain"
 NEVER_DENY = "MUST NOT tell the contact that you could not access, find, obtain"
-STILL_FORBIDDEN = "You MUST NOT repeat the rejected claim, or any softened version of it"
+# The new section's rule, in the order it must be read: the DATA is the authority, what it holds
+# is stated even when flagged, and only what it does not hold is dropped.
+ONLY_AUTHORITY = "the executor data above is the ONLY authority here"
+STATE_WHAT_IT_CONTAINS = "Whatever in the executor data answers the request, state exactly"
+EVEN_WHEN_FLAGGED = "even when it is part of what review flagged"
+DROP_ONLY = ("Whatever the flagged claim says that the data does NOT contain, you MUST NOT say, "
+             "restate, soften or hedge: drop it")
+NOTHING_ANSWERS = ("When nothing in the data answers the request, do not build a reply out of "
+                   "what was retrieved")
+# What the first cut said and code review refuted (2026-09-21): an assertion the core cannot
+# know, and an absolute prohibition placed BEFORE the scope that qualified it.
+FALSE_PREMISE = "this data does not support"
+ABSOLUTE_PROHIBITION = "You MUST NOT repeat the rejected claim"
 
 # `# Review verdict (HARD RULE)` exactly as `main` renders it for a turn that executed NOTHING —
 # the world this kind was written for. Copied from a rendering of the base revision, with
@@ -125,6 +135,12 @@ def _render(ctx, *, kind: "str | None" = "unverified_claim", reason: str = CRITI
     return SuperegoStage()._build_voice_prompt(ctx, payload, ["general:review"])
 
 
+def _sentences(text: str) -> "list[str]":
+    """Sentences of a rendered section — split at a full stop AND at a line break, because a
+    clause that follows a constant ending in ``.\n`` starts a line, not a ``". "``."""
+    return [x for x in re.split(r"(?<=\.)\s+|\n", text) if x]
+
+
 def _verdict(ctx, **kw) -> str:
     """The `review_verdict` section alone, sliced by the SAME closed table the host reads."""
     return SuperegoStage.voice_prompt_block(_render(ctx, **kw), "review_verdict")
@@ -143,7 +159,7 @@ def test_the_control_the_same_harness_renders_the_no_execution_wording():
     assert read_succeeded_this_turn(ctx) is False
     section = _verdict(ctx)
     assert NOTHING_RAN in section and OLD_DEFAULT in section
-    assert SAY_WHAT_WAS_READ not in section
+    assert STATE_WHAT_IT_CONTAINS not in section
 
 
 # ── THE MEASURED TURN ────────────────────────────────────────────────
@@ -161,15 +177,17 @@ def test_the_measured_turn_a_read_returned_the_answer_and_the_voice_was_told_oth
     # the false premise is gone…
     assert NOTHING_RAN not in section, (
         "the voice was told nothing ran on a turn whose read returned the answer")
-    # …and so is the steer that produced the delivered reply
-    assert OLD_DEFAULT not in section, (
-        "'you do not have that information' was the DEFAULT outcome on a turn that had it")
+    # …and so is the steer that produced the delivered reply: the limit may still be SAID, but
+    # only inside the sentence that makes it conditional on nothing in the data answering
+    limit = next(x for x in _sentences(section) if OLD_DEFAULT in x)
+    assert limit.startswith(NOTHING_ANSWERS), (
+        "'you do not have that information' is back as the DEFAULT outcome on a turn that had it")
     # …replaced by what is true, and by an instruction
     assert _se._EVERY_TOOL_SUCCEEDED in section
-    assert SAY_WHAT_WAS_READ in section
+    assert STATE_WHAT_IT_CONTAINS in section
     assert NEVER_DENY in section
-    # the opposite fabrication stays forbidden from the same section
-    assert STILL_FORBIDDEN in section
+    # the opposite fabrication stays forbidden from the same section — scoped, not absolute
+    assert DROP_ONLY in section
     assert _se._CRITIQUE_IS_NOT_EVIDENCE.strip() in section
 
 
@@ -181,12 +199,12 @@ def test_the_instruction_is_scoped_to_a_claim_the_data_does_NOT_contain():
     that said "drop the claim" unqualified would tell the voice to drop the very times it is
     also told to reproduce.
 
-    SABOTAGE: widen ``DROP the claim the data does not contain`` to ``DROP the claim`` -> red
-    here, green everywhere else in this file.
+    SABOTAGE: widen the drop sentence so it no longer names "that the data does NOT
+    contain" -> red here.
     """
     section = _verdict(_turn(_read()))
-    sentence = next(s for s in section.split(". ") if "DROP the claim" in s)
-    assert "the data does not contain" in sentence, (
+    sentence = next(s for s in _sentences(section) if "MUST NOT say, restate, soften" in s)
+    assert "that the data does NOT contain" in sentence, (
         "the drop instruction lost its scope: it now reads as 'drop the claim', which on this "
         "turn covers the data the very next sentence orders reproduced")
     # …and the reproduce half is present, with the verbatim demand
@@ -198,10 +216,98 @@ def test_the_limit_is_the_LAST_resort_and_not_the_default():
     """Admitting the data did not hold it stays a COMPLETE reply — but only when that is true.
     The measured defect is the ordering, not the sentence."""
     section = _verdict(_turn(_read()))
-    assert "Only when the data holds nothing relevant to the request" in section
-    assert "COMPLETE and honest" in section
-    assert section.index("Write the reply from what the executor data") < \
-        section.index("Only when the data holds nothing relevant")
+    assert NOTHING_ANSWERS in section
+    assert section.index(STATE_WHAT_IT_CONTAINS) < section.index(NOTHING_ANSWERS)
+    # the limit sentence is said ONCE, and it is the conditional one
+    assert section.count(OLD_DEFAULT) == 1
+    assert section.index(NOTHING_ANSWERS) < section.index(OLD_DEFAULT)
+
+
+# ── CODE REVIEW (2026-09-21): THE DATA DECIDES, NOT THE CRITIQUE ──────
+#
+# Two findings, measured on the merge of `main` and this branch. The first cut told the voice
+# that review had flagged "a CLAIM in the draft that this data does not support" — which the
+# core cannot know, and which is FALSE on the live shape below — and it placed an absolute "MUST
+# NOT repeat the rejected claim" BEFORE the colon that scoped it, so when the flagged claim IS a
+# figure in the data the two rules pointed opposite ways.
+
+WORKLOAD = "Data Modeling - total workload: 60h"
+
+
+def test_the_60h_twin_what_the_data_holds_is_stated_even_when_review_flagged_it():
+    """The measured live failure. The read returned "60h", the draft said "60 horas", and a
+    downstream net flagged the reply by tool NAME. The data SUPPORTS the claim; the core cannot
+    tell, so it must not say otherwise — and the rule that follows must let the figure through.
+
+    Mutations this dies to: restoring the "does not support" premise; putting the absolute
+    "MUST NOT repeat the rejected claim" back in front of the scope.
+    """
+    ctx = _turn(_read("consult_material", WORKLOAD))
+    ctx.ego_result = _ego(_read("consult_material", WORKLOAD),
+                          draft="A carga horaria total e de 60 horas.")
+    section = _verdict(ctx, reason="the reply states a workload no scheduling read confirmed")
+    # the core asserts nothing about whether the data supports the flagged claim…
+    assert FALSE_PREMISE not in section, (
+        "the section asserts the data does not support a claim — on this turn it does, and "
+        "the core cannot know either way")
+    assert ONLY_AUTHORITY in section
+    # …and the rule that states what the data holds says so EVEN WHEN it was flagged, as ONE
+    # sentence, by identity — not two sentences that happen to be near each other
+    sentence = next(x for x in _sentences(section) if EVEN_WHEN_FLAGGED in x)
+    assert sentence.startswith(STATE_WHAT_IT_CONTAINS)
+    # …and no absolute prohibition comes before it to contradict it
+    assert ABSOLUTE_PROHIBITION not in section
+    assert section.index(EVEN_WHEN_FLAGGED) < section.index("MUST NOT")
+
+
+def test_the_CLOSER_with_only_resolve_date_run_gets_the_new_section_and_its_two_limits():
+    """A "does it integrate with X?" turn whose only call was a universal `resolve_date`. The
+    read is visible, so the NEW section renders — not the legacy one — and the two rules that
+    keep it honest must both be there: drop what the data does not contain (it contains a
+    date, not an integration), and when nothing in the data answers the request, do not build
+    a reply out of what was retrieved.
+
+    WHY `resolve_date` STILL COUNTS. Excluding "utility" tools from the gate was proposed and
+    measured wrong: on a turn whose question IS a date, the resolved date is the answer, and
+    an excluded turn would fall back to the legacy text's "say plainly that you do not have
+    that information" — the denial this branch exists to stop. Relevance cannot be decided by
+    tool NAME; it is the model's call, and the wording asks for it. The twin that pins the
+    other side is `test_the_date_question_with_only_resolve_date_run_is_answered_from_the_date`.
+    """
+    ctx = _ctx(user="voces integram com o ACME ERP?", intent_class="INFORMATION_REQUEST",
+               with_ego=False)
+    ctx.ego_result = _ego(_read("resolve_date", "today: 2026-09-21 (Monday)"),
+                          draft="Yes, the product integrates with ACME ERP.")
+    assert read_succeeded_this_turn(ctx) is True
+    assert SuperegoStage._payload_shows_a_read(ctx) is True
+    section = _verdict(ctx, reason="no source confirms an ACME ERP integration")
+    assert NOTHING_RAN not in section and _se._EVERY_TOOL_SUCCEEDED in section
+    assert DROP_ONLY in section
+    limit = next(x for x in _sentences(section) if OLD_DEFAULT in x)
+    assert limit.startswith(NOTHING_ANSWERS)
+    assert "mentioning a lookup only when it was a lookup FOR what they asked" in limit
+
+
+def test_the_date_question_with_only_resolve_date_run_is_answered_from_the_date():
+    """The twin that stops finding 1 from being "fixed" by excluding the tool.
+
+    The contact asked which day next Tuesday is; `resolve_date` answered. The date is in the
+    prompt the voice receives and the new section tells it to state what answers the request.
+    Exclude `resolve_date` from the gate and this turn falls back to the legacy wording —
+    "nothing was executed", "say plainly that you do not have that information" — over a date
+    the system resolved.
+    """
+    ctx = _ctx(user="que dia cai a proxima terca?", intent_class="INFORMATION_REQUEST",
+               with_ego=False)
+    ctx.ego_result = _ego(_read("resolve_date", "next Tuesday: 2026-09-22"),
+                          draft="Next Tuesday is 2026-09-22.")
+    payload = SuperegoStage._tool_payload(ctx)
+    prompt = _render(ctx, reason="the date was not confirmed by a scheduling read",
+                     payload=payload)
+    section = SuperegoStage.voice_prompt_block(prompt, "review_verdict")
+    assert "2026-09-22" in SuperegoStage.voice_prompt_block(prompt, "executor_data")
+    assert NOTHING_RAN not in section
+    assert STATE_WHAT_IT_CONTAINS in section and NEVER_DENY in section
 
 
 # ── THE TWIN THAT MUST NOT BREAK ─────────────────────────────────────
@@ -415,8 +521,8 @@ async def test_the_condition_reaches_the_prompt_voice_actually_sends():
     backend = ScriptedBackend(["A aula e as quartas, das 19h as 22h30."])
     result = await SuperegoStage().voice(ctx, backend, voice_prompt="persona")
     sent = backend.calls[0]["prompt"]
-    assert SAY_WHAT_WAS_READ in sent and NOTHING_RAN not in sent
-    assert SAY_WHAT_WAS_READ in (result.prompt_text or "")
+    assert STATE_WHAT_IT_CONTAINS in sent and NOTHING_RAN not in sent
+    assert STATE_WHAT_IT_CONTAINS in (result.prompt_text or "")
     assert "review_verdict" in [b["block"] for b in result.prompt_blocks]
 
 

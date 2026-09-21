@@ -2781,28 +2781,49 @@ class SuperegoStage:
                 # WHAT IT DOES NOT DO: it does not re-offer the rejected claim in any form,
                 # and it says nothing about whether a DERIVED value is grounded. The core
                 # cannot know whether the flagged claim was right, and the net that judged it
-                # is the host's. The instruction is "say what was READ", which answers the
-                # contact truthfully without ever re-stating the contested sentence.
+                # is the host's. The instruction is "say what the DATA holds": a flagged
+                # claim reaches the contact only as far as the data itself carries it.
+                #
+                # ── THE DATA DECIDES, NOT THE CRITIQUE (code review, 2026-09-21) ──────
+                # The first cut opened "what review flagged is a CLAIM this data does not
+                # support". The core cannot know that, and on the live shape it is FALSE: the
+                # read returned "60h", the draft said "60 horas", and the host's net flagged it
+                # by tool NAME. It then said "MUST NOT repeat the rejected claim" BEFORE the
+                # colon that scoped it, so when the flagged claim IS a figure in the data the
+                # prohibition and "reproduce every figure exactly" pointed opposite ways — and
+                # a model resolving that toward the first denies again. So: the section asserts
+                # nothing about whether the data supports the claim (review judged the DRAFT and
+                # can be wrong about the DATA), and the scope comes FIRST — what the data holds
+                # is stated even when flagged, and only what it does not hold is dropped.
+                #
+                # RELEVANCE IS THE MODEL'S, AND NOT BY TOOL NAME. A universal read such as
+                # `resolve_date` opens this section on a turn that asked nothing about dates (a
+                # "does it integrate with X?" turn). Excluding such tools from the gate was
+                # measured and REFUSED: on a turn whose question IS a date, the resolved date is
+                # the answer, and the excluded turn would fall back to the legacy text's "say
+                # plainly that you do not have that information" — the denial this branch exists
+                # to stop. So the wording asks the model to judge what ANSWERS THE REQUEST, and
+                # forbids building a reply out of a retrieval that does not.
                 if read_is_visible:
                     rejection_section = (
                         "# Review verdict (HARD RULE)\n"
-                        "The draft below was REJECTED by review as UNVERIFIED — not because "
-                        f"nothing ran: {_EVERY_TOOL_SUCCEEDED} What review flagged is a CLAIM "
-                        "in the draft that this data does not support.\n"
+                        "Review flagged a CLAIM in the draft as UNVERIFIED — not because "
+                        f"nothing ran: {_EVERY_TOOL_SUCCEEDED} Review judged the DRAFT, not "
+                        "the data, and it can be wrong about what the data contains: the "
+                        "executor data above is the ONLY authority here.\n"
                         f"Reviewer critique: {reason}\n"
                         f"{_CRITIQUE_IS_NOT_EVIDENCE}"
-                        "You MUST NOT repeat the rejected claim, or any softened version of "
-                        "it: DROP the claim the data does not contain — do not restate it, do "
-                        "not hedge it, do not apologise for it — and change NOTHING else. "
-                        "Write the reply from what the executor data DOES contain, "
-                        "reproducing every figure, time, date, name or identifier in it "
-                        "exactly as written there. If what is left answers the request, that "
-                        "IS the answer and you must give it. "
-                        f"{_NEVER_DENY_WHAT_WAS_READ} Only when the data holds nothing "
-                        "relevant to the request do you say plainly what was looked up and "
-                        "that it did not contain the answer — that is a COMPLETE and honest "
-                        "reply, and it is the one case where a limit is the answer here. You "
-                        "may then ask ONE question to move forward.\n\n"
+                        "Whatever in the executor data answers the request, state exactly as "
+                        "written there — every figure, time, date, name or identifier — even "
+                        "when it is part of what review flagged. Whatever the flagged claim "
+                        "says that the data does NOT contain, you MUST NOT say, restate, "
+                        "soften or hedge: drop it, and change NOTHING else. If what is left "
+                        "answers the request, that IS the answer and you must give it. "
+                        f"{_NEVER_DENY_WHAT_WAS_READ} When nothing in the data answers the "
+                        "request, do not build a reply out of what was retrieved: drop the "
+                        "flagged claim and say plainly that you do not have that information, "
+                        "mentioning a lookup only when it was a lookup FOR what they asked. "
+                        "You may then ask ONE question to move forward.\n\n"
                     )
                 else:
                     rejection_section = (
