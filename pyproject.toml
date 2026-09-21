@@ -94,7 +94,12 @@ cogno_anima = ["prompt_templates/**/*.txt", "py.typed"]
 # per-test marker, keeping the suite consistent and independent of `anyio`
 # (which is only present transitively via httpx).
 asyncio_mode = "auto"
-testpaths = ["tests"]
+# A bare `pytest` runs the UNIT suite only. tests/integration defaults to the local
+# Ollama, and on a box where that server answers live traffic a bare run queues real
+# turns behind the suite. Integration is opt-in BY PATH: `pytest tests/integration`
+# (CI already invokes both directories by name, so this changes no CI job).
+# tests/unit/test_bare_pytest_collects_no_integration.py holds this line.
+testpaths = ["tests/unit"]
 # Nightly shards for tests/integration. The workflow selects with `-m`, so the path it
 # hands pytest stays `tests/integration` — an ANCESTOR of every file in it — and the
 # third shard is the COMPLEMENT of the other two, so an unmarked new file still runs.
