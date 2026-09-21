@@ -44,7 +44,7 @@ from typing import Any, Optional, Sequence
 from cogno_anima import metakeys as mk
 from cogno_anima import vocab
 from cogno_anima.types import (
-    PipelineContext, StageMetrics, SuperegoResult, ScopeCheckResult,
+    PipelineContext, StageMetrics, SuperegoResult, ScopeCheckResult, ToolExecution,
     read_succeeded_this_turn,
     write_attempted_this_turn,
 )
@@ -215,6 +215,31 @@ _CRITIQUE_IS_NOT_EVIDENCE = (
     "nothing verified it. Do not carry any figure, total, date or fact from it into your "
     "reply — not even one it states confidently, and not even when its arithmetic looks "
     "right. Use it to understand what was wrong, never as a source.\n"
+)
+
+# ── WHAT A TURN THAT READ SUCCESSFULLY MAY NOT BE TOLD TO SAY ─────────────────────────────
+#
+# Two sentences the verdict sections BOTH need, written once for the reason `_ADMITTING_A_LIMIT`
+# and `_PRESERVED_CLAUSE` are written once: a copy in the second branch is a contract that
+# diverges silently, and the second branch here arrived three weeks after the first. They are
+# spliced BY REFERENCE into `# Execution verdict (HARD RULE)` and `# Review verdict (HARD
+# RULE)`, so a rewording reaches both or neither.
+#
+# The fact is the SAME in both worlds and so is the prohibition — a lookup returned the thing,
+# and the contact may not be told it did not. What differs is what the voice is asked to do
+# next, and THAT is written per branch: the execution verdict sends it to "say what was read,
+# correcting what the critique says was wrong"; the review verdict sends it to "drop the one
+# claim the data does not carry and say the rest". Sharing the premise is not sharing the
+# remedy.
+_EVERY_TOOL_SUCCEEDED = (
+    "every tool that ran this turn SUCCEEDED, and what they returned is in the executor "
+    "data above."
+)
+
+_NEVER_DENY_WHAT_WAS_READ = (
+    "You MUST NOT tell the contact that you could not access, find, obtain, consult or "
+    "retrieve something that IS in that data — it was retrieved, and saying otherwise is a "
+    "false statement about the world, which they will act on."
 )
 
 # The persona trait the modulation must never talk over: the tenant asked for an even
@@ -2672,6 +2697,28 @@ class SuperegoStage:
         rejection_section = ""
         if rejection is not None:
             reason = str(rejection["reason"]).strip()
+            # ── THE LOOKUPS WORKED *AND THE PROMPT SHOWS IT* ──────────────────────────
+            # ONE fact for both verdict variants, and it is a conjunction because the two
+            # clauses make two claims: that the turn's lookups succeeded (a fact about the
+            # TURN — `read_succeeded_this_turn`, which also carries the boundary: anything
+            # failed anywhere and the clause stays off) and that what they returned is in the
+            # executor data above (a fact about THIS PROMPT — `_payload_shows_a_read`, over
+            # the very list `_tool_payload` renders).
+            #
+            # Gated on the turn-level predicate alone the second claim can be FALSE, and both
+            # shapes were measured deterministically over the rendered prompt: a successful
+            # read that belongs to a DISCARDED attempt (`ctx.turn_executions`), and one the
+            # CONSULTED specialist ran (`ctx.consult_result`) — each answers the turn question
+            # True while its result is nowhere in the prompt. The voice was then told the data
+            # was "above" and forbidden the honest "I did not find that": a false premise plus
+            # a muzzle, which is the pair these clauses exist to prevent.
+            #
+            # The payload is deliberately NOT widened to carry those records. Rendering a
+            # discarded attempt's data, or another persona's, raises provenance questions of
+            # its own (see `_format_consulted` on the judge side, and
+            # `docs/NETWORK_PERSONA_CHANNEL.md` §1.4) and is a larger change than a clause.
+            # Narrowing the clause costs nothing that was ever true.
+            read_is_visible = read_succeeded_this_turn(ctx) and self._payload_shows_a_read(ctx)
             # Two kinds of final rejection, and the wording above only ever covered the first.
             # When NOTHING executed (a conversational persona), the verdict is about what the
             # draft CLAIMS, not about an action it never took — so "do not say you did it" is
@@ -2697,18 +2744,115 @@ class SuperegoStage:
                     "do. Do NOT re-ask a question they already answered.\n\n"
                 )
             elif (rejection.get("kind") or "") == "unverified_claim":
-                rejection_section = (
-                    "# Review verdict (HARD RULE)\n"
-                    "The draft below was REJECTED by review as UNVERIFIED — nothing was "
-                    "executed this turn, so the draft is a claim, not a result.\n"
-                    f"Reviewer critique: {reason}\n"
-                    f"{_CRITIQUE_IS_NOT_EVIDENCE}"
-                    "You MUST NOT repeat the rejected claim, or any softened version of it. "
-                    "Say ONLY what the Context above supports; when it supports nothing, say "
-                    "plainly that you do not have that information — admitting a limit is a "
-                    "COMPLETE answer and is always preferable to repeating an unverified one. "
-                    "You may then ask ONE question to move forward.\n\n"
-                )
+                # ── THE VARIANT WHOSE OPENING SENTENCE CAN BE FALSE ────────────────────
+                # "nothing was executed this turn" is the premise of the wording below, and
+                # this kind does not carry that fact — the host stamps it from a DIFFERENT
+                # one. Its repair fires when its anti-fabrication net flags the reply AND the
+                # turn did not COMMIT; a read-only turn never commits, so EVERY flagged read
+                # turn arrives here wearing a kind whose text was written for the opposite
+                # world (a persona with no tools asserting an integration that does not
+                # exist — that case is below, byte for byte, and must keep working).
+                #
+                # Measured on a persisted trace, read 2026-09-19: the contact asked how long a
+                # class lasts, scope ALLOWED the turn, a knowledge-read tool ran and returned
+                # `ok=True` with the timetable, and the draft answered from it verbatim. The
+                # host's net flagged the reply anyway — it judges provenance by WHICH tool was
+                # called (only the scheduling vertical's own reads legitimise a schedule
+                # claim) and not by what the tool RETURNED, so the read holding those very
+                # times did not count — and re-voiced the turn under `unverified_claim`. The
+                # voice then obeyed this section word for word: told that nothing had been
+                # executed and steered to "say plainly that you do not have that
+                # information", it replied that the duration was unavailable. The first reply
+                # had been correct and fully grounded. (The provenance-by-tool-name rule is
+                # the HOST's and is a separate, larger fix; this section must be honest about
+                # the turn either way.)
+                #
+                # WHY A CONDITION AND NOT A FOURTH `kind`: the same reason `nothing_tried`
+                # gives one screen below — asking the host to re-derive a fact the core can
+                # read off the trace is the re-derivation this repo keeps paying for, and
+                # here the host's `kind` has just been measured WRONG about this very fact.
+                # `read_is_visible` answers it from the executed records (see its definition
+                # above), and its boundary is the point: ANY failed record makes it False,
+                # because then "I could not get that" may be TRUE of that call, and a read
+                # this PROMPT does not carry makes it False too. Either way this section
+                # stays exactly as it was. No new header either, so `_VOICE_BLOCKS` and the persisted
+                # inventory are untouched — the slug is still `review_verdict`.
+                #
+                # WHAT IT DOES NOT DO: it does not re-offer the rejected claim in any form,
+                # and it says nothing about whether a DERIVED value is grounded. The core
+                # cannot know whether the flagged claim was right, and the net that judged it
+                # is the host's. The instruction is "say what the DATA holds": a flagged
+                # claim reaches the contact only as far as the data itself carries it.
+                #
+                # ── THE DATA DECIDES, NOT THE CRITIQUE (code review, 2026-09-21) ──────
+                # The first cut opened "what review flagged is a CLAIM this data does not
+                # support". The core cannot know that, and on the live shape it is FALSE: the
+                # read returned "60h", the draft said "60 horas", and the host's net flagged it
+                # by tool NAME. It then said "MUST NOT repeat the rejected claim" BEFORE the
+                # colon that scoped it, so when the flagged claim IS a figure in the data the
+                # prohibition and "reproduce every figure exactly" pointed opposite ways — and
+                # a model resolving that toward the first denies again. So: the section asserts
+                # nothing about whether the data supports the claim (review judged the DRAFT and
+                # can be wrong about the DATA), and the scope comes FIRST — what the data holds
+                # is stated even when flagged, and only what it does not hold is dropped.
+                #
+                # RELEVANCE IS THE MODEL'S, AND NOT BY TOOL NAME. A universal read such as
+                # `resolve_date` opens this section on a turn that asked nothing about dates (a
+                # "does it integrate with X?" turn). Excluding such tools from the gate was
+                # measured and REFUSED: on a turn whose question IS a date, the resolved date is
+                # the answer, and the excluded turn would fall back to the legacy text's "say
+                # plainly that you do not have that information" — the denial this branch exists
+                # to stop. So the wording asks the model to judge what ANSWERS THE REQUEST, and
+                # forbids building a reply out of a retrieval that does not.
+                #
+                # THE REPRODUCTION IS EXHAUSTIVE, AND THE CONDITION IS ON THE WHOLE SENTENCE.
+                # The review rewrite first read "WHATEVER in the executor data answers the
+                # request, state exactly" — and the model-backed canary (CI, qwen3:8b,
+                # temperature 0) answered the class-duration turn with "A aula dura 3 horas e
+                # 30 minutos": a bare DERIVED figure, both class times dropped. The wording
+                # before it ("reproducing every figure, time, date, name or identifier IN IT")
+                # had passed the same test. Scoping WHICH values to state let the model choose
+                # "the answer" and compute it; so the relevance judgement now gates the whole
+                # sentence ("if the data answers the request…") and, once it does, every value
+                # in the data is reproduced. The two conditionals are complementary — the data
+                # answers, or nothing in it does — so neither contradicts the other on a
+                # `resolve_date`-only turn.
+                if read_is_visible:
+                    rejection_section = (
+                        "# Review verdict (HARD RULE)\n"
+                        "Review flagged a CLAIM in the draft as UNVERIFIED — not because "
+                        f"nothing ran: {_EVERY_TOOL_SUCCEEDED} Review judged the DRAFT, not "
+                        "the data, and it can be wrong about what the data contains: the "
+                        "executor data above is the ONLY authority here.\n"
+                        f"Reviewer critique: {reason}\n"
+                        f"{_CRITIQUE_IS_NOT_EVIDENCE}"
+                        "If the executor data answers the request, write the reply from what "
+                        "it DOES contain, reproducing every figure, time, date, name or "
+                        "identifier in it exactly as written there — even when it is part of "
+                        "what review flagged. Whatever the flagged claim "
+                        "says that the data does NOT contain, you MUST NOT say, restate, "
+                        "soften or hedge: drop it, and change NOTHING else. If what is left "
+                        "answers the request, that IS the answer and you must give it. "
+                        f"{_NEVER_DENY_WHAT_WAS_READ} When nothing in the data answers the "
+                        "request, do not build a reply out of what was retrieved: drop the "
+                        "flagged claim and say plainly that you do not have that information, "
+                        "mentioning a lookup only when it was a lookup FOR what they asked. "
+                        "You may then ask ONE question to move forward.\n\n"
+                    )
+                else:
+                    rejection_section = (
+                        "# Review verdict (HARD RULE)\n"
+                        "The draft below was REJECTED by review as UNVERIFIED — nothing was "
+                        "executed this turn, so the draft is a claim, not a result.\n"
+                        f"Reviewer critique: {reason}\n"
+                        f"{_CRITIQUE_IS_NOT_EVIDENCE}"
+                        "You MUST NOT repeat the rejected claim, or any softened version of "
+                        "it. Say ONLY what the Context above supports; when it supports "
+                        "nothing, say plainly that you do not have that information — "
+                        "admitting a limit is a COMPLETE answer and is always preferable to "
+                        "repeating an unverified one. "
+                        "You may then ask ONE question to move forward.\n\n"
+                    )
             else:
                 # The rejected EXECUTION. Two worlds arrive here wearing the same signal, and
                 # until 2026-09-06 the section spoke to only one of them. "NOTHING was
@@ -2773,14 +2917,18 @@ class SuperegoStage:
                 # would have DELETED eight true replies to buy a defect production has never
                 # produced. So the prohibition is tied to a resource the executor data actually
                 # CONTAINS, and the two classes that were measured are carved out of it by
-                # name. `read_succeeded_this_turn` opens the door; the containment question is
-                # the model's, because it is the only reader that can ask it.
-                read_worked = "" if not read_succeeded_this_turn(ctx) else (
-                    "THE LOOKUPS WORKED: every tool that ran this turn SUCCEEDED, and what "
-                    "they returned is in the executor data above. You MUST NOT tell the "
-                    "contact that you could not access, find, obtain, consult or retrieve "
-                    "something that IS in that data — it was retrieved, and saying otherwise "
-                    "is a false statement about the world, which they will act on. Say what "
+                # name. `read_is_visible` opens the door — the turn's lookups succeeded AND
+                # this prompt renders one of them; the containment question is the model's,
+                # because it is the only reader that can ask it.
+                #
+                # The premise and the prohibition are `_EVERY_TOOL_SUCCEEDED` /
+                # `_NEVER_DENY_WHAT_WAS_READ` — spliced, not copied, because the review-verdict
+                # variant needs the same two sentences (2026-09-19) and a hand-written second
+                # copy is the divergence `_ADMITTING_A_LIMIT` exists to prevent. The REMEDY
+                # below stays here: it is this branch's, and the other branch's is different.
+                read_worked = "" if not read_is_visible else (
+                    f"THE LOOKUPS WORKED: {_EVERY_TOOL_SUCCEEDED} "
+                    f"{_NEVER_DENY_WHAT_WAS_READ} Say what "
                     "was read (correcting whatever the critique says was wrong with how it "
                     "was put), or ask the ONE question that is missing. Two things this does "
                     "NOT touch, and both stay sayable in full: reporting truthfully that a "
@@ -2996,14 +3144,65 @@ class SuperegoStage:
                 "says and drop the part that contradicts it.\n\n")
 
     @staticmethod
+    def _payload_records(ctx: PipelineContext) -> "list[ToolExecution]":
+        """The executions the `# Data gathered by the executor` block RENDERS — one definition.
+
+        The SURVIVING attempt's calls, and only those. It is deliberately NARROWER than the
+        turn: `types._any_execution` also walks `ctx.turn_executions` (every attempt of the
+        turn, discarded ones included) and `ctx.consult_result` (what a consulted specialist
+        executed), and neither of those reaches this prompt.
+
+        It exists because a voice clause that says "its result is in the executor data above"
+        is a claim about THIS PROMPT, not about the turn, and the two were conflated — see
+        :meth:`_payload_shows_a_read`. Both the renderer and that predicate read this list, so
+        a future change of source moves them together; `test_the_gate_and_the_payload_share_a
+        _source` fails if they ever stop agreeing.
+        """
+        return list(ctx.ego_result.tools_executed) if ctx.ego_result else []
+
+    @classmethod
+    def _payload_shows_a_read(cls, ctx: PipelineContext) -> bool:
+        """Does the executor data THIS PROMPT renders carry a successful, non-writing read?
+
+        The voice-side half of the gate on both "the lookups worked" clauses. `# Execution
+        verdict` and `# Review verdict` each tell the voice that what the tools returned **is
+        in the executor data above** and then forbid it from reporting a failure to find it.
+        Gated on `read_succeeded_this_turn` ALONE that premise can be false: measured
+        deterministically over the rendered prompt, a turn whose only successful read was on a
+        DISCARDED attempt, and a turn whose only successful read was the CONSULTED specialist's,
+        both answered the turn-level predicate True while the read's result was nowhere in the
+        prompt — a false premise plus a muzzle, which is the exact pair both clauses exist to
+        prevent.
+
+        So the clause now also asks this, over `_payload_records`, and the sentence becomes true
+        by construction: the record it finds is the record the renderer renders.
+
+        **Only the POSITIVE half lives here.** "Nothing failed" is NOT re-asked: that boundary
+        belongs to `read_succeeded_this_turn`, whose first question already covers this list
+        (it is one of its sources) and covers the rest of the turn besides. A second copy here
+        would make the turn-level boundary removable without a test noticing, and a rule each
+        reader re-derives is a rule each reader gets wrong alone.
+
+        The payload is passed to `_build_voice_prompt` as a parameter, so a caller CAN hand it
+        text unrelated to ``ctx``; production never does (`voice()` renders `_tool_payload(ctx)`
+        and hands that same string over), and the invariant is asserted through `voice()` itself
+        rather than through the helper.
+        """
+        return any(getattr(t, "ok", None) is True
+                   and getattr(t, "side_effect", False) is not True
+                   and getattr(t, "tool_mutating", None) is not True
+                   for t in cls._payload_records(ctx))
+
+    @staticmethod
     def _tool_payload(ctx: PipelineContext) -> str:
         if not ctx.ego_result:
             return "(no execution)"
         parts = []
         # Same untrusted-data rule as the judge: what a tool returned is third-party text and this
         # payload is what the voicer reads to write the user's reply.
-        names = {t.tool for t in ctx.ego_result.tools_executed if t.tool}
-        for t in ctx.ego_result.tools_executed:
+        records = SuperegoStage._payload_records(ctx)
+        names = {t.tool for t in records if t.tool}
+        for t in records:
             if t.ok:
                 parts.append(f"{t.tool}: {sanitize_untrusted(t.result or t.error or '', names)}")
             elif t.side_effect:
