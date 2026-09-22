@@ -107,7 +107,7 @@ pytestmark = [pytest.mark.asyncio, pytest.mark.perception]
 REAL_TURNS_INPUTS = [
     # Veterinary Clinic
     ("pet registration", "Quero cadastrar meu cachorro...Thor, Golden Retriever...", [["thor"], ["golden", "retriever", "dog"]]),
-    ("pet sheet view", "Boa tarde, quero ver a ficha do Thor do Vinicius Vale", [["thor"], ["vinicius", "vini", "vale", "valley"]]),
+    ("pet sheet view", "Boa tarde, quero ver a ficha do Thor do Heitor Lacerda", [["thor"], ["heitor", "lacerda"]]),
     ("consultation opening", "Abrir consulta para o Thor, motivo: consulta com vacinação", [["thor"], ["consult", "vaccin", "open"]]),
     ("consultation items", "Adicionar ao atendimento atual do Thor os itens do catálogo: Vacina V8/V10 e Consulta Clínica Geral", [["thor"], ["v8", "v10"]]),
     ("status report", "Fechar o atendimento, diagnóstico: animal saudável, vacinação em dia", [["close", "clos", "fechar", "finish"], ["health", "saud", "vaccin"]]),

@@ -1,6 +1,6 @@
 """The voicer sometimes answers in JSON, and nothing between it and the contact unwrapped it.
 
-Measured live on 2026-08-24: `{"message": "Oi, Vinicius! …"}` was persisted as the turn's
+Measured live on 2026-08-24: `{"message": "Oi, Heitor! …"}` was persisted as the turn's
 response — the person would have been shown the JSON. One turn in 283, and **deterministic on
 the input rather than random**: the same sentence reproduced it 2/2 while another sentence gave
 plain text 0/1, same process, same persona, same voicer.
@@ -27,13 +27,13 @@ unwrap = SuperegoStage.unwrap_envelope
 @pytest.mark.parametrize("key", ["message", "reply", "response", "text",
                                  "Message", "  TEXT  "])
 def test_the_one_shape_it_opens(key):
-    assert unwrap(json.dumps({key: "Oi, Vinicius! 😊"})) == "Oi, Vinicius! 😊"
+    assert unwrap(json.dumps({key: "Oi, Heitor! 😊"})) == "Oi, Heitor! 😊"
 
 
 def test_the_turn_that_actually_leaked():
-    leaked = '{"message":"Oi, Vinicius! Tudo bem? \\ud83d\\ude0a\\n\\nO **Cogno** é ..."}'
+    leaked = '{"message":"Oi, Heitor! Tudo bem? \\ud83d\\ude0a\\n\\nO **Cogno** é ..."}'
     out = unwrap(leaked)
-    assert out is not None and out.startswith("Oi, Vinicius!") and "**Cogno**" in out
+    assert out is not None and out.startswith("Oi, Heitor!") and "**Cogno**" in out
 
 
 @pytest.mark.parametrize("text,why", [
@@ -77,18 +77,18 @@ def test_a_deeply_nested_payload_does_not_blow_the_stack():
 @pytest.mark.asyncio
 async def test_voice_unwraps_and_flags_it():
     ctx = _ctx()
-    backend = ScriptedBackend(['{"message": "Confirmado, Vinicius! 😊"}'])
+    backend = ScriptedBackend(['{"message": "Confirmado, Heitor! 😊"}'])
     res = await SuperegoStage().voice(ctx, backend, voice_prompt="persona")
-    assert res.response == "Confirmado, Vinicius! 😊"      # the person sees the reply...
+    assert res.response == "Confirmado, Heitor! 😊"      # the person sees the reply...
     assert "voice:json_unwrapped" in res.adjustments        # ...and the trace sees the net work
 
 
 @pytest.mark.asyncio
 async def test_voice_leaves_a_plain_reply_alone_and_does_not_flag():
     ctx = _ctx()
-    backend = ScriptedBackend(["Confirmado, Vinicius! Registrei os R$ 50."])
+    backend = ScriptedBackend(["Confirmado, Heitor! Registrei os R$ 50."])
     res = await SuperegoStage().voice(ctx, backend, voice_prompt="persona")
-    assert res.response == "Confirmado, Vinicius! Registrei os R$ 50."
+    assert res.response == "Confirmado, Heitor! Registrei os R$ 50."
     assert "voice:json_unwrapped" not in res.adjustments
 
 

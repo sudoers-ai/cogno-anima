@@ -777,7 +777,7 @@ class SuperegoStage:
         """The reply inside a JSON envelope, or ``None`` when there is no envelope to open.
 
         Measured live on 2026-08-24/25: the voicer (gpt-4o-mini) returned
-        ``{"message": "Oi, Vinicius! …"}`` and nothing between it and the contact unwrapped it —
+        ``{"message": "Oi, Heitor! …"}`` and nothing between it and the contact unwrapped it —
         the person would have been shown the JSON. Re-counted on 2026-08-26, and the DENOMINATOR is
         the finding: the box holds 297 traces but only **9** carry a ``superego`` block at all (the
         field is persisted since 2026-08-25 11:03), so 288 of them could not have shown the flag
@@ -1510,7 +1510,7 @@ class SuperegoStage:
         # only reached the lead because the correction loop exhausted and shipped it).
         #
         # The bypass is load-bearing and stays: consulted, the guard wrongly blocks "Entre 7
-        # a 10 contados a média" 3/3 and "com o Vinicius Vale" 1/3. Both are covered — the
+        # a 10 contados a média" 3/3 and "com o Heitor Lacerda" 1/3. Both are covered — the
         # first is UNKNOWN, the second SOCIAL (the shortcut above). Across 11 real follow-ups
         # and 4 injections this condition separated them cleanly.
         #

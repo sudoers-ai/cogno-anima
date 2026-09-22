@@ -53,8 +53,8 @@ Rules:
   the assistant's last question in the Conversation ("sim", "não", "talvez", "ok", a number, a
   name, a time, a specialty, one of the options the assistant offered), NEVER return it bare or
   as a literal translation. Rewrite it as a complete statement by merging in the content of that
-  question. E.g. after the assistant asks "with which doctor?", the input "com o Vinicius Vale"
-  becomes "Book with Dr. Vinicius Vale" (carry the date/time/action already established). This
+  question. E.g. after the assistant asks "with which doctor?", the input "com o Heitor Lacerda"
+  becomes "Book with Dr. Heitor Lacerda" (carry the date/time/action already established). This
   is context resolution, not a topic change. It applies EVEN when the reply is a single brand
   or proper noun ("WhatsApp", "Sedex"): keep the noun exactly, but still expand it into the
   full statement the question implies — a bare proper noun is not a finished rewrite.
