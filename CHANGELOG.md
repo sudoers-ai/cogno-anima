@@ -1,5 +1,57 @@
 # Changelog
 
+## Unreleased — um e-mail preservado que o contacto nunca escreveu é do modelo, não do contacto (2026-09-22)
+
+### Fixed
+
+- **A NOUMENO descarta um termo preservado que seja E-MAIL ou URL e não esteja, inteiro, nas
+  palavras do contacto — antes de chegar ao juiz e à voz.** Medido 3/3, determinístico
+  (`qwen3:8b`, `temperature=0`), ao regravar a cassete do onboarding no host (#954): o rewriter
+  listou o e-mail do contacto em `preserved_terms` com UM carácter alterado (mesmo domínio,
+  parte local a distância de edição 1) e o valor foi parar ao prompt do juiz sob `# Preserved
+  terms — VALUES`. Como o juiz exige a reprodução EXACTA de cada valor preservado (critério #4,
+  #172), a resposta com o e-mail CERTO era rejeitada por «o ter alterado», o laço esgotava e o
+  contacto recebia a frase de falha — ou a voz repetia o endereço errado.
+
+  **Só e-mails e URLs, de propósito.** São tokens exactos por natureza: não há reescrita
+  legítima de um endereço, logo um que não está no que o contacto escreveu é do modelo. Uma
+  FIGURA não é: a NOUMENO normaliza o formato a caminho do inglês («R$ 1.000,00» pode sair
+  `1000`) e o #172 decidiu que um termo preservado é um VALOR, não uma grafia — um descarte por
+  «não está verbatim» apanharia figuras legítimas. Figuras, nomes e frases nunca passam por
+  este caminho (controlo pinado).
+
+  **A comparação é uma correspondência de endereço INTEIRO contra `ctx.user_input`** — o texto
+  cru, nunca a reescrita, que carrega a mesma mutação — **com maiúsculas e tudo.** Exacta porque
+  os dois erros não são simétricos: um descarte a mais custa só a marcação (as palavras do
+  contacto já estão no prompt do juiz, verbatim, em `# User request`); um descarte a menos é o
+  defeito medido. Dobrar maiúsculas não recupera um carácter trocado — só admitiria uma
+  normalização que o MODELO escolheu, e o juiz passaria a exigir a grafia do modelo sobre a do
+  contacto. Endereço inteiro e não substring nua porque, a distância de edição 1, um carácter
+  caído em qualquer das PONTAS da parte local («na.silva@…» em «ana.silva@…») ou do domínio
+  («…@example.com» em «…@example.com.br») deixa uma substring do que foi escrito que continua a
+  não ser o endereço.
+
+  **O descarte deixa marca — uma rede que ninguém conta vira o mecanismo.**
+  `vocab.PRESERVED_NOT_IN_INPUT` em `NoumenoResult.degradations` (alfabeto fechado, ao lado de
+  `EMBED_UNAVAILABLE`), a CONTAGEM em `NoumenoResult.preserved_dropped`,
+  `NOUMENO.PRESERVED_NOT_IN_INPUT` em `DriftMetrics.to_tags()` (novo campo
+  `noumeno_degradations`, semeado por `DriftCalculator.compute`) e um WARNING com a contagem.
+  Nunca o valor: um endereço é PII e o registo sobrevive ao turno. O traço do host lê hoje
+  `preserved_terms` e `warnings` do resultado da NOUMENO e não `degradations` — persistir a
+  marca é uma linha do lado do host (`trace.py`, bloco `noumeno`).
+
+  **Uma definição de «crítico», agora três leitores.** `_CRITICAL_TERM_RE` (figura, e-mail, URL)
+  vivia só no SUPEREGO; passa a `cogno_anima.preserved.CRITICAL_TERM_RE`, e a metade de tokens
+  exactos é `EXACT_TOKEN_RE`, construída dos MESMOS fragmentos. O SUPEREGO mantém o nome local
+  e importa-o; `test_judge_preserved_is_a_value` continua a pinar os dois leitores dele, e o
+  teste novo pina a identidade `superego._CRITICAL_TERM_RE is preserved.CRITICAL_TERM_RE`.
+
+  `tests/unit/test_preserved_terms_are_the_contacts.py`: gémeo, três controlos, contagem sem
+  valor, arestas da comparação, alfabeto e tag. Quatro mutações medidas: sem descarte → gémeo
+  morre; descartar figuras → controlo 2 morre; descartar sem registar → os testes da marca
+  morrem; comparar contra `rewritten` → gémeo morre. Um caso de integração no shard
+  `perception` afirma o invariante contra um modelo real.
+
 ## Unreleased — o critério de GROUNDING contradizia o bloco que estava no mesmo prompt (2026-09-08)
 
 ### Fixed
