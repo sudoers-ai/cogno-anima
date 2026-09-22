@@ -50,6 +50,7 @@ from cogno_anima.types import (
 )
 from cogno_synapse import (LLMBackend, cached_tokens_of, served_model_of,
                            system_fingerprint_of)
+from cogno_anima.preserved import CRITICAL_TERM_RE
 from cogno_anima.prompts import prompt_digest
 from cogno_anima.utils import WarnOnce
 from cogno_anima.security.prompt_guard import sanitize_untrusted
@@ -71,8 +72,11 @@ _COT_RE = re.compile(r"<think(?:ing)?>.*?</think(?:ing)?>", re.DOTALL | re.IGNOR
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 # A preserved term is "critical" (worth a grounding backstop) when it carries a
 # figure or is an email/URL — altering one of these silently corrupts the answer.
+# The definition lives in `cogno_anima.preserved` since the NOUMENO reads the e-mail/URL half
+# of it (to drop a preserved address the contact never typed); the local name stays because
+# two docstrings below and `test_judge_preserved_is_a_value` refer to it by this name.
 _NUM_RE = re.compile(r"\d[\d.,]*\d|\d")
-_CRITICAL_TERM_RE = re.compile(r"\d|@|https?://", re.IGNORECASE)
+_CRITICAL_TERM_RE = CRITICAL_TERM_RE
 # A FIGURE, for the divergence backstop below: a number written with a decimal separator
 # and exactly two digits after it (``120,00``, ``1.234,56``, ``120.00``) — a rate, a total,
 # an amount. Deliberately NOT every numeral: ``_NUM_RE`` matches the "2" of "2 items" and

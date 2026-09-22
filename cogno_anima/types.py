@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Callable, Optional, Any
 from pydantic import BaseModel, Field
 
+from cogno_anima.vocab import PRESERVED_NOT_IN_INPUT
+
 
 class StageMetrics(BaseModel):
     """Telemetry captured during execution of one LLM call or stage.
@@ -141,6 +143,11 @@ class NoumenoResult(BaseModel):
     # — an embedder outage is not a reason to ask the contact to rephrase, and
     # widening a shared predicate to carry a second meaning always has a victim.
     degradations: list[str] = Field(default_factory=list)
+    # How many preserved E-MAIL/URL terms the contact never typed were dropped from
+    # `preserved_terms` this turn (`vocab.PRESERVED_NOT_IN_INPUT` says that some were; this
+    # says how many). A COUNT and never the values: an address is PII, and a net nobody
+    # counts becomes the mechanism. See `cogno_anima.preserved`.
+    preserved_dropped: int = 0
 
     # ── Telemetry ─────────────────────────────────────────
     metrics: StageMetrics
@@ -232,6 +239,11 @@ class DriftMetrics(BaseModel):
     # components generically; this component was simply the one that could never be
     # one. It happens when the embedder is unreachable: see `NoumenoResult.drift_score`.
     drift_score: Optional[float]
+    # What the NOUMENO could NOT do this turn (`NoumenoResult.degradations`, seeded by
+    # `DriftCalculator.compute`), so `to_tags()` can say it: a reader of tags alone must
+    # be able to see that a preserved address was dropped, the way it can see that the
+    # drift was never measured.
+    noumeno_degradations: list[str] = Field(default_factory=list)
 
     # Stages 2–5 drift. None = "stage not computed yet" (distinct from 0.0 =
     # "computed, no drift"). compute_cumulative renormalizes over the stages
@@ -256,6 +268,12 @@ class DriftMetrics(BaseModel):
             tags.append("NOUMENO.DRIFT_UNKNOWN")
         elif self.drift_score >= 0.4:
             tags.append("NOUMENO.DRIFT")
+
+        # A preserved e-mail/URL the contact never typed was dropped (a closed-alphabet
+        # degradation; the count is on the NoumenoResult). One tag per fact, so the embedder
+        # outage keeps its own tag above and is not repeated here.
+        if PRESERVED_NOT_IN_INPUT in self.noumeno_degradations:
+            tags.append("NOUMENO.PRESERVED_NOT_IN_INPUT")
 
         if self.compression_ratio == 1.0:
             tags.append("NOUMENO.PASS_THROUGH")

@@ -152,6 +152,8 @@ class DriftCalculator:
             # could not measure it (embedder unreachable), NOT "no drift".
             drift_score=(None if epistemological_drift is None
                          else round(epistemological_drift, 3)),
+            # What the NOUMENO could not do, carried so `to_tags()` can say it.
+            noumeno_degradations=list(getattr(noumeno, "degradations", None) or []),
         )
 
     # ---------------------------------------------------------------------
