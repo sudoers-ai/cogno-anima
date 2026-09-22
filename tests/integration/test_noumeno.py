@@ -783,3 +783,41 @@ async def test_noumeno_short_reply_resolution(case):
             f"  Rewritten:    {res.rewritten!r}\n"
             f"  Expected one of: {alternatives!r}"
         )
+
+
+# ────────────────────────────────────────────────────────────────────
+#  11. A preserved e-mail/URL is the contact's own — or absent, never altered
+# ────────────────────────────────────────────────────────────────────
+
+async def test_a_preserved_email_is_the_contacts_own_or_absent():
+    """Measured 3 of 3 in the host's onboarding cassette (#954, qwen3:8b, temperature=0): the
+    model listed the contact's e-mail under ``preserved_terms`` with ONE character altered, and
+    the judge then rejected every reply carrying the RIGHT address for "altering" it.
+
+    The stage now drops a preserved e-mail/URL that the contact did not type (an exact token has
+    no legitimate rewrite) and marks the drop — so with a real model the invariant is: every
+    preserved address IS in the contact's words, and a drop is visible as a count and a
+    degradation. The REWRITE is deliberately not asserted on: the model may still alter the
+    address there, and that is a model defect this guard does not claim to fix.
+    """
+    await backends.skip_unless_available(embed=True)
+
+    noumeno, llm = _make_real_noumeno()
+    email = "ana.silva@example.com"
+    user_input = f"meu e-mail é {email}, pode confirmar o cadastro?"
+
+    ctx = PipelineContext(user_input=user_input, force_language="pt-BR")
+    ctx = await noumeno.process(ctx, llm)
+    res = ctx.noumeno
+
+    _assert_valid_noumeno_result(res, user_input, llm.model)
+
+    for term in res.preserved_terms:
+        if "@" in term or "://" in term:
+            assert term.strip() in user_input, (
+                f"A preserved address the contact never typed reached the judge!\n"
+                f"  Input:     {user_input!r}\n"
+                f"  Preserved: {res.preserved_terms!r}"
+            )
+    assert (res.preserved_dropped > 0) == ("preserved:not_in_input" in res.degradations), (
+        "a drop must be counted AND recorded in the closed alphabet, or neither")

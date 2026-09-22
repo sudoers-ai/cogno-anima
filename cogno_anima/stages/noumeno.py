@@ -14,7 +14,8 @@ from cogno_anima.utils import (DEFAULT_CONFIDENCE, STOPWORDS, expand_slangs,
                                generate_json_resilient, parse_json_object)
 from cogno_anima.prompts import load_prompt, prompt_digest
 from cogno_anima.errors import StageParseError
-from cogno_anima.vocab import DRIFT_TAG_UNKNOWN, EMBED_UNAVAILABLE
+from cogno_anima.preserved import filter_preserved_terms
+from cogno_anima.vocab import DRIFT_TAG_UNKNOWN, EMBED_UNAVAILABLE, PRESERVED_NOT_IN_INPUT
 
 logger = logging.getLogger("cogno_anima.noumeno")
 
@@ -315,7 +316,21 @@ class Noumeno:
         context_turn = data.get("context_turn", "").strip()
         confidence = float(data.get("confidence", DEFAULT_CONFIDENCE))
         changed = bool(data.get("changed", False))
-        preserved_terms = list(data.get("preserved_terms", []))
+        # A preserved E-MAIL/URL the contact never typed is the MODEL's, not the contact's, and
+        # it is dropped HERE — before the judge demands its exact reproduction (criterion #4)
+        # and before the voice can repeat it. Measured 3/3 on the onboarding cassette (host
+        # #954): the address came back with one character altered, and every reply carrying the
+        # RIGHT one was rejected for "altering" it. Exact tokens ONLY — a figure is normalised
+        # on the way to English and a "not verbatim" test would eat legitimate ones — and
+        # compared against the RAW input, never the rewrite, which carries the same mutation.
+        preserved_terms, preserved_dropped = filter_preserved_terms(
+            data.get("preserved_terms") or [], user_input)
+        if preserved_dropped:
+            degradations.append(PRESERVED_NOT_IN_INPUT)
+            # The COUNT, never a value: an address is PII, and the log outlives the turn.
+            logger.warning("stage=noumeno event=preserved_not_in_input dropped=%d kept=%d "
+                           "— the rewriter listed an e-mail/URL the contact never typed",
+                           preserved_dropped, len(preserved_terms))
         rewrite_warnings = list(data.get("rewrite_warnings") or [])
 
         # 7. Drift Computation (post-LLM)
@@ -415,6 +430,7 @@ class Noumeno:
             preserved_terms=preserved_terms,
             rewrite_warnings=rewrite_warnings,
             degradations=degradations,
+            preserved_dropped=preserved_dropped,
             metrics=metrics
         )
 

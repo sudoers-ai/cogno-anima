@@ -80,8 +80,13 @@ VALID_DRIFT_TAGS: frozenset[str] = frozenset({
 # list is written into traces, so its values must never come from an error message
 # (a transport error string can carry a URL, a host name, or a contact's text).
 EMBED_UNAVAILABLE = "embed:unavailable"
+# A preserved E-MAIL/URL the contact never typed was listed by the rewriter and DROPPED before
+# the judge could demand its exact reproduction (``cogno_anima.preserved.filter_preserved_terms``).
+# Recorded once per turn; the COUNT is ``NoumenoResult.preserved_dropped`` and the values are
+# never recorded anywhere (an address is PII, and the point of the drop is that it was wrong).
+PRESERVED_NOT_IN_INPUT = "preserved:not_in_input"
 
-VALID_NOUMENO_DEGRADATIONS: frozenset[str] = frozenset({EMBED_UNAVAILABLE})
+VALID_NOUMENO_DEGRADATIONS: frozenset[str] = frozenset({EMBED_UNAVAILABLE, PRESERVED_NOT_IN_INPUT})
 
 # ── Outgoing-PII provenance (SUPEREGO output backstop) ───────────────────────
 # Why a personal datum found in the OUTGOING text was, or was not, allowed to leave. The rule the
