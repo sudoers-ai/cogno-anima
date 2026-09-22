@@ -41,7 +41,7 @@ _ECHO_TAIL_WORDS = 4
 
 def _echo_norm(text: str) -> tuple[str, ...]:
     """Punctuation/case/accent-insensitive word tuple for echo comparison. Accents are
-    folded (NFD, combining marks dropped) so 'Vinícius' matches 'Vinicius' and NFD
+    folded (NFD, combining marks dropped) so 'José' matches 'Jose' and NFD
     input does not split accented words into fragments."""
     text = unicodedata.normalize("NFD", text)
     text = "".join(c for c in text if not unicodedata.combining(c))
@@ -51,9 +51,9 @@ def _echo_norm(text: str) -> tuple[str, ...]:
 def _context_supported(rewritten: str, context_text: str) -> bool:
     """The rewrite's distinctive words (4+ chars, non-stopword) are anchored in the
     given context. Two anchors are required when the rewrite has that many distinctive
-    words: a single stray match — 'vale' inside "vale a pena", a lone 'book' in an
-    English line — must not clear the flag. Names survive translation, so real
-    resolution ("com o Vinicius Vale", or the assistant just offered the name) anchors
+    words: a single stray match — a lone 'heitor' that names somebody else, a lone 'book' in
+    an English line — must not clear the flag. Names survive translation, so real
+    resolution ("com o Heitor Lacerda", or the assistant just offered the name) anchors
     on the name itself."""
     ctx_words = set(_echo_norm(context_text))
     distinctive = {w for w in _echo_norm(rewritten)
@@ -70,7 +70,7 @@ def _split_examples(system: str) -> tuple[str, tuple[tuple[str, ...], ...],
     from BOTH regions. Returns ``(prompt_without_examples, example_rewrites,
     rule_rewrites)``: the first set lives in the Examples block, absent from the retry
     prompt, so a retry answer is parrot-proof against it; the second is embedded in the
-    RULES ("… becomes \"Book with Dr. Vinicius Vale\""), which the retry still sees, so
+    RULES ("… becomes \"Book with Dr. Heitor Lacerda\""), which the retry still sees, so
     those can never earn the retry's unconditional trust. The Examples block is assumed
     terminal — true for the shipped prompt; a custom ``prompts_dir`` that appends rules
     after it keeps its own risk (they would be absent from the retry prompt too)."""
@@ -202,7 +202,7 @@ class Noumeno:
 
         # 4. Formulate Prompt
         # The recent transcript (user + assistant) is injected UNCONDITIONALLY — a short reply
-        # ("com o Vinicius Vale", "às 14h", "sim") is embedding-dissimilar to the last query, so
+        # ("com o Heitor Lacerda", "às 14h", "sim") is embedding-dissimilar to the last query, so
         # the subject-continuity gate would drop it; but it must still resolve against what the
         # assistant just asked. The single-query hint stays gated by continuity (it is a summary,
         # not the back-and-forth).
@@ -293,11 +293,11 @@ class Noumeno:
         # Rule-illustration echo (checked AFTER the retry so it also covers the retry's
         # answer): the copied string lives in the RULES, which the retry prompt keeps, so
         # no retry can clear it — and it is also exactly what a legitimate resolution
-        # looks like ("com o Vinicius Vale" → "Book with Dr. Vinicius Vale"). A match only
+        # looks like ("com o Heitor Lacerda" → "Book with Dr. Heitor Lacerda"). A match only
         # counts as fabrication when the rewrite has no lexical anchor in ANY channel the
         # model legitimately resolves from — the input, the conversation, and the
         # last-query/summary hints injected into the same prompt (the wrong-name case:
-        # "com a Ana" rewritten as booking Vinicius Vale). Flag, never block.
+        # "com a Ana" rewritten as booking Heitor Lacerda). Flag, never block.
         if (short_reply
                 and self._matches_example(rewritten, normalized_input, self._rule_rewrites)
                 and not _context_supported(
