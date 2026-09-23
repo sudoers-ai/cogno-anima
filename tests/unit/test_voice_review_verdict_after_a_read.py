@@ -87,6 +87,11 @@ ABSOLUTE_PROHIBITION = "You MUST NOT repeat the rejected claim"
 # the world this kind was written for. Copied from a rendering of the base revision, with
 # ``reason="R"``, and compared byte for byte rather than by substring: a twin pinned with `in`
 # checks survives a rewrite that keeps the words and changes the meaning.
+#
+# Re-pinned 2026-09-22: the exhaustion clause `_NOTHING_BEYOND_WHAT_WAS_READ` is UNCONDITIONAL
+# and is the last word of EVERY rendering of both verdict headers, this one included — so the
+# literal below carries it, as a literal like the rest (a pin, not a contract). The wording
+# ABOVE the clause is still the base revision's, byte for byte.
 MAIN_REVIEW_VERDICT = (
     "# Review verdict (HARD RULE)\n"
     "The draft below was REJECTED by review as UNVERIFIED — nothing was executed this turn, "
@@ -99,7 +104,21 @@ MAIN_REVIEW_VERDICT = (
     "You MUST NOT repeat the rejected claim, or any softened version of it. Say ONLY what the "
     "Context above supports; when it supports nothing, say plainly that you do not have that "
     "information — admitting a limit is a COMPLETE answer and is always preferable to "
-    "repeating an unverified one. You may then ask ONE question to move forward.\n\n"
+    "repeating an unverified one. You may then ask ONE question to move forward.\n"
+    "NOTHING IS RECONSTRUCTED. What was read FOR this request is the reply — the executor "
+    "data above and, when one is shown, the executor's answer — in this persona's voice (its "
+    "own configured rules and limits included): state it, reproducing every figure, date, "
+    "name and identifier in it exactly as written there, and NOTHING beyond them: no list, "
+    "date, item, name or value that is not written in them. What the request asked for and "
+    "NO tool read this turn is not yours to write: it is reported as not read, in one "
+    "sentence BESIDE what was read — never instead of it — and nothing is put in its place. "
+    "In particular: a DATE is never derived — not from a month, a period, a count or a "
+    "pattern; if it is not written, character for character, in what was read this turn, it "
+    "is not in the reply. And an earlier reply in the Context is not a template: a section "
+    "it had that this turn did not read (a list of classes by date, a schedule, a set of "
+    "dates) does not exist here — an EARLIER turn read is not what this turn read, and a "
+    "list completed by analogy, by pattern, or from memory is INVENTED, however plausible "
+    "it looks.\n\n"
 )
 
 
@@ -417,18 +436,23 @@ def test_the_persisted_inventory_does_not_move():
 # than the whole prompt so an unrelated change elsewhere in the voice prompt cannot fail this
 # test with a message about the wrong thing; recompute by rendering the same fixtures on the
 # revision you are comparing against.
+#
+# Re-measured 2026-09-22 on the branch that carries `_NOTHING_BEYOND_WHAT_WAS_READ`: that clause
+# is unconditional on both verdict headers, so every `execution_verdict` and `review_verdict`
+# cell moved TOGETHER (one splice, one delta per header) and only `already_said` kept its
+# digest — the anti-repeat guard is not an exhaustion and carries no such clause.
 _MAIN_SECTIONS = {
     "no_exec|repeated_reply|already_said": "aef13fbe8b469365",
-    "no_exec|unverified_claim|review_verdict": "e90b3d53d76ee533",
-    "no_exec|other|execution_verdict": "b2990b63fcf8392d",
+    "no_exec|unverified_claim|review_verdict": "cef24eeddde39fea",
+    "no_exec|other|execution_verdict": "0126a7a82149e647",
     "read_ok|repeated_reply|already_said": "aef13fbe8b469365",
-    "read_ok|other|execution_verdict": "4c65c7761eb5e82e",
+    "read_ok|other|execution_verdict": "4153c3eb902b1065",
     "read_plus_failed|repeated_reply|already_said": "aef13fbe8b469365",
-    "read_plus_failed|unverified_claim|review_verdict": "e90b3d53d76ee533",
-    "read_plus_failed|other|execution_verdict": "b2990b63fcf8392d",
+    "read_plus_failed|unverified_claim|review_verdict": "cef24eeddde39fea",
+    "read_plus_failed|other|execution_verdict": "0126a7a82149e647",
     "write|repeated_reply|already_said": "aef13fbe8b469365",
-    "write|unverified_claim|review_verdict": "e90b3d53d76ee533",
-    "write|other|execution_verdict": "91faad424d9ef189",
+    "write|unverified_claim|review_verdict": "cef24eeddde39fea",
+    "write|other|execution_verdict": "2d852e124e6b79f4",
 }
 
 def _shape_no_exec():
@@ -505,7 +529,9 @@ def test_every_other_rendering_is_exactly_mains(label):
 def test_the_only_cell_that_moved_is_the_one_this_change_is_about():
     """Stated as an assertion rather than as a comment: the changed rendering is NOT main's."""
     section = _verdict(_turn(_read()), reason="R")
-    assert hashlib.sha256(section.encode()).hexdigest()[:16] != "e90b3d53d76ee533"
+    digest = hashlib.sha256(section.encode()).hexdigest()[:16]
+    assert digest != "e90b3d53d76ee533"              # the legacy rendering, pre-#174
+    assert digest != _MAIN_SECTIONS["no_exec|unverified_claim|review_verdict"]
 
 
 # ── the two sentences are SHARED, not copied ─────────────────────────
