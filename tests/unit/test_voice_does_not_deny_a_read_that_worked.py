@@ -329,11 +329,31 @@ def test_a_rejection_without_a_reason_renders_no_verdict_and_no_clause():
 
 
 def test_both_conditions_can_hold_at_once_and_do_not_contradict():
-    """The p0 turn attempted no write AND read successfully, so BOTH clauses render. They are
-    the same family pointing at two different inventions — an ACTION that was never tried, and
-    an ACCESS that never failed — and neither licenses what the other forbids."""
-    prompt = _rendered(_turn(_read("consult_material", "…")))
+    """A turn that REQUESTED an action, attempted no write AND read successfully, so BOTH
+    clauses render. They are the same family pointing at two different inventions — an
+    ACTION that was never tried, and an ACCESS that never failed — and neither licenses what
+    the other forbids.
+
+    Since 2026-09-22 `nothing_tried` also asks whether an action was requested at all
+    (`intent_class == "ACTION_REQUEST"`; `test_voice_on_exhaustion_does_not_reconstruct`):
+    on this file's default INFORMATION_REQUEST fixture only the read clause renders, which is
+    the point of that gate — so the coexistence is shown on an ACTION_REQUEST turn, and the
+    read-only twin below pins the other half.
+    """
+    ctx = _ctx(user="reserve a aula de Modelagem de Dados", intent_class="ACTION_REQUEST",
+               with_ego=False)
+    ctx.ego_result = _ego(_read("consult_material", "…"))
+    prompt = _rendered(ctx)
     assert "NOTHING WAS EVEN TRIED" in prompt and "THE LOOKUPS WORKED" in prompt
+
+
+def test_on_a_read_only_information_request_only_the_read_clause_renders():
+    """The other half of the gate: this file's own fixture asked for information, so the
+    write turn's "write what the critique says is missing" has nothing to point at and
+    stays off, while the read clause still governs the read."""
+    prompt = _rendered(_turn(_read("consult_material", "…")))
+    assert "THE LOOKUPS WORKED" in prompt
+    assert "NOTHING WAS EVEN TRIED" not in prompt
 
 
 # ── the path is really reached ───────────────────────────────────────

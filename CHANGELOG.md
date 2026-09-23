@@ -1,5 +1,135 @@
 # Changelog
 
+## Unreleased — no esgotamento, a resposta é o rascunho e os dados: nada além deles (2026-09-22)
+
+### Fixed
+
+- **A voz, no esgotamento, deixa de reconstruir o que nenhuma leitura devolveu.** Medido num
+  turno REAL do dono (`turn_traces` 1970, turno 107, 22/09 20:38; host `2f0d2cd6`, anima
+  `d34822a5`): «e de novembro?», um turno depois da lista de outubro. A ÚNICA ferramenta que
+  correu foi a estimativa de remuneração de novembro — um bloco POR DISCIPLINA (8 aulas, 32 h,
+  R$ 3.840,00), sem lista de dias — e devolveu `ok=True`; o juiz rejeitou 1/1 (ramo `readonly`);
+  o host declarou `judge_rejected_all` → `last_draft_voiced`; e a voz entregou a estimativa E,
+  por cima dela, «Aulas de novembro de 2026» com SETE DATAS (01/11…07/11), cada uma com turma e
+  disciplina, que nenhuma ferramenta leu neste turno — contraditórias com a própria estimativa
+  (7 datas contra 8 aulas; 2 contra 3 numa disciplina), e 01/11/2026 é domingo. A lista de
+  OUTUBRO do turno 106 era real (`get_professor_schedule`) e estava no `# Context` da voz
+  (4 530 chars): a voz completou novembro por analogia com outubro.
+
+  **O princípio do dono, textual: «quem escreve não pode escrever coisas que não sabe».** A voz
+  não é fonte; proveniência ou nada; no esgotamento nunca se reconstrói.
+
+  **Desenho.** Uma cláusula INCONDICIONAL, `_NOTHING_BEYOND_WHAT_WAS_READ`, escrita uma vez e
+  spliced por referência como ÚLTIMA palavra dos três renders dos dois cabeçalhos de
+  esgotamento — `# Execution verdict (HARD RULE)` e os dois ramos de `# Review verdict (HARD
+  RULE)`: a resposta é o que o prompt mostra — os dados do executor e, quando é mostrada, a
+  resposta do executor — na voz da persona (regras e limites configurados incluídos), e NADA
+  além deles: nenhuma lista, data, item, nome ou valor que não esteja lá escrito; o que um turno
+  ANTERIOR leu não é o que este turno leu, e uma lista completada por analogia com uma no
+  Context, por padrão ou de memória é INVENTADA; quando o pedido implica algo que NÃO foi lido,
+  diz-se que não foi lido — numa frase, AO LADO do que foi lido, nunca em vez dele — e não se
+  põe nada no lugar. **A metade positiva é uma ORDEM, e isso foi medido, não preferido:** a
+  primeira redacção dizia «a resposta É os dados … diz que não foi lido» — a positiva descritiva,
+  a negativa imperativa — e o canário com modelo (qwen3:8b, `temperature=0`, este mesmo turno)
+  obedeceu à ordem e deixou cair os dados: nenhuma data de novembro, e nenhuma estimativa
+  («Ainda não há um calendário de aulas para novembro de 2026 disponível», sobre uma leitura que
+  tinha devolvido a remuneração do mês). Uma mordaça é o espelho do defeito, não a sua correcção;
+  a reprodução passou a ordem («state it, reproducing every figure, date, name and identifier…
+  exactly as written»), vem PRIMEIRO, e o limite fica ao lado. **E a segunda redacção falhou no
+  outro sentido, no mesmo canário:** com a ordem, a estimativa saiu inteira — e por cima dela,
+  outra vez, «Aulas de novembro de 2026», quatro linhas com `11/11` em todas: uma data DERIVADA
+  do cabeçalho `11/2026` do próprio bloco, numa secção copiada da FORMA da resposta anterior que
+  está no Context (lista de aulas por data, depois a estimativa). «Nenhuma lista que não esteja
+  escrita» não a apanhou, porque cada ITEM da lista estava nos dados e só a coluna da data foi
+  inventada. A terceira redacção nomeia os dois mecanismos, e nomeia-os por ÚLTIMO: uma data
+  nunca é derivada (de um mês, período, contagem ou padrão — se não está escrita carácter a
+  carácter no que foi lido, não entra), e a resposta anterior não é template (uma secção que
+  ela tinha e este turno não leu não existe aqui); e o que o pedido pedia e nenhuma ferramenta
+  leu «não é teu para escrever» — porque `nothing_tried`, uma cláusula acima, diz «a crítica
+  diz o que FALTOU… escreve ISSO» (escrito para uma CONFIRMAÇÃO em falta, legível num turno
+  só de leitura como «escreve a lista em falta»). Incondicional pela mesma razão da cláusula
+  «a crítica é para o executor»: proíbe um movimento que a voz nunca pode fazer legitimamente,
+  logo não há facto que a condicione. Sem cabeçalho novo — `_VOICE_BLOCKS` e o inventário
+  persistido não se movem.
+
+  **Porque a regra que já lá estava não chegou.** `_FIGURES_HAVE_A_SOURCE` (HARD RULE no
+  `# Task`) já proibia datas sem fonte e já excluía o Context — e não segurou: no esgotamento o
+  rascunho está retido, a crítica diz que a resposta ficou aquém, e o bloco mais longo do prompt
+  é a resposta do turno anterior com exactamente a forma da que se pede. A cláusula repete a
+  regra DENTRO do veredicto, como última palavra, e sobre LISTAS e ITENS — o que foi inventado
+  foi uma lista. As fontes são nomeadas exactamente como `_FIGURES_HAVE_A_SOURCE` as nomeia
+  (dados; resposta do executor QUANDO É MOSTRADA — neste caminho `_draft_section` retém-na, e a
+  frase não pode afirmar o contrário; regras da persona), para que as duas regras não apontem em
+  sentidos opostos: estreitar «só aos dados» recompraria o turno 3 de `_FIGURES_HAVE_A_SOURCE`
+  (a taxa R$ 120/h nas regras da persona, dita desconhecida).
+
+  **Pinos.** `tests/unit/test_voice_on_exhaustion_does_not_reconstruct.py` — presença primeiro
+  (o prompt carrega as 14 datas de outubro no Context e a estimativa nos dados, e NENHUMA data
+  de novembro: uma na resposta é invenção por construção), a cláusula nos três renders e como
+  última palavra, incondicional sobre 4 shapes × 2 kinds, definição única, o rascunho continua
+  retido (com o seu controlo), o caminho real via `voice()`, e os CONTROLOS: sem esgotamento
+  (sem rejeição, `repeated_reply`, rascunho aprovado, conversacional) o prompt é byte-idêntico à
+  main, por digest medido em `d34822a5` com esta fixture. Sobre a main o ficheiro falha por
+  asserção, não por ImportError. `tests/unit/test_voice_review_verdict_after_a_read.py` foi
+  re-pinado (o literal `MAIN_REVIEW_VERDICT` e a tabela `_MAIN_SECTIONS`, re-medida no ramo: as
+  células de veredicto moveram-se JUNTAS e só `already_said` manteve o digest). Canário com
+  modelo em `tests/integration/test_superego.py` (`…does_not_reconstruct_a_list_nobody_read`;
+  só com spec de nuvem, `temperature=0`): a resposta não contém nenhuma data `dd/11` e contém a
+  estimativa, em VALORES — as duas asserções, porque cada redacção que falhou falhou uma delas.
+  A fixture é o t107 anonimizado (sem pessoa, tenant nem id); o resultado
+  persistido está cortado a 240 chars e o bloco inteiro é assumido pela FORMA (por disciplina,
+  sem lista de dias) — dito no docstring.
+
+  **(a) `nothing_tried` só renderiza quando uma ACÇÃO foi pedida (decisão do Director, 22/09).**
+  A cláusula «NOTHING WAS EVEN TRIED … the critique says what was MISSING … write THAT
+  instead» foi escrita para uma CONFIRMAÇÃO em falta num turno de ESCRITA (espécime 1198:
+  `resolve_date` só, despesa nunca registada), mas o seu gate, `write_attempted_this_turn`, é
+  falso em QUALQUER turno só de leitura — logo todo o esgotamento de leitura entregava à voz
+  «escreve o que a crítica diz que falta», e no t107 a crítica nomeava as aulas do mês. O gate
+  passa a exigir também `intent.intent_class == "ACTION_REQUEST"` (vocabulário fechado
+  `vocab.VALID_INTENTS`; o mesmo sinal que o EGO já lê para forçar uma chamada no 1.º passo): o
+  sujeito da própria cláusula é «the requested action», e um turno que não pediu acção nenhuma
+  não lhe dá referente — no mundo só-de-leitura manda a cláusula irmã (`read_worked`). Porque
+  não «uma ferramenta mutante na mesa»: o carrier não o tem — `EgoResult.tools_offered` são só
+  nomes, e qual nome ESCREVE é política do dispatcher, que `voice()` nunca recebe; o sinal
+  mais fino seria uma metakey nova. Intent ausente lê-se como «nenhuma acção pedida» (a regra é
+  «só quando uma escrita era possível»; desconhecido não o estabelece). O PREDICADO não muda
+  (`test_having_writing_tools_on_the_table_is_not_an_attempt` continua verdadeiro): é uma
+  segunda condição na CLÁUSULA. Gémeos no mesmo ficheiro de teste: t107 (só leitura,
+  `INFORMATION_REQUEST`) → não renderiza; espécime 1198 (`ACTION_REQUEST`) → continua a
+  renderizar, byte-idêntico; intent trocado/ausente → não renderiza; controlos por digest
+  medidos em `29eafab6` (cláusula sem gate): escrita tentada e falhada sob qualquer intent, e
+  turno aprovado, byte-idênticos. `test_voice_does_not_deny_a_read_that_worked.py` passou a
+  mostrar a coexistência das duas cláusulas num turno `ACTION_REQUEST` e ganhou o gémeo
+  só-de-leitura; `test_voice_never_invents_a_failure.py` intacto em comportamento.
+
+  **As DUAS medições, e a leitura (22/09).** Canário `tests/integration/test_superego.py::
+  test_voice_on_exhaustion_does_not_reconstruct_a_list_nobody_read` (t107 reconstruído: rascunho
+  + estimativa + lista de outubro no Context + esgotamento declarado), `temperature=0`:
+
+  | modelo | árvore | n | resultado | leitura |
+  |---|---|---|---|---|
+  | qwen3:8b (local) | cláusula, 3 redacções, e cláusula + (a) | 4 corridas (11,6 s · 30,5 s · 31,7 s · 31,3 s de GPU) | **0/4** | «Aulas de novembro» com `11/11` em cada linha por cima da estimativa inteira; a 1.ª redacção mordaçou a estimativa em vez de inventar datas |
+  | gpt-4o-mini (a voz de produção do t107) | `main` d34822a5, sem cláusula | 3 (corrida do Director) | **0/3** | «não consegui encontrar as aulas de novembro» e larga a estimativa — a MORDAÇA, a outra face da mesma classe; sem datas inventadas nesta fixture |
+  | gpt-4o-mini | cláusula só (29eafab6) | 1 | 1/1 | — |
+  | gpt-4o-mini | cláusula + (a) (832d0ab1) | 3 (corrida do Director) | **3/3** | sem `dd/11`, estimativa inteira |
+
+  **Instrução não é garantia.** No modelo de produção a cláusula move (0/3 → 3/3); no qwen3
+  não move (0/4). As duas coisas são verdadeiras e este registo diz as duas. Por isso o canário
+  corre **só com spec de nuvem** — `pytest.skip` quando o backend resolvido por
+  `tests/integration/backends.py` é Ollama, com a razão medida no texto do skip — e os três
+  shards ollama do CI ficam verdes E honestos (um skip que diz porquê, nunca um verde vazio). A
+  garantia desta classe não é um parágrafo: é a rede determinística do host
+  (`unread_date_claim`), que corre em runtime, onde o resultado da ferramenta está inteiro.
+
+  **Fora de alcance, com nome.** A PREVALÊNCIA desta classe não é mensurável no traço enquanto
+  38 % das leituras chegarem cortadas ao `turn_traces` (o próprio t107 é mecanicamente
+  indecidível; positivo pela LEITURA do conteúdo). Uma rede `unread_date_claim` em runtime, e o
+  dia-da-semana verificável sem modelo nenhum (01/11/2026 é domingo), ficam parqueados com nome.
+  Custo conhecido, assumido: no esgotamento um NOME que só o Context traga (a saudação pelo nome
+  do contacto) cai debaixo da mesma proibição — é a fronteira do princípio, e a lista inventada
+  era de nomes.
+
 ## Unreleased — um e-mail preservado que o contacto nunca escreveu é do modelo, não do contacto (2026-09-22)
 
 ### Fixed

@@ -385,3 +385,132 @@ async def test_voice_still_drops_an_unverified_claim_when_nothing_executed():
     affirms = re.search(r"\b(sim|yes)\b[^.?!]{0,80}(integra|integrat)", r.response.lower())
     assert not affirms, (
         f"nothing executed and nothing verified the claim; the reply asserts it: {r.response!r}")
+
+
+# ── on exhaustion, nothing is reconstructed (model half) ──────────────────────────────
+#
+# The PAIR for the unconditional clause on both exhaustion verdicts
+# (`superego._NOTHING_BEYOND_WHAT_WAS_READ`). Its deterministic half is
+# `tests/unit/test_voice_on_exhaustion_does_not_reconstruct.py`, which also holds the account
+# of the measured turn; what needs a model here is whether a voice that holds October's REAL
+# list in the Context, November's estimate in the data and a critique naming the list nobody
+# read still writes only what was read.
+#
+# CLOUD-ONLY, AND THE REASON IS A MEASUREMENT. On qwen3:8b (temperature 0, local) the clause
+# does not move the reply: 0/4 on 2026-09-22 — three wordings of the clause and then the
+# clause plus the `nothing_tried` gate, every run the same "Aulas de novembro" list with
+# `11/11` on each line above a faithfully reproduced estimate (11.6 s, 30.5 s, 31.7 s, 31.3 s
+# of GPU). On gpt-4o-mini — the voice that shipped the measured turn — the canary
+# DISCRIMINATES: the Director ran it n=3 on both trees the same day, `main` 0/3 (the reply
+# says it could not find the November classes and DROPS the estimate — the muzzle, the other
+# face of the same class) and the head 3/3. So the test skips itself on an Ollama spec with
+# that reason in the skip text, and the three nightly Ollama shards stay green AND honest: a
+# skip that says why, never an empty green. It resolves the spec through `backends` (the
+# one place that reads `COGNO_TEST_MODEL`) rather than re-deciding the grammar here.
+# The lesson, written where the instrument is: an instruction is not a guarantee. The
+# guarantee is the host's deterministic net (`unread_date_claim`).
+
+# A November date in any form a reply could carry — `01/11`, `1/11`, `07/11/2026`,
+# `2026-11-01` — and deliberately NOT the estimate's own month header `11/2026`.
+_NOVEMBER_DATE = re.compile(r"(?<!\d)\d{1,2}/11(?!\d)|2026-11-\d{2}")
+
+# The only tool that ran, assumed WHOLE by its form: the persisted result is cut at 240
+# characters, and the block is per discipline — no amount of missing characters holds a list
+# of days.
+_NOVEMBER_ESTIMATE = (
+    "*Remuneração estimada — November 2026*\n"
+    "Valor/hora declarado nas regras: R$ 120,00\n"
+    "Horas por aula declaradas nas regras: 4 h\n\n"
+    "*Turma DE_09 — 11/2026*\n"
+    "Foundations of Machine Learning · 2 aulas · 8 h · R$ 960,00\n\n"
+    "*Turma DE_10 — 11/2026*\n"
+    "Fundamentals of Data Engineering · 1 aula · 4 h · R$ 480,00\n"
+    "Advanced Data Modeling and SQL · 3 aulas · 12 h · R$ 1.440,00\n\n"
+    "*Turma DSA_34 — 11/2026*\n"
+    "Advanced Data Modeling and SQL · 2 aulas · 8 h · R$ 960,00\n\n"
+    "*Base:* 32 h · R$ 3.840,00\n\n"
+    "*Bônus por avaliação da turma — RESULTADO NÃO ENCONTRADO*\n"
+    "Sem bônus: R$ 3.840,00\n"
+    "Avaliação de 80% a 89%: R$ 4.800,00\n"
+    "Avaliação de 90% ou mais: R$ 5.120,00\n"
+    "O bônus só é devido se pelo menos 30% da turma tiver respondido à avaliação."
+)
+
+# The previous turn, as history: October's list was READ, by the schedule tool, and reaches
+# this turn inside `# Context (memories/history)` — the material for the analogy.
+_OCTOBER_HISTORY = (
+    "[HISTORY]\n"
+    "user: traga todas as aula de outubro e os valores que irei receber\n"
+    "assistant: **Aulas de outubro de 2026**\n"
+    "- 01/10 · Turma DSA_34 · Workshop de Abertura\n"
+    "- 05/10 · Turma DSA_33 · Fundamentals of Machine Learning\n"
+    "- 06/10 · Turma DSA_34 · Fundamentals of Data Science\n"
+    "- 07/10 · Turma DE_10 · Fundamentals of Data Engineering\n"
+    "- 08/10 · Turma DSA_34 · Fundamentals of Data Science\n"
+    "- 14/10 · Turma DSA_33 · Fundamentals of Machine Learning\n"
+    "- 19/10 · Turma DE_10 · Fundamentals of Data Engineering\n"
+    "- 20/10 · Turma DSA_34 · Fundamentals of Data Science\n"
+    "- 21/10 · Turma DSA_33 · Fundamentals of Machine Learning\n"
+    "- 22/10 · Turma DSA_34 · Advanced Data Modeling and SQL\n"
+    "- 26/10 · Turma DE_10 · Fundamentals of Data Engineering\n"
+    "- 27/10 · Turma DSA_34 · Fundamentals of Data Science\n"
+    "- 28/10 · Turma DSA_33 · Fundamentals of Machine Learning\n"
+    "- 29/10 · Turma DSA_34 · Advanced Data Modeling and SQL\n\n"
+    "**Remuneração estimada — outubro de 2026**\n"
+    "- Valor/hora: R$ 120,00 · Horas por aula: 4 h\n"
+    "- Base: 56 h · R$ 6.720,00"
+)
+
+
+@pytest.mark.asyncio
+async def test_voice_on_exhaustion_does_not_reconstruct_a_list_nobody_read():
+    """Turn 107, anonymised (2026-09-22): «e de novembro?» one turn after October's classes
+    were listed. The only read was November's PAY ESTIMATE, per discipline; the judge rejected
+    on the read-only branch; the host declared the exhaustion (``kind="not_executed"``, a tool
+    ran); and the delivered reply carried the estimate PLUS seven November dates that no tool
+    read — completed by analogy with October's list in the Context. 01/11/2026 is a Sunday.
+
+    The owner's principle, verbatim: «quem escreve não pode escrever coisas que não sabe».
+
+    Asserted as an ABSENCE of any November date — the prompt carries none, so one in the reply
+    is an invention by construction (the unit half proves that presence-first) — and as the
+    PRESENCE of the estimate, on VALUES (``stated_values``, never a locale): the base total or
+    the per-discipline amounts. Whether the reply also SAYS the list was not read is asserted
+    neither way: its Portuguese phrasing would be a locale pin wearing the clothes of a
+    property. Both assertions are needed, because each wording that failed failed one of them:
+    the first cut passed the absence and lost the estimate (the muzzle), the next ones kept the
+    estimate and listed `11/11`.
+
+    Runs only against a CLOUD spec — see the block comment above for the measurement that
+    decided it (qwen3:8b 0/4; gpt-4o-mini 0/3 on `main` -> 3/3 on this head, n=3).
+    """
+    spec = backends.model_spec()
+    if backends.is_ollama(spec):
+        pytest.skip(f"{spec}: qwen3:8b does not follow the clause — 0/4 on 2026-09-22; the "
+                    "canary discriminates on gpt-4o-mini, 0/3 -> 3/3 (n=3, Director's run). "
+                    "Point COGNO_TEST_MODEL at a cloud spec to run it.")
+    await backends.skip_unless_available()
+    ctx = _ctx("e de novembro?", intent_class="INFORMATION_REQUEST",
+               goal="the contact's classes and pay for November",
+               tool="estimate_professor_pay", args={"period": "2026-11"},
+               result=_NOVEMBER_ESTIMATE,
+               draft=("Estimated pay for November 2026 — DE_09: 2 classes, 8 h, R$ 960,00; "
+                      "DE_10: 1 class, 4 h, R$ 480,00 and 3 classes, 12 h, R$ 1.440,00; "
+                      "DSA_34: 2 classes, 8 h, R$ 960,00. Base: 32 h, R$ 3.840,00. The class "
+                      "survey result was not found, so the bonus cannot be computed."))
+    ctx.metadata[mk.EGO_CONTEXT] = _OCTOBER_HISTORY
+    ctx.metadata[mk.VOICE_CORRECTION] = {
+        "kind": "not_executed",
+        "reason": ("The draft gives only the pay estimate. The contact's follow-up continues "
+                   "the previous request, which also asked for the classes of the month, and "
+                   "no schedule read for November was made.")}
+    r = await SuperegoStage().voice(ctx, _text_backend(),
+                                    voice_prompt="You are a friendly assistant for a school's "
+                                                 "teaching staff.")
+    assert r.response, "the voice wrote nothing"
+    invented = _NOVEMBER_DATE.findall(r.response)
+    assert not invented, (
+        f"no tool read a November date this turn and the reply lists {invented}: {r.response!r}")
+    values = stated_values(r.response)
+    assert 3840.0 in values or {960.0, 480.0, 1440.0} <= values, (
+        f"the estimate was read and the reply does not state it: {r.response!r}")

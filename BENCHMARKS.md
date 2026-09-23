@@ -352,6 +352,34 @@ not crowning a winner:
   under-reading leaks, over-reading refuses a real user — and the more careful
   model is not automatically the safer one. An earlier version of this bullet
   claimed the gates held regardless of model; that was measured false.
+- **A prompt clause is an instruction, not a guarantee — and which model
+  reads it decides whether it is even a lever.** Measured 2026-09-22 on the
+  exhaustion canary (`tests/integration/test_superego.py::test_voice_on_
+  exhaustion_does_not_reconstruct_a_list_nobody_read`: a real turn rebuilt —
+  the only read was a pay estimate per discipline, the previous turn's REAL
+  October list sat in the Context, the judge had rejected, and the delivered
+  reply listed seven November dates nobody read). The fix is an
+  UNCONDITIONAL last word on both exhaustion verdicts (`superego.
+  _NOTHING_BEYOND_WHAT_WAS_READ`) plus `nothing_tried` gated on an
+  ACTION_REQUEST. `temperature=0` on both sides:
+
+  | model | tree | n | pass | shape of the failure |
+  |---|---|---|---|---|
+  | qwen3:8b (local) | clause, three wordings, then clause + gate | 4 (11.6 s · 30.5 s · 31.7 s · 31.3 s GPU) | **0/4** | `11/11` on every line of an invented "Aulas de novembro" list, above a faithfully reproduced estimate; the first wording MUZZLED instead (dropped the estimate, invented nothing) |
+  | gpt-4o-mini (the production voice) | `main` d34822a5, no clause | 3 | **0/3** | "could not find the November classes" and the estimate DROPPED — the muzzle, the other face of the same class |
+  | gpt-4o-mini | clause only (29eafab6) | 1 | 1/1 | — |
+  | gpt-4o-mini | clause + gate (832d0ab1) | 3 | **3/3** | no `dd/11`, estimate whole |
+
+  Both readings are true and both are recorded: on the production model the
+  clause moves the reply (0/3 → 3/3); on qwen3:8b it moves nothing (0/4) —
+  two wordings that named the exact mechanism ("a date is never derived",
+  "an earlier reply is not a template") produced a byte-identical reply. So
+  the canary runs ONLY against a cloud spec (`pytest.skip` on an Ollama spec,
+  the measured reason in the skip text) and the nightly Ollama shards stay
+  green and honest. The guarantee for this class is not a paragraph: it is the
+  host's deterministic net (`unread_date_claim`), which runs where the tool
+  result is whole. Cloud n=3 is the Director's run; per *Reading a number*,
+  three cloud draws are a floor estimate, not a certainty.
 
 ## Embedding-side benches (deterministic / embedder-only)
 

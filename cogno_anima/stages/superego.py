@@ -246,6 +246,91 @@ _NEVER_DENY_WHAT_WAS_READ = (
     "false statement about the world, which they will act on."
 )
 
+# ── ON EXHAUSTION, NOTHING IS RECONSTRUCTED ───────────────────────────────────────────
+#
+# The owner's principle, verbatim, and the whole of the rule: «quem escreve não pode escrever
+# coisas que não sabe» — who writes cannot write what they do not know.
+#
+# Measured on a real turn, 2026-09-22 (`turn_traces` 1970, turn 107 of a session on the demo
+# box; host `2f0d2cd6`, this library `d34822a5`). The contact asked «e de novembro?» after a
+# turn that had listed October's classes and October's pay. The ONLY tool that ran was the pay
+# estimate for November — a block PER DISCIPLINE («2 aulas · 8 h · R$ 960,00»), with no list of
+# days in it — and it returned ``ok=True``. The judge rejected 1/1 on the read-only branch, the
+# host declared ``judge_rejected_all`` → ``last_draft_voiced``, and `# Execution verdict` was
+# rendered. The voice delivered the estimate faithfully AND, above it, «Aulas de novembro de
+# 2026» with SEVEN DATES, 01/11 to 07/11, each with a class code and a discipline. No tool read
+# them this turn. They contradict the estimate they sit next to (7 dates against 8 classes; 2
+# against 3 for one discipline), and 01/11/2026 is a Sunday. The previous turn's October list —
+# read for real, by a schedule tool — was in `# Context (memories/history)`, 4 530 characters
+# of it: the voice completed November by ANALOGY with October. (The persisted tool result is
+# cut at 240 characters, so the trace alone cannot prove the absence; the block's FORM can —
+# it is per discipline, and the 794 missing characters of it hold no list of days.)
+#
+# `_FIGURES_HAVE_A_SOURCE` already forbade this at the `# Task`, one screen below, as a HARD
+# RULE about figures and dates — and it did not hold. The exhaustion path is where it does
+# not: the draft has been withheld, the critique says the reply fell short, and the prompt's
+# longest block is an earlier turn's answer that looks exactly like the one being asked for.
+# So the rule is said AGAIN, inside the verdict, as the section's LAST word — and it is said
+# about LISTS and ITEMS and not only about figures, because the invented thing was a list.
+#
+# UNCONDITIONAL, on both variants. A gate would have to name the shape of the reconstruction,
+# and the point is that the voice is never a source — of anything, in any shape. It takes the
+# form the critique clause took ("That critique is a note about the EXECUTION …"): it forbids
+# a move the voice can never legitimately make, so there is no fact to gate it on. No new
+# header, so `_VOICE_BLOCKS` and the persisted inventory do not move.
+#
+# The sources are named exactly as `_FIGURES_HAVE_A_SOURCE` names them — the executor data,
+# the executor's answer WHEN ONE IS SHOWN (on this path `_draft_section` withholds it, and the
+# sentence must not claim otherwise), and the persona's own configured rules — so the two
+# rules cannot point opposite ways: a clause that narrowed the set to the data alone would
+# re-buy turn 3 above (the tenant's R$ 120/h, sitting in the rules, reported as unknown). What
+# it EXCLUDES is the member `_FIGURES_HAVE_A_SOURCE` already excludes, the Context, and it
+# says WHY: what an earlier turn read is not what this turn read.
+#
+# THE POSITIVE HALF IS IMPERATIVE, AND THAT WAS MEASURED, NOT PREFERRED. The first cut said
+# "the reply IS the executor data … NOTHING beyond them … say that it was not read" — the
+# positive half descriptive, the negative half an order — and the model-backed canary
+# (qwen3:8b, temperature 0, this very turn) obeyed the order and dropped the data: no
+# November date, and no estimate either — "Ainda não há um calendário de aulas para
+# novembro de 2026 disponível", over a read that had returned the pay for that month. A
+# muzzle is the mirror of the defect, not a fix for it. So the reproduction is an ORDER
+# ("state it, reproducing every figure, date, name and identifier … exactly as written"),
+# and the limit is placed BESIDE what was read, never instead of it — the same lesson the
+# review verdict paid for on 2026-09-21 (a scoped "state what answers" let the model pick,
+# and it picked a derived figure over the two times it should have copied).
+#
+# AND THE SECOND CUT FAILED THE OTHER WAY, on the same canary: with the order in place the
+# estimate came back whole — and above it, again, "Aulas de novembro de 2026", four lines
+# with `11/11` on every one: a date DERIVED from the block's own `11/2026` header, in a
+# section copied from the SHAPE of the previous reply sitting in the Context (list of
+# classes by date, then the estimate). "No list not written in them" did not reach it,
+# because every ITEM of that list was in the data and only the date column was made up. So
+# the two mechanisms are named: a date is never derived (not from a month, a period, a
+# count or a pattern), and an earlier reply is not a template — a section it had that this
+# turn did not read does not exist here. And what the request asked for and no tool read is
+# "not yours to write": `nothing_tried`, one clause up, says "the critique says what was
+# MISSING … write THAT instead" — written for a missing CONFIRMATION, and readable, on a
+# read-only turn, as "write the missing list".
+#
+# Written ONCE and spliced BY REFERENCE into all three renderings of the two verdict headers,
+# for the reason `_EVERY_TOOL_SUCCEEDED` is: a second copy is a contract that diverges.
+_NOTHING_BEYOND_WHAT_WAS_READ = (
+    "NOTHING IS RECONSTRUCTED. What was read FOR this request is the reply — the executor "
+    "data above and, when one is shown, the executor's answer — in this persona's voice (its "
+    "own configured rules and limits included): state it, reproducing every figure, date, "
+    "name and identifier in it exactly as written there, and NOTHING beyond them: no list, "
+    "date, item, name or value that is not written in them. What the request asked for and "
+    "NO tool read this turn is not yours to write: it is reported as not read, in one "
+    "sentence BESIDE what was read — never instead of it — and nothing is put in its place. "
+    "In particular: a DATE is never derived — not from a month, a period, a count or a "
+    "pattern; if it is not written, character for character, in what was read this turn, it "
+    "is not in the reply. And an earlier reply in the Context is not a template: a section "
+    "it had that this turn did not read (a list of classes by date, a schedule, a set of "
+    "dates) does not exist here — an EARLIER turn read is not what this turn read, and a "
+    "list completed by analogy, by pattern, or from memory is INVENTED, however plausible "
+    "it looks.\n"
+)
+
 # The persona trait the modulation must never talk over: the tenant asked for an even
 # voice, and a courtesy addition (warmth, empathy) would be exactly that.
 _EVEN_TRAIT = "reserved"
@@ -2841,7 +2926,11 @@ class SuperegoStage:
                         "request, do not build a reply out of what was retrieved: drop the "
                         "flagged claim and say plainly that you do not have that information, "
                         "mentioning a lookup only when it was a lookup FOR what they asked. "
-                        "You may then ask ONE question to move forward.\n\n"
+                        "You may then ask ONE question to move forward.\n"
+                        # Nothing reconstructed — the last word on every rendering of this
+                        # header; see `_NOTHING_BEYOND_WHAT_WAS_READ`.
+                        f"{_NOTHING_BEYOND_WHAT_WAS_READ}"
+                        "\n"
                     )
                 else:
                     rejection_section = (
@@ -2855,7 +2944,11 @@ class SuperegoStage:
                         "nothing, say plainly that you do not have that information — "
                         "admitting a limit is a COMPLETE answer and is always preferable to "
                         "repeating an unverified one. "
-                        "You may then ask ONE question to move forward.\n\n"
+                        "You may then ask ONE question to move forward.\n"
+                        # Nothing reconstructed — the last word on every rendering of this
+                        # header; see `_NOTHING_BEYOND_WHAT_WAS_READ`.
+                        f"{_NOTHING_BEYOND_WHAT_WAS_READ}"
+                        "\n"
                     )
             else:
                 # The rejected EXECUTION. Two worlds arrive here wearing the same signal, and
@@ -2885,7 +2978,35 @@ class SuperegoStage:
                 # The critique says what was MISSING. The voice was translating it into what
                 # was TRIED AND FAILED. Those are different claims and only one of them is
                 # true.
-                nothing_tried = "" if write_attempted_this_turn(ctx) else (
+                #
+                # ── AND ONLY WHEN AN ACTION WAS REQUESTED (2026-09-22) ──────────────────
+                # `write_attempted_this_turn` is False on EVERY read-only turn, so until
+                # today every read-only exhaustion rendered this clause — and its remedy,
+                # "write THAT instead", was written for a missing CONFIRMATION on a WRITE
+                # turn. On `turn_traces` 1970 (turn 107; the account is on
+                # `_NOTHING_BEYOND_WHAT_WAS_READ`) the critique named the classes of the
+                # month nobody had read, and "write what the critique says is missing"
+                # is the instruction that reconstructs them. So the clause now also asks
+                # whether an ACTION was requested at all, and it asks the carrier's own
+                # signal: `intent.intent_class == "ACTION_REQUEST"` (closed
+                # `vocab.VALID_INTENTS`) — the one the EGO already reads to force a tool
+                # call on its first step. The clause's own subject is "the requested
+                # action"; a turn that requested none gives it nothing to refer to, and
+                # the read-only world is governed by the sibling `read_worked` below.
+                #
+                # WHY NOT "a mutating tool was on the table": the carrier does not hold it.
+                # `EgoResult.tools_offered` is names only, and which name WRITES is the
+                # dispatcher's policy — a reader `voice()` never receives. The finer
+                # signal would be a new metakey, which is the re-derivation this repo
+                # keeps refusing. An absent intent reads as "no action requested": the
+                # rule is render ONLY when a write was possible, and an unknown intent
+                # does not establish that it was. The predicate itself is untouched —
+                # `test_having_writing_tools_on_the_table_is_not_an_attempt` still holds
+                # — this is a second condition on the CLAUSE.
+                action_requested = bool(ctx.intent
+                                        and ctx.intent.intent_class == "ACTION_REQUEST")
+                nothing_tried = "" if (write_attempted_this_turn(ctx)
+                                       or not action_requested) else (
                     "NOTHING WAS EVEN TRIED: no tool that changes anything ran this turn — "
                     "not one that succeeded, and not one that failed. So you MUST NOT write "
                     "that the requested action was attempted and did not work (\"I could not "
@@ -3005,6 +3126,10 @@ class SuperegoStage:
                     "executor data, or ask the user ONE clarifying question to move forward.\n"
                     f"{nothing_tried}"
                     f"{read_worked}"
+                    # ── AND NOTHING IS RECONSTRUCTED (2026-09-22) ──────────────────────
+                    # Unconditional, the section's last word, spliced by reference — the
+                    # measured turn and the reasoning live on the constant itself.
+                    f"{_NOTHING_BEYOND_WHAT_WAS_READ}"
                     "\n"
                 )
         # The reply language is a HARD instruction (leading the Task), not a soft signal —
