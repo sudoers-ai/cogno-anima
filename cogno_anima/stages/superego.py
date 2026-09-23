@@ -3324,6 +3324,63 @@ class SuperegoStage:
 
     @staticmethod
     def _tool_payload(ctx: PipelineContext) -> str:
+        """The `# Data gathered by the executor` block: the surviving attempt's tool records.
+
+        **The last line is a fallback, and it was a door with no label.** With no record to
+        render, the payload used to become the EGO's own DRAFT — rendered under a header that
+        reads `ground figures/dates ONLY in this`. On a turn that ran no tool AND was REJECTED
+        by review, that draft is the one text the prompt must not present as ground truth, and
+        it arrived there wearing the executor's label.
+
+        It arrived there past a section written to stop it. :meth:`_draft_section` opens with
+        ``draft in payload`` — the fallback had already "delivered" it, so the section believed
+        its work was done — and then with ``rejection is not None`` ("a rejected draft is
+        handled by rejection_section, not re-offered"). The section that KNOWS the draft is
+        poison closed itself TWICE while the draft went past it anyway, through the only door
+        nobody had gated. That is the origin of the collision the voice prompt then has to
+        resolve on such a turn: `# Review verdict` says do not repeat the rejected claim, the
+        Task says reproduce what the executor data holds, and the rejected claim HAD BEEN PUT
+        in the executor data.
+
+        So when the turn carries a JUDGE rejection the fallback yields ``"(no data)"``. With
+        the draft out of the payload the exhaustive-reproduction rule no longer reaches it:
+        the contradiction dies at the root instead of earning an exception, and
+        ``rejection_section`` is again the only authority over the rejected text, which is
+        what ``_draft_section``'s own comment already promises.
+
+        **The predicate is ``_judge_rejection`` and NOT ``_rejection``, and the difference is
+        a measured regression, not a preference.** Both read ``mk.VOICE_CORRECTION``; the
+        broad one also answers True for the host's anti-repeat guard (``kind="repeated_
+        reply"``), which rides the same key and says something else entirely — *the content
+        was fine, it had already been sent*. On such a turn the draft is not a refused claim
+        but the executor's NEW answer, written after it obeyed that very critique, and
+        ``# Already said (HARD RULE)`` then asks the voice for something the contact has not
+        received yet. Rendered with the broad predicate over a turn with no tool record, the
+        new draft is nowhere in the prompt at all (``_draft_section`` withholds it on any
+        rejection, so this fallback was its only door) and the voice is left with the user's
+        sentence and the Context — which is where the already-sent reply lives. That pushes
+        towards the collapse the section exists to prevent. The narrow predicate is the one
+        this module already wrote for exactly this distinction.
+
+        **The turn WITHOUT a rejection is deliberately untouched**, and the branch that
+        justifies parking it is the NON-conversational one: with no record, no rejection and
+        no approved verdict, ``_draft_section`` returns ``""``, so emptying the payload would
+        leave the voice with nothing to say at all — the failure measured on the CLOSER on
+        2026-08-03, where the model returned the user's own question back to them. (On a
+        CONVERSATIONAL turn the same emptying would instead move the draft into
+        ``# Executor's answer``, which is its correct label; that half is a relabelling, not a
+        repair, and it is not attempted here.) Parked by name:
+        ``o-rascunho-viaja-por-duas-portas-e-uma-nao-tem-rotulo``.
+
+        **The shape, stated as a shape.** What this branch needs is a rejection AND not one
+        renderable record — not a persona without tools. ``_draft_section``'s own docstring
+        says essential tools such as ``resolve_date`` ride every turn for every role, so a
+        persona that executes nothing still tends to fill ``parts``; the fixtures for the
+        2026-08-03 turn in ``test_superego.py`` carry exactly such a record. No production
+        count for "rejection with zero renderable records" is claimed here, and the case for
+        the branch is structural: on the turns that DO have that shape, the prompt asserted
+        two incompatible things about the same sentence.
+        """
         if not ctx.ego_result:
             return "(no execution)"
         parts = []
@@ -3351,7 +3408,15 @@ class SuperegoStage:
                 # fabrication at the source (the reply the user sees).
                 parts.append(f"{t.tool}: unavailable — {t.error} "
                              f"(no data was returned; relay THIS, do NOT invent alternatives)")
-        return "\n".join(parts) or (ctx.ego_result.draft or "(no data)")
+        if parts:
+            return "\n".join(parts)
+        # A REJECTED draft is not executor data. See the docstring: this fallback is the
+        # unlabelled door `_draft_section` cannot close, so it closes itself on the one turn
+        # where what it would hand over is exactly what review refused. `_judge_rejection`,
+        # not `_rejection`: the anti-repeat guard rides the same key and refused nothing.
+        if SuperegoStage._judge_rejection(ctx) is not None:
+            return "(no data)"
+        return ctx.ego_result.draft or "(no data)"
 
     # ── PII-CRITICAL block ───────────────────────────────────────────
 
