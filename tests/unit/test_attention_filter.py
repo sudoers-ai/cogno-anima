@@ -27,9 +27,9 @@ def test_domain_overlap_scores():
 def test_people_match_scores():
     af = AttentionFilter(top_n=1)
     intent = make_intent_result()
-    intent.entities_people = ["José Manzoli"]
-    out = af.focus(intent, ["note about josé", "unrelated note"])
-    assert out == ["note about josé"]
+    intent.entities_people = ["Otávio Bertholdi"]
+    out = af.focus(intent, ["note about otávio", "unrelated note"])
+    assert out == ["note about otávio"]
 
 
 def test_goal_keyword_overlap():
