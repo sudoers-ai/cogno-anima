@@ -44,13 +44,20 @@ _TABLE = (f"{SCOPE_TOOL_TABLE_HEADER}\n"
 #: so a block introduced later either renders here or fails this file loudly.
 _SLOT = f"{_DEFINITION}\n\n{_FACTS}\n\n{_TABLE}"
 
+#: The one row that comes from neither the skeleton nor the slot: the core renders it, first,
+#: out of a per-turn metakey the host stamps. It is in the fixture for the same reason every
+#: other block is — the enumeration below demands that every row of the closed table render.
+_PENDING = "the full name of a team member to hand the conversation to"
+
 _USER = "que materiais posso usar para estudar?"
 
 
-async def _guard(*, slot=_SLOT, user=_USER, language="pt-BR", backend=None):
+async def _guard(*, slot=_SLOT, user=_USER, language="pt-BR", backend=None, pending=_PENDING):
     """One consulted turn. Returns ``(result, ctx, backend)``."""
     backend = backend or ScriptedBackend([_ALLOW])
     ctx = _ctx(user=user, intent_class="INFORMATION_REQUEST", language=language)
+    if pending:
+        ctx.metadata[mk.SCOPE_PENDING_REQUEST] = pending
     result = await SuperegoStage().check_input_scope(ctx, backend, scope_prompt=slot)
     return result, ctx, backend
 
@@ -158,6 +165,17 @@ async def test_one_byte_of_the_hosts_slot_moves_it_on_either_half():
 
 
 @pytest.mark.asyncio
+async def test_one_byte_of_the_pending_request_moves_it():
+    """The block the host stamps rather than writes into the slot — same rule as the two it
+    renders itself, and the reason the digest has to be of the BYTES SENT: a host holding only
+    its slot's digest cannot see this section at all."""
+    base, _, _ = await _guard()
+    other, _, _ = await _guard(pending=f"{_PENDING} (exactly as written)")
+    none, _, _ = await _guard(pending=None)
+    assert len({base.prompt_sha, other.prompt_sha, none.prompt_sha}) == 3
+
+
+@pytest.mark.asyncio
 async def test_the_refusal_language_directive_moves_it():
     """A block assembled HERE out of an input the host never sees as prompt text: the
     language only reaches the guard through the NOUMENO, and it rewrites the task section."""
@@ -207,6 +225,7 @@ async def test_the_fail_open_path_records_the_digest_of_the_prompt_it_had_built(
     decision the inventory beside it makes, and the digest is the one a clean call produces
     from the same inputs."""
     ctx = _ctx(user=_USER, intent_class="INFORMATION_REQUEST", language="pt-BR")
+    ctx.metadata[mk.SCOPE_PENDING_REQUEST] = _PENDING
     result = await SuperegoStage().check_input_scope(
         ctx, RaisingBackend(), scope_prompt=_SLOT)
     clean, _, _ = await _guard()
