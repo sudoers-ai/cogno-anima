@@ -28,7 +28,7 @@ def test_has_birth_context_true(text):
 
 
 @pytest.mark.parametrize("text", [
-    "quero marcar com o Dr. Jose Luiz Manzoli dia 20/07 as 10",
+    "quero marcar com o Dr. Otavio Renan Bertholdi dia 20/07 as 10",
     "marca pra mim a reunião 15/03 às 14h",
     "pode ser dia 20/07?",
     "o prazo é 31/12/2026",

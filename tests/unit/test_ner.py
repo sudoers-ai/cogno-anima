@@ -280,8 +280,8 @@ async def test_appointment_date_is_not_dob():
     backend = StubBackend(response=json.dumps(payload))
     analyzer = IntentAnalyzer(backend=backend, prompts_dir=PROMPTS_DIR)
     result = await analyzer.analyze(
-        make_noumeno_result(original="quero marcar com o Dr. Jose Luiz Manzoli dia 20/07 as 10",
-                            rewritten="I want to book with Dr. Jose Luiz Manzoli on 20/07 at 10"))
+        make_noumeno_result(original="quero marcar com o Dr. Otavio Renan Bertholdi dia 20/07 as 10",
+                            rewritten="I want to book with Dr. Otavio Renan Bertholdi on 20/07 at 10"))
     assert "DATE_OF_BIRTH" not in result.pii     # bare appointment date, not a birth date
     assert result.pii_risk != "HIGH"             # so it no longer detours away from the EGO
 
