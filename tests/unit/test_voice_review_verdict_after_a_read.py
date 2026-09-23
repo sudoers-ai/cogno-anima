@@ -441,15 +441,19 @@ def test_the_persisted_inventory_does_not_move():
 # is unconditional on both verdict headers, so every `execution_verdict` and `review_verdict`
 # cell moved TOGETHER (one splice, one delta per header) and only `already_said` kept its
 # digest — the anti-repeat guard is not an exhaustion and carries no such clause.
+# The same day `nothing_tried` learned to render only on an ACTION_REQUEST; this file's
+# fixture asks for information, so the three `execution_verdict` cells that did not
+# attempt a write lost that clause and moved once more — `no_exec` and `read_plus_failed`
+# now render as `write` does — while every other cell stayed where the splice put it.
 _MAIN_SECTIONS = {
     "no_exec|repeated_reply|already_said": "aef13fbe8b469365",
     "no_exec|unverified_claim|review_verdict": "cef24eeddde39fea",
-    "no_exec|other|execution_verdict": "0126a7a82149e647",
+    "no_exec|other|execution_verdict": "2d852e124e6b79f4",
     "read_ok|repeated_reply|already_said": "aef13fbe8b469365",
-    "read_ok|other|execution_verdict": "4153c3eb902b1065",
+    "read_ok|other|execution_verdict": "9f9985b4be444af6",
     "read_plus_failed|repeated_reply|already_said": "aef13fbe8b469365",
     "read_plus_failed|unverified_claim|review_verdict": "cef24eeddde39fea",
-    "read_plus_failed|other|execution_verdict": "0126a7a82149e647",
+    "read_plus_failed|other|execution_verdict": "2d852e124e6b79f4",
     "write|repeated_reply|already_said": "aef13fbe8b469365",
     "write|unverified_claim|review_verdict": "cef24eeddde39fea",
     "write|other|execution_verdict": "2d852e124e6b79f4",

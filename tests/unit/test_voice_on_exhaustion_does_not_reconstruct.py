@@ -453,3 +453,135 @@ def test_no_new_header_the_persisted_inventory_does_not_move():
                      "signals", "task"]
     alphabet = {slug for _, slug in SuperegoStage._VOICE_BLOCKS}
     assert set(slugs) <= alphabet
+
+
+# ── (a) `nothing_tried` RENDERS ONLY WHEN AN ACTION WAS REQUESTED ─────────────────────
+#
+# The clause one screen above the new one — "NOTHING WAS EVEN TRIED … The critique says what
+# was MISSING, not what was tried: write THAT instead" — was written for a missing
+# CONFIRMATION on a WRITE turn (specimen `turn_traces` 1198: an expense to record,
+# `resolve_date` only). Its gate was `write_attempted_this_turn`, which is False on EVERY
+# read-only turn — so every read-only exhaustion handed the voice "write what the critique
+# says is missing", and on turn 107 the critique named the classes of the month.
+#
+# The gate now also asks whether an ACTION was requested at all. The signal is
+# `intent.intent_class == "ACTION_REQUEST"` (closed `vocab.VALID_INTENTS`), the one the EGO
+# already reads to force a tool call on the first step: the clause's own subject is "the
+# requested action", and a turn that requested none has nothing for it to refer to. What the
+# carrier does NOT hold is whether a MUTATING tool was on the table — `EgoResult.tools_offered`
+# is names only and the policy that says which name writes lives on the dispatcher, which
+# `voice()` never sees — so that finer signal is not available without inventing one.
+
+NOTHING_TRIED = "NOTHING WAS EVEN TRIED"
+WRITE_THAT_INSTEAD = ("The critique says what was MISSING, not what was tried: write THAT "
+                      "instead")
+LOOKUPS_WORKED = "THE LOOKUPS WORKED"
+CRITIQUE_1198 = "only asked for confirmation without recording"
+
+
+def _specimen_1198(intent_class: "str | None" = "ACTION_REQUEST"):
+    """The turn `nothing_tried` was written for: an expense to RECORD, `resolve_date` only,
+    the critique naming the missing confirmation. Its intent is the signal under test."""
+    ctx = _ctx(user="registra uma despesa de 45 reais", intent_class=intent_class or "SOCIAL",
+               with_ego=False)
+    if intent_class is None:
+        ctx.intent = None
+    ctx.ego_result = EgoResult(
+        steps=[EgoStep(index=0, path="native",
+                       assistant_text="posso registrar a despesa de R$45?",
+                       tool_calls=[ToolExecution(tool="resolve_date", arguments={},
+                                                 result="2026-09-06", ok=True,
+                                                 side_effect=False, tool_mutating=False)])],
+        metrics=_m("ego"))
+    return ctx
+
+
+def _failed_write(intent_class: str):
+    """A write that was attempted and refused — `nothing_tried` was ALREADY off here."""
+    ctx = _ctx(user="registra uma despesa de 45 reais", intent_class=intent_class,
+               with_ego=False)
+    ctx.ego_result = _ego(ToolExecution(tool="record_expense", arguments={"amount": 45},
+                                        result="", ok=False,
+                                        error="the ledger rejected the entry",
+                                        side_effect=True, tool_mutating=True),
+                          draft="The entry could not be recorded.")
+    return ctx
+
+
+def _approved():
+    ctx = _turn()
+    ctx.metadata[mk.JUDGE_VERDICT] = {"approved": True, "attempts": 1}
+    return ctx
+
+
+def test_t107_an_information_request_is_not_told_to_write_what_the_critique_says_is_missing():
+    """The measured turn under (a): read-only AND no action requested. `nothing_tried` is
+    off — its "write THAT instead" had a critique naming the classes to point at — while the
+    sibling read clause and the new last word stay.
+
+    MUTATION: drop the intent condition from the gate — red here.
+    """
+    ctx = _turn()
+    assert ctx.intent is not None and ctx.intent.intent_class == "INFORMATION_REQUEST"
+    section = _section(_render(ctx), "execution_verdict")
+    assert NOTHING_TRIED not in section, (
+        "a read-only INFORMATION_REQUEST was handed the write turn's 'write what is missing'")
+    assert WRITE_THAT_INSTEAD not in section
+    assert LOOKUPS_WORKED in section          # the read clause still governs the read turn
+    assert OPENING in section and section.rstrip().endswith(LAST_WORD)
+
+
+def test_the_specimen_1198_an_action_request_keeps_the_clause():
+    """The twin that keeps (a) from deleting the fix it gates: an expense to record, nothing
+    tried, the critique naming the missing confirmation — `nothing_tried` renders, in full."""
+    section = _section(_render(_specimen_1198(), reason=CRITIQUE_1198), "execution_verdict")
+    assert NOTHING_TRIED in section
+    assert WRITE_THAT_INSTEAD in section
+    assert "the confirmation this request is still waiting for, or the ONE question" in section
+
+
+@pytest.mark.parametrize("intent_class", ["INFORMATION_REQUEST", "SOCIAL", "CLARIFICATION",
+                                          None])
+def test_the_signal_is_the_intent_class_and_an_unknown_intent_reads_as_no_action(intent_class):
+    """Same 1198 shape, the intent swapped: nothing else in the carrier moves the clause.
+    `None` reads as "no action requested" — the Director's rule is "render ONLY when a write
+    was possible", and an unknown intent does not establish that it was."""
+    section = _section(_render(_specimen_1198(intent_class), reason=CRITIQUE_1198),
+                       "execution_verdict")
+    assert NOTHING_TRIED not in section
+
+
+# The controls, by whole-prompt digest measured on the tree that carries the exhaustion clause
+# WITHOUT the gate (`29eafab6`). A write attempted and refused had `nothing_tried` off already,
+# under either intent; an approved turn renders no verdict at all; and the 1198 specimen must
+# come out byte-identical, because (a) changes nothing for the turn it was written for.
+_PRE_GATE = {
+    "failed_write|ACTION_REQUEST": "058c9df8e3db7e21",
+    "failed_write|INFORMATION_REQUEST": "058c9df8e3db7e21",
+    "approved": "8d34dbc31c934279",
+    "specimen_1198": "ecd1eef5dbf72219",
+}
+_PRE_GATE_T107 = "170cfa91f6507209"
+
+
+def _gate_controls() -> "dict[str, str]":
+    return {
+        "failed_write|ACTION_REQUEST": _render(_failed_write("ACTION_REQUEST"),
+                                               reason=CRITIQUE_1198),
+        "failed_write|INFORMATION_REQUEST": _render(_failed_write("INFORMATION_REQUEST"),
+                                                    reason=CRITIQUE_1198),
+        "approved": _render(_approved(), kind=None),
+        "specimen_1198": _render(_specimen_1198(), reason=CRITIQUE_1198),
+    }
+
+
+@pytest.mark.parametrize("label", sorted(_PRE_GATE))
+def test_outside_the_two_twins_the_gate_moves_nothing(label):
+    prompt = _gate_controls()[label]
+    if label.startswith("failed_write"):
+        assert NOTHING_TRIED not in prompt      # off before the gate, off after it
+    assert _digest(prompt) == _PRE_GATE[label], f"{label}: the prompt moved"
+
+
+def test_the_only_prompt_the_gate_moves_is_the_read_only_information_request():
+    assert _digest(_render(_turn())) != _PRE_GATE_T107

@@ -80,6 +80,29 @@
   persistido está cortado a 240 chars e o bloco inteiro é assumido pela FORMA (por disciplina,
   sem lista de dias) — dito no docstring.
 
+  **(a) `nothing_tried` só renderiza quando uma ACÇÃO foi pedida (decisão do Director, 22/09).**
+  A cláusula «NOTHING WAS EVEN TRIED … the critique says what was MISSING … write THAT
+  instead» foi escrita para uma CONFIRMAÇÃO em falta num turno de ESCRITA (espécime 1198:
+  `resolve_date` só, despesa nunca registada), mas o seu gate, `write_attempted_this_turn`, é
+  falso em QUALQUER turno só de leitura — logo todo o esgotamento de leitura entregava à voz
+  «escreve o que a crítica diz que falta», e no t107 a crítica nomeava as aulas do mês. O gate
+  passa a exigir também `intent.intent_class == "ACTION_REQUEST"` (vocabulário fechado
+  `vocab.VALID_INTENTS`; o mesmo sinal que o EGO já lê para forçar uma chamada no 1.º passo): o
+  sujeito da própria cláusula é «the requested action», e um turno que não pediu acção nenhuma
+  não lhe dá referente — no mundo só-de-leitura manda a cláusula irmã (`read_worked`). Porque
+  não «uma ferramenta mutante na mesa»: o carrier não o tem — `EgoResult.tools_offered` são só
+  nomes, e qual nome ESCREVE é política do dispatcher, que `voice()` nunca recebe; o sinal
+  mais fino seria uma metakey nova. Intent ausente lê-se como «nenhuma acção pedida» (a regra é
+  «só quando uma escrita era possível»; desconhecido não o estabelece). O PREDICADO não muda
+  (`test_having_writing_tools_on_the_table_is_not_an_attempt` continua verdadeiro): é uma
+  segunda condição na CLÁUSULA. Gémeos no mesmo ficheiro de teste: t107 (só leitura,
+  `INFORMATION_REQUEST`) → não renderiza; espécime 1198 (`ACTION_REQUEST`) → continua a
+  renderizar, byte-idêntico; intent trocado/ausente → não renderiza; controlos por digest
+  medidos em `29eafab6` (cláusula sem gate): escrita tentada e falhada sob qualquer intent, e
+  turno aprovado, byte-idênticos. `test_voice_does_not_deny_a_read_that_worked.py` passou a
+  mostrar a coexistência das duas cláusulas num turno `ACTION_REQUEST` e ganhou o gémeo
+  só-de-leitura; `test_voice_never_invents_a_failure.py` intacto em comportamento.
+
   **Fora de alcance, com nome.** A PREVALÊNCIA desta classe não é mensurável no traço enquanto
   38 % das leituras chegarem cortadas ao `turn_traces` (o próprio t107 é mecanicamente
   indecidível; positivo pela LEITURA do conteúdo). Uma rede `unread_date_claim` em runtime, e o

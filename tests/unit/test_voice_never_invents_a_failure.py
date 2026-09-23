@@ -149,7 +149,15 @@ def test_the_predicate_reads_both_execution_sources():
 
 def test_having_writing_tools_on_the_table_is_not_an_attempt():
     """The predicate the fix must NOT use. A persona offered twenty writing tools and called
-    none of them attempted nothing; an ACTION_REQUEST intent is not an attempt either."""
+    none of them attempted nothing; an ACTION_REQUEST intent is not an attempt either.
+
+    The PREDICATE, not the clause: since 2026-09-22 the clause ALSO asks whether an action was
+    requested (`intent_class == "ACTION_REQUEST"`) — a second condition on the rendering, so
+    that a read-only INFORMATION_REQUEST is not told to "write what the critique says is
+    missing" (`test_voice_on_exhaustion_does_not_reconstruct`). This fixture requests an
+    action, so the clause still renders here, and `write_attempted_this_turn` still answers
+    False about it: the two facts are different and both are asserted.
+    """
     ctx = _read_only_turn()
     assert ctx.intent.intent_class == "ACTION_REQUEST"
     assert write_attempted_this_turn(ctx) is False

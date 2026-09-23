@@ -2978,7 +2978,35 @@ class SuperegoStage:
                 # The critique says what was MISSING. The voice was translating it into what
                 # was TRIED AND FAILED. Those are different claims and only one of them is
                 # true.
-                nothing_tried = "" if write_attempted_this_turn(ctx) else (
+                #
+                # ── AND ONLY WHEN AN ACTION WAS REQUESTED (2026-09-22) ──────────────────
+                # `write_attempted_this_turn` is False on EVERY read-only turn, so until
+                # today every read-only exhaustion rendered this clause — and its remedy,
+                # "write THAT instead", was written for a missing CONFIRMATION on a WRITE
+                # turn. On `turn_traces` 1970 (turn 107; the account is on
+                # `_NOTHING_BEYOND_WHAT_WAS_READ`) the critique named the classes of the
+                # month nobody had read, and "write what the critique says is missing"
+                # is the instruction that reconstructs them. So the clause now also asks
+                # whether an ACTION was requested at all, and it asks the carrier's own
+                # signal: `intent.intent_class == "ACTION_REQUEST"` (closed
+                # `vocab.VALID_INTENTS`) — the one the EGO already reads to force a tool
+                # call on its first step. The clause's own subject is "the requested
+                # action"; a turn that requested none gives it nothing to refer to, and
+                # the read-only world is governed by the sibling `read_worked` below.
+                #
+                # WHY NOT "a mutating tool was on the table": the carrier does not hold it.
+                # `EgoResult.tools_offered` is names only, and which name WRITES is the
+                # dispatcher's policy — a reader `voice()` never receives. The finer
+                # signal would be a new metakey, which is the re-derivation this repo
+                # keeps refusing. An absent intent reads as "no action requested": the
+                # rule is render ONLY when a write was possible, and an unknown intent
+                # does not establish that it was. The predicate itself is untouched —
+                # `test_having_writing_tools_on_the_table_is_not_an_attempt` still holds
+                # — this is a second condition on the CLAUSE.
+                action_requested = bool(ctx.intent
+                                        and ctx.intent.intent_class == "ACTION_REQUEST")
+                nothing_tried = "" if (write_attempted_this_turn(ctx)
+                                       or not action_requested) else (
                     "NOTHING WAS EVEN TRIED: no tool that changes anything ran this turn — "
                     "not one that succeeded, and not one that failed. So you MUST NOT write "
                     "that the requested action was attempted and did not work (\"I could not "
