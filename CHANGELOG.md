@@ -74,8 +74,8 @@
   re-pinado (o literal `MAIN_REVIEW_VERDICT` e a tabela `_MAIN_SECTIONS`, re-medida no ramo: as
   células de veredicto moveram-se JUNTAS e só `already_said` manteve o digest). Canário com
   modelo em `tests/integration/test_superego.py` (`…does_not_reconstruct_a_list_nobody_read`;
-  qwen3:8b, `temperature=0`): a resposta não contém nenhuma data `dd/11` e contém a estimativa,
-  em VALORES — as duas asserções, porque a primeira redacção passou a primeira e falhou a segunda.
+  só com spec de nuvem, `temperature=0`): a resposta não contém nenhuma data `dd/11` e contém a
+  estimativa, em VALORES — as duas asserções, porque cada redacção que falhou falhou uma delas.
   A fixture é o t107 anonimizado (sem pessoa, tenant nem id); o resultado
   persistido está cortado a 240 chars e o bloco inteiro é assumido pela FORMA (por disciplina,
   sem lista de dias) — dito no docstring.
@@ -102,6 +102,25 @@
   turno aprovado, byte-idênticos. `test_voice_does_not_deny_a_read_that_worked.py` passou a
   mostrar a coexistência das duas cláusulas num turno `ACTION_REQUEST` e ganhou o gémeo
   só-de-leitura; `test_voice_never_invents_a_failure.py` intacto em comportamento.
+
+  **As DUAS medições, e a leitura (22/09).** Canário `tests/integration/test_superego.py::
+  test_voice_on_exhaustion_does_not_reconstruct_a_list_nobody_read` (t107 reconstruído: rascunho
+  + estimativa + lista de outubro no Context + esgotamento declarado), `temperature=0`:
+
+  | modelo | árvore | n | resultado | leitura |
+  |---|---|---|---|---|
+  | qwen3:8b (local) | cláusula, 3 redacções, e cláusula + (a) | 4 corridas (11,6 s · 30,5 s · 31,7 s · 31,3 s de GPU) | **0/4** | «Aulas de novembro» com `11/11` em cada linha por cima da estimativa inteira; a 1.ª redacção mordaçou a estimativa em vez de inventar datas |
+  | gpt-4o-mini (a voz de produção do t107) | `main` d34822a5, sem cláusula | 3 (corrida do Director) | **0/3** | «não consegui encontrar as aulas de novembro» e larga a estimativa — a MORDAÇA, a outra face da mesma classe; sem datas inventadas nesta fixture |
+  | gpt-4o-mini | cláusula só (29eafab6) | 1 | 1/1 | — |
+  | gpt-4o-mini | cláusula + (a) (832d0ab1) | 3 (corrida do Director) | **3/3** | sem `dd/11`, estimativa inteira |
+
+  **Instrução não é garantia.** No modelo de produção a cláusula move (0/3 → 3/3); no qwen3
+  não move (0/4). As duas coisas são verdadeiras e este registo diz as duas. Por isso o canário
+  corre **só com spec de nuvem** — `pytest.skip` quando o backend resolvido por
+  `tests/integration/backends.py` é Ollama, com a razão medida no texto do skip — e os três
+  shards ollama do CI ficam verdes E honestos (um skip que diz porquê, nunca um verde vazio). A
+  garantia desta classe não é um parágrafo: é a rede determinística do host
+  (`unread_date_claim`), que corre em runtime, onde o resultado da ferramenta está inteiro.
 
   **Fora de alcance, com nome.** A PREVALÊNCIA desta classe não é mensurável no traço enquanto
   38 % das leituras chegarem cortadas ao `turn_traces` (o próprio t107 é mecanicamente

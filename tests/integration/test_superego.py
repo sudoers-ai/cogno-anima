@@ -395,6 +395,20 @@ async def test_voice_still_drops_an_unverified_claim_when_nothing_executed():
 # of the measured turn; what needs a model here is whether a voice that holds October's REAL
 # list in the Context, November's estimate in the data and a critique naming the list nobody
 # read still writes only what was read.
+#
+# CLOUD-ONLY, AND THE REASON IS A MEASUREMENT. On qwen3:8b (temperature 0, local) the clause
+# does not move the reply: 0/4 on 2026-09-22 — three wordings of the clause and then the
+# clause plus the `nothing_tried` gate, every run the same "Aulas de novembro" list with
+# `11/11` on each line above a faithfully reproduced estimate (11.6 s, 30.5 s, 31.7 s, 31.3 s
+# of GPU). On gpt-4o-mini — the voice that shipped the measured turn — the canary
+# DISCRIMINATES: the Director ran it n=3 on both trees the same day, `main` 0/3 (the reply
+# says it could not find the November classes and DROPS the estimate — the muzzle, the other
+# face of the same class) and the head 3/3. So the test skips itself on an Ollama spec with
+# that reason in the skip text, and the three nightly Ollama shards stay green AND honest: a
+# skip that says why, never an empty green. It resolves the spec through `backends` (the
+# one place that reads `COGNO_TEST_MODEL`) rather than re-deciding the grammar here.
+# The lesson, written where the instrument is: an instruction is not a guarantee. The
+# guarantee is the host's deterministic net (`unread_date_claim`).
 
 # A November date in any form a reply could carry — `01/11`, `1/11`, `07/11/2026`,
 # `2026-11-01` — and deliberately NOT the estimate's own month header `11/2026`.
@@ -463,8 +477,18 @@ async def test_voice_on_exhaustion_does_not_reconstruct_a_list_nobody_read():
     PRESENCE of the estimate, on VALUES (``stated_values``, never a locale): the base total or
     the per-discipline amounts. Whether the reply also SAYS the list was not read is asserted
     neither way: its Portuguese phrasing would be a locale pin wearing the clothes of a
-    property.
+    property. Both assertions are needed, because each wording that failed failed one of them:
+    the first cut passed the absence and lost the estimate (the muzzle), the next ones kept the
+    estimate and listed `11/11`.
+
+    Runs only against a CLOUD spec — see the block comment above for the measurement that
+    decided it (qwen3:8b 0/4; gpt-4o-mini 0/3 on `main` -> 3/3 on this head, n=3).
     """
+    spec = backends.model_spec()
+    if backends.is_ollama(spec):
+        pytest.skip(f"{spec}: qwen3:8b does not follow the clause — 0/4 on 2026-09-22; the "
+                    "canary discriminates on gpt-4o-mini, 0/3 -> 3/3 (n=3, Director's run). "
+                    "Point COGNO_TEST_MODEL at a cloud spec to run it.")
     await backends.skip_unless_available()
     ctx = _ctx("e de novembro?", intent_class="INFORMATION_REQUEST",
                goal="the contact's classes and pay for November",
