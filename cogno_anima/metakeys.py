@@ -312,6 +312,35 @@ SCOPE_PROMPT_BLOCKS = "scope_prompt_blocks"
 # of the same question and nothing wider. See ``types.ScopeCheckResult.prompt_sha``.
 SCOPE_PROMPT_SHA = "scope_prompt_sha"
 
+# What THIS ASSISTANT asked the contact for on the previous turn — the one fact the scope
+# guard needs and cannot have, because it reads the SENTENCE and never the conversation.
+#
+# Measured on the owner's own tenant: the voice asked «poderia fornecer o nome completo?», the
+# contact answered with the name, and the guard refused it — `ego.ran=false`, `tools_offered=[]`,
+# the judge never ran, and the contact was told «Desculpe, mas não posso ajudar com isso.» over
+# the answer to the assistant's own question. A proper name on its own has no verb and no
+# object, so a contextless classifier reads it as off-topic; the request that produced it is
+# two sentences back, where nothing in this prompt can see it.
+#
+# **A CLOSED DESCRIPTOR, never a tool's error message.** The value the host stamps comes from a
+# map it declares (tool → what that tool asked the contact for): "the full name of a team
+# member", "a specific date". A tool's own failure text is interpolated with the CONTACT's
+# words (``f"No reachable staff member matches {target!r} exactly…"``), so rendering it verbatim
+# would put free text — and a contact's sentence — into a prompt section. The core sanitises
+# whatever arrives (one line, capped, deduplicated: see ``SuperegoStage._pending_requests``),
+# which bounds the damage; it cannot invent the meaning, and the meaning is the host's catalog.
+#
+# ``str`` for one ask, or a sequence of ``str`` when the turn left more than one. Absent, blank
+# or unusable renders NOTHING and the guard's prompt is byte-identical to the one it has always
+# built — the block travels with its evidence, the rule ``_OUT_OF_REACH`` and the judge's
+# consult section already follow.
+#
+# **A PER-TURN fact, never carry-over** — the same rule as the two keys above and for a sharper
+# reason: carried over, it tells the guard that a question is still open on a turn where it was
+# already answered, which is an instruction to relax on a turn nobody asked anything. A host
+# recomputes it every turn or it does not stamp it.
+SCOPE_PENDING_REQUEST = "scope_pending_request"
+
 # ── session stamps (soma stamps; host/telemetry read) ────────────────────────
 ACTIVE_PERSONA_ID = "active_persona_id"
 ACTIVE_MCP_MODULE = "active_mcp_module"

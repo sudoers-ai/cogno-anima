@@ -65,7 +65,8 @@ from cogno_anima.stages.ner import IntentAnalyzer
 from cogno_anima.stages.id import IDStage
 from cogno_anima.stages.ego import EgoStage
 from cogno_anima.stages.superego import (
-    SCOPE_TENANT_FACTS_HEADER, SCOPE_TOOL_TABLE_HEADER, SuperegoStage)
+    SCOPE_PENDING_REQUEST_HEADER, SCOPE_TENANT_FACTS_HEADER, SCOPE_TOOL_TABLE_HEADER,
+    SuperegoStage)
 from cogno_anima.stages.drift import DriftCalculator, DriftThresholds
 from cogno_anima.vocab import sanitize_voice_traits
 from cogno_anima.security.detector import PiiDetector, PiiMatch, default_detector
@@ -135,6 +136,7 @@ __all__ = [
     "IntentAnalyzer",
     "IDStage",
     "EgoStage",
+    "SCOPE_PENDING_REQUEST_HEADER",
     "SCOPE_TENANT_FACTS_HEADER",
     "SCOPE_TOOL_TABLE_HEADER",
     "SuperegoStage",

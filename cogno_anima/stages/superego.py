@@ -414,6 +414,94 @@ SCOPE_TENANT_FACTS_HEADER = (
     "## Material this business has published and this persona can read on this turn")
 
 
+#: The guard reads the SENTENCE and never the conversation — this is the one fact that fixes
+#: that, and the ONLY section of this prompt the core renders on the host's word rather than
+#: out of the slot it is handed (``metakeys.SCOPE_PENDING_REQUEST``, where the contract is).
+#:
+#: Measured on the owner's own tenant: the voice asked «poderia fornecer o nome completo?», the
+#: contact answered with the name, and the guard refused the answer to the assistant's own
+#: question — ``ego.ran=false``, ``tools_offered=[]``, the judge never ran, the contact got a
+#: canned refusal. A bare proper name has no verb and no object; the request that makes it a
+#: sentence is two turns back.
+#:
+#: **``#`` and not ``##``, unlike the two host-rendered sub-sections above**, because it is not
+#: part of the slot: it is a section of the guard's own prompt, a peer of ``# User Input``, and
+#: it is rendered FIRST — see :data:`_PENDING_REQUEST_RULE` for the measurement that put it
+#: there and for why no host can.
+SCOPE_PENDING_REQUEST_HEADER = "# What this assistant just asked the contact for"
+
+# ── Why this block is rendered HERE, and by the CORE ──────────────────────────────────────
+#
+# It could have been one more section the host writes into the slot, beside the tool table and
+# the tenant facts, and that is the shape this was asked for. The measurement says no, and it
+# says it about POSITION: the same bytes, in the places a host can reach, run from "fixes it" to
+# "worse than shipping nothing".
+#
+# gpt-4o-mini (the model the cloud preset names for this stage), temperature 0, over slots
+# rebuilt from the same files the host composes, on two persona shapes — a reception/scheduling
+# one and an academic-coordination one.
+#
+# **Every arm of a run is measured INTERLEAVED**, one call per cell per round, and that is not
+# tidiness: the instrument DRIFTS. The same bytes scored 4/10 BLOCK in one run and 20/20 forty
+# minutes later at temperature 0, and five distinct ``system_fingerprint``s answered the 120
+# calls of a single run. Two arms measured in sequence are two experiments wearing one table —
+# which is the fact ``StageMetrics.system_fingerprint`` exists to record, met again here.
+#
+# The two turns where the contact ANSWERS the assistant's own question, n=10 per cell, BLOCK
+# counts (lower is the fix):
+#
+#                                             base   before `# User Input`   FIRST   after the table
+#   «Quais nomes achou?»     (reception)      9/10           0/10            1/10         8/10
+#   the contact's own name   (reception)      0/10           0/10            0/10         0/10
+#   «Quais nomes achou?»     (coordination)  10/10           6/10            0/10        10/10
+#   the contact's own name   (coordination)   9/10           0/10            0/10         0/10
+#   ────────────────────────────────────────────────────────────────────────────────────────
+#   pooled                                   28/40           6/40            1/40        18/40
+#
+# FIRST is the only placement that clears all four, and **no host can render it there**:
+# ``_build_scope_prompt`` puts the slot after the decision rule, or wraps it whole under
+# ``# Scope Definition``, so everything a host appends lands below. The best a host can reach is
+# the second column, and the column it lands on by writing the code the tool table taught it
+# (append one more section) is the fourth. Where a section of this prompt ENDS UP is decided by
+# ``_split_tool_table``, a private rule of this module; a host placing a block by anticipating
+# it is re-deriving an internal, which is the failure this house names every time it meets it.
+#
+# That is the same lesson ``_SCOPE_DECISION_RULE`` was written from, now measured twice in this
+# file: a small classifier obeys the instruction it read FIRST.
+#
+# **The wording is not the lever, and the "stronger" wording is the worse one.** A variant
+# mirroring the decision rule's own language ("answer blocked=false. The Scope Definition does
+# not apply to it.") was measured in both placements and blocked 5/5 in BOTH — including the
+# placement where the wording below scores 0/10 on the same cell. It is written as a fact plus a deferral, never
+# as an override, and it stays that way until something measures otherwise.
+#
+# **The last sentence is the half that keeps the guard a guard**, and the measurement calls it
+# the stop criterion: the turn where the assistant had asked for a DATE and the contact replied
+# «vc precisa de uma voice melhor» goes from 11/20 BLOCK to 20/20 with this block present. The
+# section does not open a turn — it tells the classifier what the turn IS, and an answer that
+# does not match what was asked is closed HARDER, for the reason a reader can see.
+_PENDING_REQUEST_RULE = (
+    "The assistant's own previous message asked the contact for:\n"
+    "{asks}\n"
+    "The User Input may be the ANSWER to that question. An input that SUPPLIES what was "
+    "asked, asks back about it, or declines it, IS in scope — even when it is a bare value "
+    "with no verb and no topic of its own (a name, a number, a date, a yes or a no), and even "
+    "when nothing in it names the business: that is what an answer to the question above "
+    "looks like, and this assistant asked for it.\n"
+    "An input that does none of those is judged by the rules below exactly as it would be "
+    "without this section."
+)
+
+#: One ask is one LINE. Past this it is truncated rather than dropped: a descriptor this long
+#: is a host rendering something it should not, and a silent drop would hide that while a
+#: visible stump does not.
+_MAX_PENDING_CHARS = 160
+
+#: How many asks render. A turn that left more than a couple of questions open has not asked a
+#: question, and a list long enough to argue with is a list the classifier reads as noise.
+_MAX_PENDING_ASKS = 3
+
+
 # ── The guard's decision rule, and why it is an ORDER and not another sentence ─────────────
 #
 # The table header above ships with a rubric the HOST renders beside it, and that rubric has
@@ -1091,7 +1179,14 @@ class SuperegoStage:
     # not a second paragraph of the definition's prose: a slot composed out of several
     # capabilities legitimately makes ``scope_definition`` longer, so its length cannot also be
     # made to answer "were the document titles in front of the guard".
+    # ``pending_request`` is the second CONDITIONAL row, and the only one this module renders
+    # from ``ctx.metadata`` rather than out of the slot: it is present exactly on a turn where
+    # the host declared that the assistant's previous message had asked the contact for
+    # something. Its presence in a stored inventory answers "was the guard told what we had
+    # asked" — the question a refused answer-to-our-own-question raises first, and one no
+    # length of any other row can carry.
     _SCOPE_BLOCKS = (
+        (SCOPE_PENDING_REQUEST_HEADER, "pending_request"),
         ("# Decision Rule", "decision_rule"),
         ("# Scope Definition", "scope_definition"),
         (SCOPE_TOOL_TABLE_HEADER, "tool_table"),
@@ -1619,7 +1714,8 @@ class SuperegoStage:
             return _result(False, "")
 
         language = ctx.noumeno.language if ctx.noumeno else ""
-        prompt = self._build_scope_prompt(scope_prompt, ctx.user_input, language)
+        prompt = self._build_scope_prompt(scope_prompt, ctx.user_input, language,
+                                          ctx.metadata.get(mk.SCOPE_PENDING_REQUEST))
         try:
             raw, ti, to = await backend.generate(_SCOPE_SYSTEM, prompt)
             # Read with NO await in between — the contract of ``cached_tokens_of``. The
@@ -1643,7 +1739,60 @@ class SuperegoStage:
             return _result(False, "", prompt=prompt)
 
     @staticmethod
-    def _build_scope_prompt(scope_prompt: str, user_input: str, language: str = "") -> str:
+    def _pending_requests(raw: object) -> "tuple[str, ...]":
+        """What the host says this assistant asked the contact for, made safe to render.
+
+        Never trust the carrier: the value is host-stamped and the host builds it from a map it
+        declares (``metakeys.SCOPE_PENDING_REQUEST``). This is the bound on what a mistake
+        there can do to the prompt, and each rule answers one:
+
+        * **every ask is ONE line** — newlines collapse to spaces, so a descriptor can never
+          open a markdown header of its own. That is the rule ``cogno_host.scope_compose``
+          obeys for the same reason (``CAPABILITY_MARK`` is deliberately not a header): a
+          section this module's closed table does not know renders anyway and stops being
+          counted, which is the silent under-report the inventory exists to end;
+        * **capped and counted** — a long descriptor is truncated, not dropped (a visible stump
+          says a host is rendering something it should not; a silent drop hides it), and at
+          most :data:`_MAX_PENDING_ASKS` render;
+        * **garbage is nothing** — a non-string, an empty string, whitespace, a bad type
+          anywhere in a sequence: dropped, never raised. A prompt hint must never abort a turn,
+          and "nothing" here is the SAFE answer: it renders the prompt this guard has always
+          built.
+
+        Duplicates go, in order, because two tools asking for the same thing is one question.
+        """
+        items = raw if isinstance(raw, (list, tuple)) else [raw]
+        out: "list[str]" = []
+        for item in items:
+            if not isinstance(item, str):
+                continue
+            flat = " ".join(item.split())
+            if not flat or flat in out:
+                continue
+            if len(flat) > _MAX_PENDING_CHARS:
+                flat = flat[:_MAX_PENDING_CHARS - 1].rstrip() + "\u2026"
+            out.append(flat)
+            if len(out) == _MAX_PENDING_ASKS:
+                break
+        return tuple(out)
+
+    @staticmethod
+    def _pending_request_block(raw: object) -> str:
+        """The rendered section, or ``""`` when this turn asked the contact for nothing.
+
+        The block travels with its evidence — the rule ``_OUT_OF_REACH`` and the judge's
+        consult section already follow, and here it is what keeps the promise that a turn with
+        no pending request gets the prompt it has always got, byte for byte.
+        """
+        asks = SuperegoStage._pending_requests(raw)
+        if not asks:
+            return ""
+        body = _PENDING_REQUEST_RULE.format(asks="\n".join(f"- {a}" for a in asks))
+        return f"{SCOPE_PENDING_REQUEST_HEADER}\n{body}"
+
+    @staticmethod
+    def _build_scope_prompt(scope_prompt: str, user_input: str, language: str = "",
+                            pending: object = None) -> str:
         # Pin the refusal language HARD (not a soft "in the user's language"): a
         # small model otherwise drifts to the wrong tongue (e.g. Spanish for a
         # pt-BR user) — same failure the voice/NOUMENO fixes addressed. Empty
@@ -1660,7 +1809,11 @@ class SuperegoStage:
         head = (f"{_SCOPE_DECISION_RULE}\n\n{table}\n\n"
                 f"{_SCOPE_DEFINITION_SUBORDINATE}\n{definition}\n\n") if table else (
                 f"# Scope Definition\n{scope_prompt}\n\n")
+        # FIRST, above everything the slot brings — measured, and unreachable from the slot.
+        # See ``_PENDING_REQUEST_RULE`` for the four placements and their numbers.
+        asked = SuperegoStage._pending_request_block(pending)
         return (
+            (f"{asked}\n\n" if asked else "") +
             head +
             f'# User Input\n"{user_input}"\n\n'
             "# Task\nIs the User Input IN-SCOPE or OUT-OF-SCOPE? Rules:\n"

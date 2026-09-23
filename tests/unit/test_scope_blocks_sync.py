@@ -46,30 +46,40 @@ _FACTS = (f"{SCOPE_TENANT_FACTS_HEADER}\n"
           "- Grade de Horários\n"
           "- Ementas")
 
+# The one section that is neither the skeleton nor the slot: the core renders it, FIRST, out of
+# a per-turn metakey the host stamps (`mk.SCOPE_PENDING_REQUEST`). It is a fourth argument of
+# `_build_scope_prompt` rather than a slice of the slot, which is why the configurations below
+# carry one — a row that no configuration renders is a row this file cannot see either way.
+_PENDING = "the full name of a team member to hand the conversation to"
+
 
 def _known(header_line: str) -> bool:
     return any(header_line.startswith(known) for known, _ in SuperegoStage._SCOPE_BLOCKS)
 
 
 def _configs():
-    """Renders chosen to light up every row, including the host-rendered one."""
+    """Renders chosen to light up every row, including the host-rendered ones."""
     return [
-        ("skeleton", _NEUTRAL, "que materiais posso usar para estudar?", "pt-BR"),
-        ("no_language", _NEUTRAL, "quanto custa?", ""),
-        ("with_table", f"{_NEUTRAL}\n\n{_TABLE}", "que materiais posso usar?", "pt-BR"),
+        ("skeleton", _NEUTRAL, "que materiais posso usar para estudar?", "pt-BR", None),
+        ("no_language", _NEUTRAL, "quanto custa?", "", None),
+        ("with_table", f"{_NEUTRAL}\n\n{_TABLE}", "que materiais posso usar?", "pt-BR", None),
         # A composed slot: the definition, the tenant's published titles, then the table. The
         # ORDER is the host's (`cogno_host.scope_compose`) and is asserted there; what this
         # renders for is the row — a host-rendered header the inventory has to be able to see.
-        ("with_facts", f"{_NEUTRAL}\n\n{_FACTS}\n\n{_TABLE}", "qual é a grade?", "pt-BR"),
+        ("with_facts", f"{_NEUTRAL}\n\n{_FACTS}\n\n{_TABLE}", "qual é a grade?", "pt-BR",
+         None),
         # The host's own no-op: an empty table leaves the slot byte-identical.
-        ("table_absent", _NEUTRAL, "olá", "en"),
+        ("table_absent", _NEUTRAL, "olá", "en", None),
+        # A turn where the assistant's previous message asked the contact for something — the
+        # answer to our own question, which is the turn the guard was refusing.
+        ("with_pending", f"{_NEUTRAL}\n\n{_TABLE}", "Aldenir Bastos", "pt-BR", _PENDING),
     ]
 
 
-@pytest.mark.parametrize("name,scope,user,lang", _configs(),
+@pytest.mark.parametrize("name,scope,user,lang,pending", _configs(),
                          ids=[c[0] for c in _configs()])
-def test_every_rendered_header_is_in_the_table(name, scope, user, lang):
-    prompt = SuperegoStage._build_scope_prompt(scope, user, lang)
+def test_every_rendered_header_is_in_the_table(name, scope, user, lang, pending):
+    prompt = SuperegoStage._build_scope_prompt(scope, user, lang, pending)
     unknown = [h for h in _HEADER.findall(prompt) if not _known(h)]
     assert not unknown, (
         f"[{name}] the guard prompt renders {unknown} and `_SCOPE_BLOCKS` does not list it — "
@@ -80,8 +90,9 @@ def test_the_table_does_not_list_sections_the_prompt_never_renders():
     """The other direction. A slug for a header that no longer exists is a row that can never
     appear — dead weight that reads like coverage."""
     rendered = set()
-    for _, scope, user, lang in _configs():
-        rendered.update(_HEADER.findall(SuperegoStage._build_scope_prompt(scope, user, lang)))
+    for _, scope, user, lang, pending in _configs():
+        rendered.update(
+            _HEADER.findall(SuperegoStage._build_scope_prompt(scope, user, lang, pending)))
     for known, slug in SuperegoStage._SCOPE_BLOCKS:
         assert any(h.startswith(known) for h in rendered), (
             f"`{slug}` maps to {known!r}, which none of the rendered configurations produce — "
