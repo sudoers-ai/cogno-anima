@@ -8,7 +8,8 @@
   resposta (`pii:flagged_in_output`), não «turnos com bloco SUPEREGO».** O critério antigo
   cumpria-se no VAZIO: uma resposta sem dado pessoal não retém nada e nunca erra, portanto 200
   turnos «limpos» provam que não houve nada para redigir, não que a rede redige bem. Medido no
-  box a 23/09: 0 respostas com PII detectada em 352 turnos. **Hoje nenhum tenant está pronto.**
+  box a 23/09 (corpus: a caixa nesse dia, 528 traços desde 04/08): 0 respostas com PII detectada em
+  352 turnos. **Hoje nenhum tenant está pronto.**
   Só muda a redacção (docstring em `vocab.py`, `CLAUDE.md`, docstring do teste); o valor, o
   modo por omissão e a rede ficam byte a byte. Nada NESTA biblioteca conta para o critério. No
   host HÁ quem o conte: o relatório `scripts/nets_by_class.py` imprime o critério com o

@@ -147,7 +147,8 @@ VALID_PII_PROVENANCE: frozenset[str] = frozenset(
 # criterion is satisfied in the VOID: a turn whose reply holds no personal data runs the rule
 # over nothing, withholds nothing, and therefore can never be "wrong" — so 200 such turns prove
 # that nothing came up, not that the rule redacts correctly. Measured on the demo box
-# (2026-09-23): 0 replies with detected PII in 352 turns — under the old wording a tenant would
+# (2026-09-23; corpus: the box that day, 528 traces back to 2026-08-04): 0 replies with detected
+# PII in 352 turns — under the old wording a tenant would
 # have been graduated on a sample that never exercised the rule once. Only a turn with a
 # finding can carry the evidence the criterion asks for (a withheld value that was, or was not,
 # the tenant's own), so only those turns count.

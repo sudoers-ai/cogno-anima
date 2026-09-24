@@ -414,7 +414,7 @@ def test_the_exit_criterion_is_a_number_someone_can_come_back_to():
     CONSTANT rather than a sentence in a PR nobody re-reads. The 200 are turns in which the
     detector FOUND PII in the reply (`pii:flagged_in_output`) — never merely turns that carried a
     SUPEREGO block, which is a criterion met in the void (a reply with nothing to redact cannot be
-    redacted wrongly; the box showed 0 such replies in 352 turns, so no tenant is ready today).
+    redacted wrongly; the box showed 0 such replies in 352 turns (2026-09-23; 528 traces back to 2026-08-04), so no tenant is ready today).
     Rule of three: zero own-data withholds in 200 turns WITH a finding bounds the false-positive
     rate under 3/200 = 1.5% at ~95% confidence. Nothing here promotes anybody — graduation is
     per tenant and is a human setting `mk.PII_OUTPUT_MODE`."""
