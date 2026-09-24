@@ -35,11 +35,23 @@ inventadas de ~720 tokens. O multiconjunto de blocos (sha256 por bloco) é igual
 todas as 36 chamadas do juiz. A reconstrução da ordem antiga a partir da nova é igual, byte a byte,
 ao `origin/main`, e as outras 206 chamadas (NOUMENO, NER, guarda, EGO, voz) ficam byte a byte.
 
+**O ganho é um PREFIXO medido, não uma taxa de cache.** A sonda mede quantos bytes dois turnos
+partilham. Se o fornecedor os serve do cache depende também do tempo de vida dele (na OpenAI,
+minutos sem uso) e de quantos turnos caem dentro dessa janela. A taxa real só o livro a diz, antes
+e depois, na mesma janela.
+
 **É uma mudança de PROMPT.** O sítio de uma regra pode mudar o que o modelo faz com ela, por isso
 o efeito no comportamento mede-se num A/B com modelo, que este PR não faz.
-`tests/unit/test_judge_prompt_cache_order.py` prende o gémeo (≥ 1 024 pelo limite inferior de
-palavras, com e sem regras), o controlo (sem limites fica a ordem antiga), o multiconjunto por
-digest e as frases que situam os limites.
+`tests/unit/test_judge_prompt_cache_order.py` prende:
+- o gémeo: ≥ 1 024 pelo limite inferior de palavras, com e sem regras;
+- o controlo: sem limites, a ordem antiga e os bytes do `origin/main`;
+- o multiconjunto por digest;
+- a ordem antiga reconstruída, igual por sha256 ao que o `origin/main` (ed32560) renderizou nas
+  mesmas fixtures;
+- a mutação escrita como gémeo: os mesmos predicados recusam a ordem antiga;
+- as frases que situam os limites.
+
+**Não aterra sem esse A/B** (decisão do Director, 24/09).
 
 ## Unreleased — o juiz lê as regras da persona INTEIRAS, vedadas como dado, no system; os valores declarados vão à voz (2026-09-24)
 

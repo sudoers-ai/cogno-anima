@@ -14,7 +14,15 @@ Three things are pinned here, each with the check that would catch its opposite:
   the whole limits slot up to the host's clock line, and that is at least 1024 tokens;
 * **the control** — a slot with no limits renders exactly what it always rendered;
 * **the multiset** — the sections of the new prompt, digest by digest, are the sections of the
-  legacy one: nothing entered, nothing left, one moved.
+  legacy one: nothing entered, nothing left, one moved;
+* **origin/main, byte for byte** — the legacy order rebuilt from the new prompt, and the prompt
+  of a turn with no limits slot, hash to what `origin/main` (ed32560) rendered for the same
+  fixtures (`_ORIGIN_MAIN`, `_ORIGIN_MAIN_NO_LIMITS`);
+* **the mutation, as a twin** — the same predicates reject the legacy order.
+
+What this file measures is a PREFIX: how many bytes two turns share. Whether the provider then
+serves them from its cache also depends on its time-to-live (OpenAI: minutes of inactivity) and
+on how the traffic falls inside it, so the real cached rate is a number only the ledger gives.
 
 The token count is a LOWER BOUND with no dependency: GPT-family tokenizers (cl100k/o200k)
 pre-split text on whitespace before any merge, so no token spans two whitespace-separated words
@@ -206,6 +214,84 @@ def test_the_sections_are_the_same_multiset_as_before_only_the_order_moved(name,
     rest_new = [b["block"] for b in inv_new if b["block"] != "persona_limits"]
     rest_old = [b["block"] for b in inv_old if b["block"] != "persona_limits"]
     assert rest_new == rest_old
+
+
+#: sha256 of `_build_judge_prompt(ctx, _STABLE)` for each `_configs()` configuration, rendered
+#: by `origin/main` at ed32560 — the tree F1.3 was measured against — i.e. the prompt in the
+#: order it had BEFORE this change. Computed by rendering these very fixtures with that tree's
+#: code, not with this one's.
+#:
+#: This is a LANDING-TIME proof and it is meant to go stale: a later, deliberate change of the
+#: judge's TEXT changes these digests legitimately. When that happens, regenerate them from the
+#: new base (render each configuration with the base tree and hash it) in the same PR that
+#: changed the text; never edit one to make a red go away.
+_ORIGIN_MAIN = {
+    "readonly": "bcc9dafe1e1da1593ef14aa62b5f139c9aa37f3c9da725443f15cb2dffab901e",
+    "execution": "f616876cee9955545c899b5e17a89a7b35146c58a7d7dfd8b664be7f48795831",
+    "held": "fe6a33f69176d1745da293246f584fe373873b60d9e739435dcab162ff8c314e",
+    "conversational": "e26a84569bbd6fae8770320b08cf7a4cc51db2c5e69ff3c68a529f7919cacb2b",
+    "context": "bd7718c8337899e0cad425c2b48fd13a3e3a89bec7229c358807c67bf2aeb6d9",
+    "unavailable": "c98833ff0e7bfc7f7adcaa689013e16c909399b3c19023791f803706bfdcb60d",
+    "constraints": "d6526009d51543379d38a213271f076825462d6578b127f0b25c3d6bb319490f",
+    "preserved": "1e64f9f415cad36241e5eb58c768e8fe3fbd0fcfab45f4660b2b89df2d82f71b",
+    "rules": "f9bf87af021403806ea51dc5ff13c5a0799faa60108908523942602538c6a9b8",
+}
+
+
+@pytest.mark.parametrize("name,ctx", _configs(), ids=lambda v: v if isinstance(v, str) else "")
+def test_the_legacy_reconstruction_is_origin_main_byte_for_byte(name, ctx):
+    """The reconstruction the multiset test compares against is not a guess about the old
+    order: put back where it was, the new prompt is — byte for byte — what `origin/main`
+    rendered. So the two prompts differ by the position of one section and by nothing else."""
+    new = SuperegoStage()._build_judge_prompt(ctx, _STABLE)
+    legacy = hashlib.sha256(_legacy(new, _STABLE).encode()).hexdigest()
+    assert legacy == _ORIGIN_MAIN[name], (
+        f"[{name}] the legacy order rebuilt from this prompt is not what origin/main rendered "
+        f"— either a byte changed, or the judge's text changed after F1.3 and `_ORIGIN_MAIN` is "
+        f"stale (see its comment)")
+
+
+#: The same, for the CONTROL: `_build_judge_prompt(ctx, "")` — no limits slot at all — as
+#: `origin/main` at ed32560 rendered it. Same staleness rule as `_ORIGIN_MAIN`.
+_ORIGIN_MAIN_NO_LIMITS = {
+    "readonly": "46398b00eecd91e245aa29c99f33516c44eaf7368df7989ce24df1481f62d59d",
+    "execution": "7f0269fb5164b6528bd66572916cb289d4c7e08c98cc62b2f9e35b02d49c95d2",
+    "held": "2373d9283dbd22a4dccfcc5b627e5c49e4b7e039a80de9a6939e48ca563187aa",
+    "conversational": "fb161a6011018dcb9700287d25061a4e234af7ecebcafc9fa00d7fedacba2d25",
+    "context": "f57bb5002a88238dc839c22bbfd11ff9a3fb8c289c017ecc1da9d045bca9cd54",
+    "unavailable": "ce852685cfd5bb13429733769c9e0d92c127e1c8734a31a3ffdb14a564528168",
+    "constraints": "6cc6869cd408f8139b2c7cde2e8db70bd028a682c967b225017002e24a436678",
+    "preserved": "a025303cff3a32ad84f793da4bf7d2fc0858b777ac7f5223a09fd23712ca519e",
+    "rules": "84fe08b0947f73bfcb93afb16f9d98f36bd7de0dfd4ca797d5744571c1ae02a4",
+}
+
+
+@pytest.mark.parametrize("name,ctx", _configs(), ids=lambda v: v if isinstance(v, str) else "")
+def test_a_turn_with_no_limits_slot_is_origin_main_byte_for_byte(name, ctx):
+    """The control, byte for byte and not only by order: with nothing to move, the prompt is
+    the one `origin/main` rendered."""
+    got = hashlib.sha256(SuperegoStage()._build_judge_prompt(ctx, "").encode()).hexdigest()
+    assert got == _ORIGIN_MAIN_NO_LIMITS[name], (
+        f"[{name}] a prompt with no limits slot changed — or `_ORIGIN_MAIN_NO_LIMITS` is stale")
+
+
+# ── the mutation, written as a twin ───────────────────────────────────────────────────────
+
+def test_the_twin_rejects_the_legacy_order():
+    """A gate that cannot fail passes for the wrong reason. Given the LEGACY rendering of the
+    same two turns — the order `origin/main` had, rebuilt as above — the twin's own predicates
+    must reject it: the shared prefix ends inside the contact's sentence, far below the floor."""
+    a = _turn("quais os horários de amanhã?", "list tomorrow's slots",
+              "Ana prefers mornings.", "09:00, 14:00")
+    b = _turn("e na sexta, tem vaga à tarde?", "find a Friday afternoon slot",
+              "Asked for a receipt in August.", "15:30")
+    stage = SuperegoStage()
+    old_a = _legacy(stage._build_judge_prompt(a, _limits("10:02")), _limits("10:02"))
+    old_b = _legacy(stage._build_judge_prompt(b, _limits("10:19")), _limits("10:19"))
+    shared = _common(old_a, old_b)
+    assert not shared.startswith("# Persona limits")
+    assert shared == '# User request\n"'
+    assert len(stage._judge_system(a).split()) + len(shared.split()) < CACHE_MIN_TOKENS
 
 
 def test_every_sentence_that_places_the_limits_still_reads_true():
