@@ -825,9 +825,12 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
 
     The last layer that RE-DERIVED the rule instead of reading it closed on 2026-08-25 (the
     owner's decision; host PR `fix/the-auditor-reads-the-declaration`): the offline promise
-    auditor (`turn_audit/promises.py::committed_from_trace`) now reads the stamp
-    `trace["guards"]["committed"]` — which the host's `trace.py` writes by CALLING this
-    predicate, so it carries this declaration — in UNION with the execution lists. It could
+    auditor (`grounding.py::committed_from_trace`, re-exported by `turn_audit/promises.py`) now
+    reads the stamp `trace["guards"]["committed"]` — which the host's `trace.py` writes by
+    calling `wrote_for_the_contact` (since host #627, 2026-09-01: this predicate minus the
+    host-declared routing set, which still honours this declaration), so it carries this
+    declaration — in UNION with the execution lists, whose floor filters the same routing set
+    since 2026-09-24 (before that the union re-added the hand-overs the stamp excluded). It could
     never CALL this: it reads a persisted row weeks later with no context to pass, so the stamp
     is the only shape the declaration can reach it in. The lists stay as the floor on purpose:
     0 of the 277 rows on the demo box carried the stamp when this closed, and a visible write
