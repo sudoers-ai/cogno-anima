@@ -1250,15 +1250,20 @@ class SuperegoStage:
     #
     # The criteria headers are the three BRANCHES, and each is matched by its opening words
     # only, because the branch constants continue in prose on the same line.
+    #
+    # Listed in the order they are ASKED (system message first, then the prompt) — which the
+    # scan does not need, since it sorts by position, but which a reader does. Since F1.3 the
+    # persona's two sections open the list: the rules in the system message, the limits first
+    # in the prompt (see `_build_judge_prompt` for why the order is the provider's cache).
     _JUDGE_BLOCKS = (
+        ("# Business rules this persona was configured with", "persona_rules"),
+        ("# Persona limits", "persona_limits"),
         ("# User request", "user_request"),
         ("# Context (authoritative", "context"),
         ("# Active goal", "active_goal"),
         ("# User constraints", "user_constraints"),
         ("# NOT AVAILABLE this turn", "unavailable"),
         ("# Preserved terms", "preserved_terms"),
-        ("# Persona limits", "persona_limits"),
-        ("# Business rules this persona was configured with", "persona_rules"),
         ("# What the EGO executed", "executed"),
         ("# Messages HELD for the user's confirmation", "held_messages"),
         ("# EGO draft", "draft"),
@@ -2239,7 +2244,9 @@ class SuperegoStage:
         consulted = self._format_consulted(ctx, consulted_calls, names)
         held_messages = self._format_held_messages(ctx, names)
         draft = ego.draft or "(none)"
-        limits = f"\n# Persona limits\n{limits_prompt}\n" if limits_prompt and limits_prompt.strip() else ""
+        # The section's own bytes; the blank line that separates it from its neighbour is the
+        # template's, below, and it is the same "\n" wherever the section sits.
+        limits = f"# Persona limits\n{limits_prompt}\n" if limits_prompt and limits_prompt.strip() else ""
         # User-stated pragmatic restrictions (NER signals): the judge must verify
         # the execution honored them — including what the user forbade.
         restrictions = self._format_restrictions(ctx.intent)
@@ -2297,14 +2304,39 @@ class SuperegoStage:
         # the other two never did, so on them this replace is a no-op by construction.
         if not preserved:
             criteria = criteria.replace(_PRESERVED_CLAUSE, "")
+        # THE ORDER IS THE PROVIDER'S PROMPT CACHE (F1.3, 2026-09-24). A provider reuses only an
+        # IDENTICAL PREFIX (OpenAI: at least 1024 tokens), and the system message above carries
+        # nothing of the turn — `_judge_system` is the fixed instruction plus, when declared, the
+        # business rules — so whatever opens THIS half decides how far two turns of the same
+        # (persona, role) keep sharing bytes. It used to open with the contact's own sentence,
+        # and the shared prefix ended there: 36 tokens on each of a downstream host's six
+        # personas, and that host's ledger billed this stage 0% cached over 2.0M tokens in 30
+        # days.
+        #
+        # `# Persona limits` is the one section here that belongs to the PERSONA and not to the
+        # turn, so it comes FIRST, and every other section keeps its relative order and its
+        # bytes: the same sections, the same text, one moved. Nothing that reads the limits by
+        # position breaks, because every sentence that names them says they are ABOVE the
+        # criteria (`_GROUNDING_SOURCE_SET`: "The '# Persona limits' section above") and the
+        # criteria stay last. The criteria and the rules after them are the LARGEST stable text
+        # in this prompt and they are NOT moved: they say "above" about the sections the turn
+        # fills in ("the Context above", "marked OK above", "a tool result above"), so putting
+        # them first is a change of TEXT, not of order — left to be decided with its own A/B.
+        #
+        # A slot with no limits renders byte for byte what it rendered before. The host's half
+        # is to keep the minute out of the front of this slot (`cogno-host` appends its
+        # environment block to the END of `limits_prompt`): a limits slot that opens with the
+        # clock caches nothing, wherever the section sits. Still a PROMPT change — where a rule
+        # sits can move what a model does with it — so the behavioural half is an A/B.
         return (
+            f"{limits}\n" if limits else ""
+        ) + (
             f'# User request\n"{ctx.user_input}"\n\n'
             f"{context}"
             f"# Active goal\n{goal}\n"
             f"{restrictions}"
             f"{unavailable}"
-            f"{preserved}"
-            f"{limits}\n"
+            f"{preserved}\n"
             f"# What the EGO executed\n{executed}\n\n"
             f"{consulted}"
             f"{held_messages}"
