@@ -1,5 +1,58 @@
 # Changelog
 
+## Unreleased — o prompt do juiz abre com `# Persona limits`: o que não muda entre turnos vem primeiro (F1.3, 2026-09-24)
+
+### Changed (ordem de prompt; nenhum byte de nenhum bloco muda)
+
+- **`_build_judge_prompt`: a secção `# Persona limits` passa a ser a PRIMEIRA da metade user.**
+  O cache de prompt de um fornecedor só serve um prefixo IDÊNTICO (a OpenAI, só a partir de
+  1 024 tokens). O system do juiz não leva nada do turno (a instrução fixa e, quando declaradas,
+  as regras de #184), e a metade user abria com a frase do contacto: o prefixo partilhado por
+  dois turnos da mesma (persona, papel) acabava aí, em 36 tokens, em todas as personas de um
+  host medidas, e a etapa faturou 0% em cache em 30 dias. Os limites são a única secção da
+  persona, não do turno; vão à frente, e todas as outras secções mantêm a ordem relativa e os
+  bytes. Um slot sem limites renderiza o que renderizava antes.
+- **Os critérios e as regras fixas do fim NÃO se movem**, embora sejam o maior texto estável
+  do prompt. Dizem «above» das secções que o turno preenche («the Context above», «marked OK
+  above», «a tool result above», «'# Persona limits' section above»). Pô-los à frente seria
+  mudar TEXTO, não ordem, e fica para uma decisão com A/B própria. As frases que situam os
+  limites continuam verdadeiras: dizem que estão ACIMA dos critérios, e estão.
+- `_JUDGE_BLOCKS` fica listado pela ordem em que é PERGUNTADO (regras, limites, o resto). O
+  varrimento ordena por posição, por isso a ordem da tabela não muda nenhum inventário. **Os
+  inventários persistidos (`SuperegoResult.prompt_blocks` do juiz) passam a ter
+  `persona_limits` na primeira linha** quando o slot existe. Quem lê o traço por posição tem de
+  ler por slug.
+
+### Medido (determinístico, sem modelo)
+
+Uma sonda com o assembler e as etapas reais do `cogno-host` sobre backends que gravam, dois turnos
+seguidos do mesmo contacto (outra frase, outro minuto, outras memórias, o estado do primeiro no
+segundo), seis personas × dois papéis, tokens o200k_base. Prefixo idêntico do juiz: **36 → 440 a
+1 852 tokens** com a mudança do host (o bloco `[AMBIENTE]`, que traz o minuto, passa para o FIM do
+`limits_prompt`); só com esta mudança, 36 → 91, porque o slot ainda abre com o minuto; só com a do
+host, 36 → 36. Passam os 1 024: 2 de 6 personas sem regras do inquilino, 6 de 6 com regras
+inventadas de ~720 tokens. O multiconjunto de blocos (sha256 por bloco) é igual antes e depois em
+todas as 36 chamadas do juiz. A reconstrução da ordem antiga a partir da nova é igual, byte a byte,
+ao `origin/main`, e as outras 206 chamadas (NOUMENO, NER, guarda, EGO, voz) ficam byte a byte.
+
+**O ganho é um PREFIXO medido, não uma taxa de cache.** A sonda mede quantos bytes dois turnos
+partilham. Se o fornecedor os serve do cache depende também do tempo de vida dele (na OpenAI,
+minutos sem uso) e de quantos turnos caem dentro dessa janela. A taxa real só o livro a diz, antes
+e depois, na mesma janela.
+
+**É uma mudança de PROMPT.** O sítio de uma regra pode mudar o que o modelo faz com ela, por isso
+o efeito no comportamento mede-se num A/B com modelo, que este PR não faz.
+`tests/unit/test_judge_prompt_cache_order.py` prende:
+- o gémeo: ≥ 1 024 pelo limite inferior de palavras, com e sem regras;
+- o controlo: sem limites, a ordem antiga e os bytes do `origin/main`;
+- o multiconjunto por digest;
+- a ordem antiga reconstruída, igual por sha256 ao que o `origin/main` (c0d6bb9, depois do #187) renderizou nas
+  mesmas fixtures;
+- a mutação escrita como gémeo: os mesmos predicados recusam a ordem antiga;
+- as frases que situam os limites.
+
+**Não aterra sem esse A/B** (decisão do Director, 24/09).
+
 ## Unreleased — a nota do negócio sobre o contacto: contexto para responder melhor, nunca dita (2026-09-24)
 
 ### Added
