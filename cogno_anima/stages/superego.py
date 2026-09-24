@@ -45,6 +45,7 @@ from cogno_anima import metakeys as mk
 from cogno_anima import vocab
 from cogno_anima.types import (
     PipelineContext, StageMetrics, SuperegoResult, ScopeCheckResult, ToolExecution,
+    held_delivered_texts,
     read_succeeded_this_turn,
     write_attempted_this_turn,
 )
@@ -961,6 +962,42 @@ _OUT_OF_REACH = (
 )
 
 
+# A HELD MESSAGE is judged BEFORE it is sent (2026-09-24). A proposal turn — a call held for
+# the user's "yes" — is normally not judged at all: the orchestrator skips the judge on it,
+# because the action is deliberately incomplete and the judge would reject the hold itself. For
+# a call that SENDS TEXT TO A PERSON that skip is the defect: the text is final at the hold (the
+# confirmed replay sends those exact bytes), so the only review it ever got was the one that ran
+# AFTER it had been delivered. Measured on a downstream host: 4 messages delivered to staff
+# members, 3 of them wrong — one announced a summary it did not carry, one forwarded the
+# requester's own question to the recipient with an instruction meant for the executor inside
+# it — and the judge's critique on the delivery turn named the defect correctly, one turn too
+# late to un-send anything.
+#
+# So when the host declares which held calls deliver text (`types.held_delivered_texts`), the
+# orchestrator judges the proposal turn and this block shows the judge each text VERBATIM, with
+# criterion #1 applied to the message itself. It overrides the MID-FLOW allowance for the text
+# and only for the text: asking the user before sending stays correct, sending the wrong words
+# does not. CONDITIONAL, like `_OUT_OF_REACH`: a turn with no declared held text renders byte
+# for byte as before.
+_HELD_MESSAGES_HEADER = ("# Messages HELD for the user's confirmation — each is SENT, word for "
+                         "word, to another person once the user says yes")
+_HELD_MESSAGE_RULE = (
+    "JUDGE EACH HELD MESSAGE AS IF IT WERE BEING SENT NOW — this is criterion #1 (goal <-> "
+    "execution) applied to the message's own text, because that text is what its recipient "
+    "will read and a message that has been sent cannot be recalled. REJECT when a held "
+    "message: (a) does NOT CARRY what the request asked to pass on — content the request asked "
+    "to include, or that this turn READ in order to pass on, must be IN the text itself, not "
+    "promised ('I am writing to share the summary'), announced or pointed to elsewhere ('see "
+    "the details in your usual channel'); (b) is addressed to the WRONG person — a question the "
+    "user asked the assistant, forwarded to the recipient; (c) contains an INSTRUCTION meant "
+    "for whoever writes the message ('include the introduction we agreed') instead of words "
+    "meant for the recipient; (d) states anything the request and the successful tool results "
+    "above do not support. The MID-FLOW and confirmation allowances cover ASKING the user "
+    "before sending; they never cover the content of the message being asked about. Name in "
+    "the critique what the message must say instead, so the retry can write it.\n\n"
+)
+
+
 # The READ-ONLY branch. A turn that ran, whose every call SUCCEEDED and whose every call was a
 # READ, has no mutation to verify — so criteria #1 (GOAL<->EXECUTION) and #3 (COMPLETENESS)
 # have nothing to bind to and decay into "does the reply satisfy the user", which is a
@@ -1223,6 +1260,7 @@ class SuperegoStage:
         ("# Persona limits", "persona_limits"),
         ("# Business rules this persona was configured with", "persona_rules"),
         ("# What the EGO executed", "executed"),
+        ("# Messages HELD for the user's confirmation", "held_messages"),
         ("# EGO draft", "draft"),
         ("# Judge the EXECUTION against these criteria", "criteria_execution"),
         ("# This turn has NO tool to execute", "criteria_conversational"),
@@ -2199,6 +2237,7 @@ class SuperegoStage:
         names = {t.tool for t in [*ego.tools_executed, *(consulted_calls or ())] if t.tool}
         executed = self._format_calls(ego.tools_executed, names) or "(no tools executed)"
         consulted = self._format_consulted(ctx, consulted_calls, names)
+        held_messages = self._format_held_messages(ctx, names)
         draft = ego.draft or "(none)"
         limits = f"\n# Persona limits\n{limits_prompt}\n" if limits_prompt and limits_prompt.strip() else ""
         # User-stated pragmatic restrictions (NER signals): the judge must verify
@@ -2268,8 +2307,10 @@ class SuperegoStage:
             f"{limits}\n"
             f"# What the EGO executed\n{executed}\n\n"
             f"{consulted}"
+            f"{held_messages}"
             f"# EGO draft\n{draft}\n\n"
             f"{criteria}"
+            f"{_HELD_MESSAGE_RULE if held_messages else ''}"
             "TRUST THE TOOLS: values a tool returned — resolved dates, ids, availability, "
             "figures — are AUTHORITATIVE. Do NOT re-derive them from your own reasoning or "
             "reject them as wrong (e.g. do not second-guess a resolved calendar date against "
@@ -2315,6 +2356,23 @@ class SuperegoStage:
             'Respond ONLY with: {"approved": true/false, "critique": '
             '"...if not approved, what is wrong, to guide a retry..."}'
         )
+
+    @staticmethod
+    def _format_held_messages(ctx: PipelineContext, names: "set[str]") -> str:
+        """The held texts about to be sent, verbatim — or ``""`` when no held call delivers one.
+
+        Fenced and sanitized like any tool-sourced text: the MODEL wrote these arguments, and a
+        message is exactly the place a planted instruction would sit. An empty text is rendered
+        as such, never dropped — an empty message about to be proposed is a finding.
+        """
+        texts = held_delivered_texts(ctx)
+        if not texts:
+            return ""
+        lines = "\n".join(
+            f"- {tool} →\n<held_message name=\"{tool}\">\n"
+            f"{sanitize_untrusted(text, names) if text else '(EMPTY)'}\n</held_message>"
+            for tool, text in texts)
+        return f"{_HELD_MESSAGES_HEADER}\n{lines}\n\n"
 
     @staticmethod
     def _format_calls(calls: "Any", names: "set[str]") -> str:
