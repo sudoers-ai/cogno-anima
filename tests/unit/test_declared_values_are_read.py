@@ -110,6 +110,36 @@ def test_a_declared_value_is_not_an_invented_figure_in_the_voice_net():
     assert invented == []
 
 
+@pytest.mark.parametrize("reply", [
+    "O aluguel da sala fica em R$ 300,00 por mês.",                 # 30 x R$ 10,00, bare
+    "Por mês: 30 x R$ 10,00 = R$ 300,00.",                          # the same, work shown
+])
+def test_the_voice_does_not_sum_or_derive_from_declared_values(reply):
+    """Declared «R$ 10,00 por dia»; the reply says «R$ 300,00 por mês». The declaration grounds
+    the value WRITTEN, not one worked out from it: the monthly figure is written nowhere, so the
+    figure net calls it invented — bare, and even with the work shown (the operands a shown
+    derivation may use are the evidence on the page: the draft, the tool data, the contact's
+    words; the declared list admits a VALUE, not an operand)."""
+    # BOTH operands declared ("R$ 10,00" and "30 dias"), so the only thing between the shown
+    # work and an admitted figure is that a declared value is not an operand.
+    _, invented = SuperegoStage._draft_divergence(
+        "O aluguel da sala é por dia.", "resolve_date: 2026-10-05", reply, "",
+        ["R$ 10,00", "30 dias"])
+    assert "30000" in invented
+    # …and the declared value itself, beside it, is not what the net objects to
+    assert "1000" not in invented
+
+
+def test_the_task_carries_exactly_the_values_the_host_declared_and_nothing_else():
+    """The core cannot tell whose values these are — the HOST resolves them for THIS persona and
+    THIS role tab (and pins that another persona's never enter). What the core guarantees is that
+    the Task lists exactly what it was handed: a value that was not handed over is not there."""
+    task = SuperegoStage.voice_prompt_block(_voice(_read_ctx(["R$ 10,00", "2%"])), "task")
+    assert "VALUES DECLARED IN THIS PERSONA'S CONFIGURATION: R$ 10,00; 2%." in task
+    assert "R$ 999,00" not in task
+    assert "VALUES DECLARED" not in SuperegoStage.voice_prompt_block(_voice(_read_ctx()), "task")
+
+
 def test_an_undeclared_figure_is_still_invented_in_the_voice_net():
     _, invented = SuperegoStage._draft_divergence(
         "O aluguel é por dia.", "", "O aluguel é R$ 12,00 por dia.", "", VALUES)

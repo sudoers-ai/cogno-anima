@@ -17,7 +17,11 @@
   percentagens, datas, números com unidade de tempo — uma gramática, `cogno_praxis.declared_values`).
   Só para quem não lê prosa: uma frase no `# Task` da voz (são CONHECIDOS; nunca «não tenho essa
   informação»; sem cabeçalho novo, `_VOICE_BLOCKS` intocado) e a rede de figuras da voz
-  (`_draft_divergence`). O juiz nunca vê a lista.
+  (`_draft_divergence`), onde um valor CALCULADO a partir deles continua inventado (declarado
+  «R$ 10,00 por dia», resposta «R$ 300,00 por mês» — nu ou com a conta à vista: um valor declarado
+  fundamenta-se a si próprio, não é operando). A frase lista exactamente os valores que o host
+  entregou; de QUEM são (desta persona e desta aba) é o host que resolve e prende. O juiz nunca vê
+  a lista.
 - `_JUDGE_BLOCKS` ganha a linha `persona_rules`; `evaluate` inventaria sistema + prompt.
 
 ### Changed
