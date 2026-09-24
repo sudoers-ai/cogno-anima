@@ -55,6 +55,8 @@ from cogno_anima.preserved import CRITICAL_TERM_RE
 from cogno_anima.prompts import prompt_digest
 from cogno_anima.utils import WarnOnce
 from cogno_anima.security.prompt_guard import sanitize_untrusted
+from cogno_anima.security.contact_memo import (
+    MEMO_HEADER, contact_memo_block, mask_contact_memo, sanitize_contact_memo)
 from cogno_anima.stages.drift import DriftCalculator
 from cogno_anima.security.detector import PiiDetector, default_detector
 from cogno_anima.security.redaction import (
@@ -997,6 +999,24 @@ _HELD_MESSAGE_RULE = (
     "the critique what the message must say instead, so the retry can write it.\n\n"
 )
 
+# The CONTACT'S NOTE — the business's private memo about the person this conversation is with
+# (`mk.CONTACT_MEMO`, rendered above the goal by `contact_memo_block`). The owner's rule
+# (2026-09-24): context to answer better, NEVER quoted, revealed or paraphrased to the contact —
+# the note may carry the business's internal remarks about the very person who reads the reply.
+# The executor was given it, so its DRAFT is where a leak starts, and this gate is the one that
+# reads the draft. The rule is two-sided on purpose: a nickname the note gives is APPLYING it,
+# and a fail-CLOSED judge without that sentence would call the nickname an invented name.
+# CONDITIONAL, like the held-message rule: a turn with no note renders byte for byte as before.
+_MEMO_RULE = (
+    "THE BUSINESS NOTE ABOUT THIS CONTACT IS PRIVATE. The draft may APPLY it — address the "
+    "contact by a name or nickname it gives, respect a preference it states — and a draft that "
+    "does so is grounded by it, not inventing. It must NEVER QUOTE, REVEAL or PARAPHRASE it: "
+    "REJECT a draft that repeats its words, restates or alludes to a remark it makes about the "
+    "contact (an opinion, a label, an internal observation such as how the business regards "
+    "them), or tells the contact that a note or record about them exists. When you reject for "
+    "this, do NOT quote the note in the critique — name only the kind of remark that leaked.\n\n"
+)
+
 
 # The READ-ONLY branch. A turn that ran, whose every call SUCCEEDED and whose every call was a
 # READ, has no mutation to verify — so criteria #1 (GOAL<->EXECUTION) and #3 (COMPLETENESS)
@@ -1157,6 +1177,7 @@ class SuperegoStage:
     _VOICE_BLOCKS = (
         ("# User request", "user_request"),
         ("# Context (memories/history)", "context"),
+        (MEMO_HEADER, "contact_memo"),
         ("# Data gathered by the executor", "executor_data"),
         ("# Voice for this turn", "traits"),
         ("# Executor's answer", "draft"),
@@ -1253,6 +1274,7 @@ class SuperegoStage:
     _JUDGE_BLOCKS = (
         ("# User request", "user_request"),
         ("# Context (authoritative", "context"),
+        (MEMO_HEADER, "contact_memo"),
         ("# Active goal", "active_goal"),
         ("# User constraints", "user_constraints"),
         ("# NOT AVAILABLE this turn", "unavailable"),
@@ -2069,6 +2091,12 @@ class SuperegoStage:
             data = self._parse_json(raw)
             approved = bool(data.get("approved", False))
             critique = None if approved else str(data.get("critique", "")) or "execution rejected"
+            # The critique travels — to the EGO's retry, to the voice on exhaustion, to the log
+            # line below and to the trace a host persists — and a judge rejecting a LEAK of the
+            # contact's note tends to quote the leaked words. Masked at the SOURCE, so none of
+            # those readers has to remember to. Byte-for-byte when there is no note.
+            if critique:
+                critique = mask_contact_memo(critique, self._contact_memo(ctx))
             # The BRANCH is logged beside the verdict AND returned on the result. The log
             # line is for the operator watching now; the field is for the reader holding a
             # trace three weeks later, and "«nothing in the log» means «nothing of what I
@@ -2257,6 +2285,10 @@ class SuperegoStage:
         # valid turn in a handoff.
         injected = ctx.metadata.get(mk.EGO_CONTEXT)
         context = f"# Context (authoritative — clock/memories/history)\n{str(injected).strip()}\n\n" if injected else ""
+        # The CONTACT'S NOTE, in the USER half: it is per contact, so in the system message it
+        # would break the (persona, role) prefix the business rules were moved there to make
+        # cacheable. Sanitized with the turn's own tool set, like the tool results below it.
+        memo_block = contact_memo_block(self._contact_memo(ctx), names)
         branch = self._judge_branch(ctx)
         conversational = branch == JUDGE_CONVERSATIONAL_BRANCH
         criteria = {
@@ -2300,6 +2332,7 @@ class SuperegoStage:
         return (
             f'# User request\n"{ctx.user_input}"\n\n'
             f"{context}"
+            f"{memo_block}"
             f"# Active goal\n{goal}\n"
             f"{restrictions}"
             f"{unavailable}"
@@ -2311,6 +2344,7 @@ class SuperegoStage:
             f"# EGO draft\n{draft}\n\n"
             f"{criteria}"
             f"{_HELD_MESSAGE_RULE if held_messages else ''}"
+            f"{_MEMO_RULE if memo_block else ''}"
             "TRUST THE TOOLS: values a tool returned — resolved dates, ids, availability, "
             "figures — are AUTHORITATIVE. Do NOT re-derive them from your own reasoning or "
             "reject them as wrong (e.g. do not second-guess a resolved calendar date against "
@@ -2580,6 +2614,15 @@ class SuperegoStage:
             return ""
         text = sanitize_untrusted(raw.strip()[:_RULES_CHARS], ())
         return re.sub(rf"(?i)</?{_RULES_FENCE}[^>]*>", "", text).strip()
+
+    @staticmethod
+    def _contact_memo(ctx: PipelineContext) -> str:
+        """The host's ``mk.CONTACT_MEMO``, sanitized — ``""`` when absent or unusable.
+
+        WHOSE note it is was decided by the host (the contact of this turn, never another);
+        what it is FOR and how it is fenced is :mod:`cogno_anima.security.contact_memo`'s, one
+        definition for every prompt it reaches."""
+        return sanitize_contact_memo((getattr(ctx, "metadata", None) or {}).get(mk.CONTACT_MEMO))
 
     @classmethod
     def _judge_system(cls, ctx: PipelineContext) -> str:
@@ -3162,6 +3205,13 @@ class SuperegoStage:
         # block the EGO sees; included so memories can ground the final reply.
         injected = ctx.metadata.get(mk.EGO_CONTEXT)
         context_section = f"# Context (memories/history)\n{str(injected).strip()}\n\n" if injected else ""
+        # The contact's note, for the voice too: it is the voice that addresses the contact, and
+        # a nickname the executor alone had would reach the reply only if the draft happened to
+        # carry it past the persona's own form-of-address line. Its own section, with a header
+        # `_VOICE_BLOCKS` knows — which is also what keeps it OUT of the `context` slice a host
+        # captures around a flagged turn (the slicer ends a block at the next KNOWN header).
+        memo = self._contact_memo(ctx)
+        memo_section = contact_memo_block(memo)
         # Judge's final rejection (orchestrator → ctx.metadata["voice_correction"]): the
         # execution did NOT meet the goal and NOTHING was committed — the orchestrator owns
         # that guarantee and it must hold across EVERY attempt of the turn, not just the last
@@ -3174,7 +3224,10 @@ class SuperegoStage:
         rejection = self._rejection(ctx)
         rejection_section = ""
         if rejection is not None:
-            reason = str(rejection["reason"]).strip()
+            # Masked of the contact's note — the judge's critique is masked at the source, but
+            # the host composes some reasons of its own, and this section is a HARD RULE the
+            # voice reads last: a remark about the contact must not reach it framed as one.
+            reason = mask_contact_memo(str(rejection["reason"]).strip(), memo)
             # ── THE LOOKUPS WORKED *AND THE PROMPT SHOWS IT* ──────────────────────────
             # ONE fact for both verdict variants, and it is a conjunction because the two
             # clauses make two claims: that the turn's lookups succeeded (a fact about the
@@ -3529,6 +3582,7 @@ class SuperegoStage:
         return (
             f'# User request\n"{ctx.user_input}"\n\n'
             f"{context_section}"
+            f"{memo_section}"
             f"# Data gathered by the executor (ground figures/dates ONLY in this)\n{payload}\n\n"
             f"{traits_section}"
             f"{self._draft_section(ctx, payload, rejection)}"
