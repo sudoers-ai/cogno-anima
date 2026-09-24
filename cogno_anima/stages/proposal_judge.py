@@ -85,10 +85,16 @@ def _fenced(tag: str, text: str, limit: int) -> str:
 
 
 def _description(schemas: Iterable[Any], tool: str) -> str:
-    """The tool's own description, as the dispatcher advertised it — ``""`` when unknown."""
+    """The tool's own description, as the dispatcher advertised it — ``""`` when unknown.
+
+    Both shapes a dispatcher is seen to answer with: the OpenAI envelope
+    (``{"type": "function", "function": {...}}``) and the bare function object."""
     for schema in schemas or ():
-        fn = schema.get("function") if isinstance(schema, dict) else None
-        if isinstance(fn, dict) and fn.get("name") == tool:
+        if not isinstance(schema, dict):
+            continue
+        inner = schema.get("function")
+        fn: "dict[str, Any]" = inner if isinstance(inner, dict) else schema
+        if fn.get("name") == tool:
             return str(fn.get("description") or "")[:_DESCRIPTION_CHARS]
     return ""
 

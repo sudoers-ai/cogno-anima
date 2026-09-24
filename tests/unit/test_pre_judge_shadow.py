@@ -348,6 +348,14 @@ def test_the_prompt_carries_the_request_the_reply_it_answers_the_tool_and_the_ar
     assert "NOT wrong by itself" in prompt                          # what it cannot see
 
 
+def test_the_description_is_found_in_either_schema_shape():
+    flat = [{"name": _WRITE, "description": "books one slot", "parameters": {}}]
+    _, prompt = _pj(_Backend(), schemas=flat).render(Proposal(_WRITE, dict(_ASKED)))
+    assert "What the tool does: books one slot" in prompt
+    _, prompt = _pj(_Backend(), schemas=[]).render(Proposal(_WRITE, dict(_ASKED)))
+    assert "What the tool does" not in prompt
+
+
 def test_no_previous_reply_renders_no_empty_block():
     _, prompt = _pj(_Backend(), previous_reply="").render(Proposal(_WRITE, dict(_ASKED)))
     assert "<previous_reply>" not in prompt
