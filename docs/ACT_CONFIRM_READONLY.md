@@ -190,3 +190,33 @@ calls holds the one that asked and executes its sibling, so one turn can truthfu
 - Block 1 (judge constraints/negation) and Block 2 (parole→voice) shipped
   alongside (SUPEREGO 100%). The earlier advisory act-confirm hint in the EGO was
   removed (superseded by these capability gates).
+
+## Shadow — the judge reads a write BEFORE it goes out (F2.3a, 2026-09-24)
+
+The three gates above decide whether a write runs **without the contact's say-so**. None of them
+asks whether the write is the RIGHT one: the SUPEREGO judge does, and it runs after the executor,
+so its critique of a wrong write arrives once the write has already left. The eventual design
+moves that judgement in front of the call — a rejected write does not go out, the executor redoes
+it once, and a second rejection becomes a question to the contact. That is a behaviour change on
+every write, so it is preceded by an instrument that changes nothing:
+
+- `cogno_anima.tools.PreJudgeDispatcher` launches an injected judge over the PROPOSAL (tool +
+  arguments) of every call the source classifies as a write, **concurrently with the call** — the
+  call is never delayed, never blocked, and returns exactly what it would have returned;
+- the verdict (`approved|critique|error|timeout`, no text) lands in a caller-placed sink with the
+  call's own `committed`, and its cost on a ledger line of its own (`judge_pre`);
+- `cogno_anima.stages.ProposalJudge` is the callback this package ships — criterion #1 of the
+  judge (goal↔execution) asked of the call alone.
+
+**Where it sits relative to the gates.** A call held by gate B never reaches `execute`, so it is
+not pre-judged on the turn that PROPOSES it; it is pre-judged on the turn that REPLAYS it after the
+contact's yes — which is why `ProposalJudge` reads the reply that yes answers. A gate-C call DOES
+reach `execute` (the skill runs and then asks), so it is pre-judged on the proposal turn too, and
+its record says `committed=False` — the skill's promise that nothing was written. Gate A masks
+writes out of the surface, so a read-only turn has nothing to pre-judge.
+
+**What the shadow is for.** The activation of (a) is decided on its numbers, not on this design:
+the matrix of `pre_verdict` against the post-execution verdict over the same writes, and the count
+of writes the pre-judge rejected that went out anyway (`verdict=critique ∧ committed=True` — every
+one of them is a write the activated gate would have stopped). Who owns the threshold and the
+switch is the host; nothing in the core activates anything.

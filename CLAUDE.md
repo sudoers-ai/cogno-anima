@@ -191,9 +191,38 @@ and its business; the core ships the mechanism and takes the declaration as a pa
   would be answered "already done" again, so the note names the exit that works (change what is
   sent, or let the window pass); an explicit repeat needs the gate-C return trip and is a separate
   change. Build a fresh instance per turn; the store is shared.
+- **`PreJudgeDispatcher` + `PreJudgeSink`/`Proposal`/`PreJudgment`** (`tools/pre_judge.py`, F2.3a) —
+  the judge reads a WRITE before it goes out, **in SHADOW**: it changes nothing. For every call the
+  source underneath classifies as a write (`is_mutating`; a source with no policy is never judged —
+  the core does not guess, and judging every call would spend a model call on every read), an
+  INJECTED `judge` callback is started over the PROPOSAL (tool + a deep COPY of the arguments the
+  executor chose — a layer below may edit them in place) **beside the call, never in front of it**:
+  `execute` does not await it, does not read it and returns exactly the inner's result, exception
+  included. The verdict lands in a caller-placed sink from a closed alphabet
+  (`PRE_VERDICTS = approved|critique|error|timeout`) with **no text** — a critique quotes the
+  arguments, and the arguments are contact data — plus the tool, the wall ms and `committed`
+  (`ok ∧ side_effect` of the call's own result, `None` when it raised): the facts the activation
+  decision needs (agreement with the post-execution judge; writes the pre-judge would have stopped
+  that went out anyway). The cost is a `StageMetrics` whose stage the WRAPPER forces to
+  `JUDGE_PRE_STAGE = "judge_pre"` whatever the callback labelled it, so a ledger grouping by stage
+  books it on its own line and can never fold it into the judge's. The ceiling is a timer beside the
+  task (not `wait_for`, which before 3.12 runs the judge as a second task and makes an answered
+  verdict need several loop turns); `settle(grace_s=0.0)` at the end of the turn yields one loop
+  turn, waits at most `grace_s`, then CANCELS the stragglers and files them as `timeout` — a task
+  that outlives its turn is a model call nobody accounts for, and grace 0 means the shadow never
+  delays a reply. A cancelled judgement reports 0 tokens (unknown; the `timeout` beside it is what
+  makes that readable); an errored one records what the callback measured. The callback this
+  package ships is `cogno_anima.stages.ProposalJudge` (`stages/proposal_judge.py`): criterion #1 of
+  the judge asked of the CALL — the contact's message, the reply a "yes" answers, the tool's own
+  description and the fenced arguments; no rules, no tool results (named in its prompt: an id the
+  executor READ is not wrong by itself) — and STRICT about the verdict (only a JSON boolean counts;
+  a string `"false"` is `error`, never coerced). It lives apart from `superego.py` and shares only
+  its parser, so no rendering of the post-execution judge moves by a byte. Nothing is blocked:
+  activating (a) — a rejected write that does not go out — is a later, measured decision
+  (`docs/ACT_CONFIRM_READONLY.md` § shadow). Build a fresh instance and sink per turn.
 
-The two recorders and the idempotency guard bind their policy conditionally (they add no verdict of
-their own, so claiming one would be a lie about the source); the provenance guard and the router DECLARE it, answering the EGO's
+The two recorders, the idempotency guard and the pre-judge bind their policy conditionally (they add
+no verdict of their own, so claiming one would be a lie about the source); the provenance guard and the router DECLARE it, answering the EGO's
 own fail-safe defaults, because both must answer on behalf of a source that may have none.
 `tests/unit/test_protocol_probe_contract.py` derives the wrapper list from the package and fails a new
 wrapper that arrives without the binding — the rule is pinned by mechanism, not by a hand-written list.
