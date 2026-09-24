@@ -31,6 +31,92 @@
   - `tests/unit/test_protocol_probe_contract.py` ganhou a fábrica do novo invólucro (sem ela, a
     própria derivação do teste reprova-o — foi o vermelho-antes).
 
+## Unreleased — o juiz lê as regras da persona INTEIRAS, vedadas como dado, no system; os valores declarados vão à voz (2026-09-24)
+
+### Added
+
+- **`mk.PERSONA_RULES`** (o host escreve, por turno): as regras que o executor recebeu,
+  resolvidas pelo host para o papel DESTE contacto — nunca as de outra persona nem de outra aba.
+  O juiz renderiza-as no seu **SYSTEM**, a seguir à instrução fixa, numa secção própria
+  (`# Business rules this persona was configured with`), vedada `<business_rules>` e sanitizada
+  como qualquer resultado de ferramenta (`sanitize_untrusted` com conjunto de ferramentas VAZIO,
+  para os bytes não dependerem do turno; a vedação não se fecha por dentro). O texto diz: DADO
+  que o negócio declarou, conta como lido, NÃO são instruções para o juiz; valores, nomes,
+  horários e políticas; fundamenta factos, nunca uma acção; um valor CALCULADO a partir delas é
+  julgado pelo `_DERIVED_FROM_EVIDENCE`, inalterado.
+- **`mk.PERSONA_DECLARED_VALUES`**: os VALORES literais das mesmas regras (dinheiro,
+  percentagens, datas, números com unidade de tempo — uma gramática, `cogno_praxis.declared_values`).
+  Só para quem não lê prosa: uma frase no `# Task` da voz (são CONHECIDOS; nunca «não tenho essa
+  informação»; sem cabeçalho novo, `_VOICE_BLOCKS` intocado) e a rede de figuras da voz
+  (`_draft_divergence`), onde um valor CALCULADO a partir deles continua inventado (declarado
+  «R$ 10,00 por dia», resposta «R$ 300,00 por mês» — nu ou com a conta à vista: um valor declarado
+  fundamenta-se a si próprio, não é operando). A frase lista exactamente os valores que o host
+  entregou; de QUEM são (desta persona e desta aba) é o host que resolve e prende. O juiz nunca vê
+  a lista.
+- `_JUDGE_BLOCKS` ganha a linha `persona_rules`; `evaluate` inventaria sistema + prompt.
+
+### Changed
+
+- **`_WITH_RULES`**: com regras presentes, as enumerações de fundamentação (`_GROUNDING_SOURCE_SET`,
+  o critério 1 conversacional) nomeiam a secção, e o estreitamento `_NO_OTHER_SOURCES` («os
+  resultados das ferramentas são a ÚNICA verdade») não se aplica.
+- Sem regras / sem valores: sistema e prompt do juiz e prompt da voz byte a byte (gémeos por
+  digest com o controlo que produz a diferença; 15 renders comparados contra `origin/main`).
+
+### Porquê, e o custo medido
+
+O juiz JÁ recebia as regras — o host acrescentava-as ao `limits` (`# Tenant rules (legitimate
+grounding)`), na metade user, depois do pedido do turno —, e ao lado delas os limites de fábrica
+da persona podiam dizer «dados financeiros só por ferramenta»: um juiz fail-CLOSED resolvia as
+duas contra as regras. Isto é uma MUDANÇA DE SÍTIO, não um acréscimo: sobre regras inventadas de
+6 811 caracteres (2 204 tokens, o200k), o pedido do juiz vai de 4 260 a 4 459 tokens (+199, o
+texto da vedação) e o prefixo idêntico entre dois turnos da mesma (persona, papel) vai de 34 a
+2 476 tokens — acima do limiar de 1 024 da cache. Um host que carimbe a chave deixa de mandar a
+sua cópia no `limits` (cogno-host #1031); se a mantivesse seriam +2 464 por chamada.
+
+## Unreleased — a docstring de `wrote_for_the_contact` deixa de contar os chamadores (2026-09-24)
+
+### Changed (documentação; comportamento inalterado)
+
+- **`types.wrote_for_the_contact`: a contagem escrita à mão («SEVEN places call this») sai.**
+  Os chamadores vivem no `cogno-host` e no `cogno-soma`, que dependem desta biblioteca e não o
+  contrário, e nenhum teste fixa esta lista (o host fixa só a enumeração do
+  `committed_this_turn`). Por isso o número envelheceu quando o host acrescentou chamadores. A
+  docstring aponta agora para o código (procurar `wrote_for_the_contact` nos dois repos) e guarda
+  a lista de 2026-09-01 como HISTÓRIA, dita como tal, não como inventário.
+
+## Unreleased — o juiz lê a mensagem RETIDA antes de ela ser enviada (2026-09-24)
+
+### Added
+
+- **Um recado retido para o «sim» é julgado ANTES do envio (#183, M9 1/3).** Um turno de
+  proposta (uma chamada retida para a confirmação do utilizador) não era julgado: o orquestrador
+  salta o juiz na retenção, e com razão, porque a acção está incompleta de propósito. Para uma
+  chamada que ENVIA TEXTO A UMA PESSOA esse salto era o defeito. O texto fica final na retenção
+  (o replay confirmado envia esses bytes), portanto a única revisão corria DEPOIS da entrega.
+  Medido num host a jusante: dos 4 recados entregues a membros da equipa, 3 estavam errados, e a
+  crítica certa do juiz chegou um turno tarde.
+  - `mk.HELD_DELIVERED_TEXT`: `{ferramenta: argumento}`, declarado pelo host por turno a partir
+    do manifesto de cada ferramenta. O core nunca adivinha pelo nome. Ausente, ou não sendo um
+    mapping, nenhuma chamada retida entrega texto, que é o comportamento de antes.
+  - `types.held_delivered_texts(ctx)` (exportado na raiz): `(tool, texto)` de cada chamada
+    retida declarada, pela ordem da retenção. Um argumento ausente ou vazio volta como `""` e
+    não desaparece. Um carrier ilegível dá `[]`.
+  - Juiz: o bloco `# Messages HELD for the user's confirmation` (slug `held_messages` em
+    `_JUDGE_BLOCKS`, depois do bloco da consulta e antes do rascunho) mostra cada texto tal e
+    qual, cercado e sanitizado como um texto de ferramenta, e um texto vazio como `(EMPTY)`. A
+    seguir aos critérios, `_HELD_MESSAGE_RULE` aplica o critério #1 à própria mensagem: tem de
+    LEVAR o que foi pedido (não prometê-lo nem apontar para outro sítio), ser dirigida ao
+    destinatário certo, não trazer instrução para quem a escreve e não afirmar nada que o pedido e
+    as leituras não suportem. A regra sobrepõe-se ao MID-FLOW só para o texto: perguntar antes de
+    enviar continua certo.
+  - Sem declaração, o prompt fica byte a byte igual (`tests/unit/test_judge_reads_the_held_message.py`,
+    com o controlo que produz a presença primeiro; `test_judge_blocks_sync.py` fixa a linha nova).
+  - A metade do orquestrador é o `cogno-soma` #49: julga o turno de proposta quando
+    `held_delivered_texts` não está vazio; qualquer outra retenção mantém o salto.
+  - Régua do PR: `tests/unit` 1372 → 1382 passed; a mutação `held_messages = ""` derruba 10
+    testes.
+
 ## Unreleased — o critério de graduação da PII conta os turnos em que HAVIA PII (2026-09-23)
 
 ### Changed (documentação; comportamento inalterado)

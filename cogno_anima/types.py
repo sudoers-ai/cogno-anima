@@ -1142,8 +1142,13 @@ def wrote_for_the_contact(ctx: "PipelineContext") -> bool:
         replayed without it promises the contact a handoff that never happens, which is the
         same defect as the ledger's, pointing the other way.
 
-    SEVEN places call this, measured 2026-09-01 — the ones that moved off `committed_this_turn`
-    when the enumeration split, and each of them was WRONG before the move:
+    **The callers are NOT counted here, on purpose.** They live in `cogno-host` and
+    `cogno-soma`, which depend on this repo and not the other way round, so nothing here can
+    count them, and no test pins this list (the host pins `committed_this_turn`'s enumeration
+    only). A count written by hand in this paragraph went stale as soon as the host added
+    callers. The current list is the code: search both repos for `wrote_for_the_contact`. What
+    follows is HISTORY, not an inventory: the callers that moved off `committed_this_turn` when
+    the enumeration split on 2026-09-01, each of them WRONG before the move:
 
       * the ledger stamp (`trace.py::guard_outcomes`) — the defect that started this: a turn
         whose only side-effecting call was a transfer told the ledger it had written;
