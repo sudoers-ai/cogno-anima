@@ -1,5 +1,48 @@
 # Changelog
 
+## Unreleased — a docstring de `wrote_for_the_contact` deixa de contar os chamadores (2026-09-24)
+
+### Changed (documentação; comportamento inalterado)
+
+- **`types.wrote_for_the_contact`: a contagem escrita à mão («SEVEN places call this») sai.**
+  Os chamadores vivem no `cogno-host` e no `cogno-soma`, que dependem desta biblioteca e não o
+  contrário, e nenhum teste fixa esta lista (o host fixa só a enumeração do
+  `committed_this_turn`). Por isso o número envelheceu quando o host acrescentou chamadores. A
+  docstring aponta agora para o código (procurar `wrote_for_the_contact` nos dois repos) e guarda
+  a lista de 2026-09-01 como HISTÓRIA, dita como tal, não como inventário.
+
+## Unreleased — o juiz lê a mensagem RETIDA antes de ela ser enviada (2026-09-24)
+
+### Added
+
+- **Um recado retido para o «sim» é julgado ANTES do envio (#183, M9 1/3).** Um turno de
+  proposta (uma chamada retida para a confirmação do utilizador) não era julgado: o orquestrador
+  salta o juiz na retenção, e com razão, porque a acção está incompleta de propósito. Para uma
+  chamada que ENVIA TEXTO A UMA PESSOA esse salto era o defeito. O texto fica final na retenção
+  (o replay confirmado envia esses bytes), portanto a única revisão corria DEPOIS da entrega.
+  Medido num host a jusante: dos 4 recados entregues a membros da equipa, 3 estavam errados, e a
+  crítica certa do juiz chegou um turno tarde.
+  - `mk.HELD_DELIVERED_TEXT`: `{ferramenta: argumento}`, declarado pelo host por turno a partir
+    do manifesto de cada ferramenta. O core nunca adivinha pelo nome. Ausente, ou não sendo um
+    mapping, nenhuma chamada retida entrega texto, que é o comportamento de antes.
+  - `types.held_delivered_texts(ctx)` (exportado na raiz): `(tool, texto)` de cada chamada
+    retida declarada, pela ordem da retenção. Um argumento ausente ou vazio volta como `""` e
+    não desaparece. Um carrier ilegível dá `[]`.
+  - Juiz: o bloco `# Messages HELD for the user's confirmation` (slug `held_messages` em
+    `_JUDGE_BLOCKS`, depois do bloco da consulta e antes do rascunho) mostra cada texto tal e
+    qual, cercado e sanitizado como um texto de ferramenta, e um texto vazio como `(EMPTY)`. A
+    seguir aos critérios, `_HELD_MESSAGE_RULE` aplica o critério #1 à própria mensagem: tem de
+    LEVAR o que foi pedido (não prometê-lo nem apontar para outro sítio), ser dirigida ao
+    destinatário certo, não trazer instrução para quem a escreve e não afirmar nada que o pedido e
+    as leituras não suportem. A regra sobrepõe-se ao MID-FLOW só para o texto: perguntar antes de
+    enviar continua certo.
+  - Sem declaração, o prompt fica byte a byte igual (`tests/unit/test_judge_reads_the_held_message.py`,
+    com o controlo que produz a presença primeiro; `test_judge_blocks_sync.py` fixa a linha nova).
+  - A metade do orquestrador é o `cogno-soma` #49: julga o turno de proposta quando
+    `held_delivered_texts` não está vazio; qualquer outra retenção mantém o salto.
+  - Régua do PR: `tests/unit` 1372 → 1382 passed; a mutação `held_messages = ""` derruba 10
+    testes.
+
 ## Unreleased — o critério de graduação da PII conta os turnos em que HAVIA PII (2026-09-23)
 
 ### Changed (documentação; comportamento inalterado)
