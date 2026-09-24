@@ -11,11 +11,10 @@
   box a 23/09: 0 respostas com PII detectada em 352 turnos. **Hoje nenhum tenant está pronto.**
   Só muda a redacção (docstring em `vocab.py`, `CLAUDE.md`, docstring do teste); o valor, o
   modo por omissão e a rede ficam byte a byte. Nada NESTA biblioteca conta para o critério. No
-  host HÁ quem o conte, e um grep pelo nome da constante não o encontra: o relatório
-  `scripts/nets_by_class.py` imprime o critério com o denominador ANTIGO (todos os turnos com
-  bloco) sem usar o nome `PII_OBSERVATION_MIN_TURNS` na contagem. Vai ser alinhado num PR do
-  host, junto com a redacção antiga do docstring de `PATCH /tenant/{id}/pii-output-mode` (a
-  rota escreve o que uma pessoa decidiu e não lê contagem nenhuma).
+  host HÁ quem o conte: o relatório `scripts/nets_by_class.py` imprime o critério com o
+  denominador ANTIGO (todos os turnos com bloco). Vai ser alinhado num PR do host, junto com a
+  redacção antiga do docstring de `PATCH /tenant/{id}/pii-output-mode` (a rota escreve o que
+  uma pessoa decidiu e não lê contagem nenhuma).
 
 ## Unreleased — no esgotamento, a resposta é o rascunho e os dados: nada além deles (2026-09-22)
 
