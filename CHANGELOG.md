@@ -42,6 +42,37 @@
 - A rede determinística sobre a resposta que SAI é do host (dono da dobra e da frase de
   recurso), construída sobre `memo_spans`.
 
+## Unreleased — a mesma acção nunca sai duas vezes sem o dizer (F1.1, 2026-09-24)
+
+### Added
+
+- **`cogno_anima.tools.IdempotentDispatcher`** (`tools/idempotency.py`, novo), com o protocolo
+  `IdempotencyStore`, o `InMemoryIdempotencyStore` e `idempotency_key`. Nada impedia que a MESMA
+  escrita fosse executada duas vezes — o laço de correcção que volta a correr o executor depois de
+  a primeira tentativa já ter escrito, o reparo que re-executa com a ferramenta forçada, um «sim»
+  respondido duas vezes à mesma proposta. O dono: «enviar duas vezes a mensagem e dizer que não
+  enviou é perigoso».
+  - Antes de uma chamada DECLARADA correr, o digest de `(âmbito, ferramenta, argumentos
+    normalizados)` é reservado atomicamente num registo; se a mesma chave já teve êxito dentro da
+    janela da ferramenta, a chamada **não corre** e o executor recebe `ok=True, side_effect=False`
+    com a hora — o `committed_this_turn` lê-a como o que é (este turno não escreveu nada) e o
+    contacto ouve sempre que já foi feito.
+  - Chave EXACTA: a normalização só tira o que não tem significado (ordem das chaves, espaço
+    repetido, NFC, `None`, `150.0`); caixa e palavras ficam — uma palavra mudada é outra mensagem.
+  - Reservar antes, **concluir** em `ok ∧ side_effect`, **libertar** quando nada ficou escrito, e
+    **manter PENDENTE quando a chamada rebentou**: o resultado é desconhecido, e uma chamada idêntica
+    dentro da janela é avisada de que *pode* ter saído e não corre (no máximo uma vez; o pendente
+    expira com a janela).
+  - Registo em baixo → fail-OPEN, com `event=idempotency_store_unavailable` e o gancho
+    `on_unavailable` para o registo do chamador.
+  - As regras (que ferramentas, que janela), o âmbito e a frase ao contacto são do CHAMADOR; o
+    core não tem nenhum por omissão. Um âmbito vazio desliga a guarda em vez de misturar contactos.
+  - **Não oferece repetir dentro da janela** (v2, com o retorno do gate C): um «quer que envie
+    outra vez?» cujo «sim» cai na mesma chave voltaria a ouvir «já feito». A nota diz a saída que
+    FUNCIONA — mudar o que se envia, ou deixar passar a janela.
+  - `tests/unit/test_protocol_probe_contract.py` ganhou a fábrica do novo invólucro (sem ela, a
+    própria derivação do teste reprova-o — foi o vermelho-antes).
+
 ## Unreleased — o juiz lê as regras da persona INTEIRAS, vedadas como dado, no system; os valores declarados vão à voz (2026-09-24)
 
 ### Added

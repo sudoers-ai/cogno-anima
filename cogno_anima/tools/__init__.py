@@ -14,6 +14,13 @@ from cogno_anima.tools.confirm_args import (
     new_confirm_args,
 )
 from cogno_anima.tools.id_provenance import IdProvenanceDispatcher
+from cogno_anima.tools.idempotency import (
+    IdempotencyRule,
+    IdempotencyStore,
+    IdempotentDispatcher,
+    InMemoryIdempotencyStore,
+    idempotency_key,
+)
 
 __all__ = [
     "ToolDispatcher",
@@ -29,4 +36,9 @@ __all__ = [
     "held_calls",
     "MAX_CONFIRM_ARGS",
     "IdProvenanceDispatcher",
+    "IdempotentDispatcher",
+    "IdempotencyRule",
+    "IdempotencyStore",
+    "InMemoryIdempotencyStore",
+    "idempotency_key",
 ]
