@@ -46,12 +46,85 @@ o efeito no comportamento mede-se num A/B com modelo, que este PR não faz.
 - o gémeo: ≥ 1 024 pelo limite inferior de palavras, com e sem regras;
 - o controlo: sem limites, a ordem antiga e os bytes do `origin/main`;
 - o multiconjunto por digest;
-- a ordem antiga reconstruída, igual por sha256 ao que o `origin/main` (ed32560) renderizou nas
+- a ordem antiga reconstruída, igual por sha256 ao que o `origin/main` (c0d6bb9, depois do #187) renderizou nas
   mesmas fixtures;
 - a mutação escrita como gémeo: os mesmos predicados recusam a ordem antiga;
 - as frases que situam os limites.
 
 **Não aterra sem esse A/B** (decisão do Director, 24/09).
+
+## Unreleased — a nota do negócio sobre o contacto: contexto para responder melhor, nunca dita (2026-09-24)
+
+### Added
+
+- **`mk.CONTACT_MEMO`** (o host escreve, POR TURNO): o memo que o inquilino escreve na ficha do
+  contacto que FALA — só o dele, nunca o de outro, nunca herdado. Até hoje era guardado e nenhuma
+  conversa o lia; o dono decidiu (24/09) que passa a CONTEXTO, com a regra dele: serve para
+  responder melhor, e NUNCA se cita, revela ou parafraseia ao contacto — a nota pode ter
+  observações internas sobre a própria pessoa que lê a resposta.
+- **`cogno_anima.security.contact_memo`** (exportado na raiz): `contact_memo_block` — UMA
+  renderização (cabeçalho `# Business note about this contact`, a regra do dono, vedação
+  `<contact_memo>` que o texto não fecha, `sanitize_untrusted`), a mesma nos três prompts;
+  `memo_spans` — onde um texto repete a nota, em corridas de palavras seguidas sob a dobra-base
+  do `textfold.fold` do host (NFKD, marcas fora, `casefold` por último; um chamador passa a sua
+  com `fold=`); `mask_contact_memo`; `sanitize_contact_memo`.
+- **Juiz:** a nota na metade USER, acima do objectivo (linha `contact_memo` em `_JUDGE_BLOCKS`), e
+  `_MEMO_RULE` depois dos critérios, só quando a nota existe: APLICÁ-LA (apelido, preferência) é
+  fundamentado; repetir, reformular, aludir a uma observação dela, ou dizer que existe uma nota,
+  é REJEITADO; e a crítica não a cita. O system do juiz não mexe — é o prefixo que o M3c tornou
+  cacheável por (persona, papel), e uma nota por contacto faria de cada contacto uma falha de
+  cache.
+- **Voz:** a mesma nota como secção própria (linha `contact_memo` em `_VOICE_BLOCKS`). É a voz
+  que trata o contacto, e o apelido só no executor chegava à resposta se o rascunho o trouxesse
+  por cima da linha de tratamento da própria persona. O cabeçalho CONHECIDO é também o que tira a
+  nota da fatia `context` que um host guarda à volta de um turno sinalizado.
+- **A crítica do juiz sai MASCARADA da nota** (`evaluate`, na fonte: corridas de ≥2 palavras
+  seguidas com uma de ≥4 caracteres viram `[…]`), porque viaja para o EGO, para a voz, para a
+  linha de log e para o traço do host; e outra vez onde a voz renderiza uma razão de rejeição
+  (o host compõe razões suas). Um par de palavras funcionais («de um») não é conteúdo da nota.
+
+### Não muda
+
+- Sem nota (ausente, vazia, não-string, só a vedação): o prompt do juiz (system e user) e o da
+  voz byte a byte — 17 renderizações digeridas contra `origin/main`, iguais; 119 com valores
+  estragados, iguais à da árvore-mãe sem a chave. Os gémeos por digest, com o controlo que
+  produz a diferença, estão em `tests/unit/test_contact_memo.py`.
+- **O que NÃO se mede aqui:** que um modelo rejeite de facto um rascunho que cita a nota. O
+  critério é uma propriedade do PROMPT (renderizado com a nota, ausente sem ela); nenhuma
+  medição com modelo (sem nuvem, sem GPU).
+- A rede determinística sobre a resposta que SAI é do host (dono da dobra e da frase de
+  recurso), construída sobre `memo_spans`.
+
+## Unreleased — a mesma acção nunca sai duas vezes sem o dizer (F1.1, 2026-09-24)
+
+### Added
+
+- **`cogno_anima.tools.IdempotentDispatcher`** (`tools/idempotency.py`, novo), com o protocolo
+  `IdempotencyStore`, o `InMemoryIdempotencyStore` e `idempotency_key`. Nada impedia que a MESMA
+  escrita fosse executada duas vezes — o laço de correcção que volta a correr o executor depois de
+  a primeira tentativa já ter escrito, o reparo que re-executa com a ferramenta forçada, um «sim»
+  respondido duas vezes à mesma proposta. O dono: «enviar duas vezes a mensagem e dizer que não
+  enviou é perigoso».
+  - Antes de uma chamada DECLARADA correr, o digest de `(âmbito, ferramenta, argumentos
+    normalizados)` é reservado atomicamente num registo; se a mesma chave já teve êxito dentro da
+    janela da ferramenta, a chamada **não corre** e o executor recebe `ok=True, side_effect=False`
+    com a hora — o `committed_this_turn` lê-a como o que é (este turno não escreveu nada) e o
+    contacto ouve sempre que já foi feito.
+  - Chave EXACTA: a normalização só tira o que não tem significado (ordem das chaves, espaço
+    repetido, NFC, `None`, `150.0`); caixa e palavras ficam — uma palavra mudada é outra mensagem.
+  - Reservar antes, **concluir** em `ok ∧ side_effect`, **libertar** quando nada ficou escrito, e
+    **manter PENDENTE quando a chamada rebentou**: o resultado é desconhecido, e uma chamada idêntica
+    dentro da janela é avisada de que *pode* ter saído e não corre (no máximo uma vez; o pendente
+    expira com a janela).
+  - Registo em baixo → fail-OPEN, com `event=idempotency_store_unavailable` e o gancho
+    `on_unavailable` para o registo do chamador.
+  - As regras (que ferramentas, que janela), o âmbito e a frase ao contacto são do CHAMADOR; o
+    core não tem nenhum por omissão. Um âmbito vazio desliga a guarda em vez de misturar contactos.
+  - **Não oferece repetir dentro da janela** (v2, com o retorno do gate C): um «quer que envie
+    outra vez?» cujo «sim» cai na mesma chave voltaria a ouvir «já feito». A nota diz a saída que
+    FUNCIONA — mudar o que se envia, ou deixar passar a janela.
+  - `tests/unit/test_protocol_probe_contract.py` ganhou a fábrica do novo invólucro (sem ela, a
+    própria derivação do teste reprova-o — foi o vermelho-antes).
 
 ## Unreleased — o juiz lê as regras da persona INTEIRAS, vedadas como dado, no system; os valores declarados vão à voz (2026-09-24)
 

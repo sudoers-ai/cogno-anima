@@ -16,7 +16,7 @@ Three things are pinned here, each with the check that would catch its opposite:
 * **the multiset** — the sections of the new prompt, digest by digest, are the sections of the
   legacy one: nothing entered, nothing left, one moved;
 * **origin/main, byte for byte** — the legacy order rebuilt from the new prompt, and the prompt
-  of a turn with no limits slot, hash to what `origin/main` (ed32560) rendered for the same
+  of a turn with no limits slot, hash to what `origin/main` (c0d6bb9) rendered for the same
   fixtures (`_ORIGIN_MAIN`, `_ORIGIN_MAIN_NO_LIMITS`);
 * **the mutation, as a twin** — the same predicates reject the legacy order.
 
@@ -130,7 +130,7 @@ def test_the_system_message_is_still_only_the_fixed_instruction_without_rules():
 
 #: The order this prompt's sections had until F1.3, as the inventory names them. The limits
 #: section sat between the preserved terms and the execution; everything else is unchanged.
-_LEGACY_ORDER = ("user_request", "context", "active_goal", "user_constraints", "unavailable",
+_LEGACY_ORDER = ("user_request", "context", "contact_memo", "active_goal", "user_constraints", "unavailable",
                  "preserved_terms", "persona_limits", "executed", "held_messages", "draft",
                  "criteria_execution", "criteria_conversational", "criteria_readonly")
 
@@ -217,9 +217,10 @@ def test_the_sections_are_the_same_multiset_as_before_only_the_order_moved(name,
 
 
 #: sha256 of `_build_judge_prompt(ctx, _STABLE)` for each `_configs()` configuration, rendered
-#: by `origin/main` at ed32560 — the tree F1.3 was measured against — i.e. the prompt in the
-#: order it had BEFORE this change. Computed by rendering these very fixtures with that tree's
-#: code, not with this one's.
+#: by `origin/main` at c0d6bb9 — the base F1.3 merged — i.e. the prompt in the order it had
+#: BEFORE this change. Computed by rendering these very fixtures with that tree's code, not with
+#: this one's. (ed32560, the base F1.3 was first measured against, gives the same eight digests;
+#: `memo` is the configuration #187 added.)
 #:
 #: This is a LANDING-TIME proof and it is meant to go stale: a later, deliberate change of the
 #: judge's TEXT changes these digests legitimately. When that happens, regenerate them from the
@@ -235,6 +236,7 @@ _ORIGIN_MAIN = {
     "constraints": "d6526009d51543379d38a213271f076825462d6578b127f0b25c3d6bb319490f",
     "preserved": "1e64f9f415cad36241e5eb58c768e8fe3fbd0fcfab45f4660b2b89df2d82f71b",
     "rules": "f9bf87af021403806ea51dc5ff13c5a0799faa60108908523942602538c6a9b8",
+    "memo": "c407c2fa70bd7e4617c0423919ffef067220fb2707e3d27e4c409e4e13014000",
 }
 
 
@@ -252,7 +254,7 @@ def test_the_legacy_reconstruction_is_origin_main_byte_for_byte(name, ctx):
 
 
 #: The same, for the CONTROL: `_build_judge_prompt(ctx, "")` — no limits slot at all — as
-#: `origin/main` at ed32560 rendered it. Same staleness rule as `_ORIGIN_MAIN`.
+#: `origin/main` at c0d6bb9 rendered it. Same staleness rule as `_ORIGIN_MAIN`.
 _ORIGIN_MAIN_NO_LIMITS = {
     "readonly": "46398b00eecd91e245aa29c99f33516c44eaf7368df7989ce24df1481f62d59d",
     "execution": "7f0269fb5164b6528bd66572916cb289d4c7e08c98cc62b2f9e35b02d49c95d2",
@@ -263,6 +265,7 @@ _ORIGIN_MAIN_NO_LIMITS = {
     "constraints": "6cc6869cd408f8139b2c7cde2e8db70bd028a682c967b225017002e24a436678",
     "preserved": "a025303cff3a32ad84f793da4bf7d2fc0858b777ac7f5223a09fd23712ca519e",
     "rules": "84fe08b0947f73bfcb93afb16f9d98f36bd7de0dfd4ca797d5744571c1ae02a4",
+    "memo": "a0378001b23ff41f8781a0da798306c7fb34bdd5819ba38b48fb33e08cd4bfc4",
 }
 
 

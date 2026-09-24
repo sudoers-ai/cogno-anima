@@ -93,10 +93,14 @@ def _configs():
     held.ego_result.pending_confirmation = [held_call]
     held.metadata[mk.HELD_DELIVERED_TEXT] = {"notify_user": "message"}
 
+    # The contact's private note: the USER half, above the goal (never the system message).
+    memo = base()
+    memo.metadata[mk.CONTACT_MEMO] = "Apelido: Zeca. Prefere manhã."
+
     return [("readonly", readonly), ("execution", execution), ("held", held),
             ("conversational", conversational), ("context", with_context),
             ("unavailable", unavailable), ("constraints", constraints),
-            ("preserved", preserved), ("rules", rules)]
+            ("preserved", preserved), ("rules", rules), ("memo", memo)]
 
 
 @pytest.mark.parametrize("name,ctx", _configs(), ids=lambda v: v if isinstance(v, str) else "")

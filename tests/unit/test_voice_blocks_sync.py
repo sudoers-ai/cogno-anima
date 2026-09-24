@@ -69,8 +69,14 @@ def _configs():
                                                  side_effect=False)])],
         metrics=approved_execution.ego_result.metrics)
 
+    # The business's private note about the contact renders as its own section — and it must
+    # be a KNOWN one, or a host slicing `context` would carry the note into its capture.
+    memo = _ctx()
+    memo.metadata[mk.CONTACT_MEMO] = "Apelido: Zeca. Prefere manhã."
+
     out = [("plain", plain), ("context", with_context), ("traits", with_traits),
-           ("conversational", conversational), ("approved_execution", approved_execution)]
+           ("conversational", conversational), ("approved_execution", approved_execution),
+           ("memo", memo)]
     # The three rejection variants are mutually exclusive — each needs its own render.
     for kind in ("repeated_reply", "unverified_claim", "execution_rejected"):
         c = _ctx()
