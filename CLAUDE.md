@@ -170,9 +170,29 @@ and its business; the core ships the mechanism and takes the declaration as a pa
   legitimises it)`) is INJECTED with no default: which tools carry ids, and which read names them, is
   the caller's catalog — and the read tool is part of the REFUSAL, so naming one the persona does not
   have turns a self-correction into a loop. Build a fresh instance per turn.
+- **`IdempotentDispatcher` + `IdempotencyStore`/`InMemoryIdempotencyStore`/`idempotency_key`**
+  (`tools/idempotency.py`) — the same effect never goes out twice without saying so. Before a
+  DECLARED call runs, the digest of `(scope, tool, normalised arguments)` is CLAIMED atomically in a
+  store; when the same key already succeeded inside the tool's window the call is NOT executed and
+  the executor gets `ok=True, side_effect=False` with a note saying when (so `committed_this_turn`
+  and its family read it as what it is — this turn wrote nothing — and the contact is always told,
+  never blocked in silence). The key is EXACT: normalisation drops only what carries no meaning
+  (key order, whitespace runs, NFC, `None`, `150.0`), case and every word stay, so one word changed
+  is another message. Claim before, **complete** on `ok ∧ side_effect`, **release** when nothing was
+  committed (`ok=False`, no write, a gate-C proposal), and **keep PENDING when the call raised** —
+  the outcome is unknown, so an identical call inside the window is told it *may* have gone out and
+  is not run (at most once; the pending claim expires with the window). A dead store fails OPEN
+  (`event=idempotency_store_unavailable` + the caller's `on_unavailable` hook), because a side table
+  must not switch off every write. `rules` (which tools, which window, optionally which arguments),
+  `scope` (an empty one DISABLES the guard rather than merging contacts) and `notice` (the sentence
+  in the tenant's language) are all injected — the caller's catalog. **What it does not offer is a
+  way to repeat inside the window**: a "shall I send it again?" whose "yes" lands on the same key
+  would be answered "already done" again, so the note names the exit that works (change what is
+  sent, or let the window pass); an explicit repeat needs the gate-C return trip and is a separate
+  change. Build a fresh instance per turn; the store is shared.
 
-The two recorders bind their policy conditionally (they add no verdict of their own, so claiming one
-would be a lie about the source); the provenance guard and the router DECLARE it, answering the EGO's
+The two recorders and the idempotency guard bind their policy conditionally (they add no verdict of
+their own, so claiming one would be a lie about the source); the provenance guard and the router DECLARE it, answering the EGO's
 own fail-safe defaults, because both must answer on behalf of a source that may have none.
 `tests/unit/test_protocol_probe_contract.py` derives the wrapper list from the package and fails a new
 wrapper that arrives without the binding — the rule is pinned by mechanism, not by a hand-written list.
