@@ -22,7 +22,8 @@ para um WRAPPER"*, e a lib é pública. Quem seguisse a nossa própria documenta
 herdava o buraco.
 
 **Desde que os invólucros do host entraram nesta lib, ela TEM classes com `__getattr__`** —
-`CommitRecordingDispatcher`, `ConfirmArgumentRecordingDispatcher`, `IdProvenanceDispatcher` —
+`CommitRecordingDispatcher`, `ConfirmArgumentRecordingDispatcher`, `IdProvenanceDispatcher`,
+`IdempotentDispatcher` —
 e isso NÃO contradiz o que está escrito acima: nelas o `__getattr__` encaminha o que o
 invólucro não medeia (um contador, um predicado de política mais fino que um chamador vai
 buscar abaixo), enquanto os membros que DECIDEM a sonda são ligados à INSTÂNCIA por
@@ -184,12 +185,16 @@ def _build(klass, inner):
     """Um invólucro de cada tipo, com o segundo argumento que cada um exige."""
     from cogno_anima.tools import (CommitRecordingDispatcher,
                                    ConfirmArgumentRecordingDispatcher,
-                                   IdProvenanceDispatcher)
+                                   IdempotentDispatcher,
+                                   IdProvenanceDispatcher,
+                                   InMemoryIdempotencyStore)
 
     fabricas = {
         CommitRecordingDispatcher: lambda i: CommitRecordingDispatcher(i, []),
         ConfirmArgumentRecordingDispatcher: lambda i: ConfirmArgumentRecordingDispatcher(i, {}),
         IdProvenanceDispatcher: lambda i: IdProvenanceDispatcher(i, guarded={}),
+        IdempotentDispatcher: lambda i: IdempotentDispatcher(
+            i, InMemoryIdempotencyStore(), scope="t:u", rules={}),
     }
     assert klass in fabricas, (
         f"`{klass.__name__}` é um invólucro novo desta lib e ninguém lhe deu construtor aqui — "
@@ -200,7 +205,7 @@ def _build(klass, inner):
 def test_the_shipped_wrappers_are_actually_found():
     """Guarda a guarda: um `_shipped_wrappers` que devolvesse `[]` deixaria os dois testes
     seguintes verdes sobre um universo vazio — a forma de defeito que este ficheiro combate."""
-    assert len(_shipped_wrappers()) >= 3
+    assert len(_shipped_wrappers()) >= 4
 
 
 def test_every_wrapper_this_package_ships_binds_its_policy():
