@@ -138,9 +138,23 @@ VALID_PII_PROVENANCE: frozenset[str] = frozenset(
 # **The exit criterion, written down, because a mode with none is a switch nobody touches again.**
 # Observation is only worth its name if someone can say what would end it, so:
 #
-#   Graduate a TENANT to `enforce` when, over at least PII_OBSERVATION_MIN_TURNS turns that
-#   carried a SUPEREGO block, none of its `pii:withheld_<type>` stamps is that tenant's OWN
-#   business data.
+#   Graduate a TENANT to `enforce` when, over at least PII_OBSERVATION_MIN_TURNS turns in which
+#   the detector FOUND PII in the reply (`pii:flagged_in_output`), none of its
+#   `pii:withheld_<type>` stamps is that tenant's OWN business data.
+#
+# **The denominator is the turns where there WAS something to redact — never "turns that
+# carried a SUPEREGO block".** The first cut of this criterion counted the latter, and that
+# criterion is satisfied in the VOID: a turn whose reply holds no personal data runs the rule
+# over nothing, withholds nothing, and therefore can never be "wrong" — so 200 such turns prove
+# that nothing came up, not that the rule redacts correctly. Measured on the demo box
+# (2026-09-23; corpus: the box that day, 528 traces back to 2026-08-04): 0 replies with detected
+# PII in 352 turns — under the old wording a tenant would
+# have been graduated on a sample that never exercised the rule once. Only a turn with a
+# finding can carry the evidence the criterion asks for (a withheld value that was, or was not,
+# the tenant's own), so only those turns count.
+#
+# **Today NO tenant is ready.** With zero turns carrying a finding, no tenant is anywhere near
+# PII_OBSERVATION_MIN_TURNS of them; the default stays `observe` for everyone.
 #
 # The stamps carry the TYPE for exactly this reason: the classes have opposite verdicts and an
 # undifferentiated count decides nothing. `ADDRESS` (a CEP) and `TAX_ID` (a CNPJ) are almost
@@ -150,11 +164,11 @@ VALID_PII_PROVENANCE: frozenset[str] = frozenset(
 # so they are the ones a human actually has to look at.
 #
 # **Why 200.** Rule of three: observing ZERO events in n trials bounds the true rate below 3/n at
-# ~95% confidence, so zero stamps in 200 turns bounds the false-positive rate under 1.5%. It is
-# also about an order of magnitude more than the sample that exists today — of the demo box's 297
-# traces only 9 could carry a SUPEREGO block at all — which is what makes "we saw none" different
-# from "we did not look". Fewer turns than this and a clean run is indistinguishable from an
-# empty one.
+# ~95% confidence, so zero own-data withholds in 200 turns WITH a finding bounds the
+# false-positive rate — per turn that had something to decide — under 1.5%. The bound only
+# means something because the trials are turns where the rule could have erred; over turns with
+# no finding the same arithmetic bounds a rate of nothing. Fewer such turns than this and a
+# clean run is indistinguishable from an empty one.
 #
 # **Per tenant, and a DECISION, not an automatic flip.** Nothing in this package promotes anybody:
 # a human reads the counts for one tenant and sets `mk.PII_OUTPUT_MODE`. A rule that graduated

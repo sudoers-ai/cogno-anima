@@ -411,11 +411,13 @@ def test_every_class_the_stamp_can_carry_is_reachable_AND_named():
 
 def test_the_exit_criterion_is_a_number_someone_can_come_back_to():
     """A mode with no exit criterion is a switch nobody touches again, so the threshold is a
-    CONSTANT rather than a sentence in a PR nobody re-reads. Rule of three: zero stamps in 200
-    turns bounds the false-positive rate under 3/200 = 1.5% at ~95% confidence, and 200 is about
-    an order of magnitude above the sample that exists today (9 of the box's 297 traces could
-    carry a SUPEREGO block at all). Nothing here promotes anybody — graduation is per tenant and
-    is a human setting `mk.PII_OUTPUT_MODE`."""
+    CONSTANT rather than a sentence in a PR nobody re-reads. The 200 are turns in which the
+    detector FOUND PII in the reply (`pii:flagged_in_output`) — never merely turns that carried a
+    SUPEREGO block, which is a criterion met in the void (a reply with nothing to redact cannot be
+    redacted wrongly; the box showed 0 such replies in 352 turns (2026-09-23; 528 traces back to 2026-08-04), so no tenant is ready today).
+    Rule of three: zero own-data withholds in 200 turns WITH a finding bounds the false-positive
+    rate under 3/200 = 1.5% at ~95% confidence. Nothing here promotes anybody — graduation is
+    per tenant and is a human setting `mk.PII_OUTPUT_MODE`."""
     assert vocab.PII_OBSERVATION_MIN_TURNS == 200
     assert 3 / vocab.PII_OBSERVATION_MIN_TURNS <= 0.015
 
