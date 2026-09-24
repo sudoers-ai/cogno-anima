@@ -1,5 +1,47 @@
 # Changelog
 
+## Unreleased — a nota do negócio sobre o contacto: contexto para responder melhor, nunca dita (2026-09-24)
+
+### Added
+
+- **`mk.CONTACT_MEMO`** (o host escreve, POR TURNO): o memo que o inquilino escreve na ficha do
+  contacto que FALA — só o dele, nunca o de outro, nunca herdado. Até hoje era guardado e nenhuma
+  conversa o lia; o dono decidiu (24/09) que passa a CONTEXTO, com a regra dele: serve para
+  responder melhor, e NUNCA se cita, revela ou parafraseia ao contacto — a nota pode ter
+  observações internas sobre a própria pessoa que lê a resposta.
+- **`cogno_anima.security.contact_memo`** (exportado na raiz): `contact_memo_block` — UMA
+  renderização (cabeçalho `# Business note about this contact`, a regra do dono, vedação
+  `<contact_memo>` que o texto não fecha, `sanitize_untrusted`), a mesma nos três prompts;
+  `memo_spans` — onde um texto repete a nota, em corridas de palavras seguidas sob a dobra-base
+  do `textfold.fold` do host (NFKD, marcas fora, `casefold` por último; um chamador passa a sua
+  com `fold=`); `mask_contact_memo`; `sanitize_contact_memo`.
+- **Juiz:** a nota na metade USER, acima do objectivo (linha `contact_memo` em `_JUDGE_BLOCKS`), e
+  `_MEMO_RULE` depois dos critérios, só quando a nota existe: APLICÁ-LA (apelido, preferência) é
+  fundamentado; repetir, reformular, aludir a uma observação dela, ou dizer que existe uma nota,
+  é REJEITADO; e a crítica não a cita. O system do juiz não mexe — é o prefixo que o M3c tornou
+  cacheável por (persona, papel), e uma nota por contacto faria de cada contacto uma falha de
+  cache.
+- **Voz:** a mesma nota como secção própria (linha `contact_memo` em `_VOICE_BLOCKS`). É a voz
+  que trata o contacto, e o apelido só no executor chegava à resposta se o rascunho o trouxesse
+  por cima da linha de tratamento da própria persona. O cabeçalho CONHECIDO é também o que tira a
+  nota da fatia `context` que um host guarda à volta de um turno sinalizado.
+- **A crítica do juiz sai MASCARADA da nota** (`evaluate`, na fonte: corridas de ≥2 palavras
+  seguidas com uma de ≥4 caracteres viram `[…]`), porque viaja para o EGO, para a voz, para a
+  linha de log e para o traço do host; e outra vez onde a voz renderiza uma razão de rejeição
+  (o host compõe razões suas). Um par de palavras funcionais («de um») não é conteúdo da nota.
+
+### Não muda
+
+- Sem nota (ausente, vazia, não-string, só a vedação): o prompt do juiz (system e user) e o da
+  voz byte a byte — 17 renderizações digeridas contra `origin/main`, iguais; 119 com valores
+  estragados, iguais à da árvore-mãe sem a chave. Os gémeos por digest, com o controlo que
+  produz a diferença, estão em `tests/unit/test_contact_memo.py`.
+- **O que NÃO se mede aqui:** que um modelo rejeite de facto um rascunho que cita a nota. O
+  critério é uma propriedade do PROMPT (renderizado com a nota, ausente sem ela); nenhuma
+  medição com modelo (sem nuvem, sem GPU).
+- A rede determinística sobre a resposta que SAI é do host (dono da dobra e da frase de
+  recurso), construída sobre `memo_spans`.
+
 ## Unreleased — a mesma acção nunca sai duas vezes sem o dizer (F1.1, 2026-09-24)
 
 ### Added

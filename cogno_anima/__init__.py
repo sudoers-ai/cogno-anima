@@ -80,9 +80,19 @@ from cogno_anima.security.redaction import (
     pii_digests_in,
     redact_pii,
 )
+from cogno_anima.security.contact_memo import (
+    contact_memo_block,
+    mask_contact_memo,
+    memo_spans,
+    sanitize_contact_memo,
+)
 
 __all__ = [
     "sanitize_voice_traits",
+    "contact_memo_block",
+    "mask_contact_memo",
+    "memo_spans",
+    "sanitize_contact_memo",
     "committed_this_turn",
     "wrote_for_the_contact",
     "write_attempted_this_turn",

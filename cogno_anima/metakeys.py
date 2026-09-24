@@ -269,6 +269,24 @@ PERSONA_RULES = "persona_rules"
 # never hold either over, because the next turn may run another persona or another role.
 PERSONA_DECLARED_VALUES = "persona_declared_values"
 
+# The business's private note about the contact who is SPEAKING — `str`, the tenant's own words
+# ("Apelido: Zeca. Prefere manhã. Cliente difícil"). The HOST decides whose note it is and must
+# stamp only that one: the contact of THIS turn, never another contact's, never a note carried
+# from a previous turn (the same PER-TURN rule as the two keys above, and a sharper reason — a
+# carried note is one person's private remarks in another person's conversation).
+#
+# Rendered by ONE function, `security.contact_memo.contact_memo_block`, wherever it lands: the
+# host appends it to the executor's prompt; the SUPEREGO renders it in the judge's USER half (it
+# is per CONTACT, so it must stay out of the system message the persona rules made cacheable
+# per (persona, role)) with a rejection criterion of its own, and in the voice's prompt. Its
+# rule, the owner's (2026-09-24): context to answer better — a nickname, a preference — and
+# NEVER quoted, revealed or paraphrased to the contact. The judge's critique is masked of it
+# before it travels (`security.contact_memo.mask_contact_memo`).
+#
+# Absent, blank or not a string → every prompt byte-for-byte as before. **Never persisted as
+# text by the core**; a host's trace records its length and digest at most.
+CONTACT_MEMO = "contact_memo"
+
 # ── prompt provenance (HOST writes, orchestrator labels with it) ─────────────
 # `{kind: sha}` — the host's digest of each prompt TEMPLATE it is running this turn, keyed by
 # slot ("ego" | "voice" | "judge" | "scope"). The orchestrator copies the matching one onto
