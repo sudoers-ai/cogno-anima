@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — o critério de graduação da PII conta os turnos em que HAVIA PII (2026-09-23)
+
+### Changed (documentação; comportamento inalterado)
+
+- **`vocab.PII_OBSERVATION_MIN_TURNS` (200) passa a contar turnos em que o detector ACHOU PII na
+  resposta (`pii:flagged_in_output`), não «turnos com bloco SUPEREGO».** O critério antigo
+  cumpria-se no VAZIO: uma resposta sem dado pessoal não retém nada e nunca erra, portanto 200
+  turnos «limpos» provam que não houve nada para redigir, não que a rede redige bem. Medido no
+  box a 23/09: 0 respostas com PII detectada em 352 turnos. **Hoje nenhum tenant está pronto.**
+  Só muda a redacção (docstring em `vocab.py`, `CLAUDE.md`, docstring do teste); o valor, o
+  modo por omissão e a rede ficam byte a byte. Nenhum código conta para este critério — nem
+  aqui nem no host (`PATCH /tenant/{id}/pii-output-mode` escreve o que uma pessoa decidiu e não
+  lê contagem nenhuma).
+
 ## Unreleased — no esgotamento, a resposta é o rascunho e os dados: nada além deles (2026-09-22)
 
 ### Fixed
