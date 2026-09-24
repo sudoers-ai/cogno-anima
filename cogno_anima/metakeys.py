@@ -22,6 +22,16 @@ EGO_FORCE_TOOL = "ego_force_tool"              # host: this turn REQUIRES a tool
 EGO_CONFIRMED = "ego_confirmed"                # gate B: True | collection of tool names
 EGO_CONFIRMED_CALLS = "ego_confirmed_calls"    # gate B: approved calls to execute
 EGO_CORRECTION = "ego_correction"              # correction loop: {reason, attempt}
+# A HELD call that, once the user says yes, SENDS one of its arguments' text to a person.
+#
+# Host-declared ``{tool name: argument name}`` for the tools on THIS turn's table that deliver
+# an argument's text to somebody (a message to a staff member, a reminder text). The core never
+# guesses which tool sends what — that is the tool's own declaration, read by the host from its
+# manifest. Read by ``types.held_delivered_texts``, which is what makes the orchestrator JUDGE a
+# proposal turn instead of skipping the judge on it, and what renders the held text in the
+# judge's prompt: a wrong message caught before the "yes" costs a rewrite, a wrong message sent
+# cannot be recalled. Absent / not a mapping → no held call delivers text (today's behaviour).
+HELD_DELIVERED_TEXT = "held_delivered_text"
 
 # An EARLIER attempt of THIS turn committed a mutating tool, and its trace is GONE.
 #

@@ -74,7 +74,15 @@ def _configs():
     preserved = base()
     preserved.noumeno.preserved_terms = ["ana@example.com"]
 
-    return [("readonly", readonly), ("execution", execution),
+    held = base()
+    held_call = ToolExecution(tool="notify_user", arguments={"message": "Olá, a aula é às 19h."},
+                              ok=False, error="needs_confirmation", result="",
+                              tool_mutating=True)
+    held.ego_result.steps[0].tool_calls.append(held_call)
+    held.ego_result.pending_confirmation = [held_call]
+    held.metadata[mk.HELD_DELIVERED_TEXT] = {"notify_user": "message"}
+
+    return [("readonly", readonly), ("execution", execution), ("held", held),
             ("conversational", conversational), ("context", with_context),
             ("unavailable", unavailable), ("constraints", constraints),
             ("preserved", preserved)]
