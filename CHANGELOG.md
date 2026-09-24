@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased — docs: the host's `committed` stamp calls `wrote_for_the_contact`, not this predicate (2026-09-24)
+
+### Changed (prose only; no code, no behaviour)
+
+- **Three sentences said the host's `trace.py` writes `trace["guards"]["committed"]` "by
+  CALLING" `committed_this_turn`**: `CLAUDE.md` (the `committed_this_turn` paragraph), the
+  `committed_this_turn` docstring (`types.py`) and the `PRIOR_ATTEMPT_COMMITTED` block
+  (`metakeys.py`). That has been false since host #627 (2026-09-01). The stamp calls
+  `wrote_for_the_contact`, which is this predicate minus the host-declared routing set
+  (`mk.ROUTING_ONLY_TOOLS`) and still honours `PRIOR_ATTEMPT_COMMITTED`. All three now say so.
+  They also name the host fix of the same day: the offline floor of `committed_from_trace` now
+  filters the same set. Before that, the union re-added the hand-overs the stamp had excluded, and
+  the host's promise auditor filed 11 production turns whose only side effect was
+  `transfer_persona` as writes. The location of `committed_from_trace` is corrected as well: it
+  lives in the host's `grounding.py` and `turn_audit/promises.py` re-exports it.
+
 ## Unreleased — a nota do negócio sobre o contacto: contexto para responder melhor, nunca dita (2026-09-24)
 
 ### Added
