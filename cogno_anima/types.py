@@ -696,6 +696,47 @@ _PRIOR_ATTEMPT_COMMITTED = "prior_attempt_committed"
 _ROUTING_ONLY_TOOLS = "routing_only_tools"
 
 
+# Mirrors ``metakeys.HELD_DELIVERED_TEXT``, inlined for the same reason and pinned by the same
+# test. Read ONLY by `held_delivered_texts`.
+_HELD_DELIVERED_TEXT = "held_delivered_text"
+
+
+def held_delivered_texts(ctx: "PipelineContext") -> "list[tuple[str, str]]":
+    """``(tool, text)`` for every HELD call whose text will be SENT to a person on a "yes".
+
+    The host declares, per turn, which tools deliver which argument's text to somebody
+    (``metakeys.HELD_DELIVERED_TEXT`` — ``{tool: argument}``, read from each tool's own
+    manifest; the core never guesses it from a name). This reads the EGO's
+    ``pending_confirmation`` against that declaration and returns the exact text each held call
+    would send, in hold order. A held call whose declared argument is missing or not a string
+    is returned with ``""`` — an EMPTY message is still a message about to be proposed, and the
+    caller must see it rather than have it vanish.
+
+    Two consumers, one reading: the orchestrator JUDGES a proposal turn when this is non-empty
+    (it skips the judge on every other proposal turn, deliberately), and the judge renders the
+    texts so criterion #1 is applied to the message itself, before it can reach anyone.
+
+    Anything unreadable — no trace, no declaration, a declaration that is not a mapping —
+    answers ``[]``, which is today's behaviour exactly: nothing here may cost a turn.
+    """
+    try:
+        declared = (getattr(ctx, "metadata", None) or {}).get(_HELD_DELIVERED_TEXT)
+        if not isinstance(declared, dict) or not declared:
+            return []
+        held = getattr(getattr(ctx, "ego_result", None), "pending_confirmation", None) or []
+        out: "list[tuple[str, str]]" = []
+        for call in held:
+            tool = str(getattr(call, "tool", "") or "")
+            arg = declared.get(tool)
+            if not tool or not isinstance(arg, str) or not arg:
+                continue
+            raw = (getattr(call, "arguments", None) or {}).get(arg)
+            out.append((tool, raw.strip() if isinstance(raw, str) else ""))
+        return out
+    except Exception:      # noqa: BLE001 — an unreadable carrier must not cost the turn
+        return []
+
+
 def committed_this_turn(ctx: "PipelineContext") -> bool:
     """Did anything happen that makes REPEATING this turn unsafe? (A mutating tool ran, on any
     attempt — routing included.)
