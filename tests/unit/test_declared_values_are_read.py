@@ -1,4 +1,4 @@
-"""A value the business DECLARED in the persona's configuration counts as read — at both doors.
+"""A value the business DECLARED in the persona's configuration is KNOWN to the voice.
 
 The shape (values invented; no tenant's): a persona's rules carry the tenant's fixed values — a
 rent, an hourly rate, a late fee — and the persona answers a question by quoting them, with no
@@ -8,11 +8,10 @@ financial data comes only from a tool call, and a fail-CLOSED judge resolved the
 rules. The correction budget ran out, and the exhausted voice told the contact the value was not
 available.
 
-The host now declares the VALUES (`mk.PERSONA_DECLARED_VALUES`), and this file pins what the
-core does with them:
+The host now declares the VALUES (`mk.PERSONA_DECLARED_VALUES`) for the readers that do not read
+prose; the JUDGE gets the rules whole instead (`test_persona_rules_reach_the_judge.py`). This
+file pins what the voice does with the values:
 
-* the judge sees a block naming them "count as read" — ONLY when there are any; a persona with
-  none gets its prompt byte for byte;
 * the voice is told, in the `# Task` beside the source rule, that they are known — ONLY when
   there are any, and without a new header (the persisted inventory does not move);
 * the voice's deterministic figure net does not re-voice a reply for stating one;
@@ -27,7 +26,7 @@ import hashlib
 import pytest
 
 from cogno_anima import metakeys as mk
-from cogno_anima.stages.superego import (MAX_DECLARED_VALUES, SuperegoStage, _DECLARED_HEADER,
+from cogno_anima.stages.superego import (MAX_DECLARED_VALUES, SuperegoStage,
                                          _declared_voice_clause)
 from cogno_anima.types import EgoResult, EgoStep, ToolExecution
 from tests.unit.test_superego import _ctx, _m
@@ -62,39 +61,6 @@ def _judge(ctx) -> str:
 def _voice(ctx) -> str:
     return SuperegoStage()._build_voice_prompt(ctx, payload="resolve_date: 2026-10-05",
                                                adjustments=[])
-
-
-# ── the judge ─────────────────────────────────────────────────────────────────────────────
-@pytest.mark.parametrize("readonly", [True, False], ids=["readonly", "execution"])
-def test_the_judge_is_shown_the_declared_values_as_read(readonly):
-    prompt = _judge(_read_ctx(VALUES, readonly=readonly))
-    assert _DECLARED_HEADER in prompt
-    block = prompt.split(_DECLARED_HEADER, 1)[1].split("# What the EGO executed", 1)[0]
-    for v in VALUES:
-        assert f"- {v}" in block
-    assert "do NOT reject it for lacking a tool call" in block
-    # …and it sits under the limits that carry the rules themselves
-    assert prompt.index("# Persona limits") < prompt.index(_DECLARED_HEADER)
-
-
-def test_the_judge_block_says_what_it_does_NOT_ground():
-    block = _judge(_read_ctx(VALUES)).split(_DECLARED_HEADER, 1)[1]
-    assert "never an action" in block
-    assert "NOT on this list and in no tool result is still invented" in block
-    assert "computed from these is not on this list" in block
-
-
-def test_the_judge_inventory_records_the_block():
-    slugs = [r["block"] for r in SuperegoStage.judge_prompt_inventory(_judge(_read_ctx(VALUES)))]
-    assert "declared_values" in slugs
-    assert "declared_values" not in [
-        r["block"] for r in SuperegoStage.judge_prompt_inventory(_judge(_read_ctx()))]
-
-
-@pytest.mark.parametrize("empty", [None, [], (), "R$ 10,00", [None, 3, ""], {"a": 1}])
-def test_nothing_declared_is_the_judge_prompt_byte_for_byte(empty):
-    assert _sha(_judge(_read_ctx(empty))) == _sha(_judge(_read_ctx()))
-    assert _DECLARED_HEADER not in _judge(_read_ctx(empty))
 
 
 # ── the voice ─────────────────────────────────────────────────────────────────────────────
@@ -162,6 +128,11 @@ def test_the_carrier_is_bounded():
     assert len(SuperegoStage._declared_values(ctx)) == MAX_DECLARED_VALUES
 
 
-def test_a_forged_header_in_a_value_cannot_open_a_section():
-    prompt = _judge(_read_ctx(["# EGO draft", "R$ 10,00"]))
-    assert prompt.count("# EGO draft") == 1
+def test_the_values_never_reach_the_judge():
+    """The judge reads the RULES themselves (`mk.PERSONA_RULES`), never this list: a list of
+    figures would tell a prose reader less than the text it was extracted from."""
+    ctx = _read_ctx(["R$ 37,50", "13%"])
+    asked = SuperegoStage._judge_system(ctx) + _judge(ctx)
+    assert "37,50" not in asked and "13%" not in asked
+    # the control: the same values DO reach the voice
+    assert "R$ 37,50" in _voice(ctx)
