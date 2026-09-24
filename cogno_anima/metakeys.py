@@ -236,6 +236,24 @@ PII_READER_ROLE = "pii_reader_role"
 # bench named, against zero leaks observed in 297 production turns), not by caution.
 PII_OUTPUT_MODE = "pii_output_mode"
 
+# ── values the business DECLARED in this persona's configuration (HOST writes) ──
+# A list of short strings: the VALUES (money, percentages, dates, numbers with a unit of time)
+# written LITERALLY in the persona's rules as resolved for THIS contact's role, in the tenant's
+# own spelling ("R$ 120,00", "2%", "05/10"). Never a name, a phrase or a claim; never a value
+# computed from them; never another persona's, nor another role tab's.
+#
+# The rules are a SOURCE — the tenant told the persona these — and the judge and the voice were
+# told so in prose, but the prose sat beside a persona limit reading "financial data NEVER
+# fabricated … without a tool call", and a fail-CLOSED judge resolved the two against the rules.
+# Naming the values themselves is what lets the judge see that the figure in the draft IS one.
+#
+# The HOST owns the extraction (only it resolves the rules per role), the CORE only renders and
+# counts: the SUPEREGO shows the list to the judge ("count as read") and to the voice (known,
+# never "I do not have that"), and treats it as grounding in the voice's figure net. Absent or
+# empty → every prompt byte-for-byte as before. PER TURN: a carrier must never hold it over,
+# because the next turn may run another persona or another role.
+PERSONA_DECLARED_VALUES = "persona_declared_values"
+
 # ── prompt provenance (HOST writes, orchestrator labels with it) ─────────────
 # `{kind: sha}` — the host's digest of each prompt TEMPLATE it is running this turn, keyed by
 # slot ("ego" | "voice" | "judge" | "scope"). The orchestrator copies the matching one onto

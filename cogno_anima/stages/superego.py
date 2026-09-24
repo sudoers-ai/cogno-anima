@@ -210,6 +210,65 @@ _FIGURES_HAVE_A_SOURCE = (
     "plainly which part is missing."
 )
 
+# ── VALUES THE BUSINESS DECLARED IN THIS PERSONA'S CONFIGURATION ──────────────────────
+#
+# The persona's configured rules were ALREADY a source in prose, on both doors: the judge's
+# `_GROUNDING_SOURCE_SET` names the `# Persona limits` section "(which carries the tenant's own
+# configured business rules)", and the voice's `_FIGURES_HAVE_A_SOURCE` names "this persona's
+# own configured rules and limits". What neither door could do was SEE which figures those were.
+# And a persona's own limits may say the opposite in as many words — a bookkeeping persona's
+# factory limits read "financial data is NEVER fabricated from memory … Reject if … invents
+# amounts … without a tool call" — so a draft quoting the tenant's configured rent, exactly, met
+# a fail-CLOSED judge holding one clause for it and one against it, and the judge resolved them
+# against the rules. The measured shape (host box, 2026-09-24): of the turns whose correction
+# budget ran out, a handful had drafts citing ONLY values present, character for character, in
+# the persona's rules; the reply the contact received said the information was not available.
+#
+# So the host now hands over the VALUES themselves (`mk.PERSONA_DECLARED_VALUES`, extracted from
+# the rules resolved for THIS contact's role — one grammar, `cogno_praxis.declared_values`), and
+# both doors are shown the list. Deliberately NARROW, and the narrowness is stated in the text
+# the model reads, not only here: a value on the list grounds a VALUE, never an ACT (nothing on
+# it shows that an entry was recorded, a slot booked or a message sent); a value NOT on it, and
+# in no tool result, is still invented; and a value COMPUTED from the list is not on the list —
+# it falls under the one rule for derived values (`_DERIVED_FROM_EVIDENCE`), unchanged.
+#
+# Travels WITH its evidence, like every conditional block in this file: an empty or absent list
+# renders NOTHING, so a persona with no values in its rules gets the prompt it always got, byte
+# for byte, on both doors.
+MAX_DECLARED_VALUES = 128
+_DECLARED_VALUE_CHARS = 64
+
+_DECLARED_HEADER = "# Values declared in this persona's configuration (count as read)"
+
+_DECLARED_ARE_READ = (
+    "The business wrote these exact values in this persona's configured rules. A value on "
+    "this list that the draft quotes exactly (the same amount, rate, percentage, date or "
+    "duration) is GROUNDED exactly as if a tool had returned it: do NOT reject it for lacking "
+    "a tool call, even where the persona limits require a tool for that kind of data. The list "
+    "grounds VALUES only, never an action: nothing on it shows that anything was recorded, "
+    "booked or sent. A value that is NOT on this list and in no tool result is still invented, "
+    "and a value computed from these is not on this list — it is judged by the DERIVED VALUES "
+    "rule, like any other."
+)
+
+
+def _declared_voice_clause(values: "Sequence[str]") -> str:
+    """The voice's half: the same list, said where the source rule is said (the `# Task`).
+
+    Not a section of its own on purpose — a new header would move `_VOICE_BLOCKS` and the
+    persisted inventory for a sentence that belongs to the rule beside it. ``""`` when nothing
+    was declared, so the Task is byte-for-byte what it was."""
+    if not values:
+        return ""
+    return (" VALUES DECLARED IN THIS PERSONA'S CONFIGURATION: " + "; ".join(values) + ". "
+            "The business wrote these in this persona's rules, so they are KNOWN, exactly as a "
+            "tool result is: when the request asks for one, state it exactly as written and "
+            "never tell the contact you do not have it or could not find it — not even when a "
+            "reviewer critique says it lacked a tool call. They ground a VALUE, never an action "
+            "(none of them shows that anything was recorded, booked or sent), and a value "
+            "computed from them follows the rule above.")
+
+
 # Rendered wherever the reviewer's words are, and nowhere else — the clause is meaningless on
 # a turn with no critique, and a critique with no clause is the measured turn 4. One constant,
 # so a fourth rejection variant cannot quietly ship the critique without it; the pairing is
@@ -1116,6 +1175,7 @@ class SuperegoStage:
         ("# NOT AVAILABLE this turn", "unavailable"),
         ("# Preserved terms", "preserved_terms"),
         ("# Persona limits", "persona_limits"),
+        ("# Values declared in this persona's configuration", "declared_values"),
         ("# What the EGO executed", "executed"),
         ("# EGO draft", "draft"),
         ("# Judge the EXECUTION against these criteria", "criteria_execution"),
@@ -2101,6 +2161,9 @@ class SuperegoStage:
         # Terms the NOUMENO preserved verbatim (names/URLs/emails/figures): the
         # judge uses them as concrete grounding evidence (2R-A).
         preserved = self._format_preserved(ctx)
+        # The VALUES the business wrote in this persona's rules, when the host declared any —
+        # rendered right under the limits that carry the rules themselves. Empty → nothing.
+        declared = self._format_declared(self._declared_values(ctx))
         # Host-injected context (the same block the EGO/voice see): the clock anchor
         # ([TODAY] …), retrieved memories, history. Without it the judge re-derives
         # dates from its own (wrong) sense of "now" and rejects a CORRECT tool
@@ -2148,7 +2211,7 @@ class SuperegoStage:
             f"{restrictions}"
             f"{unavailable}"
             f"{preserved}"
-            f"{limits}\n"
+            f"{limits}{declared}\n"
             f"# What the EGO executed\n{executed}\n\n"
             f"{consulted}"
             f"# EGO draft\n{draft}\n\n"
@@ -2366,6 +2429,38 @@ class SuperegoStage:
         return "# User constraints\n" + "\n".join(lines) + "\n" if lines else ""
 
     @staticmethod
+    def _declared_values(ctx: PipelineContext) -> "tuple[str, ...]":
+        """The host's ``mk.PERSONA_DECLARED_VALUES``, sanitized — ``()`` when absent or unusable.
+
+        The values are the TENANT's own configuration and reach two prompts, so the shape is
+        enforced here rather than trusted: strings only, one line each, bounded in length and in
+        count, repeats dropped, nothing that could open a section of its own. A garbled carrier
+        degrades to ``()`` — the prompt the turn would have had without it — and never raises:
+        a grounding hint must not abort a turn."""
+        raw = (getattr(ctx, "metadata", None) or {}).get(mk.PERSONA_DECLARED_VALUES)
+        if not isinstance(raw, (list, tuple)):
+            return ()
+        out: "list[str]" = []
+        for v in raw:
+            if not isinstance(v, str):
+                continue
+            v = " ".join(v.split())
+            if not v or len(v) > _DECLARED_VALUE_CHARS or v.startswith("#") or v in out:
+                continue
+            out.append(v)
+            if len(out) >= MAX_DECLARED_VALUES:
+                break
+        return tuple(out)
+
+    @staticmethod
+    def _format_declared(values: "Sequence[str]") -> str:
+        """The judge's block of declared values — ``""`` when there are none (byte-identical)."""
+        if not values:
+            return ""
+        return (f"\n{_DECLARED_HEADER}\n{_DECLARED_ARE_READ}\n"
+                + "\n".join(f"- {v}" for v in values) + "\n")
+
+    @staticmethod
     def _format_preserved(ctx: PipelineContext) -> str:
         """Render the preserved VALUES as grounding evidence for the judge.
 
@@ -2541,7 +2636,8 @@ class SuperegoStage:
 
     @classmethod
     def _draft_divergence(cls, draft: str, payload: str, response: str,
-                          user_input: str = "") -> "tuple[list[str], list[str]]":
+                          user_input: str = "", declared: "Sequence[str]" = (),
+                          ) -> "tuple[list[str], list[str]]":
         """``(lost, invented)`` — how the delivered reply departs from the APPROVED draft.
 
         * **lost** — a figure the approved draft states that the reply does not carry, in
@@ -2563,6 +2659,10 @@ class SuperegoStage:
         lost = sorted(k for k, whole in drafted.items()
                       if k not in replied and whole not in loose)
         grounded = set(cls._figure_keys(payload)) | set(cls._figure_keys(user_input))
+        # …and a value the business DECLARED in this persona's configuration: the Task tells
+        # the voice it is known, and a net that re-voiced the reply for stating it would be the
+        # two-doors defect inside one stage. Empty by default — the net as it always was.
+        grounded |= set(cls._figure_keys("\n".join(declared)))
         # …and a figure the reply WORKED OUT in the open, from operands that are themselves on
         # the page. Without this line the net refused, verbatim, the example
         # ``_FIGURES_HAVE_A_SOURCE`` gives as ALLOWED — the two constants shipped a day apart
@@ -2803,7 +2903,9 @@ class SuperegoStage:
         # — the same closed-alphabet form `voice:json_unwrapped` established for this package.
         approved = self._approved_draft(ctx, payload)
         if approved and response:
-            lost, invented = self._draft_divergence(approved, payload, response, ctx.user_input)
+            declared = self._declared_values(ctx)
+            lost, invented = self._draft_divergence(approved, payload, response, ctx.user_input,
+                                                    declared)
             if lost or invented:
                 adjustments.append("voice:diverged_from_approved_draft")
                 logger.warning("stage=superego event=voice_diverged_from_approved_draft "
@@ -2818,7 +2920,8 @@ class SuperegoStage:
                 # the divergence check then keeps. The row names the backend of the last call,
                 # not of the surviving text.
                 fingerprint, served_model = fp2, sm2
-                again = self._draft_divergence(approved, payload, second, ctx.user_input)
+                again = self._draft_divergence(approved, payload, second, ctx.user_input,
+                                               declared)
                 if second and len(again[0]) + len(again[1]) <= len(lost) + len(invented):
                     adjustments.append("voice:revoiced_from_approved_draft")
                     response, cot_stripped, prompt = second, second_cot, retry_prompt
@@ -3307,7 +3410,8 @@ class SuperegoStage:
             # gives: adding a clause to a prompt that asserts the opposite two lines
             # earlier leaves the model to resolve a contradiction, and it resolves it
             # against the newcomer.
-            f"{_FIGURES_HAVE_A_SOURCE} Reply with the message text only."
+            f"{_FIGURES_HAVE_A_SOURCE}{_declared_voice_clause(self._declared_values(ctx))} "
+            "Reply with the message text only."
         )
 
     @staticmethod

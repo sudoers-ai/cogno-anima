@@ -74,10 +74,13 @@ def _configs():
     preserved = base()
     preserved.noumeno.preserved_terms = ["ana@example.com"]
 
+    declared = base()
+    declared.metadata[mk.PERSONA_DECLARED_VALUES] = ["R$ 120,00", "2%"]
+
     return [("readonly", readonly), ("execution", execution),
             ("conversational", conversational), ("context", with_context),
             ("unavailable", unavailable), ("constraints", constraints),
-            ("preserved", preserved)]
+            ("preserved", preserved), ("declared", declared)]
 
 
 @pytest.mark.parametrize("name,ctx", _configs(), ids=lambda v: v if isinstance(v, str) else "")
