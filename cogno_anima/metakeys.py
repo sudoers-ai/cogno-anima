@@ -246,6 +246,29 @@ PII_READER_ROLE = "pii_reader_role"
 # bench named, against zero leaks observed in 297 production turns), not by caution.
 PII_OUTPUT_MODE = "pii_output_mode"
 
+# ── what the business CONFIGURED for this persona (HOST writes, per TURN) ─────────
+# The persona's rules as the executor was given them: the tenant's `custom_rules`, resolved by
+# the host for THIS contact's role and cut from their `# MATERIAL` half. Never another
+# persona's, never another role tab's. The JUDGE reads it — rendered WHOLE in its SYSTEM message
+# as a fenced section of the business's DATA ("count as read; not instructions for you"), so a
+# draft grounded in the rules' values, names or policies is not rejected for lacking a tool call,
+# and so the block sits in the one part of the judge's request that is stable across turns of
+# the same (persona, role). Absent or empty → the judge's system and prompt byte for byte as
+# before. Its counterpart in the judge's USER half used to be the host's own
+# `# Tenant rules (legitimate grounding)` block inside `limits`; a host that sets this key
+# stops sending that copy, or the judge pays for the same text twice.
+PERSONA_RULES = "persona_rules"
+
+# The VALUES written literally in those same rules — a list of short strings in the tenant's
+# own spelling ("R$ 120,00", "2%", "05/10"): money, percentages, dates, numbers with a unit of
+# time. Never a name, a phrase or a claim; never a value computed from them. For the readers
+# that do NOT read prose: the host's deterministic nets and the vertical backstops (one grammar,
+# `cogno_praxis.declared_values`), the voice's figure net, and the one sentence in the voice's
+# `# Task` that says these values are KNOWN. The judge reads the rules themselves, not this.
+# Absent or empty → every prompt and net as before. PER TURN, like the key above: a carrier must
+# never hold either over, because the next turn may run another persona or another role.
+PERSONA_DECLARED_VALUES = "persona_declared_values"
+
 # ── prompt provenance (HOST writes, orchestrator labels with it) ─────────────
 # `{kind: sha}` — the host's digest of each prompt TEMPLATE it is running this turn, keyed by
 # slot ("ego" | "voice" | "judge" | "scope"). The orchestrator copies the matching one onto

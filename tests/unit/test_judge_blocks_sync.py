@@ -34,6 +34,12 @@ _HEADER = re.compile(r"^# .+$", re.MULTILINE)
 LIMITS = "Stay within the persona's scope."
 
 
+def _asked(ctx) -> str:
+    """Everything the judge is ASKED: the system message, then the prompt — the same join
+    `evaluate` hands `judge_prompt_inventory`. The business rules live in the first half."""
+    return f"{SuperegoStage._judge_system(ctx)}\n\n{SuperegoStage()._build_judge_prompt(ctx, LIMITS)}"
+
+
 def _known(header_line: str) -> bool:
     return any(header_line.startswith(known) for known, _ in SuperegoStage._JUDGE_BLOCKS)
 
@@ -74,6 +80,11 @@ def _configs():
     preserved = base()
     preserved.noumeno.preserved_terms = ["ana@example.com"]
 
+    # The business rules render in the SYSTEM message (`_judge_system`), so this config is the
+    # one that lights up the `persona_rules` row — see `_asked` below.
+    rules = base()
+    rules.metadata[mk.PERSONA_RULES] = "Aula avulsa: R$ 120,00 por hora."
+
     held = base()
     held_call = ToolExecution(tool="notify_user", arguments={"message": "Olá, a aula é às 19h."},
                               ok=False, error="needs_confirmation", result="",
@@ -85,12 +96,12 @@ def _configs():
     return [("readonly", readonly), ("execution", execution), ("held", held),
             ("conversational", conversational), ("context", with_context),
             ("unavailable", unavailable), ("constraints", constraints),
-            ("preserved", preserved)]
+            ("preserved", preserved), ("rules", rules)]
 
 
 @pytest.mark.parametrize("name,ctx", _configs(), ids=lambda v: v if isinstance(v, str) else "")
 def test_every_rendered_header_is_in_the_table(name, ctx):
-    prompt = SuperegoStage()._build_judge_prompt(ctx, LIMITS)
+    prompt = _asked(ctx)
     unknown = [h for h in _HEADER.findall(prompt) if not _known(h)]
     assert not unknown, (
         f"[{name}] the judge prompt renders {unknown} and `_JUDGE_BLOCKS` does not list it — "
@@ -102,7 +113,7 @@ def test_the_table_does_not_list_sections_the_prompt_never_renders():
     appear — dead weight that reads like coverage."""
     rendered = set()
     for _, ctx in _configs():
-        rendered.update(_HEADER.findall(SuperegoStage()._build_judge_prompt(ctx, LIMITS)))
+        rendered.update(_HEADER.findall(_asked(ctx)))
     for known, slug in SuperegoStage._JUDGE_BLOCKS:
         assert any(h.startswith(known) for h in rendered), (
             f"`{slug}` maps to {known!r}, which none of the rendered configurations produce — "
