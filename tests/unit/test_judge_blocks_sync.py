@@ -167,12 +167,15 @@ def test_the_inventory_is_ordered_as_rendered_and_carries_only_lengths():
     ctx.metadata[mk.EGO_CONTEXT] = "[TODAY] 2026-09-08"
     prompt = SuperegoStage()._build_judge_prompt(ctx, LIMITS)
     inv = SuperegoStage.judge_prompt_inventory(prompt)
+    # The persona's limits open the prompt since F1.3 (the provider's cache serves only an
+    # identical prefix; `test_judge_prompt_cache_order.py` pins why) — and the turn's sections
+    # follow in the order they always had.
     assert [b["block"] for b in inv][:4] == [
-        "user_request", "context", "active_goal", "persona_limits"]
+        "persona_limits", "user_request", "context", "active_goal"]
     assert all(set(b) == {"block", "chars"} and b["chars"] > 0 for b in inv)
     # The lengths partition the prompt from the first header to the end — nothing is
     # double-counted and nothing between two known headers is dropped.
-    assert sum(b["chars"] for b in inv) == len(prompt) - prompt.index("# User request")
+    assert sum(b["chars"] for b in inv) == len(prompt) - prompt.index("# Persona limits")
 
 
 @pytest.mark.asyncio
@@ -186,7 +189,8 @@ async def test_evaluate_records_the_branch_and_the_inventory(name, expect, stub_
     stub_backend.responses = ['{"approved": true}']
     res = await SuperegoStage().evaluate(ctx, stub_backend, limits_prompt=LIMITS)
     assert res.judge_branch == expect
-    assert [b["block"] for b in res.prompt_blocks][0] == "user_request"
+    # A limits slot was handed in, so it is the first section (F1.3 — the cache order).
+    assert [b["block"] for b in res.prompt_blocks][0] == "persona_limits"
     assert any(b["block"] == f"criteria_{expect}" for b in res.prompt_blocks), (
         f"the inventory does not name the criteria block for branch {expect!r}")
 
