@@ -210,8 +210,13 @@ and its business; the core ships the mechanism and takes the declaration as a pa
   verdict need several loop turns); `settle(grace_s=0.0)` at the end of the turn yields one loop
   turn, waits at most `grace_s`, then CANCELS the stragglers and files them as `timeout` — a task
   that outlives its turn is a model call nobody accounts for, and grace 0 means the shadow never
-  delays a reply. A cancelled judgement reports 0 tokens (unknown; the `timeout` beside it is what
-  makes that readable); an errored one records what the callback measured. The callback this
+  delays a reply. A judgement cut AFTER its callback handed the prompt over is charged the
+  callback's estimate (`Proposal.note_prompt(n)`, called BEFORE the await; `ProposalJudge` uses
+  `estimate_prompt_tokens`, len//4, declared) on its own ledger line, `JUDGE_PRE_ESTIMATED_STAGE =
+  "judge_pre:estimated"` — the provider bills a request it received, and a 0 there makes the
+  activation's cost per turn come out low (F2.3a-bis). A callback that never calls the hook, or a
+  judgement cut before its first step, records 0 as before (unknown; the `timeout` beside it is
+  what makes that readable); an errored one records what the callback measured. The callback this
   package ships is `cogno_anima.stages.ProposalJudge` (`stages/proposal_judge.py`): criterion #1 of
   the judge asked of the CALL — the contact's message, the reply a "yes" answers, the tool's own
   description and the fenced arguments; no rules, no tool results (named in its prompt: an id the

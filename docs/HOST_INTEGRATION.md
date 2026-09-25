@@ -228,8 +228,15 @@ Bill `total_tokens` per turn — **it already includes the retries**, so adding
 callback used. Append `sink.metrics` to `ctx.retry_metrics` after `await sink.settle()` and it is
 billed like any other extra; keep it on its own ledger line and never fold it into the judge's
 (`superego_judge`): the shadow exists to be COMPARED with that judge, and a summed line cannot be
-compared with anything. A judgement that timed out or was cancelled at settle reports 0 tokens —
-unknown, not free — and its `timeout` record is what makes the zero readable.
+compared with anything. A judgement that timed out or was cancelled at settle AFTER its callback
+had handed the prompt to the backend is charged the callback's ESTIMATE of the input tokens, on a
+line of its own — `JUDGE_PRE_ESTIMATED_STAGE` (`"judge_pre:estimated"`), the same `:estimated`
+suffix a host already uses for estimated charges — because the provider bills a request it
+received whether or not anybody read the answer (F2.3a-bis). The callback reports it through
+`Proposal.note_prompt(n)` BEFORE it awaits (`ProposalJudge` does, with `estimate_prompt_tokens`,
+one token per four characters, declared); a callback that never calls the hook, or a judgement
+cut before its first step, still records 0 — and its `timeout` record is what makes that zero
+readable.
 
 ```python
 from cogno_anima.stages import ProposalJudge

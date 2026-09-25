@@ -16,6 +16,7 @@ from cogno_anima.tools.confirm_args import (
 from cogno_anima.tools.id_provenance import IdProvenanceDispatcher
 from cogno_anima.tools.pre_judge import (
     DEFAULT_PRE_JUDGE_TIMEOUT_S,
+    JUDGE_PRE_ESTIMATED_STAGE,
     JUDGE_PRE_STAGE,
     PRE_VERDICTS,
     PreJudgeDispatcher,
@@ -56,5 +57,6 @@ __all__ = [
     "Proposal",
     "PRE_VERDICTS",
     "JUDGE_PRE_STAGE",
+    "JUDGE_PRE_ESTIMATED_STAGE",
     "DEFAULT_PRE_JUDGE_TIMEOUT_S",
 ]

@@ -46,7 +46,7 @@ from cogno_anima.tools.pre_judge import (
 )
 from cogno_anima.types import StageMetrics
 
-__all__ = ["ProposalJudge"]
+__all__ = ["ProposalJudge", "estimate_prompt_tokens"]
 
 # Bounds on what each untrusted block may contribute — a proposal is judged in ONE small call.
 _REQUEST_CHARS = 2000
@@ -75,6 +75,15 @@ _DECIDE = (
     'Answer exactly: {"approved": true or false, "critique": "one short sentence naming what is '
     'wrong; empty when approved"}'
 )
+
+
+def estimate_prompt_tokens(system: str, prompt: str) -> int:
+    """The input tokens a prompt is EXPECTED to cost, before any backend has counted it: one
+    token per four characters. This library has no tokenizer, and a cut judgement's estimate is
+    labelled as one on the ledger (``judge_pre:estimated``), so a rough, cheap and deterministic
+    count beats a precise one that needs a model-specific dependency. It under-counts dense
+    non-English text; the label is what keeps that from passing for a measurement."""
+    return (len(system or "") + len(prompt or "")) // 4
 
 
 def _fenced(tag: str, text: str, limit: int) -> str:
@@ -147,6 +156,14 @@ class ProposalJudge:
                                 model=self.model)
 
         system, prompt = self.render(proposal)
+        # BEFORE the await: a judgement cut from here on was, in all likelihood, sent — and the
+        # provider bills a request it received. A hook that misbehaves must not cost the call.
+        note = getattr(proposal, "note_prompt", None)
+        if callable(note):
+            try:
+                note(estimate_prompt_tokens(system, prompt))
+            except Exception:                    # noqa: BLE001
+                pass
         try:
             raw, ti, to = await self._backend.generate(system, prompt)
         except asyncio.CancelledError:

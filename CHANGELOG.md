@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased — o juízo prévio CORTADO depois de enviar não regista 0 tokens (F2.3a-bis, 2026-09-25)
+
+### Added
+
+- **`Proposal.note_prompt`** (`tools/pre_judge.py`): o gancho que um callback chama com a
+  ESTIMATIVA dos tokens de entrada do seu prompt, ANTES do `await` ao backend. Um juízo cortado
+  pelo tecto ou pelo `settle` depois desse ponto foi, muito provavelmente, enviado — e o fornecedor
+  cobra o pedido que recebeu, lido ou não. Com 0 no livro, o custo por turno do relatório de
+  activação saía por BAIXO.
+- **`JUDGE_PRE_ESTIMATED_STAGE = "judge_pre:estimated"`**: a linha própria dessa estimativa — o
+  mesmo sufixo `:estimated` que o host já usa (`kb_ingest:estimated`), uma grafia para os dois.
+  Só o veredicto do RELÓGIO (`timeout`) a usa: um juízo que respondeu fica com os tokens que o
+  backend reportou, sem marca; um `error` fica com o que o callback mediu (um backend que levanta
+  antes de enviar continua 0).
+- **`estimate_prompt_tokens`** (`stages/proposal_judge.py`): um token por quatro caracteres,
+  declarado — a lib não tem tokenizador, e a linha diz que é estimativa. O `ProposalJudge` chama o
+  gancho com ela; um gancho que rebenta não custa o juízo.
+
+### Não muda
+
+- Retrocompatível: um callback que nunca chama o gancho (todos os anteriores) regista 0 como hoje
+  (`test_control_an_OLD_callback_that_never_calls_the_hook_is_charged_zero_as_before`); o gancho
+  fica fora da igualdade do `Proposal`; só aceita um inteiro não-negativo e só com o registo aberto.
+- Gémeos: cortado pelo TECTO e pelo `settle` depois de enviar → `judge_pre:estimated` com a
+  estimativa exacta do prompt enviado; respondido → os tokens reportados, sem marca; cancelado
+  antes de correr → 0.
+- Integração e bench: não se aplicam — sem I/O novo.
+
 ## Unreleased — o juiz lê a escrita ANTES de ela sair, em SOMBRA (F2.3a, 2026-09-24)
 
 ### Added
