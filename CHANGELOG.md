@@ -47,7 +47,11 @@
   excepção) encontra o registo já fechado. O `settle` fazia-o pela ordem inversa — cancelava,
   esperava e só então arquivava —, e uma resposta chegada depois do fim do turno ficava como se
   tivesse chegado a tempo. `test_an_answer_after_the_CEILING_stays_a_timeout` e
-  `test_an_answer_after_SETTLE_stays_a_timeout` (cada um com as duas formas).
+  `test_an_answer_after_SETTLE_stays_a_timeout` (cada um com as duas formas). E a terceira
+  porta: o `settle` de um turno que é ele próprio CANCELADO fecha o registo pendente como
+  `timeout` antes de propagar o cancelamento — aberto, sairia calado de `records`, e um juiz que
+  engole o cancelamento escrevia lá `approved` (`test_a_CANCELLED_turn_still_files_its_pending_
+  judgement_as_a_timeout`, retido e engolidor).
 - **Controlo produzido:** a mutação que faz o invólucro AGUARDAR o juiz antes da chamada põe
   vermelho `test_the_write_runs_and_returns_while_the_judge_is_still_thinking` (o `execute` não
   volta) e `test_a_slow_judge_adds_nothing_to_the_call`. Gémeos: argumentos errados → `critique` E a

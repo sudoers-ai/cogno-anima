@@ -322,6 +322,29 @@ async def test_an_answer_after_SETTLE_stays_a_timeout(then):
     assert [r["verdict"] for r in sink.records] == ["timeout"]
 
 
+@pytest.mark.parametrize("kind", ["held", "swallows"])
+async def test_a_CANCELLED_turn_still_files_its_pending_judgement_as_a_timeout(kind):
+    """The third door: the task running `settle` is itself cancelled (the turn is being torn
+    down) while a judgement is still out. The cancel must keep propagating — a cancelled turn
+    stays cancelled — AND the pending record must be closed as `timeout` on the way: left open it
+    would vanish from `records` ("not yet settled is not listed"), and a judge that swallows the
+    cancel would get to write `approved` into it afterwards."""
+    judge = _Judge(hold=True) if kind == "held" else _SwallowsTheCancel("approve")
+    _, _, sink, d = _wrap(judge=judge)
+    await d.execute(_WRITE, dict(_ASKED))
+    settler = asyncio.ensure_future(sink.settle(grace_s=5.0))
+    await asyncio.sleep(0.05)                                       # settle is waiting on it
+    assert not settler.done() and sink.records == []                # the condition, produced
+    settler.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await settler
+    await asyncio.sleep(0.01)                                       # let a swallowing judge answer
+    if kind == "swallows":
+        assert judge.cancelled == 1                                 # it did answer, late
+    assert [r["verdict"] for r in sink.records] == ["timeout"]
+    assert all(e.task.done() for e in sink._entries)
+
+
 async def test_settle_cancels_a_straggler_and_leaves_nothing_running():
     """Grace 0 is the default: the shadow never delays a reply. A verdict that is not in is a
     `timeout`, and the task is CANCELLED — a call that outlived its turn would be a model call
