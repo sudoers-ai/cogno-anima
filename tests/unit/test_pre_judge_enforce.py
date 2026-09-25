@@ -223,9 +223,14 @@ async def test_control_a_write_enforce_does_NOT_name_stays_in_shadow():
 
 
 async def test_control_a_READ_is_never_judged_even_if_enforce_names_it():
-    inner, judge, sink, d = _wrap(enforce=lambda name: True)
+    """…and never even ENTERS the enforced path: not judged, and not asked whether the contact
+    confirmed it — enforcement is about writes, and the policy underneath says what a write is."""
+    asked: list = []
+    inner, judge, sink, d = _wrap(enforce=lambda name: True,
+                                  confirmed=lambda tool, args: asked.append(tool) or False)
     await d.execute(_READ, {})
     assert inner.calls == [(_READ, {})] and judge.seen == [] and sink.records == []
+    assert asked == []
 
 
 @pytest.mark.parametrize("answer", [
