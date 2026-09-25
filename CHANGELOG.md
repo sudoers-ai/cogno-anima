@@ -1,5 +1,64 @@
 # Changelog
 
+## Unreleased — o juiz lê a escrita ANTES de ela sair, em SOMBRA (F2.3a, 2026-09-24)
+
+### Added
+
+- **`cogno_anima.tools.PreJudgeDispatcher`** (`tools/pre_judge.py`, novo), com `PreJudgeSink`,
+  `Proposal`, `PreJudgment`, `PRE_VERDICTS` e `JUDGE_PRE_STAGE`. O juiz corre DEPOIS do executor:
+  numa escrita, a crítica chega depois de a acção sair. Este invólucro é o INSTRUMENTO que diz se
+  pô-lo à frente seria certo — e não muda nada:
+  - para cada chamada que a fonte classifica como escrita (`is_mutating`), lança um juiz INJECTADO
+    sobre a PROPOSTA (a ferramenta + uma CÓPIA dos argumentos) **ao lado da chamada, nunca à
+    frente**: o `execute` não o espera, não o lê, e devolve exactamente o resultado da fonte, a
+    excepção incluída. Uma fonte sem política nunca é julgada (o núcleo não adivinha o que
+    escreve, e julgar tudo gastava uma chamada em cada leitura);
+  - o veredicto vai para um sink PRÉ-COLOCADO pelo chamador, de alfabeto fechado
+    (`approved|critique|error|timeout`) e **sem texto** — com a ferramenta, os ms e `committed`
+    (`ok ∧ side_effect` do resultado da própria chamada; `None` quando levantou);
+  - o custo é um `StageMetrics` com o estágio FORÇADO a `judge_pre` pelo invólucro, seja qual for o
+    rótulo do callback: linha própria no livro de tokens, nunca somada à do juiz;
+  - tecto por temporizador ao lado da tarefa (não `wait_for`, que antes do 3.12 corre o juiz como
+    segunda tarefa); `settle(grace_s=0.0)` no fim do turno dá UMA volta ao loop, espera no máximo
+    `grace_s` e CANCELA o resto como `timeout` — nada fica a correr depois do turno e a resposta
+    nunca espera pela sombra.
+- **`cogno_anima.stages.ProposalJudge`** (`stages/proposal_judge.py`, novo): o callback com modelo —
+  o critério #1 do juiz (objectivo↔execução) perguntado à CHAMADA: a mensagem do contacto, a
+  resposta anterior (um «sim» só se julga contra a proposta que confirma), a descrição da própria
+  ferramenta e os argumentos vedados. Sem regras e sem resultados de ferramenta, e o prompt diz o
+  que não vê (um id que o executor LEU não está errado por si). ESTRITO no veredicto: só um booleano
+  JSON conta; `"false"` em string é `error`, nunca coagido. Módulo à parte do `superego.py`, de quem
+  partilha só o parser — nenhuma renderização do juiz pós-execução muda um byte.
+
+### Não muda
+
+- Nenhuma chamada é bloqueada, atrasada ou alterada; nenhum prompt existente muda. A activação
+  (uma escrita rejeitada não sai) é uma decisão posterior, sobre os números desta sombra
+  (`docs/ACT_CONFIRM_READONLY.md` § shadow).
+- **O alfabeto fecha-se NO INVÓLUCRO**, não pela cortesia do callback: um veredicto de fora
+  (`"maybe"`, `""`, `None`, um número, uma lista) fica `error`, e um callback que diga `timeout`
+  também — só o relógio do invólucro sabe que houve atraso. A lista apanhou um defeito real antes
+  de aterrar: um valor não-hashável fazia rebentar a tarefa DEPOIS de o juiz responder, e o
+  `settle` arquivava-o como `timeout`. `test_a_verdict_from_outside_the_alphabet_is_recorded_as_error`,
+  `test_a_callback_cannot_claim_a_timeout_only_the_clock_can` e o controlo
+  `test_control_a_verdict_the_callback_may_give_passes_intact`.
+- **A primeira palavra ganha, e é o relógio.** O tecto e o `settle` escrevem `timeout` e SÓ
+  DEPOIS cancelam; um juiz que engole o cancelamento e responde na mesma (ou o converte numa
+  excepção) encontra o registo já fechado. O `settle` fazia-o pela ordem inversa — cancelava,
+  esperava e só então arquivava —, e uma resposta chegada depois do fim do turno ficava como se
+  tivesse chegado a tempo. `test_an_answer_after_the_CEILING_stays_a_timeout` e
+  `test_an_answer_after_SETTLE_stays_a_timeout` (cada um com as duas formas). E a terceira
+  porta: o `settle` de um turno que é ele próprio CANCELADO fecha o registo pendente como
+  `timeout` antes de propagar o cancelamento — aberto, sairia calado de `records`, e um juiz que
+  engole o cancelamento escrevia lá `approved` (`test_a_CANCELLED_turn_still_files_its_pending_
+  judgement_as_a_timeout`, retido e engolidor).
+- **Controlo produzido:** a mutação que faz o invólucro AGUARDAR o juiz antes da chamada põe
+  vermelho `test_the_write_runs_and_returns_while_the_judge_is_still_thinking` (o `execute` não
+  volta) e `test_a_slow_judge_adds_nothing_to_the_call`. Gémeos: argumentos errados → `critique` E a
+  escrita executou; certos → `approved`; leitura → nenhum pre. `tests/unit/test_pre_judge_shadow.py`.
+- **Integração: não se aplica** — sem I/O novo além do juiz injectado; o que atravessa um backend
+  real é uma chamada `generate` como as outras, e o custo é o que o backend declara.
+
 ## Unreleased — o prompt do juiz abre com `# Persona limits`: o que não muda entre turnos vem primeiro (F1.3, 2026-09-24)
 
 ### Changed (ordem de prompt; nenhum byte de nenhum bloco muda)

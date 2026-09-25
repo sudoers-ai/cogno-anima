@@ -222,6 +222,34 @@ Every stage records a `StageMetrics` (LLM `tokens_in/out` + `embedding_tokens`).
 Bill `total_tokens` per turn — **it already includes the retries**, so adding
 `retry_metrics` on top charges every retried turn twice.
 
+**The shadow pre-judge is a line of its own** (F2.3a). A host that wires
+`cogno_anima.tools.PreJudgeDispatcher` gets one `StageMetrics` per pre-judged write, and its
+`stage` is always `JUDGE_PRE_STAGE` (`"judge_pre"`) — the wrapper forces the label whatever the
+callback used. Append `sink.metrics` to `ctx.retry_metrics` after `await sink.settle()` and it is
+billed like any other extra; keep it on its own ledger line and never fold it into the judge's
+(`superego_judge`): the shadow exists to be COMPARED with that judge, and a summed line cannot be
+compared with anything. A judgement that timed out or was cancelled at settle reports 0 tokens —
+unknown, not free — and its `timeout` record is what makes the zero readable.
+
+```python
+from cogno_anima.stages import ProposalJudge
+from cogno_anima.tools import PreJudgeDispatcher, PreJudgeSink
+
+sink = PreJudgeSink()
+judge = ProposalJudge(judge_backend, request=user_text, previous_reply=last_reply,
+                      schemas=dispatcher.tools_schema())
+dispatcher = PreJudgeDispatcher(dispatcher, judge=judge, sink=sink)
+try:
+    ctx = await run_the_turn(dispatcher)
+finally:
+    await sink.settle()                 # grace 0: never delays the reply; stragglers → timeout
+ctx.retry_metrics.extend(sink.metrics)  # the `judge_pre` ledger line
+trace["judge"]["pre"] = sink.records    # tool, verdict, ms, committed — closed alphabet, no text
+```
+
+Nothing is blocked and no reply changes: the call runs beside the judgement, never behind it.
+What activating it would mean is in `docs/ACT_CONFIRM_READONLY.md` § shadow.
+
 The trap is that both halves of the sentence above are true and read as if they compose:
 `retry_metrics` really is where the failed attempts live, and billing really must not miss
 them. But `stage_metrics` is *defined* as the canonical slots **plus** `retry_metrics`

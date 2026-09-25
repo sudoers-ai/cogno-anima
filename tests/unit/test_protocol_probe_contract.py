@@ -23,7 +23,7 @@ herdava o buraco.
 
 **Desde que os invólucros do host entraram nesta lib, ela TEM classes com `__getattr__`** —
 `CommitRecordingDispatcher`, `ConfirmArgumentRecordingDispatcher`, `IdProvenanceDispatcher`,
-`IdempotentDispatcher` —
+`IdempotentDispatcher`, `PreJudgeDispatcher` —
 e isso NÃO contradiz o que está escrito acima: nelas o `__getattr__` encaminha o que o
 invólucro não medeia (um contador, um predicado de política mais fino que um chamador vai
 buscar abaixo), enquanto os membros que DECIDEM a sonda são ligados à INSTÂNCIA por
@@ -187,7 +187,9 @@ def _build(klass, inner):
                                    ConfirmArgumentRecordingDispatcher,
                                    IdempotentDispatcher,
                                    IdProvenanceDispatcher,
-                                   InMemoryIdempotencyStore)
+                                   InMemoryIdempotencyStore,
+                                   PreJudgeDispatcher,
+                                   PreJudgeSink)
 
     fabricas = {
         CommitRecordingDispatcher: lambda i: CommitRecordingDispatcher(i, []),
@@ -195,6 +197,8 @@ def _build(klass, inner):
         IdProvenanceDispatcher: lambda i: IdProvenanceDispatcher(i, guarded={}),
         IdempotentDispatcher: lambda i: IdempotentDispatcher(
             i, InMemoryIdempotencyStore(), scope="t:u", rules={}),
+        PreJudgeDispatcher: lambda i: PreJudgeDispatcher(
+            i, judge=lambda p: None, sink=PreJudgeSink()),
     }
     assert klass in fabricas, (
         f"`{klass.__name__}` é um invólucro novo desta lib e ninguém lhe deu construtor aqui — "
@@ -205,7 +209,7 @@ def _build(klass, inner):
 def test_the_shipped_wrappers_are_actually_found():
     """Guarda a guarda: um `_shipped_wrappers` que devolvesse `[]` deixaria os dois testes
     seguintes verdes sobre um universo vazio — a forma de defeito que este ficheiro combate."""
-    assert len(_shipped_wrappers()) >= 4
+    assert len(_shipped_wrappers()) >= 5
 
 
 def test_every_wrapper_this_package_ships_binds_its_policy():

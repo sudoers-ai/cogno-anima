@@ -5,6 +5,7 @@ from cogno_anima.stages.id import IDStage
 from cogno_anima.stages.ego import EgoStage
 from cogno_anima.stages.superego import SuperegoStage
 from cogno_anima.stages.drift import DriftCalculator
+from cogno_anima.stages.proposal_judge import ProposalJudge
 
 __all__ = [
     "BaseStage",
@@ -14,4 +15,5 @@ __all__ = [
     "EgoStage",
     "SuperegoStage",
     "DriftCalculator",
+    "ProposalJudge",
 ]
