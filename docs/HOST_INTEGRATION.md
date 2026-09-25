@@ -240,11 +240,17 @@ readable.
 
 ```python
 from cogno_anima.stages import ProposalJudge
+from cogno_anima.stages.proposal_judge import PersonaCard
 from cogno_anima.tools import PreJudgeDispatcher, PreJudgeSink
 
 sink = PreJudgeSink()
 judge = ProposalJudge(judge_backend, request=user_text, previous_reply=last_reply,
-                      schemas=dispatcher.tools_schema())
+                      schemas=dispatcher.tools_schema(),
+                      # F2.3a-v2 — optional; each renders only when given:
+                      now=tenant_now,                        # YOUR clock, the tenant's zone
+                      persona=PersonaCard(pid, name, purpose),
+                      personas=tenant_roster,                # the transfer targets
+                      facts_not_wording=True)
 dispatcher = PreJudgeDispatcher(dispatcher, judge=judge, sink=sink)
 try:
     ctx = await run_the_turn(dispatcher)

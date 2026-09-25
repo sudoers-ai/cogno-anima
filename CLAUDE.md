@@ -221,7 +221,17 @@ and its business; the core ships the mechanism and takes the declaration as a pa
   the judge asked of the CALL — the contact's message, the reply a "yes" answers, the tool's own
   description and the fenced arguments; no rules, no tool results (named in its prompt: an id the
   executor READ is not wrong by itself) — and STRICT about the verdict (only a JSON boolean counts;
-  a string `"false"` is `error`, never coerced). It lives apart from `superego.py` and shares only
+  a string `"false"` is `error`, never coerced). **F2.3a-v2 gave it the context the first replay
+  showed it lacked** — of 43 writes labelled right it rejected 20, every one for want of it — as
+  four OPTIONAL inputs, each fenced as the tenant's data and each rendering its own rule inside
+  `# Decide` only when given: `now` (the HOST's clock in the tenant's zone, never this library's —
+  relative dates are resolved against it), `persona` (the running persona's purpose: an action that
+  is its job, with values given in passing, is what was asked), `personas` (`PersonaCard` id → name
+  → purpose, the only transfer targets: moving the conversation to the persona the user NAMED, or
+  the owner of the task, IS the request; to any other is a different action) and
+  `facts_not_wording` (a free-text argument is judged by the facts it states, never its phrasing).
+  Without them the prompt is byte for byte the first cut's, pinned by digest with a control
+  (`test_pre_judge_context.py`). It lives apart from `superego.py` and shares only
   its parser, so no rendering of the post-execution judge moves by a byte. Nothing is blocked:
   activating (a) — a rejected write that does not go out — is a later, measured decision
   (`docs/ACT_CONFIRM_READONLY.md` § shadow). Build a fresh instance and sink per turn.

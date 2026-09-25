@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased — o juiz-antes-da-escrita com o CONTEXTO que lhe faltava (F2.3a-v2, 2026-09-25)
+
+### Added
+
+- **`ProposalJudge(now=, persona=, personas=, facts_not_wording=)`** e **`PersonaCard`**
+  (`stages/proposal_judge.py`). A primeira re-corrida da sombra rejeitou 20 de 43 escritas
+  CERTAS, todas por falta de algo que o juiz nunca viu. Quatro entradas OPCIONAIS, cada uma cercada
+  como DADOS do negócio e cada uma com a sua regra dentro do `# Decide`, só quando é dada:
+  - `now` — o instante do turno pelo relógio do HOST, no fuso do tenant (nunca o `datetime.now()`
+    da lib): as datas relativas («amanhã às 18:30») resolvem-se contra ele;
+  - `persona` — o propósito da persona actual: uma acção que é o trabalho DELA, com valores ditos
+    de passagem, é o que a conversa pediu;
+  - `personas` — a lista do tenant (id → nome visível → propósito, no máximo 30), os únicos alvos
+    de uma transferência: transferir para a persona NOMEADA (pelo nome ou pelo id), ou para a dona
+    da tarefa, É o pedido; para outra é uma acção DIFERENTE;
+  - `facts_not_wording` — num argumento de texto livre julgam-se os FACTOS, não a redacção, a
+    saudação ou o tom.
+- Ordem das secções: a lista, a persona, o relógio, e só depois o pedido — o que se repete entre
+  turnos vem primeiro, para a cache do fornecedor.
+
+### Não muda
+
+- Sem os campos (ou com eles vazios), o prompt é BYTE A BYTE o de `b9a8eb7`: três renderizações
+  presas por digest, e o CONTROLO de que cada campo move o digest
+  (`tests/unit/test_pre_judge_context.py`). Gémeos por campo: a secção e a regra de cada um, e só
+  as dele; o gémeo das cinco transferências para a persona errada (a lista e a regra à frente do
+  juiz); a vedação (um propósito não fecha o seu cerco nem parte a linha).
+- Integração e bench: não se aplicam — sem I/O novo; a re-corrida com modelo é do consultor.
+
 ## Unreleased — o juízo prévio CORTADO depois de enviar não regista 0 tokens (F2.3a-bis, 2026-09-25)
 
 ### Added
