@@ -276,6 +276,52 @@ async def test_a_judge_past_its_own_ceiling_is_a_timeout():
     assert sink.metrics[0].stage == JUDGE_PRE_STAGE and sink.metrics[0].tokens_in == 0
 
 
+class _SwallowsTheCancel:
+    """A judge that does not honour cancellation: it catches the cancel and answers anyway
+    (`then="approve"`) or turns it into an exception (`then="raise"`). Reachable in the wild —
+    any callback with a broad `except` around its own await is this."""
+
+    model = "judge-fake"
+
+    def __init__(self, then: str) -> None:
+        self.then = then
+        self.cancelled = 0
+
+    async def __call__(self, proposal: Proposal) -> PreJudgment:
+        try:
+            await asyncio.sleep(5.0)
+        except asyncio.CancelledError:
+            self.cancelled += 1
+            if self.then == "raise":
+                raise RuntimeError("the cancel became an error")
+            return PreJudgment("approved", StageMetrics(stage=JUDGE_PRE_STAGE, elapsed_ms=1.0,
+                                                        tokens_in=9, tokens_out=1,
+                                                        model=self.model))
+        return PreJudgment("critique")
+
+
+@pytest.mark.parametrize("then", ["approve", "raise"])
+async def test_an_answer_after_the_CEILING_stays_a_timeout(then):
+    """The clock's verdict is the first word, and the late answer does not overwrite it."""
+    judge = _SwallowsTheCancel(then)
+    _, _, sink, d = _wrap(judge=judge, timeout_s=0.05)
+    await d.execute(_WRITE, dict(_ASKED))
+    await sink.settle(grace_s=1.0)
+    assert judge.cancelled == 1                                     # the condition happened
+    assert [r["verdict"] for r in sink.records] == ["timeout"]
+
+
+@pytest.mark.parametrize("then", ["approve", "raise"])
+async def test_an_answer_after_SETTLE_stays_a_timeout(then):
+    """The same through the other door: `settle` at grace 0 closes the record, then cancels."""
+    judge = _SwallowsTheCancel(then)
+    _, _, sink, d = _wrap(judge=judge)
+    await d.execute(_WRITE, dict(_ASKED))
+    await sink.settle()
+    assert judge.cancelled == 1
+    assert [r["verdict"] for r in sink.records] == ["timeout"]
+
+
 async def test_settle_cancels_a_straggler_and_leaves_nothing_running():
     """Grace 0 is the default: the shadow never delays a reply. A verdict that is not in is a
     `timeout`, and the task is CANCELLED — a call that outlived its turn would be a model call

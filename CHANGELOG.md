@@ -42,6 +42,12 @@
   `settle` arquivava-o como `timeout`. `test_a_verdict_from_outside_the_alphabet_is_recorded_as_error`,
   `test_a_callback_cannot_claim_a_timeout_only_the_clock_can` e o controlo
   `test_control_a_verdict_the_callback_may_give_passes_intact`.
+- **A primeira palavra ganha, e é o relógio.** O tecto e o `settle` escrevem `timeout` e SÓ
+  DEPOIS cancelam; um juiz que engole o cancelamento e responde na mesma (ou o converte numa
+  excepção) encontra o registo já fechado. O `settle` fazia-o pela ordem inversa — cancelava,
+  esperava e só então arquivava —, e uma resposta chegada depois do fim do turno ficava como se
+  tivesse chegado a tempo. `test_an_answer_after_the_CEILING_stays_a_timeout` e
+  `test_an_answer_after_SETTLE_stays_a_timeout` (cada um com as duas formas).
 - **Controlo produzido:** a mutação que faz o invólucro AGUARDAR o juiz antes da chamada põe
   vermelho `test_the_write_runs_and_returns_while_the_judge_is_still_thinking` (o `execute` não
   volta) e `test_a_slow_judge_adds_nothing_to_the_call`. Gémeos: argumentos errados → `critique` E a

@@ -150,7 +150,11 @@ class _Entry:
     committed: Optional[bool] = None       # None = the call raised (no result to read)
 
     def finish(self, verdict: str, metrics: Optional[StageMetrics]) -> None:
-        if self.verdict is not None:         # first word wins; settle never overwrites a verdict
+        # FIRST WORD WINS, and it is load-bearing, not tidiness: the ceiling and `settle` write
+        # `timeout` and THEN cancel, and a judge that swallows the cancel (or turns it into an
+        # exception) still reaches `_judge_one`'s own `finish` afterwards. Without this line that
+        # late answer would overwrite the clock's verdict.
+        if self.verdict is not None:
             return
         self.elapsed_ms = (time.perf_counter() - self.started) * 1000
         self.verdict = verdict if isinstance(verdict, str) and verdict in PRE_VERDICTS \
@@ -192,15 +196,22 @@ class PreJudgeSink:
             still = [t for t in pending if not t.done()]
             if still and grace_s > 0:
                 await asyncio.wait(still, timeout=grace_s)
-            late = [t for t in pending if not t.done()]
-            for task in late:
+            late = [(e, e.task) for e in self._entries
+                    if e.task is not None and not e.task.done()]
+            for e, task in late:
+                # The verdict FIRST, then the cancel — the same order as the ceiling's
+                # `_expire`: a judge that swallows the cancel and answers anyway must find the
+                # record already closed, or an answer that arrived after the turn ended would be
+                # filed as if it had been in time.
+                e.finish(PRE_TIMEOUT, None)
                 task.cancel()
             if late:
-                await asyncio.gather(*late, return_exceptions=True)
+                await asyncio.gather(*(task for _, task in late), return_exceptions=True)
         except asyncio.CancelledError:
             # The turn itself is being cancelled: still leave nothing running behind it.
             for e in self._entries:
                 if e.task is not None and not e.task.done():
+                    e.finish(PRE_TIMEOUT, None)     # the same order: the verdict, then the cancel
                     e.task.cancel()
             raise
         except Exception:        # noqa: BLE001 — a recorder must never cost the turn
