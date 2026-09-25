@@ -256,7 +256,7 @@ try:
     ctx = await run_the_turn(dispatcher)
 finally:
     await sink.settle()                 # grace 0: never delays the reply; stragglers → timeout
-ctx.retry_metrics.extend(sink.metrics)  # the `judge_pre` ledger line
+ctx.retry_metrics.extend(sink.metrics)  # `judge_pre` rows (+ `judge_pre:estimated` for a cut one)
 trace["judge"]["pre"] = sink.records    # tool, verdict, ms, committed — closed alphabet, no text
 ```
 

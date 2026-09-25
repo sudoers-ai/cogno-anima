@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased — varredura de docs do fecho da Fase 2 (B): o que o F2.3a/-bis/-v2 deixou por dizer
+
+Só documentação e docstrings; nenhum comportamento muda. Cada frase nova aponta para o código que
+a prova.
+
+### Changed (docs)
+- **`docs/NETWORK_PERSONA_CHANNEL.md` §1.2** dizia que o core sabe «exatamente uma coisa» sobre
+  transferências (`ROUTING_ONLY_TOOLS`). Desde o F2.3a-v2 há um segundo sítio que FALA delas sem
+  as modelar: o prompt do `ProposalJudge`, que recebe do host um `personas` (`PersonaCard`) e só
+  então rende os alvos possíveis e o `_TRANSFER_RULE`. A secção di-lo, e a tabela «quem decide»
+  ganha a linha (o host, por `ProposalJudge(personas=)`).
+- **`docs/ACT_CONFIRM_READONLY.md` § sombra:** o custo tem duas linhas (`judge_pre` e
+  `judge_pre:estimated` para um juízo cortado depois de enviar — `_Entry.finish`), e o
+  `ProposalJudge` já não lê «só a chamada»: pode receber o contexto opcional do F2.3a-v2.
+- **`docs/HOST_INTEGRATION.md`:** o comentário do exemplo nomeia as duas linhas de custo.
+- **Docstrings:** `PreJudgeSink.metrics` dizia «uma linha `judge_pre` cada» (há também a
+  `judge_pre:estimated`); o módulo e a classe do `ProposalJudge` descreviam só o primeiro corte
+  («três» entradas, «e nada mais») e passam a nomear o contexto opcional e as regras que ele traz.
+
 ## Unreleased — o juiz-antes-da-escrita com o CONTEXTO que lhe faltava (F2.3a-v2, 2026-09-25)
 
 ### Added
