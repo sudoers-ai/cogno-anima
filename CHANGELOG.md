@@ -1,5 +1,48 @@
 # Changelog
 
+## Unreleased — o veredicto do juiz prévio CONTA, por ferramenta e só onde o host o pede (F2.3a-on, 2026-09-25)
+
+### Added
+
+- **`PreJudgeDispatcher(enforce=, confirm=, confirmed=, enforce_timeout_s=)`**
+  (`tools/pre_judge.py`). `enforce` é um predicado `(ferramenta) -> bool` que o HOST injecta; a
+  lib não nomeia ferramenta nenhuma. Para uma ESCRITA que ele nomeia, a chamada ESPERA o juízo
+  (`DEFAULT_ENFORCE_TIMEOUT_S = 8.0`):
+  - `approved` → corre;
+  - `critique` → NÃO corre, e o executor recebe a PROPOSTA do host (`confirm`, porta C, com
+    `needs_confirmation`). Uma resposta de `confirm` que não seja uma proposta é trocada por uma
+    neutra: uma chamada retida nunca se lê como escrita;
+  - `error` / `timeout` → corre, em falha aberta, e CONTADA.
+- **`confirmed(ferramenta, argumentos)`** deixa correr sem novo juízo a chamada que o contacto JÁ
+  confirmou. É perguntado com os argumentos da própria chamada, portanto um «sim» a um alvo nunca
+  cobre outro.
+- **`PRE_OUTCOMES = executed | held | executed_fail_open`**, com as constantes e o
+  `DEFAULT_ENFORCE_TIMEOUT_S` exportados de `cogno_anima.tools`.
+- O registo de uma chamada activada ganha `enforced` e `outcome`. Os da sombra ficam com as quatro
+  chaves de sempre.
+
+### Não muda
+
+- Sem `enforce`, o wrapper é a sombra byte a byte. Uma escrita que o `enforce` não nomeia continua
+  em sombra, e uma leitura nunca é julgada.
+- Uma chamada activada é julgada UMA vez.
+- `test_protocol_probe_contract` continua verde: a política é reencaminhada só quando a fonte a tem.
+
+### Quatro níveis
+
+- **unit** — `tests/unit/test_pre_judge_enforce.py`:
+  - os gémeos: a proposta errada é retida e não chega à ferramenta; a certa corre uma vez, depois
+    do veredicto;
+  - a falha aberta contada: o juiz que levanta, e o tecto da activação;
+  - a chamada confirmada corre sem novo juízo, e só ELA;
+  - um só juízo por chamada;
+  - os controlos: sem `enforce`, uma escrita não nomeada, uma leitura, e o `confirm` que não é
+    proposta;
+  - o alfabeto fechado e sem texto.
+- **integração** — não se aplica: não há I/O novo, e o juiz é injectado.
+- **bench** — não se aplica na lib; a activação e a medição são do host e do consultor.
+- **docs** — `docs/ACT_CONFIRM_READONLY.md` § enforcement, `CLAUDE.md` e este registo.
+
 ## Unreleased — o juiz-antes-da-escrita com o CONTEXTO que lhe faltava (F2.3a-v2, 2026-09-25)
 
 ### Added

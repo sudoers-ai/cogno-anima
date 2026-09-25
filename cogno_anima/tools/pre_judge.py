@@ -39,6 +39,32 @@ says so (:data:`JUDGE_PRE_ESTIMATED_STAGE`). A callback that never calls it, or 
 before it ever ran, carries 0 — "unknown", which the ``timeout`` verdict beside it is what makes
 readable; a call that ERRORED records whatever the callback measured before it failed.
 
+**ENFORCEMENT, opt-in and per tool (F2.3a-on).** A caller that has MEASURED the pre-verdict on a
+tool may make it count there: ``enforce`` is a predicate ``(tool) -> bool`` the caller injects,
+and for a WRITE it answers ``True`` to, the call WAITS for its judgement (ceiling
+``enforce_timeout_s``) and
+
+* ``approved`` → the call runs, as in the shadow;
+* ``critique`` → the call does NOT run. The wrapper returns a PROPOSAL instead — the
+  ``ToolResult(needs_confirmation=True)`` of gate C, built by the caller's ``confirm`` callback
+  (the sentence the contact reads is the caller's, never this module's) — so the executor stops
+  and the contact is asked. A proposal commits nothing, and the wrapper holds it to that: a
+  ``confirm`` answer that is not a proposal (``needs_confirmation`` false, ``ok`` or
+  ``side_effect`` true) is replaced by a neutral one;
+* ``error`` / ``timeout`` → the call runs (FAIL OPEN: with no verdict the behaviour is the
+  shadow's), and the record SAYS so — a fail-open nobody counts becomes the mechanism.
+
+``confirmed`` is the caller's predicate ``(tool, arguments) -> bool`` for "the contact already
+confirmed THIS call": such a call runs without being judged again, because the contact's yes to a
+re-made proposal IS the verdict (``docs/ACT_CONFIRM_READONLY.md``: nothing is executed that was
+not re-proposed to the contact). It is asked with the call's own arguments, so a yes to a proposal
+about one object never waves through a call on another.
+
+An enforced call is judged ONCE — the enforcement judgement is the shadow's record for that call,
+in the same sink, with two more keys (``enforced`` and ``outcome``, from :data:`PRE_OUTCOMES`).
+Every tool ``enforce`` does not name is judged exactly as before; without ``enforce`` this
+wrapper is the shadow, byte for byte.
+
 **What this module does NOT decide** — each is the caller's:
 
 * the judge itself — the callback, which is given only the :class:`Proposal`; what the request
@@ -71,7 +97,7 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Optional
 
 from cogno_anima.tools.binding import bind_delegated
-from cogno_anima.types import StageMetrics
+from cogno_anima.types import StageMetrics, ToolResult
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +110,11 @@ __all__ = [
     "PRE_ERROR",
     "PRE_TIMEOUT",
     "DEFAULT_PRE_JUDGE_TIMEOUT_S",
+    "DEFAULT_ENFORCE_TIMEOUT_S",
+    "PRE_OUTCOME_EXECUTED",
+    "PRE_OUTCOME_HELD",
+    "PRE_OUTCOME_FAIL_OPEN",
+    "PRE_OUTCOMES",
     "Proposal",
     "PreJudgment",
     "PreJudge",
@@ -113,6 +144,20 @@ _CALLBACK_VERDICTS = frozenset({PRE_APPROVED, PRE_CRITIQUE, PRE_ERROR})
 #: The judgement's own ceiling, from launch. Well above the post-execution judge's measured p90
 #: (6.6 s): the point of the ceiling is to bound a HUNG call, not to race an ordinary one.
 DEFAULT_PRE_JUDGE_TIMEOUT_S = 20.0
+#: The ceiling of an ENFORCED judgement — shorter, because here the call (and the reply) waits.
+DEFAULT_ENFORCE_TIMEOUT_S = 8.0
+
+#: What an ENFORCED call did, in the record (closed): it ran after an ``approved``, it was HELD
+#: for the contact's confirmation after a ``critique``, or it ran with no verdict (``error`` /
+#: ``timeout``) — the fail-open, counted.
+PRE_OUTCOME_EXECUTED = "executed"
+PRE_OUTCOME_HELD = "held"
+PRE_OUTCOME_FAIL_OPEN = "executed_fail_open"
+PRE_OUTCOMES = (PRE_OUTCOME_EXECUTED, PRE_OUTCOME_HELD, PRE_OUTCOME_FAIL_OPEN)
+
+#: The proposal returned when the caller's ``confirm`` gives none, or gives something that is not
+#: a proposal. Neutral on purpose: which words a contact reads is the caller's.
+_NEUTRAL_PROPOSAL = "Held for confirmation before this action runs."
 
 
 @dataclass(frozen=True)
@@ -163,6 +208,9 @@ class _Entry:
     elapsed_ms: float = 0.0
     metrics: Optional[StageMetrics] = None
     committed: Optional[bool] = None       # None = the call raised (no result to read)
+    #: Set only on an ENFORCED call: the verdict counted, and what the call did.
+    enforced: bool = False
+    outcome: Optional[str] = None
     #: What the callback said its prompt would cost, BEFORE it awaited (``Proposal.note_prompt``).
     prompt_tokens_estimated: Optional[int] = None
 
@@ -267,9 +315,18 @@ class PreJudgeSink:
         raised. A judgement not yet settled is not listed: an unsettled record would be a verdict
         nobody gave.
         """
-        return [{"tool": e.tool, "verdict": e.verdict, "ms": int(round(e.elapsed_ms)),
-                 "committed": e.committed}
-                for e in self._entries if e.verdict is not None]
+        out: "list[dict[str, Any]]" = []
+        for e in self._entries:
+            if e.verdict is None:
+                continue
+            row: "dict[str, Any]" = {"tool": e.tool, "verdict": e.verdict,
+                                     "ms": int(round(e.elapsed_ms)), "committed": e.committed}
+            if e.enforced:
+                # Only on an enforced call — a shadow record keeps its four keys, byte for byte.
+                row["enforced"] = True
+                row["outcome"] = e.outcome if e.outcome in PRE_OUTCOMES else None
+            out.append(row)
+        return out
 
     @property
     def metrics(self) -> "list[StageMetrics]":
@@ -292,11 +349,19 @@ class PreJudgeDispatcher:
     # probe for a source that declared no policy at all.
 
     def __init__(self, inner: Any, *, judge: "PreJudge", sink: PreJudgeSink,
-                 timeout_s: float = DEFAULT_PRE_JUDGE_TIMEOUT_S) -> None:
+                 timeout_s: float = DEFAULT_PRE_JUDGE_TIMEOUT_S,
+                 enforce: "Optional[Callable[[str], bool]]" = None,
+                 confirm: "Optional[Callable[[Proposal], Any]]" = None,
+                 confirmed: "Optional[Callable[[str, dict], bool]]" = None,
+                 enforce_timeout_s: float = DEFAULT_ENFORCE_TIMEOUT_S) -> None:
         self._inner = inner
         self._judge = judge
         self._sink = sink
         self._timeout_s = float(timeout_s)
+        self._enforce = enforce
+        self._confirm = confirm
+        self._confirmed = confirmed
+        self._enforce_timeout_s = float(enforce_timeout_s)
         #: Observability, per turn: how many judgements this wrapper launched.
         self.pre_judged = 0
         bind_delegated(self, inner, "is_mutating", "requires_confirmation")
@@ -305,6 +370,8 @@ class PreJudgeDispatcher:
         return self._inner.tools_schema()
 
     async def execute(self, name: str, arguments: dict) -> Any:
+        if self._enforces(name):
+            return await self._execute_enforced(name, arguments)
         entry = self._launch(name, arguments)
         # THE CALL, exactly as it would run without this wrapper — not after the judge, not
         # instead of it, and with no `try`: an exception is the inner's to raise and the
@@ -315,6 +382,76 @@ class PreJudgeDispatcher:
                                    and getattr(result, "side_effect", False))
         return result
 
+    def _enforces(self, name: str) -> bool:
+        """Does the verdict COUNT for this call? Only for a WRITE the caller's ``enforce`` names —
+        the policy underneath still decides what a write is — and never on a raise."""
+        if self._enforce is None or not self._is_write(name):
+            return False
+        try:
+            return self._enforce(name) is True
+        except Exception:                     # noqa: BLE001 — an unanswerable policy enforces nothing
+            logger.warning("event=judge_pre_enforce_policy_failed tool=%s", name, exc_info=True)
+            return False
+
+    def _already_confirmed(self, name: str, arguments: Any) -> bool:
+        if self._confirmed is None:
+            return False
+        try:
+            return self._confirmed(name, dict(arguments) if isinstance(arguments, dict)
+                                   else {}) is True
+        except Exception:                     # noqa: BLE001 — unknown is NOT confirmed
+            logger.warning("event=judge_pre_confirmed_failed tool=%s", name, exc_info=True)
+            return False
+
+    async def _execute_enforced(self, name: str, arguments: dict) -> Any:
+        """The ENFORCED path (module docstring): wait for the judgement, then run, hold, or run
+        with the fail-open counted. A call the contact already confirmed runs unjudged."""
+        if self._already_confirmed(name, arguments):
+            return await self._inner.execute(name, arguments)
+        entry = self._launch(name, arguments, ceiling_s=self._enforce_timeout_s)
+        if entry is None:                     # the judgement could not even start: fail open
+            return await self._inner.execute(name, arguments)
+        entry.enforced = True
+        if entry.task is not None:
+            # `wait`, not `await task`: the ceiling CANCELS the task, and that must read as a
+            # timeout here, never as this coroutine being cancelled. A cancel of THIS coroutine
+            # (the turn ending) still propagates; `settle` then closes the judgement.
+            await asyncio.wait({entry.task})
+        if entry.verdict == PRE_CRITIQUE:
+            entry.outcome = PRE_OUTCOME_HELD
+            entry.committed = False
+            logger.info("event=judge_pre_enforced tool=%s verdict=%s outcome=%s", name,
+                        entry.verdict, entry.outcome)
+            return self._proposal(name, arguments)
+        entry.outcome = (PRE_OUTCOME_EXECUTED if entry.verdict == PRE_APPROVED
+                         else PRE_OUTCOME_FAIL_OPEN)
+        logger.info("event=judge_pre_enforced tool=%s verdict=%s outcome=%s", name,
+                    entry.verdict, entry.outcome)
+        result = await self._inner.execute(name, arguments)
+        entry.committed = bool(getattr(result, "ok", False)
+                               and getattr(result, "side_effect", False))
+        return result
+
+    def _proposal(self, name: str, arguments: Any) -> Any:
+        """The caller's proposal for a held call — and only ever a PROPOSAL: something that says
+        it needs confirmation, did not succeed and wrote nothing. Anything else is replaced."""
+        neutral = ToolResult(output=_NEUTRAL_PROPOSAL, ok=False, error="needs_confirmation",
+                             side_effect=False, needs_confirmation=True)
+        if self._confirm is None:
+            return neutral
+        try:
+            made = self._confirm(Proposal(str(name), dict(arguments)
+                                          if isinstance(arguments, dict) else {}))
+        except Exception:                     # noqa: BLE001 — a proposal must still be made
+            logger.warning("event=judge_pre_confirm_failed tool=%s", name, exc_info=True)
+            return neutral
+        if (getattr(made, "needs_confirmation", False) is True
+                and getattr(made, "ok", True) is False
+                and getattr(made, "side_effect", True) is False):
+            return made
+        logger.warning("event=judge_pre_confirm_not_a_proposal tool=%s", name)
+        return neutral
+
     def _is_write(self, name: str) -> bool:
         probe = getattr(self._inner, "is_mutating", None)
         if probe is None:
@@ -324,7 +461,8 @@ class PreJudgeDispatcher:
         except Exception:                     # noqa: BLE001 — an unanswerable probe judges nothing
             return False
 
-    def _launch(self, name: str, arguments: Any) -> Optional[_Entry]:
+    def _launch(self, name: str, arguments: Any, *,
+                ceiling_s: Optional[float] = None) -> Optional[_Entry]:
         """Start the judgement and return at once. Never raises: a shadow that cannot start is a
         call without a shadow, not a call that fails."""
         try:
@@ -344,7 +482,7 @@ class PreJudgeDispatcher:
             # in needs several loop turns to register — and `settle` at grace 0 would file it as
             # a timeout. Here the judge runs inside the task itself and finishes in its own step.
             entry.timer = asyncio.get_running_loop().call_later(
-                self._timeout_s, self._expire, entry)
+                self._timeout_s if ceiling_s is None else ceiling_s, self._expire, entry)
             self._sink._add(entry)
             self.pre_judged += 1
             return entry

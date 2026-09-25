@@ -232,9 +232,17 @@ and its business; the core ships the mechanism and takes the declaration as a pa
   `facts_not_wording` (a free-text argument is judged by the facts it states, never its phrasing).
   Without them the prompt is byte for byte the first cut's, pinned by digest with a control
   (`test_pre_judge_context.py`). It lives apart from `superego.py` and shares only
-  its parser, so no rendering of the post-execution judge moves by a byte. Nothing is blocked:
-  activating (a) — a rejected write that does not go out — is a later, measured decision
-  (`docs/ACT_CONFIRM_READONLY.md` § shadow). Build a fresh instance and sink per turn.
+  its parser, so no rendering of the post-execution judge moves by a byte. **Enforcement is
+  opt-in and per tool (F2.3a-on)**: with `enforce=<(tool) -> bool>` (host-injected — the core names
+  no tool) a WRITE it names WAITS for its judgement (`DEFAULT_ENFORCE_TIMEOUT_S = 8.0`) and
+  `approved` runs it, `critique` does NOT — the executor gets the host's `confirm` PROPOSAL (gate C,
+  replaced by a neutral one if it is not a proposal, so a held call can never read as a write) —
+  and `error`/`timeout` run it FAIL OPEN, counted (`PRE_OUTCOMES = executed|held|executed_fail_open`,
+  two more keys on that record only). `confirmed(tool, arguments)` lets a call the contact already
+  confirmed run unjudged, asked with the call's own arguments so a yes to one object never covers
+  another. One judgement per call; without `enforce` the wrapper is the shadow byte for byte
+  (`test_pre_judge_enforce.py`, `docs/ACT_CONFIRM_READONLY.md` § enforcement). Build a fresh
+  instance and sink per turn.
 
 The two recorders, the idempotency guard and the pre-judge bind their policy conditionally (they add
 no verdict of their own, so claiming one would be a lie about the source); the provenance guard and the router DECLARE it, answering the EGO's
