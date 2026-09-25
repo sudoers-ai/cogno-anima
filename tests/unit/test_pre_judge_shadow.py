@@ -253,6 +253,19 @@ async def test_control_a_verdict_the_callback_may_give_passes_intact(said):
     assert await _verdict_of(said) == said
 
 
+@pytest.mark.parametrize("said, kept", [("maybe", "error"), (None, "error"), (["x"], "error"),
+                                        ("timeout", "timeout"), ("critique", "critique")])
+def test_the_record_itself_closes_the_alphabet_whoever_writes_it(said, kept):
+    """The SECOND closure, on the record: the callback path is closed upstream, and this one
+    holds for any future writer of a record (the clock, `settle`, a new path) — so it is pinned
+    on its own, or deleting it would survive every test above."""
+    from cogno_anima.tools.pre_judge import _Entry
+
+    entry = _Entry(tool=_WRITE, model="m", started=time.perf_counter())
+    entry.finish(said, None)  # type: ignore[arg-type]
+    assert entry.verdict == kept
+
+
 # ── the ceiling ───────────────────────────────────────────────────────────────────
 
 async def test_a_judge_past_its_own_ceiling_is_a_timeout():
