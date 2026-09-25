@@ -1,8 +1,9 @@
 # Contract — network, persona, channel: what this library owns, and what it only believes
 
 **Status: CONTRACT.** It describes what the code in this repo GUARANTEES, verified against the
-code at `4dd7cf7`. Where the guarantee is weaker than the prose around it, this document says
-so — a contract that describes an intention is worth nothing.
+code at `4dd7cf7` (§1.2 re-verified at `d724006`, after the shadow pre-judge learned the persona
+roster). Where the guarantee is weaker than the prose around it, this document says so — a
+contract that describes an intention is worth nothing.
 
 Three things have grown across the Cogno system and were written down only in passing:
 
@@ -69,6 +70,15 @@ lock, no target, no give-back. It knows exactly one thing about the class of too
 `metakeys.ROUTING_ONLY_TOOLS`, a set of tool NAMES the host declares, whose successful execution
 changes nothing the contact can see.
 
+**One place SPEAKS about a transfer without modelling one**, and it is a prompt: the shadow
+pre-judge (`cogno_anima.stages.ProposalJudge`, F2.3a-v2). When the host hands it `personas` — a
+roster of `PersonaCard` (id, name, one-line purpose) — the prompt renders them, fenced as the
+tenant's data, as the only possible targets of a transfer, and `_TRANSFER_RULE` tells the model
+that moving the conversation to the persona the user NAMED (or to the owner of the task asked
+for) is what they asked, and to any other is a different action. That is a judgement about ONE
+proposed call, in shadow — nothing is routed, blocked or recorded as a graph, and without the
+roster the rule does not render (`stages/proposal_judge.py`, `tests/unit/test_pre_judge_context.py`).
+
 It is read by `wrote_for_the_contact` and DELIBERATELY ignored by `committed_this_turn`, because
 they are two questions:
 
@@ -92,6 +102,7 @@ The host, on every axis, and the core holds no opinion it could contradict:
 | which persona is consulted, and whether one may consult another | host |
 | what the specialist is allowed to do while consulted | host (it stamps the read-only mask and the step budget) |
 | which tools are "routing only" | host, through `mk.ROUTING_ONLY_TOOLS` |
+| which personas the shadow pre-judge is told a transfer may target | host, through `ProposalJudge(personas=)` — absent, no transfer rule renders |
 | what a transfer does to the conversation afterwards | host — the core never sees it |
 
 ### 1.4 The gap, named rather than implied

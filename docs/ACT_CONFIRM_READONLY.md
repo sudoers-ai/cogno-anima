@@ -204,9 +204,14 @@ every write, so it is preceded by an instrument that changes nothing:
   arguments) of every call the source classifies as a write, **concurrently with the call** — the
   call is never delayed, never blocked, and returns exactly what it would have returned;
 - the verdict (`approved|critique|error|timeout`, no text) lands in a caller-placed sink with the
-  call's own `committed`, and its cost on a ledger line of its own (`judge_pre`);
+  call's own `committed`, and its cost on a ledger line of its own (`judge_pre`; a judgement cut
+  after its prompt was sent is charged the callback's estimate on `judge_pre:estimated` —
+  `tools/pre_judge.py`, `_Entry.finish`);
 - `cogno_anima.stages.ProposalJudge` is the callback this package ships — criterion #1 of the
-  judge (goal↔execution) asked of the call alone.
+  judge (goal↔execution) asked of the call, never of the tool results. The host may hand it the
+  context the first replay showed it lacked (F2.3a-v2: the clock, the running persona, the
+  tenant's persona roster, facts-not-wording), each optional and each rendering its own rule only
+  when given (`stages/proposal_judge.py`, `tests/unit/test_pre_judge_context.py`).
 
 **Where it sits relative to the gates.** A call held by gate B never reaches `execute`, so it is
 not pre-judged on the turn that PROPOSES it; it is pre-judged on the turn that REPLAYS it after the

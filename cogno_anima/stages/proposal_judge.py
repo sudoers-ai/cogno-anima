@@ -9,12 +9,20 @@ model whether THIS call is what the contact asked for, and answer from the close
 **What it reads, and what it deliberately does not.** The contact's message this turn, the reply
 they may be answering (a "yes" is only judgeable against the proposal it confirms), the tool's own
 description as the dispatcher advertised it, and the arguments. That is criterion #1 of the
-SUPEREGO judge — goal↔execution — asked of the call itself, and nothing more: no persona rules, no
-tool results, no history. Two reasons. It is one model call per WRITE and a shadow promised to be
-cheap; and the question it answers is the one the activation decision needs measured — *does the
-judge, reading only the call, agree with the judge that reads the whole execution?* A wider prompt
-would measure a different instrument. What it cannot see is named in the prompt: an id or a slot
-the executor READ from a tool is not visible here and is not, by itself, wrong.
+SUPEREGO judge — goal↔execution — asked of the call itself: no persona RULES, no tool results, no
+history. Two reasons. It is one model call per WRITE and a shadow promised to be cheap; and the
+question it answers is the one the activation decision needs measured — *does the judge, reading
+only the call, agree with the judge that reads the whole execution?* A wider prompt would measure
+a different instrument. What it cannot see is named in the prompt: an id or a slot the executor
+READ from a tool is not visible here and is not, by itself, wrong.
+
+**The context it may be given (F2.3a-v2), each piece OPTIONAL and rendered only when present** —
+``now`` (the host's clock), ``persona`` (the running persona's id, name and one-line purpose),
+``personas`` (the tenant's roster, the only transfer targets) and ``facts_not_wording`` (a
+free-text argument judged by its facts). Each brings its own rule into ``# Decide``
+(``_NOW_RULE``, ``_PERSONA_RULE``, ``_TRANSFER_RULE``, ``_FREE_TEXT_RULE``); without them the
+prompt is the first cut's, byte for byte (``tests/unit/test_pre_judge_context.py``). A purpose is
+the tenant's configuration, fenced as data — still not the persona's rules.
 
 **Separate from** :mod:`cogno_anima.stages.superego` on purpose — no clause of the post-execution
 judge moves, and no rendering of its prompt changes by a byte. The two share the parser
@@ -192,8 +200,9 @@ class ProposalJudge:
 
     ``request`` is what the contact said this turn; ``previous_reply`` the last thing the
     assistant told them (the proposal a "yes" confirms); ``schemas`` the tool table the executor
-    was offered, read for the description only. All three are closed over at construction because
-    the dispatcher hands the callback nothing but the call.
+    was offered, read for the description only; and the optional F2.3a-v2 context (``now``,
+    ``persona``, ``personas``, ``facts_not_wording`` — see ``__init__``). All of it is closed over
+    at construction because the dispatcher hands the callback nothing but the call.
     """
 
     def __init__(self, backend: Any, *, request: str, previous_reply: str = "",

@@ -273,7 +273,10 @@ class PreJudgeSink:
 
     @property
     def metrics(self) -> "list[StageMetrics]":
-        """What the settled judgements cost, one :data:`JUDGE_PRE_STAGE` row each."""
+        """What the settled judgements cost, one row each: under :data:`JUDGE_PRE_STAGE`, or under
+        :data:`JUDGE_PRE_ESTIMATED_STAGE` for a judgement CUT after its callback had noted the
+        prompt (:attr:`Proposal.note_prompt`) — the callback's estimate, labelled as one
+        (``_Entry.finish``)."""
         return [e.metrics for e in self._entries
                 if e.verdict is not None and e.metrics is not None]
 
