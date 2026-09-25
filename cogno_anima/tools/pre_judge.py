@@ -33,9 +33,11 @@ thinks, so on an ordinary turn the verdict is in long before the turn ends.
 :meth:`PreJudgeSink.settle`, which waits at most ``grace_s`` (default 0: the shadow never delays a
 reply) and then CANCELS whatever is still running, recording it as ``timeout``. Cancelling rather
 than abandoning is deliberate: a task that outlives its turn is a model call nobody accounts for.
-A cancelled call reports no tokens, so its metrics carry 0 — "unknown", which the ``timeout``
-verdict beside it is what makes readable; a call that ERRORED records whatever the callback
-measured before it failed.
+A cancelled call reports no tokens — but the provider bills a request it RECEIVED, so a callback
+that calls ``Proposal.note_prompt(n)`` before its await gets that estimate charged on a line that
+says so (:data:`JUDGE_PRE_ESTIMATED_STAGE`). A callback that never calls it, or a judgement cut
+before it ever ran, carries 0 — "unknown", which the ``timeout`` verdict beside it is what makes
+readable; a call that ERRORED records whatever the callback measured before it failed.
 
 **What this module does NOT decide** — each is the caller's:
 
@@ -75,6 +77,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "JUDGE_PRE_STAGE",
+    "JUDGE_PRE_ESTIMATED_STAGE",
     "PRE_VERDICTS",
     "PRE_APPROVED",
     "PRE_CRITIQUE",
@@ -90,6 +93,10 @@ __all__ = [
 
 #: The ledger label of every pre-judgement's cost — its own line, NEVER the judge's.
 JUDGE_PRE_STAGE = "judge_pre"
+#: The label of a CUT judgement whose prompt had already been handed to the backend: its tokens
+#: are the callback's ESTIMATE, not a count the provider reported. The suffix is the host's own
+#: convention for an estimated charge (``kb_ingest:estimated``) — one spelling for both.
+JUDGE_PRE_ESTIMATED_STAGE = f"{JUDGE_PRE_STAGE}:estimated"
 
 PRE_APPROVED = "approved"
 PRE_CRITIQUE = "critique"
@@ -119,6 +126,14 @@ class Proposal:
 
     tool: str
     arguments: dict
+    #: The hook a callback calls with its prompt's ESTIMATED input tokens, BEFORE it awaits the
+    #: backend (F2.3a-bis). A judgement cut by the ceiling or by ``settle`` after that point was
+    #: in all likelihood sent, and the provider bills a request it received whether or not the
+    #: answer was read — recording 0 there makes the activation's cost per turn come out LOW. A
+    #: callback that never calls it (every callback written before the hook) records 0 as
+    #: before. Not part of equality: two proposals are the same call whatever hook rides along.
+    note_prompt: "Optional[Callable[[int], None]]" = field(default=None, compare=False,
+                                                           repr=False)
 
 
 @dataclass(frozen=True)
@@ -148,6 +163,16 @@ class _Entry:
     elapsed_ms: float = 0.0
     metrics: Optional[StageMetrics] = None
     committed: Optional[bool] = None       # None = the call raised (no result to read)
+    #: What the callback said its prompt would cost, BEFORE it awaited (``Proposal.note_prompt``).
+    prompt_tokens_estimated: Optional[int] = None
+
+    def note_prompt(self, tokens: int) -> None:
+        """The callback's estimate, taken only while the record is open and only as a
+        non-negative integer — a hook handed to foreign code must not be a way to write junk
+        into a ledger, nor to rewrite a closed record."""
+        if self.verdict is None and isinstance(tokens, int) and not isinstance(tokens, bool) \
+                and tokens >= 0:
+            self.prompt_tokens_estimated = tokens
 
     def finish(self, verdict: str, metrics: Optional[StageMetrics]) -> None:
         # FIRST WORD WINS, and it is load-bearing, not tidiness: the ceiling and `settle` write
@@ -159,13 +184,25 @@ class _Entry:
         self.elapsed_ms = (time.perf_counter() - self.started) * 1000
         self.verdict = verdict if isinstance(verdict, str) and verdict in PRE_VERDICTS \
             else PRE_ERROR
-        base = metrics if isinstance(metrics, StageMetrics) else StageMetrics(
-            stage=JUDGE_PRE_STAGE, elapsed_ms=self.elapsed_ms, tokens_in=0, tokens_out=0,
-            model=self.model)
+        if isinstance(metrics, StageMetrics):
+            base, stage = metrics, JUDGE_PRE_STAGE
+        elif self.verdict == PRE_TIMEOUT and self.prompt_tokens_estimated:
+            # CUT after the prompt was handed over: charge the estimate, and SAY it is one. Only
+            # the clock's verdict takes this path — a judgement that answered reports its own
+            # tokens, and an `error` keeps what the callback measured (a backend that raised
+            # before sending spent nothing a caller can see).
+            base = StageMetrics(stage=JUDGE_PRE_ESTIMATED_STAGE, elapsed_ms=self.elapsed_ms,
+                                tokens_in=self.prompt_tokens_estimated, tokens_out=0,
+                                model=self.model)
+            stage = JUDGE_PRE_ESTIMATED_STAGE
+        else:
+            base = StageMetrics(stage=JUDGE_PRE_STAGE, elapsed_ms=self.elapsed_ms, tokens_in=0,
+                                tokens_out=0, model=self.model)
+            stage = JUDGE_PRE_STAGE
         # The label is the WRAPPER's guarantee, not the callback's courtesy: a host that builds
         # its judge on the SUPEREGO's metrics would otherwise hand in `superego_judge` and sum
         # the shadow into the very judge it is being compared against.
-        self.metrics = base.model_copy(update={"stage": JUDGE_PRE_STAGE})
+        self.metrics = base.model_copy(update={"stage": stage})
 
 
 @dataclass
@@ -300,7 +337,8 @@ class PreJudgeDispatcher:
             entry = _Entry(tool=str(name), model=str(getattr(self._judge, "model", "") or
                                                       "unknown"),
                            started=time.perf_counter())
-            entry.task = asyncio.ensure_future(self._judge_one(entry, Proposal(str(name), args)))
+            entry.task = asyncio.ensure_future(self._judge_one(
+                entry, Proposal(str(name), args, note_prompt=entry.note_prompt)))
             # The ceiling is a TIMER beside the task, not `wait_for` around the judge: before
             # 3.12 `wait_for` runs the awaitable as a SECOND task, so an answer that is already
             # in needs several loop turns to register — and `settle` at grace 0 would file it as

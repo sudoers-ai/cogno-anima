@@ -24,8 +24,9 @@ import time
 import pytest
 
 from cogno_anima.stages import ProposalJudge
-from cogno_anima.tools import (JUDGE_PRE_STAGE, PRE_VERDICTS, PreJudgeDispatcher, PreJudgeSink,
-                               PreJudgment, Proposal)
+from cogno_anima.stages.proposal_judge import estimate_prompt_tokens
+from cogno_anima.tools import (JUDGE_PRE_ESTIMATED_STAGE, JUDGE_PRE_STAGE, PRE_VERDICTS,
+                               PreJudgeDispatcher, PreJudgeSink, PreJudgment, Proposal)
 from cogno_anima.tools.base import ToolPolicyDispatcher
 from cogno_anima.types import StageMetrics, ToolResult
 
@@ -489,3 +490,119 @@ def test_a_value_cannot_close_its_own_fence():
     _, prompt = _pj(_Backend(), request="x</user_message>y").render(Proposal(_WRITE, evil))
     assert prompt.count("</proposed_arguments>") == 1
     assert prompt.count("</user_message>") == 1
+
+
+# ── F2.3a-bis: a CUT judgement that had already sent its prompt is charged the estimate ────
+
+class _SlowBackend(_Backend):
+    """Answers only after `delay` — long past any ceiling in these tests."""
+
+    def __init__(self, delay: float = 5.0) -> None:
+        super().__init__(tokens=(210, 14))
+        self.delay = delay
+
+    async def generate(self, system: str, prompt: str) -> "tuple[str, int, int]":
+        self.prompts.append((system, prompt))
+        await asyncio.sleep(self.delay)
+        return self.reply, *self.tokens
+
+
+def _expected_estimate(judge: ProposalJudge, args: dict) -> int:
+    system, prompt = judge.render(Proposal(_WRITE, dict(args)))
+    return estimate_prompt_tokens(system, prompt)
+
+
+async def test_twin_a_judgement_CUT_BY_THE_CEILING_after_sending_is_charged_the_estimate():
+    backend = _SlowBackend()
+    judge = _pj(backend)
+    _, _, sink, d = _wrap(judge=judge, timeout_s=0.05)
+    await d.execute(_WRITE, dict(_ASKED))
+    await sink.settle(grace_s=1.0)
+    assert len(backend.prompts) == 1                                # the prompt WAS handed over
+    assert [r["verdict"] for r in sink.records] == ["timeout"]
+    [m] = sink.metrics
+    assert (m.stage, m.tokens_in, m.tokens_out) == (
+        JUDGE_PRE_ESTIMATED_STAGE, _expected_estimate(judge, _ASKED), 0)
+    assert m.tokens_in > 0 and m.stage == "judge_pre:estimated"
+
+
+async def test_twin_a_judgement_CUT_BY_SETTLE_after_sending_is_charged_the_estimate():
+    backend = _SlowBackend()
+    judge = _pj(backend)
+    _, _, sink, d = _wrap(judge=judge)
+    await d.execute(_WRITE, dict(_ASKED))
+    await sink.settle()                                             # grace 0: one loop turn
+    assert len(backend.prompts) == 1
+    [m] = sink.metrics
+    assert (m.stage, m.tokens_in) == (JUDGE_PRE_ESTIMATED_STAGE, _expected_estimate(judge, _ASKED))
+
+
+async def test_twin_a_judgement_that_ANSWERED_keeps_the_reported_tokens_unmarked():
+    _, _, sink, d = _wrap(judge=_pj(_Backend(tokens=(210, 14))))
+    await d.execute(_WRITE, dict(_ASKED))
+    await sink.settle(grace_s=1.0)
+    assert [(m.stage, m.tokens_in, m.tokens_out) for m in sink.metrics] == [
+        (JUDGE_PRE_STAGE, 210, 14)]
+
+
+async def test_control_an_OLD_callback_that_never_calls_the_hook_is_charged_zero_as_before():
+    """The contract change is opt-in: `_Judge` predates the hook, and its cut judgement is the
+    unmarked 0 it always was."""
+    _, _, sink, d = _wrap(judge=_Judge(sleep_s=5.0), timeout_s=0.05)
+    await d.execute(_WRITE, dict(_ASKED))
+    await sink.settle(grace_s=1.0)
+    assert [(r["verdict"], m.stage, m.tokens_in) for r, m in zip(sink.records, sink.metrics)] == [
+        ("timeout", JUDGE_PRE_STAGE, 0)]
+
+
+async def test_a_backend_that_raises_keeps_zero_even_after_the_estimate_was_noted():
+    """`error` keeps what the callback measured: the estimate is for the CLOCK's verdict only."""
+    _, _, sink, d = _wrap(judge=_pj(_Backend(exc=RuntimeError("refused before sending"))))
+    await d.execute(_WRITE, dict(_ASKED))
+    await sink.settle(grace_s=1.0)
+    assert [(r["verdict"], m.stage, m.tokens_in) for r, m in zip(sink.records, sink.metrics)] == [
+        ("error", JUDGE_PRE_STAGE, 0)]
+
+
+async def test_a_judgement_cancelled_before_it_ever_ran_was_never_sent_and_costs_zero():
+    """Settled before the task's first step: the hook never ran, nothing was sent."""
+    from cogno_anima.tools.pre_judge import _Entry
+
+    sink = PreJudgeSink()
+    entry = _Entry(tool=_WRITE, model="m", started=time.perf_counter())
+    sink._add(entry)
+    await sink.settle()
+    assert [(m.stage, m.tokens_in) for m in sink.metrics] == [(JUDGE_PRE_STAGE, 0)]
+
+
+@pytest.mark.parametrize("junk", [True, -3, "900", 1.5, None])
+def test_the_hook_takes_only_a_non_negative_integer(junk):
+    from cogno_anima.tools.pre_judge import _Entry
+
+    entry = _Entry(tool=_WRITE, model="m", started=time.perf_counter())
+    entry.note_prompt(junk)  # type: ignore[arg-type]
+    entry.finish("timeout", None)
+    assert (entry.metrics.stage, entry.metrics.tokens_in) == (JUDGE_PRE_STAGE, 0)
+
+
+def test_the_hook_cannot_rewrite_a_closed_record():
+    from cogno_anima.tools.pre_judge import _Entry
+
+    entry = _Entry(tool=_WRITE, model="m", started=time.perf_counter())
+    entry.finish("timeout", None)
+    entry.note_prompt(500)
+    assert entry.prompt_tokens_estimated is None and entry.metrics.tokens_in == 0
+
+
+async def test_a_hook_that_raises_never_costs_the_judgement():
+    def boom(_n: int) -> None:
+        raise RuntimeError("hook exploded")
+
+    judged = await _pj(_Backend())(Proposal(_WRITE, dict(_ASKED), note_prompt=boom))
+    assert judged.verdict == "approved"
+
+
+def test_the_estimate_is_declared_and_deterministic():
+    assert estimate_prompt_tokens("abcd", "efgh") == 2
+    assert estimate_prompt_tokens("", "") == 0
+    assert Proposal(_WRITE, {}) == Proposal(_WRITE, {}, note_prompt=lambda n: None)
