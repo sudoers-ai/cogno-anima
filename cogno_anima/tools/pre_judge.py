@@ -153,7 +153,8 @@ class _Entry:
         if self.verdict is not None:         # first word wins; settle never overwrites a verdict
             return
         self.elapsed_ms = (time.perf_counter() - self.started) * 1000
-        self.verdict = verdict if verdict in PRE_VERDICTS else PRE_ERROR
+        self.verdict = verdict if isinstance(verdict, str) and verdict in PRE_VERDICTS \
+            else PRE_ERROR
         base = metrics if isinstance(metrics, StageMetrics) else StageMetrics(
             stage=JUDGE_PRE_STAGE, elapsed_ms=self.elapsed_ms, tokens_in=0, tokens_out=0,
             model=self.model)
@@ -323,8 +324,10 @@ class PreJudgeDispatcher:
             if entry.timer is not None:
                 entry.timer.cancel()
         verdict = getattr(judged, "verdict", None)
-        entry.finish(verdict if verdict in _CALLBACK_VERDICTS else PRE_ERROR,
-                     getattr(judged, "metrics", None))
+        # `isinstance` FIRST: the set is hashed, and an unhashable answer (a list) raising here
+        # would kill the task after the judge had answered — filed as a `timeout` it never was.
+        entry.finish(verdict if isinstance(verdict, str) and verdict in _CALLBACK_VERDICTS
+                     else PRE_ERROR, getattr(judged, "metrics", None))
         logger.info("event=judge_pre tool=%s verdict=%s ms=%d", entry.tool, entry.verdict,
                     int(entry.elapsed_ms))
 

@@ -212,6 +212,47 @@ async def test_a_judge_that_raises_never_touches_the_call():
     assert [(m.stage, m.tokens_in, m.tokens_out) for m in sink.metrics] == [(JUDGE_PRE_STAGE, 0, 0)]
 
 
+# ── the alphabet is closed at the wrapper, not by the callback's courtesy ─────────
+
+class _Says:
+    """A callback that answers whatever it is told to — a verdict from outside the alphabet
+    included. The records land in persisted metadata, so the wrapper must close them."""
+
+    model = "judge-fake"
+
+    def __init__(self, verdict: object) -> None:
+        self.verdict = verdict
+
+    async def __call__(self, proposal: Proposal) -> PreJudgment:
+        return PreJudgment(self.verdict,  # type: ignore[arg-type]
+                           StageMetrics(stage=JUDGE_PRE_STAGE, elapsed_ms=1.0, tokens_in=7,
+                                        tokens_out=2, model=self.model))
+
+
+async def _verdict_of(said: object) -> str:
+    _, _, sink, d = _wrap(judge=_Says(said))
+    await d.execute(_WRITE, dict(_ASKED))
+    await sink.settle(grace_s=1.0)
+    [record] = sink.records
+    return record["verdict"]
+
+
+@pytest.mark.parametrize("said", ["maybe", "APPROVED", "", None, 1, ["approved"]])
+async def test_a_verdict_from_outside_the_alphabet_is_recorded_as_error(said):
+    assert await _verdict_of(said) == "error"
+
+
+async def test_a_callback_cannot_claim_a_timeout_only_the_clock_can():
+    """`timeout` IS in the alphabet — it is the one out-of-contract answer the record's own
+    closure would let through. A callback cannot know it was late; the wrapper's clock does."""
+    assert await _verdict_of("timeout") == "error"
+
+
+@pytest.mark.parametrize("said", ["approved", "critique", "error"])
+async def test_control_a_verdict_the_callback_may_give_passes_intact(said):
+    assert await _verdict_of(said) == said
+
+
 # ── the ceiling ───────────────────────────────────────────────────────────────────
 
 async def test_a_judge_past_its_own_ceiling_is_a_timeout():

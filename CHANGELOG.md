@@ -35,6 +35,13 @@
 - Nenhuma chamada é bloqueada, atrasada ou alterada; nenhum prompt existente muda. A activação
   (uma escrita rejeitada não sai) é uma decisão posterior, sobre os números desta sombra
   (`docs/ACT_CONFIRM_READONLY.md` § shadow).
+- **O alfabeto fecha-se NO INVÓLUCRO**, não pela cortesia do callback: um veredicto de fora
+  (`"maybe"`, `""`, `None`, um número, uma lista) fica `error`, e um callback que diga `timeout`
+  também — só o relógio do invólucro sabe que houve atraso. A lista apanhou um defeito real antes
+  de aterrar: um valor não-hashável fazia rebentar a tarefa DEPOIS de o juiz responder, e o
+  `settle` arquivava-o como `timeout`. `test_a_verdict_from_outside_the_alphabet_is_recorded_as_error`,
+  `test_a_callback_cannot_claim_a_timeout_only_the_clock_can` e o controlo
+  `test_control_a_verdict_the_callback_may_give_passes_intact`.
 - **Controlo produzido:** a mutação que faz o invólucro AGUARDAR o juiz antes da chamada põe
   vermelho `test_the_write_runs_and_returns_while_the_judge_is_still_thinking` (o `execute` não
   volta) e `test_a_slow_judge_adds_nothing_to_the_call`. Gémeos: argumentos errados → `critique` E a
