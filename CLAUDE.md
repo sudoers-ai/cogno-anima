@@ -240,8 +240,10 @@ and its business; the core ships the mechanism and takes the declaration as a pa
   and `error`/`timeout` run it FAIL OPEN, counted (`PRE_OUTCOMES = executed|held|executed_fail_open`,
   two more keys on that record only). `confirmed(tool, arguments)` lets a call the contact already
   confirmed run unjudged, asked with the call's own arguments so a yes to one object never covers
-  another. One judgement per call; without `enforce` the wrapper is the shadow byte for byte
-  (`test_pre_judge_enforce.py`, `docs/ACT_CONFIRM_READONLY.md` § enforcement). Build a fresh
+  another — and it is REQUIRED whenever `enforce` names a tool: it is gate C's return trip, and
+  without it the confirmed replay is judged again, so a repeated critique makes the EGO's
+  `_refuse_if_still_asking` fail the call the contact confirmed. One judgement per call; without
+  `enforce` the wrapper is the shadow byte for byte (`test_pre_judge_enforce.py`, `docs/ACT_CONFIRM_READONLY.md` § enforcement). Build a fresh
   instance and sink per turn.
 
 The two recorders, the idempotency guard and the pre-judge bind their policy conditionally (they add

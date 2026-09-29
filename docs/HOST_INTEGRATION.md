@@ -239,6 +239,8 @@ cut before its first step, still records 0 — and its `timeout` record is what 
 readable.
 
 ```python
+from cogno_anima import ToolResult
+from cogno_anima import metakeys as mk
 from cogno_anima.stages import ProposalJudge
 from cogno_anima.stages.proposal_judge import PersonaCard
 from cogno_anima.tools import PreJudgeDispatcher, PreJudgeSink
@@ -251,17 +253,46 @@ judge = ProposalJudge(judge_backend, request=user_text, previous_reply=last_repl
                       persona=PersonaCard(pid, name, purpose),
                       personas=tenant_roster,                # the transfer targets
                       facts_not_wording=True)
-dispatcher = PreJudgeDispatcher(dispatcher, judge=judge, sink=sink)
+# F2.3a-on — optional, per tool. Leave `enforce` out and the wrapper is the shadow, byte for byte.
+MEASURED = frozenset({"hand_over_to"})     # the writes YOU measured; the core names no tool
+replayed = turn_metadata.get(mk.EGO_CONFIRMED_CALLS) or []   # the calls you stamp this turn
+dispatcher = PreJudgeDispatcher(
+    dispatcher, judge=judge, sink=sink,
+    enforce=MEASURED.__contains__,                           # the verdict COUNTS for these
+    confirm=lambda p: ToolResult(                            # gate C: YOUR sentence, a proposal
+        output=ask_the_contact(p), ok=False, error="needs_confirmation",
+        side_effect=False, needs_confirmation=True),
+    # REQUIRED whenever `enforce` names a tool — the return trip of gate C (below):
+    confirmed=lambda tool, args: {"tool": tool, "arguments": args} in replayed,
+)
 try:
     ctx = await run_the_turn(dispatcher)
 finally:
     await sink.settle()                 # grace 0: never delays the reply; stragglers → timeout
 ctx.retry_metrics.extend(sink.metrics)  # `judge_pre` rows (+ `judge_pre:estimated` for a cut one)
-trace["judge"]["pre"] = sink.records    # tool, verdict, ms, committed — closed alphabet, no text
+trace["judge"]["pre"] = sink.records    # tool, verdict, ms, committed (+ enforced, outcome) — closed, no text
 ```
 
-Nothing is blocked and no reply changes: the call runs beside the judgement, never behind it.
-What activating it would mean is in `docs/ACT_CONFIRM_READONLY.md` § shadow.
+Without `enforce` nothing is blocked and no reply changes: the call runs beside the judgement,
+never behind it, and every record carries the four keys `tool`, `verdict`, `ms`, `committed`.
+With it, a WRITE `enforce` names WAITS for its judgement (`DEFAULT_ENFORCE_TIMEOUT_S`, 8 s):
+`approved` runs it, `critique` does not — the executor gets your `confirm` proposal and the
+contact is asked — and `error`/`timeout` run it FAIL OPEN. That call's record gains two keys,
+`enforced: True` and `outcome`, one of `PRE_OUTCOMES` (`executed | held | executed_fail_open`);
+every other record keeps its four.
+
+**`confirmed` is REQUIRED whenever `enforce` names a tool.** It is the return trip of gate C: the
+call held on this turn comes back on the next in `mk.EGO_CONFIRMED_CALLS`, and the EGO replays it
+through this same wrapper. Without `confirmed` that replay is JUDGED AGAIN, and a critique repeated
+there holds it again — the EGO's `_refuse_if_still_asking` then fails, loudly (`ok=False`), the
+call the contact has just confirmed: the transfer they said yes to never runs. Nothing refuses the
+construction (`None` reads as "nothing is confirmed", the safe reading of an unknown), so the
+omission shows only when a contact says yes, as a `confirmed_call_still_asks` warning over a call
+that never ran. Answer from the calls you replay, with the call's own arguments, so a yes to one
+object never covers another.
+
+What activating it means, and the decision it needs, is in `docs/ACT_CONFIRM_READONLY.md`
+§ shadow and § enforcement.
 
 The trap is that both halves of the sentence above are true and read as if they compose:
 `retry_metrics` really is where the failed attempts live, and billing really must not miss

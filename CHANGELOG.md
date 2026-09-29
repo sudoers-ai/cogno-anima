@@ -16,6 +16,12 @@
 - **`confirmed(ferramenta, argumentos)`** deixa correr sem novo juízo a chamada que o contacto JÁ
   confirmou. É perguntado com os argumentos da própria chamada, portanto um «sim» a um alvo nunca
   cobre outro.
+- **`confirmed` é OBRIGATÓRIO quando `enforce` nomeia uma ferramenta** — é a volta da porta C: sem
+  ele a replay confirmada é julgada outra vez e uma critique repetida faz o `_refuse_if_still_asking`
+  do EGO falhar a chamada que o contacto confirmou (dito em `docs/HOST_INTEGRATION.md`, que passa a
+  mostrar a fiação e as chaves `enforced`/`outcome`, no docstring e em `docs/ACT_CONFIRM_READONLY.md`);
+  e o gémeo `ok=False, side_effect=True, needs_confirmation=True` mata a mutação M2 (tirar a metade
+  `side_effect` do teste de proposta sobrevivia a 204/204).
 - **`PRE_OUTCOMES = executed | held | executed_fail_open`**, com as constantes e o
   `DEFAULT_ENFORCE_TIMEOUT_S` exportados de `cogno_anima.tools`.
 - O registo de uma chamada activada ganha `enforced` e `outcome`. Os da sombra ficam com as quatro

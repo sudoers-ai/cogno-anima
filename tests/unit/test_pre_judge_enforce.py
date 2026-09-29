@@ -237,6 +237,9 @@ async def test_control_a_READ_is_never_judged_even_if_enforce_names_it():
     ToolResult(output="done", ok=True, side_effect=True),                     # a WRITE
     ToolResult(output="x", ok=False, side_effect=False, needs_confirmation=False),
     ToolResult(output="x", ok=True, side_effect=False, needs_confirmation=True),
+    # Calls itself a proposal but DECLARES a write: without this case the `side_effect` half of
+    # the check could be deleted and every test above stayed green (mutation M2, 204/204).
+    ToolResult(output="x", ok=False, side_effect=True, needs_confirmation=True),
     None,
 ])
 async def test_a_confirm_answer_that_is_not_a_PROPOSAL_is_replaced(answer):

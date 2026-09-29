@@ -58,7 +58,13 @@ and for a WRITE it answers ``True`` to, the call WAITS for its judgement (ceilin
 confirmed THIS call": such a call runs without being judged again, because the contact's yes to a
 re-made proposal IS the verdict (``docs/ACT_CONFIRM_READONLY.md``: nothing is executed that was
 not re-proposed to the contact). It is asked with the call's own arguments, so a yes to a proposal
-about one object never waves through a call on another.
+about one object never waves through a call on another. **It is REQUIRED whenever ``enforce``
+names a tool** — it is the return trip of gate C. The held call comes back as a confirmed call
+(``ego_confirmed_calls``) and is replayed through this wrapper; without ``confirmed`` the replay
+is judged AGAIN, a repeated critique holds it again, and the EGO's ``_refuse_if_still_asking``
+fails — ``ok=False`` — the call the contact has just confirmed. Nothing here refuses a missing
+``confirmed`` (``None`` reads as "nothing is confirmed", the safe reading of an unknown), so the
+omission shows only on the turn a contact says yes.
 
 An enforced call is judged ONCE — the enforcement judgement is the shadow's record for that call,
 in the same sink, with two more keys (``enforced`` and ``outcome``, from :data:`PRE_OUTCOMES`).
