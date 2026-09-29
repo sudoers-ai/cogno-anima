@@ -225,3 +225,38 @@ the matrix of `pre_verdict` against the post-execution verdict over the same wri
 of writes the pre-judge rejected that went out anyway (`verdict=critique ∧ committed=True` — every
 one of them is a write the activated gate would have stopped). Who owns the threshold and the
 switch is the host; nothing in the core activates anything.
+
+### Enforcement — opt-in, per tool, measured first (F2.3a-on, 2026-09-25)
+
+A host that has MEASURED the pre-verdict on a tool may make it count there, and only there:
+`PreJudgeDispatcher(..., enforce=<(tool) -> bool>, confirm=<(Proposal) -> ToolResult>,
+confirmed=<(tool, arguments) -> bool>)` — and `confirmed` is **required** whenever `enforce`
+names a tool (below). For a WRITE `enforce` names:
+
+| verdict | the call | the record |
+|---|---|---|
+| `approved` | runs, once | `enforced: true`, `outcome: executed` |
+| `critique` | does **not** run: the executor gets the host's PROPOSAL (`confirm`, gate C — `needs_confirmation=True`, `ok=False`, `side_effect=False`) and the contact is asked | `outcome: held`, `committed: false` |
+| `error` / `timeout` | runs, as today — **fail open** | `outcome: executed_fail_open` (counted: a fail-open nobody counts becomes the mechanism) |
+
+- **The contact's yes is the verdict, for THAT call only.** `confirmed(tool, arguments)` is asked
+  with the call's own arguments, so a call the contact confirmed runs unjudged and a call on
+  another object is judged like any other. This is the property this document states for every
+  hold: nothing is executed that was not re-proposed to the contact.
+- **`confirmed` is REQUIRED whenever `enforce` names a tool — it is the return trip of gate C.**
+  The held call comes back on the next turn in `ego_confirmed_calls` and the EGO replays it
+  through this same wrapper. Without `confirmed` the replay is judged AGAIN, a repeated critique
+  holds it again, and `_refuse_if_still_asking` (above) fails, `ok=False`, the very call the
+  contact confirmed — a transfer they said yes to never runs. Nothing refuses the omission at
+  construction (`None` reads as "nothing is confirmed"), so it shows only on the turn a contact
+  says yes.
+- **A held call is a proposal, never a write.** A `confirm` answer that is not a proposal
+  (`needs_confirmation` false, `ok` or `side_effect` true) is replaced by a neutral one, so no
+  commit predicate can ever read a held call as a write — the same promise gate C makes.
+- **One judgement per call.** An enforced call is judged once, and its record is the shadow's
+  record with two more keys; a write `enforce` does not name, and every turn without `enforce`,
+  is the shadow byte for byte.
+- **The ceiling is shorter** (`DEFAULT_ENFORCE_TIMEOUT_S = 8.0`, against the shadow's 20 s):
+  here the call, and the reply, wait for it.
+
+Which tools, and the switch, are the host's; the core names no tool.

@@ -1,5 +1,54 @@
 # Changelog
 
+## Unreleased — o veredicto do juiz prévio CONTA, por ferramenta e só onde o host o pede (F2.3a-on, 2026-09-25)
+
+### Added
+
+- **`PreJudgeDispatcher(enforce=, confirm=, confirmed=, enforce_timeout_s=)`**
+  (`tools/pre_judge.py`). `enforce` é um predicado `(ferramenta) -> bool` que o HOST injecta; a
+  lib não nomeia ferramenta nenhuma. Para uma ESCRITA que ele nomeia, a chamada ESPERA o juízo
+  (`DEFAULT_ENFORCE_TIMEOUT_S = 8.0`):
+  - `approved` → corre;
+  - `critique` → NÃO corre, e o executor recebe a PROPOSTA do host (`confirm`, porta C, com
+    `needs_confirmation`). Uma resposta de `confirm` que não seja uma proposta é trocada por uma
+    neutra: uma chamada retida nunca se lê como escrita;
+  - `error` / `timeout` → corre, em falha aberta, e CONTADA.
+- **`confirmed(ferramenta, argumentos)`** deixa correr sem novo juízo a chamada que o contacto JÁ
+  confirmou. É perguntado com os argumentos da própria chamada, portanto um «sim» a um alvo nunca
+  cobre outro.
+- **`confirmed` é OBRIGATÓRIO quando `enforce` nomeia uma ferramenta** — é a volta da porta C: sem
+  ele a replay confirmada é julgada outra vez e uma critique repetida faz o `_refuse_if_still_asking`
+  do EGO falhar a chamada que o contacto confirmou (dito em `docs/HOST_INTEGRATION.md`, que passa a
+  mostrar a fiação e as chaves `enforced`/`outcome`, no docstring e em `docs/ACT_CONFIRM_READONLY.md`);
+  e o gémeo `ok=False, side_effect=True, needs_confirmation=True` mata a mutação M2 (tirar a metade
+  `side_effect` do teste de proposta sobrevivia a 204/204).
+- **`PRE_OUTCOMES = executed | held | executed_fail_open`**, com as constantes e o
+  `DEFAULT_ENFORCE_TIMEOUT_S` exportados de `cogno_anima.tools`.
+- O registo de uma chamada activada ganha `enforced` e `outcome`. Os da sombra ficam com as quatro
+  chaves de sempre.
+
+### Não muda
+
+- Sem `enforce`, o wrapper é a sombra byte a byte. Uma escrita que o `enforce` não nomeia continua
+  em sombra, e uma leitura nunca é julgada.
+- Uma chamada activada é julgada UMA vez.
+- `test_protocol_probe_contract` continua verde: a política é reencaminhada só quando a fonte a tem.
+
+### Quatro níveis
+
+- **unit** — `tests/unit/test_pre_judge_enforce.py`:
+  - os gémeos: a proposta errada é retida e não chega à ferramenta; a certa corre uma vez, depois
+    do veredicto;
+  - a falha aberta contada: o juiz que levanta, e o tecto da activação;
+  - a chamada confirmada corre sem novo juízo, e só ELA;
+  - um só juízo por chamada;
+  - os controlos: sem `enforce`, uma escrita não nomeada, uma leitura, e o `confirm` que não é
+    proposta;
+  - o alfabeto fechado e sem texto.
+- **integração** — não se aplica: não há I/O novo, e o juiz é injectado.
+- **bench** — não se aplica na lib; a activação e a medição são do host e do consultor.
+- **docs** — `docs/ACT_CONFIRM_READONLY.md` § enforcement, `CLAUDE.md` e este registo.
+
 ## Unreleased — varredura de docs do fecho da Fase 2 (B): o que o F2.3a/-bis/-v2 deixou por dizer
 
 Só documentação e docstrings; nenhum comportamento muda. Cada frase nova aponta para o código que
