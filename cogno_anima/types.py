@@ -790,11 +790,11 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     host is the only layer that knows, so it says so (``mk.PRIOR_ATTEMPT_COMMITTED``) and this
     predicate believes it.
 
-    Fixing it HERE and not in each caller is the whole point. SIX places CALL this, measured
-    2026-09-06 rather than recalled — and it is SIX, not eleven, because the enumeration SPLIT:
-    seven callers were asking a different question and moved to `wrote_for_the_contact` (its
-    docstring carries that list). What stayed are the callers for whom the answer is *"repeating
-    is unsafe"*, which is what this predicate means:
+    Fixing it HERE and not in each caller is the whole point. SEVEN places CALL this — six
+    measured 2026-09-06 rather than recalled, the seventh added 2026-09-29 — and not more, because
+    the enumeration SPLIT: seven callers were asking a different question and moved to
+    `wrote_for_the_contact` (its docstring carries that list). What stayed are the callers for
+    whom the answer is *"repeating is unsafe"*, which is what this predicate means:
 
       * the semantic cache (`cache.py::default_cacheable`) — an action must always re-run, and a
         cached reply replayed without its persona transfer promises a handoff that never happens;
@@ -812,6 +812,13 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
         attempt whose context died — and for the host whose `side_effect` and `is_mutating`
         disagree on a tool. Same family as the two repair guards above: re-running a turn that
         already acted commits a SECOND time;
+      * the honest refusal (`assembler.py::honest_refusal`, host) — the seventh, added
+        2026-09-29. On a turn the scope guard refused and nobody could be offered, it replaces the
+        refusal with a fixed sentence saying the request's owner is not available to this contact.
+        A turn that already acted must not be told that, so a True here keeps the refusal as it
+        was. On a refused turn the executor never ran, so that act can only be the host's
+        declaration for a fallback retry whose attempt 1 committed — and it asks THIS predicate,
+        the broader one, on purpose: any commit keeps the refusal, whoever it was for;
       * and `wrote_for_the_contact` itself, which delegates here when the host declares no
         routing set. Named for the same reason as the others: a delegation the enumeration does
         not list is a re-derivation hiding behind a call.

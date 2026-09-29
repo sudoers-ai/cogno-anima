@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — `committed_this_turn`: o sétimo chamador, `assembler.py::honest_refusal` (host), nomeado no docstring canónico (2026-09-29)
+
+### Changed
+
+- **O docstring de `committed_this_turn`** (`cogno_anima/types.py`), que é a enumeração canónica
+  dos chamadores, passa de SIX a **SEVEN** e nomeia o novo: `assembler.py::honest_refusal`, do
+  `cogno-host` (o (D), host #1089).
+  - O que ele faz: num turno que o guarda recusou e para o qual ninguém pode ser oferecido, troca a
+    recusa por uma frase fixa, «a dona do pedido não está disponível para este contacto».
+  - Porque chama este predicado: um turno que já comitou não pode ouvir isso, e o mais largo dos
+    dois responde a qualquer escrita.
+- **Nenhum comportamento muda**; é só prosa. É o `cogno-host`
+  (`test_committed_prose_matches_code.py`) que compara a contagem e os NOMES com os chamadores
+  no disco das três libs: sem esta linha, o #1089 fica vermelho lá.
+
 ## Unreleased — o veredicto do juiz prévio CONTA, por ferramenta e só onde o host o pede (F2.3a-on, 2026-09-25)
 
 ### Added
