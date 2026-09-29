@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased — `committed_this_turn`: o oitavo chamador, `pipeline.py::_owes_a_read` (soma #54), e a frase da direcção posta em dia (2026-09-29)
+
+### Changed
+
+- **O docstring de `committed_this_turn`** (`cogno_anima/types.py`), a enumeração canónica dos
+  chamadores, passa de SEVEN a **EIGHT** e nomeia o novo: `pipeline.py::_owes_a_read`, da
+  `cogno-soma` (item (i), soma #54).
+  - O que ele faz: dá UMA passagem extra do EGO a um INFORMATION_REQUEST rejeitado cujo rascunho
+    afirma ausência sobre uma leitura-fonte declarada que nenhuma passagem chamou.
+  - Porque chama este predicado: é a razão do irmão `_owes_an_action`. Re-correr um turno que já
+    agiu comita segunda vez, e a classe do intent é uma previsão feita antes de o executor correr.
+- **A frase da direcção da degradação** dizia «THREE of the five callers» desde antes do sexto e
+  do sétimo. Passa a dizer **SIX of the eight**, com os seis nomeados: o cache, os dois reparos,
+  os dois portões de mais-uma-passagem e a recusa honesta. É a mesma conta que o host já faz no
+  `ANTI_FABRICATION.md` §5 («cinco dos sete», agora «seis dos oito»), e a frase diz que esteve
+  errada.
+- **Nenhum comportamento muda**; é só prosa. É o `cogno-host`
+  (`test_committed_prose_matches_code.py`) que compara a contagem e os NOMES com os chamadores no
+  disco das três libs. Com a soma `f4aed35` pinada, esse teste fica vermelho sem esta linha
+  (medido: 3 falhas, `pipeline.py::_owes_a_read` nomeado na mensagem).
+
 ## Unreleased — `mk.SOURCE_READS` e `source_reads_not_called`: a leitura oferecida que ninguém fez (item (i), 2026-09-29)
 
 ### Added

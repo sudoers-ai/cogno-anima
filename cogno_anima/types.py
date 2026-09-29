@@ -794,8 +794,9 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     host is the only layer that knows, so it says so (``mk.PRIOR_ATTEMPT_COMMITTED``) and this
     predicate believes it.
 
-    Fixing it HERE and not in each caller is the whole point. SEVEN places CALL this — six
-    measured 2026-09-06 rather than recalled, the seventh added 2026-09-29 — and not more, because
+    Fixing it HERE and not in each caller is the whole point. EIGHT places CALL this — six
+    measured 2026-09-06 rather than recalled, the seventh and the eighth added 2026-09-29 — and not
+    more, because
     the enumeration SPLIT: seven callers were asking a different question and moved to
     `wrote_for_the_contact` (its docstring carries that list). What stayed are the callers for
     whom the answer is *"repeating is unsafe"*, which is what this predicate means:
@@ -823,6 +824,13 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
         was. On a refused turn the executor never ran, so that act can only be the host's
         declaration for a fallback retry whose attempt 1 committed — and it asks THIS predicate,
         the broader one, on purpose: any commit keeps the refusal, whoever it was for;
+      * the read-owed gate (`pipeline.py::_owes_a_read`, soma #54) — the eighth, added
+        2026-09-29, the sibling of `_owes_an_action`. It grants ONE more EGO pass to a rejected
+        INFORMATION_REQUEST whose draft asserts absence over a host-declared source read that no
+        pass called (`source_reads_not_called`). It calls this predicate for its sibling's
+        reason: re-running a turn that already acted commits a SECOND time, and the intent class
+        is a prediction made before the executor ran, so an INFORMATION_REQUEST can still have
+        committed;
       * and `wrote_for_the_contact` itself, which delegates here when the host declares no
         routing set. Named for the same reason as the others: a delegation the enumeration does
         not list is a re-derivation hiding behind a call.
@@ -864,12 +872,15 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     carrier whose `metadata` is missing, or is not a mapping, degrades to the trace instead of
     raising.
 
-    Be precise about the direction of THAT degradation: it answers False, which for THREE of the
-    five callers is the RELEASING answer — the semantic cache (cacheable), and the two repair
-    guards (the re-step may run). The other two do NOT release, and each was checked call by
-    call rather than carried over: at `_finish_repair` False makes the HONEST pre-repair context
-    win, which releases no action at all; and `wrote_for_the_contact` only delegates, so its
-    polarity is its own callers', not this one's.
+    Be precise about the direction of THAT degradation: it answers False, which for SIX of the
+    eight callers is the RELEASING answer — the semantic cache (cacheable), the two repair guards
+    (the re-step may run), the two one-more-pass gates (the extra EGO pass is granted) and the
+    honest refusal (the fixed sentence goes over the refusal). The other two do NOT release, and
+    each was checked call by call rather than carried over: at `_finish_repair` False makes the
+    HONEST pre-repair context win, which releases no action at all; and `wrote_for_the_contact`
+    only delegates, so its polarity is its own callers', not this one's. (This sentence said
+    "THREE of the five" until 2026-09-29: the sixth and the seventh callers arrived without it,
+    which is the unguarded-sentence failure the next paragraph describes, happening again.)
 
     Getting that wrong is easy enough that THREE drafts of this very sentence did. The first two
     by putting a consumer in the wrong bucket and by OMISSION — when the count went 8 to 10 this
