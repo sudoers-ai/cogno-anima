@@ -1,5 +1,52 @@
 # Changelog
 
+## Unreleased — `mk.SOURCE_READS` e `source_reads_not_called`: a leitura oferecida que ninguém fez (item (i), 2026-09-29)
+
+### Added
+
+- **`metakeys.SOURCE_READS`** (`"source_reads"`): o host declara, por turno e a partir do seu
+  catálogo, os NOMES das ferramentas que lêem as fontes do próprio negócio (os documentos de uma
+  persona, por exemplo). O core nunca o adivinha pelo nome. Ausente, vazio ou ilegível → nada é
+  fonte, e tudo se comporta como antes: é o interruptor. Uma `str` sozinha é UM nome.
+- **`types.source_reads_not_called(ctx) -> list[str]`**, exportado na raiz do pacote. Devolve as
+  fontes declaradas que a passagem rejeitada tinha na mesa (`ego_result.tools_offered`) e que
+  NENHUM registo do turno chamou, pela walk partilhada (`_any_execution`, o consult incluído).
+  - **Tudo ou nada do lado das chamadas:** se QUALQUER fonte declarada foi chamada, em qualquer
+    passagem, a resposta é `[]`. Uma leitura que falhou ou não achou nada também foi feita, e
+    «nada relevante» continua a ser uma negativa verdadeira.
+  - **Inclina para «chamada»:** um portador ilegível responde `[]`.
+  - Ordenado, para a frase que nomeia a ferramenta ser igual em todos os workers.
+- O consumidor é o `_owes_a_read` da cogno-soma, irmão do `_owes_an_action`. Um
+  INFORMATION_REQUEST rejeitado cujo rascunho afirma AUSÊNCIA sobre uma fonte que estava na mesa
+  e não foi lida ganha UMA passagem extra do executor, porque a voz não lê. A forma foi medida
+  num tenant de ensaio: a leitura dos documentos oferecida, só um resumo do livro chamado (vazio),
+  e a resposta «não há registros» sobre documentos que tinham os valores.
+
+### Porque não é só a declaração
+
+- O briefing pedia só o metakey. Mas a condição 2 do `_owes_a_read` é lida «pela walk de
+  `_any_execution`», e esse símbolo é privado. A soma não importa hoje nenhum símbolo privado da
+  anima (grep: 0), e o `_reached_for_a_write` dela re-deriva DUAS das três fontes e não vê o
+  consult, que é precisamente a forma de defeito que a walk existe para acabar.
+  O predicado público mantém a walk num sítio só.
+- O `_FAMILY` de `test_consult_is_the_second_source.py` recusou o predicado antes de ele lá ser
+  posto: vermelho, com `source_reads_not_called` na mensagem. Isto confirma que a derivação por AST
+  funciona.
+
+### Quatro níveis
+
+- **unit** — `tests/unit/test_source_reads_not_called.py` e o guarda exclusivo do consult em
+  `test_consult_is_the_second_source.py`. Cobrem o gémeo (a forma medida deve a leitura), os
+  controlos (leitura feita e vazia, leitura falhada, fonte fora da mesa, declaração ausente ou
+  ilegível), a walk do turno inteiro (passagem anterior, tudo ou nada) e o portador ilegível. Cada
+  mutação à mão, com âncora contada e `ast.parse`, pôs vermelho o teste que a nomeia (lista no PR).
+- **integração** — não se aplica aqui. O comportamento só atravessa componentes no laço da soma,
+  e é lá que vive o teste de pipeline com backends stub.
+- **bench** — não se aplica. Nenhum prompt muda e nenhum estágio o lê: é um predicado puro sem
+  consumidor nesta lib. A prova ao vivo (n=10 da forma medida) é da soma+host, depois de servido.
+- **docs** — `metakeys.py` (o bloco do eixo de LEITURA), `CLAUDE.md` e a contagem da família no
+  docstring de `_any_execution` (quatro → cinco).
+
 ## Unreleased — `committed_this_turn`: o sétimo chamador, `assembler.py::honest_refusal` (host), nomeado no docstring canónico (2026-09-29)
 
 ### Changed

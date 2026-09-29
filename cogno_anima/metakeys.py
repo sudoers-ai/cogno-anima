@@ -102,6 +102,39 @@ PRIOR_ATTEMPT_COMMITTED = "prior_attempt_committed"
 # The host holds ONE list and both repos read it: `cogno_host.grounding.ROUTING_ONLY_TOOLS`,
 # which its own `_wrote_for_the_contact` already filters by. Same name here on purpose.
 ROUTING_ONLY_TOOLS = "routing_only_tools"
+
+# ── the READ axis: which tools are where an ANSWER is looked up ─────────────────────────────
+#
+# Host-declared collection of tool NAMES that read the business's OWN SOURCES — the documents
+# a persona was given, say. A reply that says something is NOT there ("there is no record of
+# X") is only true once one of them has been asked, and this key is how the host says which
+# tools those are. Read ONLY by `types.source_reads_not_called`. That function returns the ones
+# the executor was OFFERED this turn and never used. It returns nothing as soon as ANY declared
+# source read was called by any pass of the turn, the consulted specialist's included, because
+# the walk is the shared one (`types._any_execution`).
+#
+# The consumer is the orchestrator's correction loop: cogno-soma `pipeline.py::_owes_a_read`,
+# the sibling of `_owes_an_action`. The shape it exists for, measured on a rehearsal tenant:
+#   * an INFORMATION_REQUEST, with a document-reading tool on the table;
+#   * the executor called only a ledger summary, which came back empty;
+#   * the draft asserted ABSENCE ("there are no rent entries for that property");
+#   * the judge rejected it, rightly, but with a budget of one attempt the voice shipped the
+#     same negative, and it was false: the documents held the four values.
+# The voice cannot read. Only an executor pass that calls the tool can repair that turn.
+#
+# DECLARED, never guessed from a name: which tool reads which source is the host's catalog, and
+# a tool called "search_…" can be a read of the contact's own history, which grounds nothing
+# about the business. The measured start is ONE tool. Over 244 production turns with a judge
+# block and a table, a wider set of four reads matched 4 turns, and none of the 4 was this
+# defect. The set of one matched 0 there and 4 of 4 on the rehearsal tenant.
+#
+# ABSENT, empty or not a collection of names → nothing is a source read, and every consumer
+# behaves exactly as before. That is the switch: a host reverts the feature by not stamping it.
+# A bare `str` is read as ONE name, never as its characters. PER TURN, like the keys above: the
+# host recomputes it from the catalog every turn, so a persona whose table changed is never
+# judged against another persona's sources.
+SOURCE_READS = "source_reads"
+
 # How many CONSECUTIVE turns the host's anti-repeat guard has fired on this session (repaired
 # or shipped). The guard already knows the conversation is circling; before this key, only the
 # turn it fired on knew — the NEXT turn started with a clean slate and re-earned the repeat.
