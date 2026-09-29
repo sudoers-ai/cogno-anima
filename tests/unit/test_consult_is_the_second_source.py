@@ -40,6 +40,7 @@ from cogno_anima.types import (
     ToolExecution,
     committed_this_turn,
     read_succeeded_this_turn,
+    source_reads_not_called,
     write_attempted_this_turn,
     wrote_for_the_contact,
 )
@@ -96,7 +97,7 @@ def _hub_only_read() -> PipelineContext:
 # below, and it is built the way this file builds all of them: the evidence sits EXCLUSIVELY in
 # the consult.
 _WRITES = (committed_this_turn, wrote_for_the_contact, write_attempted_this_turn)
-_FAMILY = _WRITES + (read_succeeded_this_turn,)
+_FAMILY = _WRITES + (read_succeeded_this_turn, source_reads_not_called)
 
 
 @pytest.mark.parametrize("predicate", _WRITES, ids=lambda p: p.__name__)
@@ -135,6 +136,31 @@ def test_the_read_predicate_counts_the_CONSULTED_specialists_FAILURE():
     clean = _hub_only_read()
     clean.consult_result = _trace(_read("consult_material"), persona=SPECIALIST)
     assert read_succeeded_this_turn(clean) is True
+
+
+def test_a_source_the_CONSULTED_specialist_read_is_not_owed_by_the_hub():
+    """The same mutation guard, for the member that asks whether a read was MADE at all.
+
+    `source_reads_not_called` returns the declared source reads the hub was offered and nobody
+    called. Half of this turn belongs to the specialist, and a document she read mid-turn is a
+    document this turn read. The hub's own record holds only a date lookup, the specialist's
+    holds the document read, and the answer must be that nothing is owed. Drop
+    ``_consult_source(ctx)`` from `_any_execution` and this flips to the tool's name: the
+    orchestrator would re-run the hub's executor to repeat a read the turn already made.
+
+    The PAIR is what measures: the second half is the same turn with nobody consulted, and it
+    proves the fixture can produce the owed answer at all.
+    """
+    read_by_her = _hub_only_read()
+    read_by_her.metadata[mk.SOURCE_READS] = ["consult_documents"]
+    read_by_her.ego_result.tools_offered = ["resolve_date", "consult_documents"]
+    read_by_her.consult_result = _trace(_read("consult_documents"), persona=SPECIALIST)
+    assert source_reads_not_called(read_by_her) == []
+
+    nobody = _hub_only_read()
+    nobody.metadata[mk.SOURCE_READS] = ["consult_documents"]
+    nobody.ego_result.tools_offered = ["resolve_date", "consult_documents"]
+    assert source_reads_not_called(nobody) == ["consult_documents"]
 
 
 def test_the_routing_FILTER_still_applies_to_the_consulted_write():

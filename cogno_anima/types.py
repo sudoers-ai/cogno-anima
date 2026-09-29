@@ -700,6 +700,10 @@ _ROUTING_ONLY_TOOLS = "routing_only_tools"
 # test. Read ONLY by `held_delivered_texts`.
 _HELD_DELIVERED_TEXT = "held_delivered_text"
 
+# Mirrors ``metakeys.SOURCE_READS``, inlined for the same reason and pinned the same way
+# (`tests/unit/test_source_reads_not_called.py`). Read ONLY by `source_reads_not_called`.
+_SOURCE_READS = "source_reads"
+
 
 def held_delivered_texts(ctx: "PipelineContext") -> "list[tuple[str, str]]":
     """``(tool, text)`` for every HELD call whose text will be SENT to a person on a "yes".
@@ -929,12 +933,14 @@ def _any_execution(ctx: "PipelineContext", hit: "Callable[[Any], bool]", *,
     it is. A second copy of them is a second copy to get wrong, which is the very failure
     `committed_this_turn` was created to end. That is also why the consult entered HERE and
     not beside one predicate: a source only one member of the family reads is the defect this
-    walk exists to prevent, and the family is FOUR predicates deep (`committed_this_turn`,
-    `wrote_for_the_contact` through `_committed_over`, `write_attempted_this_turn`, and — since
-    2026-09-18, the first one that asks about READING — `read_succeeded_this_turn`). The count
-    is derived rather than remembered: `tests/unit/test_consult_is_the_second_source.py` walks
-    this module's AST for every public function whose call graph reaches here and fails on any
-    that is not in its list, which is how the fourth one announced itself.
+    walk exists to prevent, and the family is FIVE predicates deep: `committed_this_turn`,
+    `wrote_for_the_contact` through `_committed_over`, `write_attempted_this_turn`,
+    `read_succeeded_this_turn` (since 2026-09-18, the first one that asks about READING) and
+    `source_reads_not_called` (since 2026-09-29, the first that asks whether a read was MADE at
+    all). The count is derived rather than remembered:
+    `tests/unit/test_consult_is_the_second_source.py` walks this module's AST for every public
+    function whose call graph reaches here and fails on any that is not in its list, which is
+    how the fourth one announced itself, and the fifth.
 
     Each source is read LAZILY, inside its own ``try``: ``EgoResult.tools_executed`` is a
     DERIVED property and derived can raise, so touching both eagerly would turn a turn that
@@ -1104,6 +1110,68 @@ def read_succeeded_this_turn(ctx: "PipelineContext") -> bool:
         ctx, lambda t: getattr(t, "ok", None) is True
         and getattr(t, "side_effect", False) is not True
         and getattr(t, "tool_mutating", None) is not True, unreadable=False)
+
+
+def _declared_source_reads(ctx: "PipelineContext") -> "list[str]":
+    """The host's ``metakeys.SOURCE_READS`` as a sorted list of names, or ``[]``.
+
+    A bare ``str`` is ONE name. Iterating it would turn ``"consult_documents"`` into single
+    letters, and none of them would ever match. Anything that is not a string or a
+    list/tuple/set of strings reads as "nothing declared". Sorted, so every worker names the
+    tools in the same order whatever container the host used.
+    """
+    declared = (getattr(ctx, "metadata", None) or {}).get(_SOURCE_READS)
+    if isinstance(declared, str):
+        declared = (declared,)
+    if not isinstance(declared, (list, tuple, set, frozenset)):
+        return []
+    return sorted({n.strip() for n in declared if isinstance(n, str) and n.strip()})
+
+
+def source_reads_not_called(ctx: "PipelineContext") -> "list[str]":
+    """The declared source reads the executor was OFFERED and never used, or ``[]``.
+
+    The FIFTH question in this family, and the second one about reading. The first,
+    `read_succeeded_this_turn`, asks whether a lookup WORKED. This one asks whether the lookup
+    the answer depends on was ever MADE. A draft that says *"there is no record of X"* is a
+    claim about the business's sources, and it is only a claim somebody checked if one of them
+    was asked.
+
+    Three inputs, and each one comes from the layer that owns it:
+
+      * WHICH tools are source reads: ``metakeys.SOURCE_READS``, declared by the host from its
+        catalog. The core never guesses it from a tool's name.
+      * WHAT was on the table: ``ego_result.tools_offered``, the surface the rejected pass saw
+        after every mask. A source the persona does not have is never owed.
+      * WHAT was called: the shared walk (`_any_execution`), which covers the turn's own two
+        lists and the consulted specialist's record. A specialist who read the documents
+        mid-turn did the reading, so it is not owed a second time.
+
+    It is ALL OR NOTHING on the called side. If ANY declared source read was called on any
+    pass, the answer is ``[]``, even when another declared one was not. The executor looked in
+    a source, so what it drafted is a reading of that source, which is not the defect. ``ok`` is
+    deliberately absent too. A read that FAILED or came back empty was still made. A re-run
+    would only repeat a call the trace already shows, and "nothing relevant" is a true answer.
+
+    **It leans towards "called", and that is the family's rule about new restrictions.** A
+    turn whose own record cannot be read answers ``[]`` (``unreadable=True`` on the walk), and so
+    does any carrier that raises. The consumer grants an extra executor pass on a non-empty
+    answer, so an unreadable turn is left exactly as it was: one pass, as today.
+
+    Returned sorted, so a sentence naming the tools reads the same on every worker.
+    """
+    try:
+        declared = _declared_source_reads(ctx)
+        if not declared:
+            return []
+        wanted = set(declared)
+        if _any_execution(ctx, lambda t: getattr(t, "tool", None) in wanted, unreadable=True):
+            return []
+        offered = getattr(getattr(ctx, "ego_result", None), "tools_offered", None) or []
+        on_table = {str(n) for n in offered}
+        return [n for n in declared if n in on_table]
+    except Exception:      # noqa: BLE001 — an unreadable carrier must not cost the turn
+        return []
 
 
 def _committed_over(ctx: "PipelineContext", keep: "Callable[[str], bool]") -> bool:
