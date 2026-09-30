@@ -20,7 +20,11 @@
   back 7/12 (6/6 on one trace) in the SAME rejected framing. Its value was in the data, the
   framing was the error, and "keep it" handed the rejected statement back. **The declared
   cost:** a critique that cites a value to ENDORSE it takes that line off the list too. On one of
-  the two measured shapes that is the invoice line, which then gets today's behaviour. Gated like `read_worked` (`read_is_visible`), so the list renders
+  the two measured shapes that is the invoice line, and it comes out WORSE than today, not equal:
+  0/6 against 2/6 and 3/6 on `main` in two runs, because with the list present the voice keeps
+  only what is listed. Measured, declared and accepted by net gain (the invoice line 6/12 against
+  ~5/12 over both shapes, the rejected framing 0/12, the FAB 0/12). Closing it would mean telling a
+  value cited to ENDORSE from one cited to CONTEST, which is polarity, and polarity is excluded. Gated like `read_worked` (`read_is_visible`), so the list renders
   only when the data it points to is in the prompt. No new header: `_VOICE_BLOCKS` and the
   persisted inventory do not move.
 - Two flag-only adjustments: `voice:kept_values` (the list rendered) and
