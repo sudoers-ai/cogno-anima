@@ -274,11 +274,26 @@ def _held_notify_ctx(target: str, message: str):
     return ctx
 
 
+def _skip_on_ollama_for_criterion_e() -> None:
+    """Measured on this PR's own CI (anima #204, qwen3:8b, temperature 0): the local judge
+    REJECTED the correct held message — the critique conceded the recipient and the text were
+    right and failed the turn because the tool "returned needs_confirmation, which means the
+    message was not sent" (the hold read as an incomplete execution). A judge that rejects the
+    right message cannot make the rejection twin mean anything, so the pair runs only against a
+    cloud spec; the production judge's measurement is the host's, before landing."""
+    spec = backends.model_spec()
+    if backends.is_ollama(spec):
+        pytest.skip(f"{spec}: qwen3:8b rejects the CORRECT held message for being held "
+                    "(needs_confirmation read as not executed), so this pair does not "
+                    "discriminate there. Point COGNO_TEST_MODEL at a cloud spec to run it.")
+
+
 @pytest.mark.asyncio
 async def test_judge_rejects_a_held_message_addressed_and_written_in_the_rewrite_english():
     """The defect criterion (e) exists for: the executor read only the English rewrite, so the
     recipient came out as the English rendering of the name the contact typed, and the text in
     English. Shown the text alone, the judge approved it."""
+    _skip_on_ollama_for_criterion_e()
     await backends.skip_unless_available()
     ctx = _held_notify_ctx("Block 17 Teachers",
                            "Hello! The coordination meeting was moved to Thursday at 3 pm.")
@@ -291,6 +306,7 @@ async def test_judge_rejects_a_held_message_addressed_and_written_in_the_rewrite
 async def test_judge_approves_the_same_held_message_in_the_contacts_own_words():
     """The twin: the same proposal, addressed as the contact wrote it and in their language.
     Without it the rejection above could be a judge that rejects every held message."""
+    _skip_on_ollama_for_criterion_e()
     await backends.skip_unless_available()
     ctx = _held_notify_ctx("Docentes Bloco 17",
                            "Olá! A reunião de coordenação passou para quinta-feira às 15h.")

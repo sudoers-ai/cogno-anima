@@ -39,7 +39,9 @@
   `cogno-soma` não muda (continua a ler `held_delivered_texts` para decidir julgar a proposta).
 - Prova: `tests/unit/test_judge_reads_the_held_recipient.py`; a metade do MODELO é o par em
   `tests/integration/test_superego.py` (inglês rejeitado / as palavras do contacto aprovadas),
-  escrito e não corrido localmente. A medição com o juiz de produção é do host, antes do aterro.
+  escrito e não corrido localmente; SALTA num spec Ollama, porque na CI deste PR o qwen3:8b
+  rejeitou a mensagem CERTA por estar retida («needs_confirmation» lido como não executado) e o
+  par não discrimina lá. A medição com o juiz de produção é do host, antes do aterro.
 
 ## Unreleased — `committed_this_turn`: the ninth caller, `assembler.py::did_you_mean` (host, VQD, 2026-09-30)
 
