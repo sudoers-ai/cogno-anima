@@ -226,11 +226,11 @@ def test_fab_a_value_the_data_does_not_hold_is_never_listed_and_may_go():
 
 
 def test_an_address_counts_as_a_value_and_must_be_in_the_data_whole():
-    ctx = _turn("- Dúvidas: escreva para secretaria@escola.example.\n"
-                "- Portal: https://portal.escola.example/prazos",
-                _read(result=DOC + "\nContato: secretaria@escola.example"))
+    ctx = _turn("- Dúvidas: escreva para secretaria@example.com.\n"
+                "- Portal: https://portal.example.com/prazos",
+                _read(result=DOC + "\nContato: secretaria@example.com"))
     assert _listed(_render(ctx, reason=CRITIQUE_PT)) == [
-        "Dúvidas: escreva para secretaria@escola.example."]
+        "Dúvidas: escreva para secretaria@example.com."]
 
 
 def test_a_draft_line_cannot_forge_a_header_or_carry_its_list_number_as_a_value():
