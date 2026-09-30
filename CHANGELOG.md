@@ -25,6 +25,44 @@
 - `tests/integration` não carrega esta conftest. Um servidor de loopback que um teste levanta
   noutro porto passa (controlo em `tests/unit/test_ollama_gate.py`).
 
+## Unreleased — "did you mean…?" on a refused turn: a strict selector over a CLOSED list (VQD, 2026-09-30)
+
+### Added
+
+- **`cogno_anima.stages.scope_options`** — `select_options(message, options, backend)` and
+  `select_scope_options(ctx, backend, *, options)` (exported from `cogno_anima.stages`), plus
+  `OptionSelection`, `parse_selection`, `closed_options`, `SELECT_STAGE = "superego_select"` and the
+  closed outcome alphabet `covered | suggested | none | error`. One strict model call, only on a
+  turn the scope guard BLOCKED and only when the host injects a backend and the list.
+- **`metakeys.SCOPE_OPTIONS_SELECTION`** — the per-turn record (outcome, the picked option texts,
+  `asked`, `offered`, `discarded`, `covered_unsupported`); the orchestrator pops it before the guard
+  runs.
+- **`covered` needs code-side EVIDENCE** (`has_evidence`, `EVIDENCE_PREFIX = 6`,
+  `GENERIC_SUBJECT_WORDS`): the option must share ≥1 non-generic `cogno_engram.lexical.terms` term
+  with the message, or the pick is dropped and counted (`covered_unsupported`) and the case is the
+  refusal of today. Measured on this PR's nightly: qwen3:8b answered the Wi-Fi password
+  `covered: ['consult_documents']` 3/3. `cogno-engram` joins the CI install chain (both jobs); it is
+  imported lazily and fail-CLOSED without it. The integration test now runs on the suite's model
+  AND `openai:gpt-4o-mini` (skipped without a key); the Wi-Fi must draw nothing on both.
+
+### Why
+
+- The owner's order: a reply that says "I did not find it" when the answer IS there should offer
+  what is there instead. Measured downstream (offline replay, gpt-4o-mini, strict prompt): the
+  target option came back in 11 of 15 labelled cases, "the Wi-Fi password" drew 0 options on both
+  reader profiles, and a free (non-strict) selector invented 6 options in 15 — so the closed
+  alphabet is enforced by `parse_selection`, never requested.
+- **`covered` wins, and it means LET IT THROUGH.** Of the real refusals on which the strict
+  selector found anything, 5 of 6 were the guard refusing something the persona held; answering
+  those with "did you mean <what you asked>?" would hide a false refusal. Only a `suggested`-only
+  pick may become the question, which the host renders.
+
+### Unchanged
+
+- `check_input_scope` and every other prompt of the SUPEREGO: not a byte. Nothing calls the
+  selector unless an orchestrator does; `SuperegoStage` and the protocols a host double implements
+  do not move.
+
 ## Unreleased — o juiz da mensagem RETIDA sabe que a pergunta de confirmação é do HOST (Pilha B item 7, variante (a2), 2026-09-30)
 
 ### Changed
