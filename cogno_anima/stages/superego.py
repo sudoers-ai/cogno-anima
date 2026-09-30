@@ -983,6 +983,21 @@ _OUT_OF_REACH = (
 # for byte as before.
 _HELD_MESSAGES_HEADER = ("# Messages HELD for the user's confirmation — each is SENT, word for "
                          "word, to another person once the user says yes")
+# WHO ASKS (2026-09-30). On a proposal turn the executor's loop STOPS at the hold, so its draft is
+# empty, and the question that shows the user the message and asks "shall I send it?" is written
+# by the HOST, after this judgement — never by the draft. Nothing here said so, and measured on a
+# downstream host with its production judge the CORRECT held message was rejected 1/5 and 2/5 on
+# the two measured shapes (a fabricated one 6/6), every critique asking for the confirmation
+# question the empty draft did not contain — two of them calling the hold itself correct. Spliced
+# into `_HELD_MESSAGE_RULE` by reference, so it renders exactly where that rule does (a turn with
+# no declared held message renders byte for byte as before) and a mutation can remove it alone.
+_HELD_ASKING_IS_THE_HOSTS = (
+    "THE ASKING IS NOT THE DRAFT'S JOB ON THIS TURN: the question that shows the user each held "
+    "message and asks whether to send it is ADDED BY THE HOST, AFTER this judgement. So an EMPTY "
+    "EGO draft ('(none)'), or a draft that does not ask for confirmation, next to a held message "
+    "is NOT a defect — never reject for it, and never ask for that question in the critique. "
+    "Judge the held message's own text by (a)-(d) above. "
+)
 _HELD_MESSAGE_RULE = (
     "JUDGE EACH HELD MESSAGE AS IF IT WERE BEING SENT NOW — this is criterion #1 (goal <-> "
     "execution) applied to the message's own text, because that text is what its recipient "
@@ -995,8 +1010,9 @@ _HELD_MESSAGE_RULE = (
     "for whoever writes the message ('include the introduction we agreed') instead of words "
     "meant for the recipient; (d) states anything the request and the successful tool results "
     "above do not support. The MID-FLOW and confirmation allowances cover ASKING the user "
-    "before sending; they never cover the content of the message being asked about. Name in "
-    "the critique what the message must say instead, so the retry can write it.\n\n"
+    "before sending; they never cover the content of the message being asked about. "
+    f"{_HELD_ASKING_IS_THE_HOSTS}"
+    "Name in the critique what the message must say instead, so the retry can write it.\n\n"
 )
 
 # THE ASK RECORDED FOR THE RECIPIENT (`mk.HELD_RECORDED_ASK`). A message that asks its

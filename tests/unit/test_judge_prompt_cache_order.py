@@ -39,7 +39,7 @@ from collections import Counter
 import pytest
 
 from cogno_anima import metakeys as mk
-from cogno_anima.stages.superego import _JUDGE_SYSTEM, SuperegoStage
+from cogno_anima.stages.superego import _HELD_ASKING_IS_THE_HOSTS, _JUDGE_SYSTEM, SuperegoStage
 from tests.unit.test_judge_blocks_sync import _configs
 from tests.unit.test_superego import _ctx
 
@@ -226,6 +226,14 @@ def test_the_sections_are_the_same_multiset_as_before_only_the_order_moved(name,
 #: judge's TEXT changes these digests legitimately. When that happens, regenerate them from the
 #: new base (render each configuration with the base tree and hash it) in the same PR that
 #: changed the text; never edit one to make a red go away.
+def _since_f13(prompt: str) -> str:
+    """The prompt with the judge's DELIBERATE later text changes removed by name, so the digests
+    below can keep being c0d6bb9's and keep proving that nothing ELSE moved. Each entry is a
+    change that has its own test pinning it; today one: `_HELD_ASKING_IS_THE_HOSTS` (2026-09-30,
+    rendered only on a turn with a declared held message — the `held` configuration here)."""
+    return prompt.replace(_HELD_ASKING_IS_THE_HOSTS, "")
+
+
 _ORIGIN_MAIN = {
     "readonly": "bcc9dafe1e1da1593ef14aa62b5f139c9aa37f3c9da725443f15cb2dffab901e",
     "execution": "f616876cee9955545c899b5e17a89a7b35146c58a7d7dfd8b664be7f48795831",
@@ -246,7 +254,7 @@ def test_the_legacy_reconstruction_is_origin_main_byte_for_byte(name, ctx):
     order: put back where it was, the new prompt is — byte for byte — what `origin/main`
     rendered. So the two prompts differ by the position of one section and by nothing else."""
     new = SuperegoStage()._build_judge_prompt(ctx, _STABLE)
-    legacy = hashlib.sha256(_legacy(new, _STABLE).encode()).hexdigest()
+    legacy = hashlib.sha256(_since_f13(_legacy(new, _STABLE)).encode()).hexdigest()
     assert legacy == _ORIGIN_MAIN[name], (
         f"[{name}] the legacy order rebuilt from this prompt is not what origin/main rendered "
         f"— either a byte changed, or the judge's text changed after F1.3 and `_ORIGIN_MAIN` is "
@@ -273,7 +281,7 @@ _ORIGIN_MAIN_NO_LIMITS = {
 def test_a_turn_with_no_limits_slot_is_origin_main_byte_for_byte(name, ctx):
     """The control, byte for byte and not only by order: with nothing to move, the prompt is
     the one `origin/main` rendered."""
-    got = hashlib.sha256(SuperegoStage()._build_judge_prompt(ctx, "").encode()).hexdigest()
+    got = hashlib.sha256(_since_f13(SuperegoStage()._build_judge_prompt(ctx, "")).encode()).hexdigest()
     assert got == _ORIGIN_MAIN_NO_LIMITS[name], (
         f"[{name}] a prompt with no limits slot changed — or `_ORIGIN_MAIN_NO_LIMITS` is stale")
 
