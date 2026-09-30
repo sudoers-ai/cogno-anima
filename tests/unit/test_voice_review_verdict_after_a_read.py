@@ -445,12 +445,17 @@ def test_the_persisted_inventory_does_not_move():
 # fixture asks for information, so the three `execution_verdict` cells that did not
 # attempt a write lost that clause and moved once more — `no_exec` and `read_plus_failed`
 # now render as `write` does — while every other cell stayed where the splice put it.
+# Re-measured 2026-09-30 on the branch that carries `_KEPT_VALUES_OPENING`: ONE cell moved,
+# `read_ok|other|execution_verdict`, because its draft states a time the read holds and an
+# exhausted execution verdict now lists it. With that list taken out the section is the old
+# digest byte for byte (`9f9985b4be444af6`), pinned in
+# `test_the_execution_verdict_moved_only_by_the_kept_values_list` below.
 _MAIN_SECTIONS = {
     "no_exec|repeated_reply|already_said": "aef13fbe8b469365",
     "no_exec|unverified_claim|review_verdict": "cef24eeddde39fea",
     "no_exec|other|execution_verdict": "2d852e124e6b79f4",
     "read_ok|repeated_reply|already_said": "aef13fbe8b469365",
-    "read_ok|other|execution_verdict": "9f9985b4be444af6",
+    "read_ok|other|execution_verdict": "c602930723ba6192",
     "read_plus_failed|repeated_reply|already_said": "aef13fbe8b469365",
     "read_plus_failed|unverified_claim|review_verdict": "cef24eeddde39fea",
     "read_plus_failed|other|execution_verdict": "2d852e124e6b79f4",
@@ -528,6 +533,19 @@ def test_every_other_rendering_is_exactly_mains(label):
     section = SuperegoStage.voice_prompt_block(prompt, slug)
     assert section, f"{label}: the section did not render at all"
     assert hashlib.sha256(section.encode()).hexdigest()[:16] == _MAIN_SECTIONS[label]
+
+
+def test_the_execution_verdict_moved_only_by_the_kept_values_list():
+    """The 2026-09-30 move of `read_ok|other|execution_verdict`, stated as an assertion: the
+    list of values the data holds is the whole of the difference."""
+    prompt = _render(_turn(_read()), kind="not_executed", reason="R")
+    section = SuperegoStage.voice_prompt_block(prompt, "execution_verdict")
+    kept = SuperegoStage._rendered_kept_values(prompt)
+    assert kept, "the list did not render on the shape it is for"
+    block = _se._KEPT_VALUES_OPENING + "".join(f"- {k}\n" for k in kept)
+    assert section.count(block) == 1
+    assert hashlib.sha256(section.replace(block, "").encode()).hexdigest()[:16] \
+        == "9f9985b4be444af6"
 
 
 def test_the_only_cell_that_moved_is_the_one_this_change_is_about():

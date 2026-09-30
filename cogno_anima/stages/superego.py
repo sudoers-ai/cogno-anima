@@ -413,6 +413,69 @@ _NOTHING_BEYOND_WHAT_WAS_READ = (
     "it looks.\n"
 )
 
+# ── ON A RE-VOICE, A VALUE THE DATA HOLDS STAYS IN THE REPLY (2026-09-30) ──────────────
+#
+# On an exhausted turn `_draft_section` withholds the rejected draft WHOLE, so the voice
+# rebuilds the reply from the executor data and the critique. When the critique corrects ONE
+# statement, the voice fixes it and drops true values nobody refused. Measured on a rehearsal
+# tenant: the coordinator's draft listed three rules from a document the read had returned
+# `ok=True`, one of them framed wrongly (an institution's payment day presented as a
+# deadline of the reader's). The judge rejected the draft for that framing, and the re-voiced
+# reply kept one rule and dropped the other two, including an invoice deadline that was in
+# the document.
+#
+# THE CRITIQUE'S MEANING IS NEVER READ, ONLY ITS VALUES. On the measured turns it touches the
+# right lines to ENDORSE them ("the reply should present only the invoice deadline …"), and
+# telling endorsement from contest is polarity, which no deterministic rule reads. So the rule
+# is the grounding rule turned around: every VALUE of the rejected draft that is written in the
+# executor data stays, and only a value the data does not hold may go.
+#
+# WITH ONE EXCEPTION, MEASURED (consultant's replay, n=12 per arm): a statement carrying a value
+# the critique CITES is not listed. The first cut ignored the critique entirely, and the invoice
+# line came back 12/12 (3/12 on `main`) with the FAB arm at 0/12; but the payment line the judge
+# rejected came back 7/12, 6/6 on one of the two traces, in the SAME rejected framing. Its value
+# was in the data; the error was the framing, and "keep it as it is" handed the rejected
+# statement back. So the critique is read for its SET OF VALUES only — the digit strings
+# `_numeral_forms` extracts, plus e-mails and URLs — never for what it says about them. The
+# cost is declared: a critique that cites a value to ENDORSE it (the invoice day, on one of the
+# two traces) takes that line off the list too, and that line gets today's behaviour.
+#
+# Decided in code (`_statements_the_data_holds`), with the provenance the figure net already
+# uses (`_numeral_forms`, the digit-string reading, over the reads `_payload_records` renders).
+# A statement of the draft (a line, or a sentence of one) is listed only when it carries at
+# least one value (a numeral, an e-mail, a URL) and EVERY one of its values is written in a
+# successful read of THIS prompt, so a statement carrying an invented value is never listed
+# and may go, as today. A statement with no value (an item named in words only) is not listed
+# either: its grounding is not decidable here. What this cannot tell: a small numeral ("3")
+# that the document carries somewhere else reads as grounded. That is the same reading the
+# figure net has.
+#
+# Rendered inside `# Execution verdict` only, and only when a read is visible
+# (`read_is_visible`). No new header, so `_VOICE_BLOCKS` and the persisted inventory do not
+# move. With nothing to list the section is byte for byte what it was.
+_KEPT_VALUES_OPENING = (
+    "VALUES THE DATA HOLDS STAY IN THE REPLY: each line below is a statement from the "
+    "rejected draft, and every figure, date, e-mail or link in it is written in the executor "
+    "data above. Those VALUES are not what review refused: you MUST keep every one of them in "
+    "the reply, exactly as written in the executor data. The WORDING around them is the "
+    "rejected draft's and is not verified: where the critique says a value is framed or "
+    "attributed wrongly, correct THAT and keep the value. Only a value the executor data does "
+    "not hold may be dropped, and the verdict above still decides what may be claimed as "
+    "done.\n"
+)
+# Bounds on what the draft may contribute. Over the bound a statement is not listed (today's
+# behaviour), never cut: a truncated statement is a different statement.
+_KEPT_VALUES_MAX = 12
+_KEPT_VALUES_MAX_CHARS = 400
+# A statement is a line, or a sentence inside a line. The split only has to be conservative:
+# a finer split lists less, never more, because every piece is tested on its own.
+_STATEMENT_SPLIT_RE = re.compile(r"\n+|(?<=[.!?])\s+")
+# A list marker or a markdown header at the start of a statement. It is stripped so that a
+# draft line can neither forge a `# Header` inside the voice prompt nor carry a list number
+# as a "value" ("1." is not a figure).
+_STATEMENT_MARK_RE = re.compile(r"^(?:\s*(?:[#>*\-•]+|\d{1,2}[.)])\s+)+")
+_ADDRESS_RE = re.compile(r"https?://[^\s)>\]]+|[\w.%+-]+@[\w-]+(?:\.[\w-]+)+", re.IGNORECASE)
+
 # The persona trait the modulation must never talk over: the tenant asked for an even
 # voice, and a courtesy addition (warmth, empathy) would be exactly that.
 _EVEN_TRAIT = "reserved"
@@ -3115,6 +3178,10 @@ class SuperegoStage:
 
         prompt = self._build_voice_prompt(ctx, payload, rendered, traits)
         adjustments += [f"trait:{t}" for t in traits]
+        # Counted, so "is the keep-list doing work" has a denominator (flag-only).
+        kept_statements = self._rendered_kept_values(prompt)
+        if kept_statements:
+            adjustments.append("voice:kept_values")
         system = voice_prompt or "You are a helpful assistant."
 
         async def _write(
@@ -3197,6 +3264,16 @@ class SuperegoStage:
         if voiced and self._preserved_mutated(preserved, payload, voiced):
             adjustments.append("preserved:mutated_in_output")
             logger.warning("stage=superego event=preserved_mutated_in_output")
+
+        # Deterministic keep-list backstop — flag-only, never a re-voice. A statement the
+        # prompt ordered kept whose values did not all reach the reply was dropped anyway.
+        # Read on the VOICED text, before the PII rule masks anything (same reason as above).
+        if voiced and kept_statements:
+            voiced_forms = self._numeral_forms(voiced)
+            if any(n not in voiced_forms for s in kept_statements
+                   for n in self._statement_numerals(s)):
+                adjustments.append("voice:kept_value_dropped")
+                logger.warning("stage=superego event=voice_kept_value_dropped")
 
         # Deterministic critique-provenance backstop — flag-only, never a re-voice. On a turn
         # the judge REJECTED, the critique is prose IN the voice prompt that no one executed
@@ -3587,6 +3664,24 @@ class SuperegoStage:
                     "those claims a lookup failed.\n"
                 )
                 #
+                # ── AND A VALUE THE DATA HOLDS STAYS (2026-09-30) ──────────────────────
+                # The statements are chosen in code (`_statements_the_data_holds`; the
+                # measured turn and the rule are on `_KEPT_VALUES_OPENING`), and the critique
+                # is read for its VALUES only, the RAW text: masking the note removes words,
+                # and a value removed there would put a cited statement back on the list. Gated on `read_is_visible` like `read_worked`: the premise
+                # "written in the executor data above" is true only when that data is in THIS
+                # prompt. Each statement goes through the same fencing as the payload and is
+                # masked of the contact's note. Nothing to list → "", byte for byte.
+                kept = (self._statements_the_data_holds(ctx, str(rejection["reason"]))
+                        if read_is_visible else [])
+                if kept:
+                    names = {t.tool for t in self._payload_records(ctx) if t.tool}
+                    kept_values = _KEPT_VALUES_OPENING + "".join(
+                        f"- {mask_contact_memo(sanitize_untrusted(s, names), memo)}\n"
+                        for s in kept)
+                else:
+                    kept_values = ""
+                #
                 # ── AND THE CRITIQUE IS NOT ADDRESSED TO THE CONTACT ───────────────────
                 # The critique lands here VERBATIM under a header that says HARD RULE, and
                 # nothing around it says WHO it is written for. It is a note to the EXECUTOR
@@ -3651,6 +3746,7 @@ class SuperegoStage:
                     "executor data, or ask the user ONE clarifying question to move forward.\n"
                     f"{nothing_tried}"
                     f"{read_worked}"
+                    f"{kept_values}"
                     # ── AND NOTHING IS RECONSTRUCTED (2026-09-22) ──────────────────────
                     # Unconditional, the section's last word, spliced by reference — the
                     # measured turn and the reasoning live on the constant itself.
@@ -3848,6 +3944,69 @@ class SuperegoStage:
                    and getattr(t, "side_effect", False) is not True
                    and getattr(t, "tool_mutating", None) is not True
                    for t in cls._payload_records(ctx))
+
+    @staticmethod
+    def _rendered_kept_values(prompt: str) -> "list[str]":
+        """The statements the keep-list of THIS prompt carries, read back from the rendering
+        (`_KEPT_VALUES_OPENING`, then one ``- `` line each). ``[]`` when none was rendered."""
+        at = prompt.find(_KEPT_VALUES_OPENING)
+        if at < 0:
+            return []
+        out: "list[str]" = []
+        for line in prompt[at + len(_KEPT_VALUES_OPENING):].split("\n"):
+            if not line.startswith("- "):
+                break
+            out.append(line[2:])
+        return out
+
+    @classmethod
+    def _statements_the_data_holds(cls, ctx: PipelineContext,
+                                   critique: str = "") -> "list[str]":
+        """The rejected draft's statements whose every value is written in a successful read
+        THIS prompt renders, minus every statement carrying a value ``critique`` cites. Decided
+        in code, never by the model; the critique is read for its VALUES only, never for its
+        meaning (see `_KEPT_VALUES_OPENING` for the measurement behind the exception).
+
+        ``[]`` (today's prompt, byte for byte) when there is no draft, no successful read in
+        the payload, or no statement left.
+        """
+        draft = ((ctx.ego_result.draft if ctx.ego_result else "") or "").strip()
+        if not draft:
+            return []
+        evidence = "\n".join(str(t.result or "") for t in cls._payload_records(ctx)
+                             if getattr(t, "ok", None) is True
+                             and getattr(t, "side_effect", False) is not True
+                             and getattr(t, "tool_mutating", None) is not True
+                             and t.result)
+        if not evidence:
+            return []
+        grounded = cls._numeral_forms(evidence)
+        # The critique's values, in the widened reading on both sides (a statement's "1.440,00"
+        # meets a critique's "1440"): widening only takes MORE statements off the list.
+        cited = cls._numeral_forms(_ADDRESS_RE.sub(" ", critique or ""))
+        cited_text = (critique or "").lower()
+        keep: "list[str]" = []
+        for piece in _STATEMENT_SPLIT_RE.split(draft):
+            statement = _STATEMENT_MARK_RE.sub("", piece).strip()
+            if not statement or len(statement) > _KEPT_VALUES_MAX_CHARS:
+                continue
+            addresses = [a.rstrip(".,;:!?") for a in _ADDRESS_RE.findall(statement)]
+            numerals = cls._statement_numerals(statement)
+            if not (numerals or addresses):
+                continue
+            if cls._numeral_forms(_ADDRESS_RE.sub(" ", statement)) & cited \
+                    or any(a.lower() in cited_text for a in addresses):
+                continue
+            if all(n in grounded for n in numerals) and all(a in evidence for a in addresses):
+                keep.append(statement)
+        return keep[:_KEPT_VALUES_MAX]
+
+    @staticmethod
+    def _statement_numerals(statement: str) -> "list[str]":
+        """Each numeral of ``statement`` as its digit string, e-mails and URLs taken out first
+        (their digits belong to the address, which is compared whole)."""
+        return [d for d in (re.sub(r"\D", "", n)
+                            for n in _NUM_RE.findall(_ADDRESS_RE.sub(" ", statement))) if d]
 
     @staticmethod
     def _tool_payload(ctx: PipelineContext) -> str:
