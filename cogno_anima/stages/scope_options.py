@@ -64,7 +64,10 @@ __all__ = [
     "OUTCOME_ERROR",
     "VALID_SELECTION_OUTCOMES",
     "MAX_PICKS",
+    "EVIDENCE_PREFIX",
+    "GENERIC_SUBJECT_WORDS",
     "closed_options",
+    "has_evidence",
     "parse_selection",
     "select_options",
     "select_scope_options",
@@ -90,6 +93,65 @@ MAX_OPTION_CHARS = 120
 MAX_MESSAGE_CHARS = 600
 #: ``asked`` is quoted back to the contact, so it is short and it is theirs.
 MAX_ASKED_CHARS = 80
+
+# ── ``covered`` needs EVIDENCE in the code, not only the model's word (2026-09-30) ──────────
+#
+# Measured on this PR's own nightly (qwen3:8b, the CI runner): "the Wi-Fi password" came back
+# ``covered: ['consult_documents']`` 3/3 — a local model LETS THE NEGATIVE THROUGH, and a covered
+# pick lifts the guard. So a covered pick counts only when the option shares at least ONE
+# meaning-carrying term with the message, and a term that only names the general FRAME of a
+# business ("school", "class", "students") is not evidence. A covered pick without it is DROPPED
+# and counted (``covered_unsupported``), and when none survives the case falls to the refusal of
+# today — never to a question. ``suggested`` is untouched.
+#
+# The words are ``cogno_engram.lexical.terms`` — the ONE tokenizer the ecosystem's lexical floors
+# share (fold, stopwords, the plural rule) — cut to :data:`EVIDENCE_PREFIX` characters. Whole
+# words were measured and REFUSED: over the six labelled real false refusals (1a) downstream,
+# the question shares a whole word with its target section in 2 of 6, and a 6-character prefix
+# (the same cut the host's document signal uses) in 4 of 6. It is imported lazily and, when the
+# package is absent, NO covered pick has evidence (fail-closed: the refusal of today, counted).
+EVIDENCE_PREFIX = 6
+
+#: The FRAME of a business, not a subject: words any request to a school, a clinic or a company
+#: may carry and that never say WHAT is being asked. There was no shared list of these to reuse —
+#: engram's ``STOPWORDS`` are function words on purpose, and the host's frame words
+#: (``transfer_offer.GENERIC_REQUEST_WORDS``) are a request-verb list in another package — so this
+#: is the ONE constant, deliberately short: every word here is one that would lift a refusal on a
+#: section that merely shares it («A faculdade tem academia?» and a section «Calendário da
+#: faculdade»). Portuguese and English; compared through the same tokenizer and prefix as the
+#: message, so its spelling here does not have to be the tokenizer's. Every word is CUT to the prefix
+#: too, so a word here removes every word sharing its first six letters: «matéria» is NOT listed
+#: because it would take «material» with it, nor «informação», which would take «informática»
+#: (a unit test pins both pairs).
+GENERIC_SUBJECT_WORDS = """
+faculdade escola colegio universidade instituicao campus aula aulas curso cursos turma turmas
+aluno alunos aluna alunas estudante estudantes professor professores professora professoras
+docente docentes disciplina disciplinas estudar estudo empresa negocio loja
+clinica servico servicos atendimento duvida pergunta saber gostaria
+queria quero preciso posso pode poderia consigo documento documentos arquivo relatorio resumo
+school college university class classes course courses student students teacher teachers
+lesson subject business company service services question document documents
+"""
+
+
+def _evidence_terms(text: str) -> "Optional[frozenset[str]]":
+    """The message's (or an option's) terms that can carry evidence, or ``None`` when the
+    tokenizer is not installed (fail-closed). Underscores split, so a tool name is its words."""
+    try:
+        from cogno_engram.lexical import terms
+    except ImportError:
+        return None
+    words = terms((text or "").replace("_", " "), EVIDENCE_PREFIX)
+    return frozenset(words - terms(GENERIC_SUBJECT_WORDS, EVIDENCE_PREFIX))
+
+
+def has_evidence(message: str, option: str) -> bool:
+    """Does ``option`` share at least one non-generic term with ``message``? Pure; no tokenizer →
+    ``False``."""
+    asked, offered = _evidence_terms(message), _evidence_terms(option)
+    if asked is None or offered is None:
+        return False
+    return bool(asked & offered)
 
 # The strict prompt measured downstream, split into the two lists this module acts on. The
 # domain words in the examples ("the course, studying, the school") are generic on purpose.
@@ -128,6 +190,7 @@ class OptionSelection:
     asked: str = ""
     offered: int = 0
     discarded: int = 0
+    covered_unsupported: int = 0
     called: bool = False
     metrics: StageMetrics = field(default_factory=lambda: _no_call("unknown"))
 
@@ -137,7 +200,8 @@ class OptionSelection:
         render); a trace writer copies the counts, never the texts."""
         return {"outcome": self.outcome, "covered": list(self.covered),
                 "suggested": list(self.suggested), "asked": self.asked,
-                "offered": self.offered, "discarded": self.discarded}
+                "offered": self.offered, "discarded": self.discarded,
+                "covered_unsupported": self.covered_unsupported}
 
 
 def _no_call(model: str) -> StageMetrics:
@@ -183,24 +247,29 @@ def _picks(value: Any) -> "Optional[list[Any]]":
 
 
 def parse_selection(data: Any, options: Sequence[str], message: str,
-                    ) -> "tuple[str, tuple[str, ...], tuple[str, ...], str, int]":
-    """``(outcome, covered, suggested, asked, discarded)`` from the model's parsed JSON. Pure.
+                    ) -> "tuple[str, tuple[str, ...], tuple[str, ...], str, int, int]":
+    """``(outcome, covered, suggested, asked, discarded, covered_unsupported)`` from the model's
+    parsed JSON. Pure.
 
     * only an option that IS in ``options`` (after trimming) survives; anything else is counted
       in ``discarded`` — including a non-string;
     * ``covered`` wins: an option picked in both lists is covered, and when ANY option is covered
       the outcome is ``covered`` whatever else was suggested — a false refusal is never turned
       into a question;
+    * a ``covered`` pick with no :func:`has_evidence` is DROPPED and counted
+      (``covered_unsupported``); when a covered pick was made and none survives, the case is the
+      refusal of today (``none``) — the unsupported pick is never turned into a suggestion, and
+      the suggestions beside it are not offered either;
     * at most :data:`MAX_PICKS` in all, ``covered`` first;
     * ``asked`` survives only when its fold is a substring of the message's fold and it is at
       most :data:`MAX_ASKED_CHARS` long;
     * not a JSON object, or an object with neither list, or a list that is not a list → ``error``.
     """
     if not isinstance(data, dict) or ("answers" not in data and "maybe" not in data):
-        return OUTCOME_ERROR, (), (), "", 0
+        return OUTCOME_ERROR, (), (), "", 0, 0
     answers, maybe = _picks(data.get("answers")), _picks(data.get("maybe"))
     if answers is None or maybe is None:
-        return OUTCOME_ERROR, (), (), "", 0
+        return OUTCOME_ERROR, (), (), "", 0, 0
     allowed = set(options)
     discarded = 0
     covered: "list[str]" = []
@@ -214,17 +283,22 @@ def parse_selection(data: Any, options: Sequence[str], message: str,
             if text in covered or text in suggested:
                 continue
             sink.append(text)
-    covered = covered[:MAX_PICKS]
+    picked_covered = bool(covered)
+    unsupported = [c for c in covered if not has_evidence(message, c)]
+    covered = [c for c in covered if c not in unsupported][:MAX_PICKS]
     suggested = [s for s in suggested if s not in covered][:max(0, MAX_PICKS - len(covered))]
     asked_raw = data.get("asked")
     asked = " ".join(asked_raw.split()) if isinstance(asked_raw, str) else ""
     if not asked or len(asked) > MAX_ASKED_CHARS or _fold(asked) not in _fold(message):
         asked = ""
+    n_unsupported = len(unsupported)
     if covered:
-        return OUTCOME_COVERED, tuple(covered), (), asked, discarded
+        return OUTCOME_COVERED, tuple(covered), (), asked, discarded, n_unsupported
+    if picked_covered:
+        return OUTCOME_NONE, (), (), asked, discarded, n_unsupported
     if suggested:
-        return OUTCOME_SUGGESTED, (), tuple(suggested), asked, discarded
-    return OUTCOME_NONE, (), (), asked, discarded
+        return OUTCOME_SUGGESTED, (), tuple(suggested), asked, discarded, 0
+    return OUTCOME_NONE, (), (), asked, discarded, 0
 
 
 def _prompt(message: str, options: Sequence[str]) -> str:
@@ -252,22 +326,23 @@ async def select_options(message: str, options: Any, backend: LLMBackend) -> Opt
         fingerprint = system_fingerprint_of(backend)
         served = served_model_of(backend)
         text, _ = SuperegoStage.strip_cot(raw)
-        outcome, covered, suggested, asked, discarded = parse_selection(
+        outcome, covered, suggested, asked, discarded, unsupported = parse_selection(
             SuperegoStage._parse_json(text), offered, message)
     except asyncio.CancelledError:
         raise
     except Exception as exc:  # noqa: BLE001 — a courtesy on a refused turn never costs a reply
         logger.warning("scope option selector failed (%s) — the refusal stands",
                        type(exc).__name__)
-        outcome, covered, suggested, asked, discarded = OUTCOME_ERROR, (), (), "", 0
+        outcome, covered, suggested, asked, discarded, unsupported = (
+            OUTCOME_ERROR, (), (), "", 0, 0)
     metrics = StageMetrics(stage=SELECT_STAGE, elapsed_ms=(time.perf_counter() - t0) * 1000,
                            tokens_in=ti, tokens_out=to, cached_tokens=cached,
                            system_fingerprint=fingerprint, served_model=served, model=model)
-    logger.info("SUPEREGO scope options outcome=%s offered=%d discarded=%d",
-                outcome, len(offered), discarded)
+    logger.info("SUPEREGO scope options outcome=%s offered=%d discarded=%d "
+                "covered_unsupported=%d", outcome, len(offered), discarded, unsupported)
     return OptionSelection(outcome=outcome, covered=covered, suggested=suggested, asked=asked,
-                           offered=len(offered), discarded=discarded, called=True,
-                           metrics=metrics)
+                           offered=len(offered), discarded=discarded,
+                           covered_unsupported=unsupported, called=True, metrics=metrics)
 
 
 async def select_scope_options(ctx: PipelineContext, backend: LLMBackend, *,

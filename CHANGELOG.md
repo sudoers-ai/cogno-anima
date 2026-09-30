@@ -9,6 +9,31 @@
   its refusal). Docstring only; `cogno-host`'s `test_committed_prose_matches_code.py` counts the
   callers on disk and fails when the prose is behind.
 
+## Unreleased — nenhum teste UNITÁRIO chama o Ollama local: portão imposto, não prometido (2026-09-30)
+
+### Added
+
+- **`tests/unit/conftest.py` + `tests/unit/_ollama_gate.py`**: uma fixture de sessão autouse
+  recusa qualquer ligação ao Ollama durante a suíte unit (porto 11434 em qualquer anfitrião, e o
+  host:porto de `OLLAMA_BASE_URL`/`COGNO_OLLAMA_URL`/`OLLAMA_HOST`, lidos no instante da ligação)
+  com `OllamaGateError`, e uma fixture por teste FALHA o teste no teardown quando houve tentativa —
+  mesmo que o código sob teste tenha engolido a recusa (`is_available` → `False`).
+- Corta em dois pontos, um predicado: `socket.socket.connect`/`connect_ex` (o ponto mais baixo,
+  onde todo o cliente acaba — httpx, SDK OpenAI, `urllib`) e `httpcore.{AnyIO,Sync}Backend.connect_tcp`
+  (medido: recusada só no socket, a chamada `httpx.AsyncClient` chega ao teste dentro do
+  `ExceptionGroup` do anyio; aqui chega o erro do portão, limpo).
+
+### Why
+
+- O Ollama local é a GPU que serve tráfego real. Incidente no host: um teste unitário deixou o
+  backend a `None`, o código construiu o `OllamaBackend` real por omissão e chamou
+  `localhost:11434`. A convenção «unit usa stubs» não tinha nada que a impusesse.
+
+### Unchanged
+
+- `tests/integration` não carrega esta conftest. Um servidor de loopback que um teste levanta
+  noutro porto passa (controlo em `tests/unit/test_ollama_gate.py`).
+
 ## Unreleased — "did you mean…?" on a refused turn: a strict selector over a CLOSED list (VQD, 2026-09-30)
 
 ### Added
@@ -19,7 +44,15 @@
   closed outcome alphabet `covered | suggested | none | error`. One strict model call, only on a
   turn the scope guard BLOCKED and only when the host injects a backend and the list.
 - **`metakeys.SCOPE_OPTIONS_SELECTION`** — the per-turn record (outcome, the picked option texts,
-  `asked`, `offered`, `discarded`); the orchestrator pops it before the guard runs.
+  `asked`, `offered`, `discarded`, `covered_unsupported`); the orchestrator pops it before the guard
+  runs.
+- **`covered` needs code-side EVIDENCE** (`has_evidence`, `EVIDENCE_PREFIX = 6`,
+  `GENERIC_SUBJECT_WORDS`): the option must share ≥1 non-generic `cogno_engram.lexical.terms` term
+  with the message, or the pick is dropped and counted (`covered_unsupported`) and the case is the
+  refusal of today. Measured on this PR's nightly: qwen3:8b answered the Wi-Fi password
+  `covered: ['consult_documents']` 3/3. `cogno-engram` joins the CI install chain (both jobs); it is
+  imported lazily and fail-CLOSED without it. The integration test now runs on the suite's model
+  AND `openai:gpt-4o-mini` (skipped without a key); the Wi-Fi must draw nothing on both.
 
 ### Why
 
