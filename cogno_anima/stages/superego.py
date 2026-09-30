@@ -998,6 +998,13 @@ _HELD_ASKING_IS_THE_HOSTS = (
     "is NOT a defect — never reject for it, and never ask for that question in the critique. "
     "Judge the held message's own text by (a)-(d) above. "
 )
+# (a1) The same fact at the place the judge READS it. A held call sits in the executed step as
+# `ok=False, error="needs_confirmation"` (gate B/C), so `_format_calls` rendered it `→ ERROR:` —
+# the word the fail-CLOSED judge is taught to read as a failure. On a turn with a declared held
+# message the record that IS the hold is labelled with what it is instead. The label is inline in
+# the call line (no `# ` header), so `_JUDGE_BLOCKS` and the inventory keep their rows.
+_HELD_CALL_LABEL = ("HELD for the user's confirmation (NOT a failure — nothing was sent; the "
+                    "host shows this proposal to the user and asks)")
 _HELD_MESSAGE_RULE = (
     "JUDGE EACH HELD MESSAGE AS IF IT WERE BEING SENT NOW — this is criterion #1 (goal <-> "
     "execution) applied to the message's own text, because that text is what its recipient "
@@ -2310,9 +2317,14 @@ class SuperegoStage:
         # the set is what it always was.
         consulted_calls = self._consulted_calls(ctx)
         names = {t.tool for t in [*ego.tools_executed, *(consulted_calls or ())] if t.tool}
-        executed = self._format_calls(ego.tools_executed, names) or "(no tools executed)"
-        consulted = self._format_consulted(ctx, consulted_calls, names)
         held_messages = self._format_held_messages(ctx, names)
+        # (a1) On a turn with a declared held message, a record that IS the hold is labelled HELD
+        # rather than ERROR — in this block only, and never by reading the error text: the
+        # identity is `(tool, arguments)` against `pending_confirmation`. The record itself keeps
+        # `ok=False`, which is what guarantees a hold never counts as a write anywhere else.
+        held = self._held_keys(ego) if held_messages else frozenset()
+        executed = self._format_calls(ego.tools_executed, names, held) or "(no tools executed)"
+        consulted = self._format_consulted(ctx, consulted_calls, names)
         draft = ego.draft or "(none)"
         # The section's own bytes; the blank line that separates it from its neighbour is the
         # template's, below, and it is the same "\n" wherever the section sits.
@@ -2492,17 +2504,45 @@ class SuperegoStage:
         return _HELD_ASK_RULE if any(ask for _t, _x, ask in held_messages_with_asks(ctx)) else ""
 
     @staticmethod
-    def _format_calls(calls: "Any", names: "set[str]") -> str:
+    def _call_key(tool: "Any", arguments: "Any") -> "tuple[str, str]":
+        """The identity of a call: its tool and its arguments, never its result or error text."""
+        try:
+            args = json.dumps(arguments, ensure_ascii=False, sort_keys=True, default=str)
+        except Exception:      # noqa: BLE001 — an unhashable key only loses the HELD label
+            args = repr(arguments)
+        return (str(tool), args)
+
+    @classmethod
+    def _held_keys(cls, ego: "Any") -> "frozenset[tuple[str, str]]":
+        """``(tool, arguments)`` of every call the EGO HELD this turn (`pending_confirmation`)."""
+        try:
+            return frozenset(cls._call_key(t.tool, t.arguments)
+                             for t in (getattr(ego, "pending_confirmation", None) or ()))
+        except Exception:      # noqa: BLE001 — an unreadable hold renders as it always did
+            return frozenset()
+
+    @classmethod
+    def _format_calls(cls, calls: "Any", names: "set[str]",
+                      held: "frozenset[tuple[str, str]]" = frozenset()) -> str:
         """One rendered line per executed call — ONE definition, two blocks.
 
         The EGO's own calls and the consulted specialist's are rendered by this, not by two
         comprehensions: the fencing and the sanitizing ARE the policy (a tool result is
         untrusted third-party text arriving at the fail-CLOSED gate), and half a policy applied
         to the second block is the shape this repo keeps paying for.
+
+        ``held`` names the calls to label :data:`_HELD_CALL_LABEL` instead of ``ERROR`` — empty
+        (every call renders as it always did) unless the caller passes the turn's holds.
         """
+        def status(t: "Any") -> str:
+            if t.ok:
+                return "OK"
+            if held and not t.ok and cls._call_key(t.tool, t.arguments) in held:
+                return _HELD_CALL_LABEL
+            return "ERROR"
         return "\n".join(
             f"- {t.tool}({json.dumps(t.arguments, ensure_ascii=False)}) → "
-            f"{'OK' if t.ok else 'ERROR'}:\n<tool_output name=\"{t.tool}\">\n"
+            f"{status(t)}:\n<tool_output name=\"{t.tool}\">\n"
             f"{sanitize_untrusted(t.result or t.error or '', names)}\n</tool_output>"
             for t in calls)
 

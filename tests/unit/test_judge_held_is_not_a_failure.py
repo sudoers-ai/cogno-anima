@@ -11,7 +11,10 @@ the call was held; what it rejected was the empty draft beside it.
 
 So `_HELD_ASKING_IS_THE_HOSTS` is spliced into `_HELD_MESSAGE_RULE`: the asking is the host's,
 an empty draft beside a hold is not a failure, and the held text is still judged by (a)-(d).
-The rule already renders only when a held message is declared, so every other turn is byte for
+(a1), on the same turns only: the record that IS the hold — identified by `(tool, arguments)`
+against `pending_confirmation`, never by its error text — renders `_HELD_CALL_LABEL` in the
+executed block instead of `ERROR`, the word the fail-CLOSED judge reads as a failure.
+Both render only when a held message is declared, so every other turn is byte for
 byte what it was — pinned below by digests taken on the tree BEFORE this change (86c3c60), with
 a control that proves the digest moves when the sentence enters. Names here are invented.
 """
@@ -21,8 +24,9 @@ from __future__ import annotations
 import hashlib
 
 from cogno_anima import metakeys as mk
-from cogno_anima.stages.superego import (_HELD_ASKING_IS_THE_HOSTS, _HELD_MESSAGE_RULE,
-                                         _HELD_MESSAGES_HEADER, SuperegoStage)
+from cogno_anima.stages.superego import (_HELD_ASKING_IS_THE_HOSTS, _HELD_CALL_LABEL,
+                                         _HELD_MESSAGE_RULE, _HELD_MESSAGES_HEADER,
+                                         SuperegoStage)
 from cogno_anima.types import EgoResult, EgoStep, ToolExecution
 from tests.unit.test_superego import _ctx, _m
 
@@ -143,7 +147,8 @@ def test_both_measured_shapes_carry_the_sentence_inside_the_held_rule():
         prompt = _prompt(_shape(name))
         assert _HELD_MESSAGES_HEADER in prompt, name              # it IS a proposal turn…
         assert "# EGO draft\n(none)\n" in prompt, name            # …with the empty draft…
-        assert "→ ERROR:" in prompt and "[PENDING CONFIRMATION]" in prompt, name  # …as live
+        assert "[PENDING CONFIRMATION]" in prompt, name           # …the record as live…
+        assert "notify_user({" in prompt and f"→ {_HELD_CALL_LABEL}:" in prompt, name  # (a1)
         assert _HELD_MESSAGE_RULE in prompt, name
         assert _HELD_ASKING_IS_THE_HOSTS in prompt, name
         # it sits AFTER the held block and the draft it is about
@@ -168,13 +173,70 @@ def test_the_sentence_holds_on_a_draft_that_is_not_empty_too():
     assert _HELD_ASKING_IS_THE_HOSTS in prompt
 
 
-def test_the_twins_differ_from_the_tree_before_only_by_the_sentence():
-    """Nothing else in the twin prompt moved: remove the sentence and the bytes are the ones
-    the measured judge was given."""
+def _before(prompt: str) -> str:
+    """Undo, by name, the two changes: the sentence (a2) and the HELD label (a1)."""
+    return prompt.replace(_HELD_ASKING_IS_THE_HOSTS, "").replace(f"→ {_HELD_CALL_LABEL}:",
+                                                                 "→ ERROR:")
+
+
+def test_the_twins_differ_from_the_tree_before_only_by_the_sentence_and_the_label():
+    """Nothing else in the twin prompt moved: undo the two and the bytes are the ones the
+    measured judge was given."""
     for name, before in _BEFORE_TWINS.items():
         prompt = _prompt(_shape(name))
-        assert _sha(prompt) != before, f"[{name}] the sentence did not reach the prompt"
-        assert _sha(prompt.replace(_HELD_ASKING_IS_THE_HOSTS, "")) == before, name
+        assert _sha(prompt) != before, f"[{name}] the change did not reach the prompt"
+        assert _sha(prompt.replace(_HELD_ASKING_IS_THE_HOSTS, "")) != before, name  # label too
+        assert _sha(_before(prompt)) == before, name
+
+
+# ── (a1) the held record is labelled HELD, and only it, and only on a held-message turn ──
+
+
+def test_the_held_record_is_labelled_held_and_never_error():
+    for name in ("forward", "choice"):
+        executed = _executed(_prompt(_shape(name)))
+        line = next(ln for ln in executed.splitlines() if ln.startswith("- notify_user("))
+        assert line.endswith(f"→ {_HELD_CALL_LABEL}:"), (name, line)
+        assert "→ ERROR:" not in executed, name
+    assert "NOT a failure" in _HELD_CALL_LABEL and "nothing was sent" in _HELD_CALL_LABEL
+
+
+def test_a_read_that_failed_beside_the_hold_is_still_an_error():
+    """The identity is the HOLD (`pending_confirmation`, by tool and arguments), never
+    `ok=False`: a genuine failure on the same turn keeps the word the judge must read."""
+    ctx = _shape("forward")
+    failed = ToolExecution(tool="list_staff", arguments={"name": "Rui"}, ok=False,
+                           error="timeout", result="upstream timed out")
+    ctx.ego_result.steps[0].tool_calls.insert(0, failed)
+    executed = _executed(_prompt(ctx))
+    assert "- list_staff({\"name\": \"Rui\"}) → ERROR:" in executed
+    assert f"→ {_HELD_CALL_LABEL}:" in executed
+
+
+def test_the_label_follows_the_arguments_not_the_error_text():
+    """Same tool, other arguments than the hold → not the hold → ERROR. And the error text is
+    never read: a hold with an unusual error string is still labelled HELD."""
+    ctx = _shape("forward")
+    step = ctx.ego_result.steps[0]
+    step.tool_calls[-1] = step.tool_calls[-1].model_copy(update={"error": "something else"})
+    ctx.ego_result.pending_confirmation = [step.tool_calls[-1]]
+    assert f"→ {_HELD_CALL_LABEL}:" in _executed(_prompt(ctx))
+    ctx.ego_result.pending_confirmation = [step.tool_calls[-1].model_copy(
+        update={"arguments": {"target": "41", "message": "outra"}})]
+    executed = _executed(_prompt(ctx))
+    assert f"→ {_HELD_CALL_LABEL}:" not in executed and "→ ERROR:" in executed
+
+
+def test_a_hold_without_a_declared_held_message_keeps_error():
+    """(a1) is conditional on the held-message block, like (a2): a gate-B hold of a call that
+    delivers no text, and the undeclared twin, render `ERROR` exactly as before."""
+    for ctx in (_shape("book_room"), _shape("forward", declared=None)):
+        executed = _executed(_prompt(ctx))
+        assert "→ ERROR:" in executed and _HELD_CALL_LABEL not in executed
+
+
+def _executed(prompt: str) -> str:
+    return prompt[prompt.index("# What the EGO executed"):prompt.index("# EGO draft")]
 
 
 # ── the control: no held message declared → byte for byte as before ─────────────────
@@ -201,14 +263,17 @@ def test_the_control_can_see_the_sentence_enter():
 
 def test_the_inventory_rows_are_the_ones_before():
     """No new header: the judge's inventory lists the same sections, in the same order, and
-    the only length that moves is the criteria section the rule is rendered in."""
+    the only lengths that move are the criteria section the rule is rendered in (a2) and the
+    executed block the label is rendered in (a1)."""
     for name in ("forward", "choice"):
         prompt = _prompt(_shape(name))
-        before = prompt.replace(_HELD_ASKING_IS_THE_HOSTS, "")
+        before = _before(prompt)
         now_rows = SuperegoStage.judge_prompt_inventory(prompt)
         old_rows = SuperegoStage.judge_prompt_inventory(before)
         assert [r["block"] for r in now_rows] == [r["block"] for r in old_rows], name
         moved = [a["block"] for a, b in zip(now_rows, old_rows) if a != b]
-        assert moved == ["criteria_execution"], (name, moved)
-    assert not any(h.startswith(_HELD_ASKING_IS_THE_HOSTS[:12])
+        assert set(moved) <= {"executed", "criteria_execution"}, (name, moved)
+        assert "criteria_execution" in moved and "executed" in moved, (name, moved)
+    assert not any(h.startswith(_HELD_ASKING_IS_THE_HOSTS[:12]) or h.startswith("HELD")
                    for h, _slug in SuperegoStage._JUDGE_BLOCKS)
+    assert not _HELD_CALL_LABEL.startswith("#")

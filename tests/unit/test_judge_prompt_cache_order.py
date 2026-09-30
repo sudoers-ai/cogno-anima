@@ -39,7 +39,8 @@ from collections import Counter
 import pytest
 
 from cogno_anima import metakeys as mk
-from cogno_anima.stages.superego import _HELD_ASKING_IS_THE_HOSTS, _JUDGE_SYSTEM, SuperegoStage
+from cogno_anima.stages.superego import (_HELD_ASKING_IS_THE_HOSTS, _HELD_CALL_LABEL,
+                                         _JUDGE_SYSTEM, SuperegoStage)
 from tests.unit.test_judge_blocks_sync import _configs
 from tests.unit.test_superego import _ctx
 
@@ -229,9 +230,11 @@ def test_the_sections_are_the_same_multiset_as_before_only_the_order_moved(name,
 def _since_f13(prompt: str) -> str:
     """The prompt with the judge's DELIBERATE later text changes removed by name, so the digests
     below can keep being c0d6bb9's and keep proving that nothing ELSE moved. Each entry is a
-    change that has its own test pinning it; today one: `_HELD_ASKING_IS_THE_HOSTS` (2026-09-30,
-    rendered only on a turn with a declared held message — the `held` configuration here)."""
-    return prompt.replace(_HELD_ASKING_IS_THE_HOSTS, "")
+    change that has its own test pinning it; today two, both rendered only on a turn with a
+    declared held message (the `held` configuration here): `_HELD_ASKING_IS_THE_HOSTS` and the
+    `_HELD_CALL_LABEL` that replaces `ERROR` on the held record (2026-09-30)."""
+    return prompt.replace(_HELD_ASKING_IS_THE_HOSTS, "").replace(f"→ {_HELD_CALL_LABEL}:",
+                                                                 "→ ERROR:")
 
 
 _ORIGIN_MAIN = {

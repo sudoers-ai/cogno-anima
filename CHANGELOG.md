@@ -1,9 +1,14 @@
 # Changelog
 
-## Unreleased — o juiz da mensagem RETIDA sabe que a pergunta de confirmação é do HOST (Pilha B item 7, variante (a2), 2026-09-30)
+## Unreleased — o juiz da mensagem RETIDA sabe que a pergunta de confirmação é do HOST (Pilha B item 7, variantes (a2) e (a1), 2026-09-30)
 
 ### Changed
 
+- **(a1)** — no MESMO turno (só com mensagem retida declarada), o registo que É o hold, identificado
+  por `(tool, arguments)` em `pending_confirmation` e nunca pelo texto do erro, é rendido
+  `→ HELD for the user's confirmation (NOT a failure — …):` (`_HELD_CALL_LABEL`) em vez de
+  `→ ERROR:` no bloco `# What the EGO executed`. Sem cabeçalho novo; o bloco do consultado e
+  qualquer outra chamada `ok=False` continuam `ERROR`; o registo continua `ok=False`.
 - **`_HELD_MESSAGE_RULE` ganha `_HELD_ASKING_IS_THE_HOSTS`**, costurada por referência a seguir à
   frase do MID-FLOW: num turno de proposta a pergunta que mostra a mensagem ao utilizador e pede
   o «sim» é ACRESCENTADA PELO HOST, DEPOIS deste juízo; um rascunho VAZIO (ou que não pergunta)

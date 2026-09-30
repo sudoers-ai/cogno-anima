@@ -25,7 +25,8 @@ import hashlib
 from cogno_anima import held_delivered_texts, held_messages_with_asks
 from cogno_anima import metakeys as mk
 from cogno_anima.stages.superego import (_HELD_ASK_LEAD, _HELD_ASK_RULE,
-                                         _HELD_ASKING_IS_THE_HOSTS, _HELD_MESSAGE_RULE,
+                                         _HELD_ASKING_IS_THE_HOSTS, _HELD_CALL_LABEL,
+                                         _HELD_MESSAGE_RULE,
                                          _HELD_MESSAGES_HEADER, SuperegoStage)
 from cogno_anima.types import _MAX_RECORDED_ASK_CHARS, EgoResult, EgoStep, ToolExecution
 from tests.unit.test_superego import _ctx, _m
@@ -61,6 +62,11 @@ def _prompt(ctx) -> str:
 
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _before_hm(prompt: str) -> str:
+    return prompt.replace(_HELD_ASKING_IS_THE_HOSTS, "").replace(f"→ {_HELD_CALL_LABEL}:",
+                                                                 "→ ERROR:")
 
 
 _DECL = {"notify_user": "message"}
@@ -140,12 +146,12 @@ def test_a_long_ask_is_cut_with_a_visible_stump():
 
 
 def test_without_an_ask_the_prompt_is_byte_for_byte_origin_main():
-    """The digests stay e9898d1's. The one DELIBERATE later change of the judge's text on these
-    turns — `_HELD_ASKING_IS_THE_HOSTS`, spliced into the held-message rule — is removed by name
-    before hashing, so the proof keeps saying what else did NOT move
-    (`test_judge_held_is_not_a_failure.py` pins that sentence on its own)."""
+    """The digests stay e9898d1's. The DELIBERATE later changes of the judge's text on these
+    turns — `_HELD_ASKING_IS_THE_HOSTS`, spliced into the held-message rule, and the
+    `_HELD_CALL_LABEL` on the held record — are undone by name before hashing, so the proof
+    keeps saying what else did NOT move (`test_judge_held_is_not_a_failure.py` pins them)."""
     for name, build, digest in _BASE:
-        assert _sha(_prompt(build()).replace(_HELD_ASKING_IS_THE_HOSTS, "")) == digest, name
+        assert _sha(_before_hm(_prompt(build()))) == digest, name
 
 
 def test_the_control_the_digest_moves_when_an_ask_is_added():
@@ -154,7 +160,7 @@ def test_the_control_the_digest_moves_when_an_ask_is_added():
     base = _prompt(_BASE[0][1]())
     ctx = _ctx_with([_held({"target": "Otávio", "message": MSG, ARG: ASK})], _DECL, _ASKS)
     got = _prompt(ctx)
-    assert _sha(got.replace(_HELD_ASKING_IS_THE_HOSTS, "")) != _BASE[0][2]
+    assert _sha(_before_hm(got)) != _BASE[0][2]
     assert got.replace(f"\n{_HELD_ASK_LEAD}\n<held_ask name=\"notify_user\">\n{ASK}\n</held_ask>",
                        "").replace(_HELD_ASK_RULE, "") == base
 
