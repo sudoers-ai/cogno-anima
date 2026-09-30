@@ -287,7 +287,7 @@ All cross-stage data is `pydantic.BaseModel`. Key types: `StageMetrics` (per-cal
 ### Testing conventions
 
 - `tests/conftest.py` provides `StubBackend` and `StubEmbedder` fixtures (`stub_backend`, `stub_embedder`) — zero-network test doubles for unit tests.
-- `tests/unit/` — pure unit tests using stubs, no network.
+- `tests/unit/` — pure unit tests using stubs, no network. **Enforced for Ollama, not promised** (2026-09-30): `tests/unit/conftest.py` installs `tests/unit/_ollama_gate.py` for the whole unit session, so any attempt to open a connection to Ollama (port 11434 on any host, or the host:port of `OLLAMA_BASE_URL`/`COGNO_OLLAMA_URL`/`OLLAMA_HOST`, read at connect time) raises `OllamaGateError`, and the test FAILS at teardown even when the code under test swallowed the refusal. The local Ollama is the GPU serving live traffic; the incident was a host unit test that left a backend `None`, got the real `OllamaBackend` default and called `localhost:11434`. It cuts at `socket.socket.connect` (every client ends there) plus httpcore's `connect_tcp` (so the httpx path raises the gate's error unwrapped rather than inside anyio's `ExceptionGroup`); `tests/unit/test_ollama_gate.py` pins the twins, the controls and the swallowed case.
 - `tests/integration/` — real Ollama-backed tests; check `is_ollama_available()` and skip if unreachable. Always use `temperature=0.0` — it buys determinism against the local default (measured: zero unstable checks over three cognobench sweeps on qwen3:8b) but only REQUESTS greedy decoding from a hosted provider, which nothing obliges to deliver it; a suite pointed at one via `COGNO_TEST_MODEL` is sampling. See `BENCHMARKS.md` § *Reading a number from this bench*.
 - Async tests use `@pytest.mark.asyncio`.
 
