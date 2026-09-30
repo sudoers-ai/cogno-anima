@@ -17,6 +17,8 @@
   persisted inventory do not move.
 - Two flag-only adjustments: `voice:kept_values` (the list rendered) and
   `voice:kept_value_dropped` (a listed value did not reach the voiced reply).
+- The model half: `tests/integration/test_superego.py::test_voice_revoice_keeps_the_values_the_data_holds`,
+  cloud-only (skipped on an Ollama spec, and the skip says it is unmeasured there).
 
 ### Why
 
