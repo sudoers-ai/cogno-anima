@@ -37,7 +37,9 @@
   contextos com digest tirado na árvore anterior, e um CONTROLO que mostra o digest a mexer
   quando a declaração entra — e que o que mexeu foi só o destinatário e o critério (e).
   `cogno-soma` não muda (continua a ler `held_delivered_texts` para decidir julgar a proposta).
-- Prova: `tests/unit/test_judge_reads_the_held_recipient.py`. A medição por modelo é do host.
+- Prova: `tests/unit/test_judge_reads_the_held_recipient.py`; a metade do MODELO é o par em
+  `tests/integration/test_superego.py` (inglês rejeitado / as palavras do contacto aprovadas),
+  escrito e não corrido localmente. A medição com o juiz de produção é do host, antes do aterro.
 
 ## Unreleased — `committed_this_turn`: the ninth caller, `assembler.py::did_you_mean` (host, VQD, 2026-09-30)
 

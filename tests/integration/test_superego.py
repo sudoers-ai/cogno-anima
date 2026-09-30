@@ -256,6 +256,48 @@ async def test_judge_still_rejects_a_draft_that_MANGLES_a_preserved_figure():
     assert r.critique
 
 
+# ── criterion (e): the held message's RECIPIENT and language (model half) ────────────
+
+
+def _held_notify_ctx(target: str, message: str):
+    """A proposal turn holding one ``notify_user``, with the host's two declarations. The
+    request names the recipient in Portuguese; names and texts are invented."""
+    ctx = _ctx("avisa os Docentes Bloco 17 que a reunião passou para quinta às 15h",
+               goal="notify the Block 17 teachers that the meeting moved to Thursday at 3 pm")
+    held = ToolExecution(tool="notify_user", arguments={"target": target, "message": message},
+                         ok=False, error="needs_confirmation", result="", tool_mutating=True)
+    ctx.ego_result = EgoResult(
+        steps=[EgoStep(index=0, path="native", assistant_text="", tool_calls=[held])],
+        pending_confirmation=[held], metrics=_m("ego"))
+    ctx.metadata[mk.HELD_DELIVERED_TEXT] = {"notify_user": "message"}
+    ctx.metadata[mk.HELD_RECIPIENT_NAME] = {"notify_user": "target"}
+    return ctx
+
+
+@pytest.mark.asyncio
+async def test_judge_rejects_a_held_message_addressed_and_written_in_the_rewrite_english():
+    """The defect criterion (e) exists for: the executor read only the English rewrite, so the
+    recipient came out as the English rendering of the name the contact typed, and the text in
+    English. Shown the text alone, the judge approved it."""
+    await backends.skip_unless_available()
+    ctx = _held_notify_ctx("Block 17 Teachers",
+                           "Hello! The coordination meeting was moved to Thursday at 3 pm.")
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
+    assert r.approved is False, "an English recipient + text for a Portuguese request must fail"
+    assert r.critique
+
+
+@pytest.mark.asyncio
+async def test_judge_approves_the_same_held_message_in_the_contacts_own_words():
+    """The twin: the same proposal, addressed as the contact wrote it and in their language.
+    Without it the rejection above could be a judge that rejects every held message."""
+    await backends.skip_unless_available()
+    ctx = _held_notify_ctx("Docentes Bloco 17",
+                           "Olá! A reunião de coordenação passou para quinta-feira às 15h.")
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
 # ── the voice does not deny a read that worked (model half) ───────────────────────────
 
 
