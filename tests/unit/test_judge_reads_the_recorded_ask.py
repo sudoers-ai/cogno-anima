@@ -98,7 +98,7 @@ def test_the_inlined_constant_matches_the_metakey():
 
 
 def test_it_reads_the_declared_ask_beside_its_message_one_line():
-    ctx = _ctx_with([_held({"target": "Otávio", "message": MSG, ARG: f"  which two\n courses "})],
+    ctx = _ctx_with([_held({"target": "Otávio", "message": MSG, ARG: "  which two\n courses "})],
                     _DECL, _ASKS)
     assert held_messages_with_asks(ctx) == [("notify_user", MSG, "which two courses")]
 
