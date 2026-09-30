@@ -10,7 +10,15 @@
   closed outcome alphabet `covered | suggested | none | error`. One strict model call, only on a
   turn the scope guard BLOCKED and only when the host injects a backend and the list.
 - **`metakeys.SCOPE_OPTIONS_SELECTION`** — the per-turn record (outcome, the picked option texts,
-  `asked`, `offered`, `discarded`); the orchestrator pops it before the guard runs.
+  `asked`, `offered`, `discarded`, `covered_unsupported`); the orchestrator pops it before the guard
+  runs.
+- **`covered` needs code-side EVIDENCE** (`has_evidence`, `EVIDENCE_PREFIX = 6`,
+  `GENERIC_SUBJECT_WORDS`): the option must share ≥1 non-generic `cogno_engram.lexical.terms` term
+  with the message, or the pick is dropped and counted (`covered_unsupported`) and the case is the
+  refusal of today. Measured on this PR's nightly: qwen3:8b answered the Wi-Fi password
+  `covered: ['consult_documents']` 3/3. `cogno-engram` joins the CI install chain (both jobs); it is
+  imported lazily and fail-CLOSED without it. The integration test now runs on the suite's model
+  AND `openai:gpt-4o-mini` (skipped without a key); the Wi-Fi must draw nothing on both.
 
 ### Why
 

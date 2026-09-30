@@ -91,7 +91,7 @@ def test_a_near_miss_spelling_is_not_the_option():
 
 def test_surrounding_whitespace_is_not_a_difference():
     sel = Selector({"answers": ["  Calendário   acadêmico "], "maybe": []})
-    got = run(so.select_options("Quando começam as aulas?", OPTIONS, sel))
+    got = run(so.select_options("Onde vejo o calendário acadêmico?", OPTIONS, sel))
     assert got.covered == ("Calendário acadêmico",)
 
 
@@ -99,7 +99,7 @@ def test_surrounding_whitespace_is_not_a_difference():
 
 def test_an_option_about_the_very_thing_asked_is_covered():
     sel = Selector({"answers": ["Calendário acadêmico"], "maybe": []})
-    got = run(so.select_options("Quando começam as aulas do semestre?", OPTIONS, sel))
+    got = run(so.select_options("Qual é o calendário acadêmico do semestre?", OPTIONS, sel))
     assert got.outcome == so.OUTCOME_COVERED
     assert got.covered == ("Calendário acadêmico",)
     assert got.suggested == ()
@@ -107,7 +107,7 @@ def test_an_option_about_the_very_thing_asked_is_covered():
 
 def test_covered_wins_over_every_suggestion():
     sel = Selector({"answers": ["Calendário acadêmico"], "maybe": ["Oficina de Fotografia"]})
-    got = run(so.select_options("Quando começam as aulas do semestre?", OPTIONS, sel))
+    got = run(so.select_options("Qual é o calendário acadêmico do semestre?", OPTIONS, sel))
     assert got.outcome == so.OUTCOME_COVERED
     assert got.suggested == ()  # no question rides beside a pass
 
@@ -230,13 +230,88 @@ def test_select_scope_options_reads_the_contacts_message_and_stamps_the_record()
     assert "Fotografia Digital" in sel.calls[0][1]
     assert ctx.metadata[mk.SCOPE_OPTIONS_SELECTION] == {
         "outcome": "suggested", "covered": [], "suggested": ["Oficina de Fotografia"],
-        "asked": "curso de Fotografia Digital", "offered": len(OPTIONS), "discarded": 1}
+        "asked": "curso de Fotografia Digital", "offered": len(OPTIONS), "discarded": 1,
+        "covered_unsupported": 0}
     assert got.record() == ctx.metadata[mk.SCOPE_OPTIONS_SELECTION]
     assert set(got.record()["suggested"]) <= set(OPTIONS)
 
 
 def test_at_most_two_covered_and_then_no_room_for_a_suggestion():
     sel = Selector({"answers": list(OPTIONS[:3]), "maybe": [OPTIONS[3]]})
-    got = run(so.select_options("Quero saber tudo", OPTIONS, sel))
+    got = run(so.select_options("Calendário, oficina de fotografia e mensalidade?", OPTIONS, sel))
     assert got.covered == OPTIONS[:2]
     assert got.suggested == ()
+
+
+# ── ``covered`` needs EVIDENCE in the code (the nightly: qwen3 covered the Wi-Fi 3/3) ────────
+
+WIFI = "Qual é a senha do Wi-Fi da escola?"
+
+
+def test_twin_a_covered_wifi_without_evidence_is_the_refusal_of_today():
+    """The measured shape: the local model answered the Wi-Fi with a capability as ``covered``.
+    The capability shares no term with the question, so the pick is dropped and counted."""
+    sel = Selector({"answers": ["consult_material"], "maybe": [], "asked": "senha do Wi-Fi"})
+    got = run(so.select_options(WIFI, OPTIONS, sel))
+    assert got.outcome == so.OUTCOME_NONE
+    assert got.covered == () and got.suggested == ()
+    assert got.covered_unsupported == 1
+    assert got.record()["covered_unsupported"] == 1
+
+
+def test_control_a_false_refusal_whose_section_shares_a_term_passes():
+    sel = Selector({"answers": ["Oficina de Fotografia"], "maybe": []})
+    got = run(so.select_options("Quando começa a oficina de fotografia?", OPTIONS, sel))
+    assert got.outcome == so.OUTCOME_COVERED and got.covered_unsupported == 0
+
+
+def test_control_a_section_sharing_only_generic_words_is_the_refusal():
+    options = OPTIONS + ("Alunos da faculdade",)
+    sel = Selector({"answers": ["Alunos da faculdade"], "maybe": []})
+    got = run(so.select_options("A faculdade tem academia de ginástica para os alunos?",
+                                options, sel))
+    assert got.outcome == so.OUTCOME_NONE and got.covered_unsupported == 1
+
+
+def test_an_unsupported_covered_pick_is_never_turned_into_a_question():
+    sel = Selector({"answers": ["consult_material"], "maybe": ["Oficina de Fotografia"]})
+    got = run(so.select_options(WIFI, OPTIONS, sel))
+    assert got.outcome == so.OUTCOME_NONE and got.suggested == ()
+
+
+def test_a_supported_covered_pick_survives_beside_an_unsupported_one():
+    sel = Selector({"answers": ["consult_material", "Oficina de Fotografia"], "maybe": []})
+    got = run(so.select_options("Tem oficina de fotografia?", OPTIONS, sel))
+    assert got.covered == ("Oficina de Fotografia",) and got.covered_unsupported == 1
+
+
+def test_suggested_does_not_need_evidence():
+    sel = Selector({"answers": [], "maybe": ["Mensalidade e descontos"]})
+    got = run(so.select_options("Tem bolsa para atletas?", OPTIONS, sel))
+    assert got.outcome == so.OUTCOME_SUGGESTED and got.covered_unsupported == 0
+
+
+@pytest.mark.parametrize("message, option, expected", [
+    ("Quando começa a oficina de fotografia?", "Oficina de Fotografia", True),
+    ("Qual o valor das mensalidades?", "Mensalidade e descontos", True),      # prefix + plural
+    ("Onde leio os materiais?", "consult_material", True),                     # a tool's words
+    ("Quando é a prova de informática?", "Informática básica", True),          # not a frame word
+    (WIFI, "consult_material", False),
+    ("A escola tem aula no sábado?", "Aulas da escola", False),                 # frame words only
+    ("", "Oficina de Fotografia", False),
+])
+def test_has_evidence(message, option, expected):
+    assert so.has_evidence(message, option) is expected
+
+
+def test_without_the_tokenizer_no_covered_pick_has_evidence(monkeypatch):
+    """Fail-CLOSED: an environment without ``cogno_engram`` never lifts a refusal."""
+    import builtins
+    real = builtins.__import__
+
+    def _no_engram(name, *a, **kw):
+        if name.startswith("cogno_engram"):
+            raise ImportError(name)
+        return real(name, *a, **kw)
+    monkeypatch.setattr(builtins, "__import__", _no_engram)
+    assert so.has_evidence("Quando começa a oficina de fotografia?", "Oficina de Fotografia") is False
