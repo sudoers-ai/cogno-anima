@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased — o juiz da mensagem RETIDA sabe que a pergunta de confirmação é do HOST (Pilha B item 7, variante (a2), 2026-09-30)
+
+### Changed
+
+- **`_HELD_MESSAGE_RULE` ganha `_HELD_ASKING_IS_THE_HOSTS`**, costurada por referência a seguir à
+  frase do MID-FLOW: num turno de proposta a pergunta que mostra a mensagem ao utilizador e pede
+  o «sim» é ACRESCENTADA PELO HOST, DEPOIS deste juízo; um rascunho VAZIO (ou que não pergunta)
+  ao lado de uma mensagem retida NÃO é defeito, nem se pede essa pergunta na crítica; o texto
+  retido continua julgado por (a)-(d).
+
+### Why
+
+- Medido a jusante, juiz de produção: a mensagem retida CERTA foi rejeitada 1/5 e 2/5 nas duas
+  formas medidas (uma fabricada, 6/6), e todas as críticas pediam a pergunta de confirmação que o
+  rascunho vazio não tinha — o laço do executor pára no hold, e quem pergunta é o host. A
+  medição com modelo desta variante é do consultor, sobre este ramo.
+
+### Unchanged
+
+- Sem mensagem retida declarada o prompt do juiz é byte a byte o de `86c3c60`: oito contextos
+  com digest tirado na árvore anterior (sem declaração, declaração vazia, para outra ferramenta,
+  um hold sem texto, escrita, leitura, conversacional) e um CONTROLO que vê o digest mexer quando
+  a frase entra. Nos dois gémeos, tirar a frase devolve os bytes de antes. `_JUDGE_BLOCKS` e as
+  linhas do inventário não mudam (só o comprimento de `criteria_execution`).
+- Os dois pinos de digest mais antigos que cobrem um turno com mensagem retida
+  (`test_judge_prompt_cache_order.py`, config `held`; `test_judge_reads_the_recorded_ask.py`)
+  continuam com os digests de `c0d6bb9`/`e9898d1`: tiram a frase NOMEADA antes do hash
+  (`_since_f13`), em vez de serem regenerados, para continuarem a provar que nada MAIS mexeu.
+
 ## Unreleased — `mk.HELD_RECORDED_ASK`: o juiz lê, na PROPOSTA, o pedido que um recado deixa do lado de quem o recebe (M6-b, 2026-09-29)
 
 ### Added
