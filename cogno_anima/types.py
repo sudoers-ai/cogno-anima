@@ -837,9 +837,9 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     host is the only layer that knows, so it says so (``mk.PRIOR_ATTEMPT_COMMITTED``) and this
     predicate believes it.
 
-    Fixing it HERE and not in each caller is the whole point. EIGHT places CALL this — six
-    measured 2026-09-06 rather than recalled, the seventh and the eighth added 2026-09-29 — and not
-    more, because
+    Fixing it HERE and not in each caller is the whole point. NINE places CALL this — six
+    measured 2026-09-06 rather than recalled, the seventh and the eighth added 2026-09-29, the ninth
+    2026-09-30 — and not more, because
     the enumeration SPLIT: seven callers were asking a different question and moved to
     `wrote_for_the_contact` (its docstring carries that list). What stayed are the callers for
     whom the answer is *"repeating is unsafe"*, which is what this predicate means:
@@ -874,6 +874,13 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
         reason: re-running a turn that already acted commits a SECOND time, and the intent class
         is a prediction made before the executor ran, so an INFORMATION_REQUEST can still have
         committed;
+      * the "did you mean" question (`assembler.py::did_you_mean`, host, VQD) — the ninth, added
+        2026-09-30, the sibling of `honest_refusal` and wrapped around it. On a turn the scope
+        guard refused whose option selector (`stages.scope_options`) found only a NEIGHBOURING
+        section, it replaces the refusal with the closed question «I did not find X. Did you mean:
+        A / B?». Same reason as its sibling, word for word: the executor never ran on a refused
+        turn, so an act can only be the host's declaration for a fallback retry whose attempt 1
+        committed, and any commit keeps the refusal as it was;
       * and `wrote_for_the_contact` itself, which delegates here when the host declares no
         routing set. Named for the same reason as the others: a delegation the enumeration does
         not list is a re-derivation hiding behind a call.

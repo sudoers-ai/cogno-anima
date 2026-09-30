@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — `committed_this_turn`: the ninth caller, `assembler.py::did_you_mean` (host, VQD, 2026-09-30)
+
+### Changed
+
+- The docstring's enumeration says NINE and names the host's "did you mean" hook, which asks this
+  predicate for the reason its sibling `honest_refusal` does (a refused turn that committed keeps
+  its refusal). Docstring only; `cogno-host`'s `test_committed_prose_matches_code.py` counts the
+  callers on disk and fails when the prose is behind.
+
 ## Unreleased — "did you mean…?" on a refused turn: a strict selector over a CLOSED list (VQD, 2026-09-30)
 
 ### Added
