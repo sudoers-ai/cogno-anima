@@ -29,8 +29,9 @@
 ### Unchanged
 
 - Sem língua declarada (ausente, em branco, ou algo que não é uma etiqueta), ou com língua mas sem
-  mensagem retida, o system + prompt do juiz são byte a byte os de `4eeeb2f`. Está provado em sete
-  contextos com digest tirado na árvore anterior. Um CONTROLO mostra o digest a mexer quando a
+  mensagem retida, o system + prompt do juiz são byte a byte os da main `7450e57` (os mesmos de
+  `4eeeb2f`: o #203 mexeu na voz, não no juiz). Está provado em sete contextos com digest tirado
+  na árvore anterior. Um CONTROLO mostra o digest a mexer quando a
   língua entra, e que o que mexeu foi só a regra.
 - O `_JUDGE_BLOCKS`, o inventário e o system message não mudam. `cogno-soma` também não.
 - Provas:
@@ -39,6 +40,56 @@
     português aprovado). SALTA num spec Ollama: na CI deste PR o qwen3:8b rejeitou a mensagem
     CERTA por estar retida («needs_confirmation» lido como não executado).
 - A medição com o juiz de produção é do host, antes do aterro.
+
+## Unreleased — voice: on a re-voice, a value of the rejected draft that the DATA holds stays (2026-09-30)
+
+### Added
+
+- `# Execution verdict (HARD RULE)` gains a list, **VALUES THE DATA HOLDS STAY IN THE REPLY**:
+  the statements of the rejected draft (a line, or a sentence of one) that carry at least one
+  value (a numeral, an e-mail, a URL) and whose EVERY value is written in a successful read the
+  prompt renders (`_payload_records`). The voice is told to keep each value exactly as the data
+  writes it, and to correct only what the critique says about framing or attribution. Chosen in
+  code by `SuperegoStage._statements_the_data_holds`, with the digit-string provenance the figure
+  net already uses (`_numeral_forms`). **The critique's meaning is never read.** On the measured
+  turns it names the true lines to ENDORSE them, and telling endorsement from contest is
+  polarity, which no deterministic rule reads.
+- **The one exception: the critique's VALUES, never its polarity.** A statement carrying a value
+  the critique cites (the same `_numeral_forms` extraction, plus e-mails and URLs) is not listed.
+  Measured by replay (n=12 per arm): without the exception the invoice line came back 12/12
+  (3/12 on `main`) and the FAB arm stayed 0/12, but the payment line the judge had rejected came
+  back 7/12 (6/6 on one trace) in the SAME rejected framing. Its value was in the data, the
+  framing was the error, and "keep it" handed the rejected statement back. **The declared
+  cost:** a critique that cites a value to ENDORSE it takes that line off the list too. On one of
+  the two measured shapes that is the invoice line, and it comes out WORSE than today, not equal:
+  0/6 against 2/6 and 3/6 on `main` in two runs, because with the list present the voice keeps
+  only what is listed. Measured, declared and accepted by net gain (the invoice line 6/12 against
+  ~5/12 over both shapes, the rejected framing 0/12, the FAB 0/12). Closing it would mean telling a
+  value cited to ENDORSE from one cited to CONTEST, which is polarity, and polarity is excluded. Gated like `read_worked` (`read_is_visible`), so the list renders
+  only when the data it points to is in the prompt. No new header: `_VOICE_BLOCKS` and the
+  persisted inventory do not move.
+- Two flag-only adjustments: `voice:kept_values` (the list rendered) and
+  `voice:kept_value_dropped` (a listed value did not reach the voiced reply).
+- The model half: `tests/integration/test_superego.py::test_voice_revoice_keeps_the_values_the_data_holds`,
+  cloud-only (skipped on an Ollama spec, and the skip says it is unmeasured there).
+
+### Why
+
+- On a rehearsal tenant the coordinator's draft listed three rules from a document the read had
+  returned `ok=True`. One rule was framed wrongly (the institution's payment day given as a
+  deadline of the professor's), and the judge rejected the draft for it. The draft is withheld
+  on exhaustion, and the re-voiced reply fixed that line and also dropped the invoice deadline,
+  which was in the document and which nobody had refused.
+
+### Unchanged
+
+- Without a judge rejection, on `# Review verdict`, on the anti-repeat guard, with any failed
+  call in the turn, with no draft or no value in the data: the voice prompt is byte for byte
+  `main`'s (whole-prompt digests measured on `4eeeb2f`,
+  `tests/unit/test_voice_revoice_keeps_what_the_data_holds.py`).
+- What this cannot tell: a small numeral the document carries elsewhere ("3") reads as grounded,
+  as it does for the figure net. A statement naming an item in words only is not listed, because
+  its grounding is not decidable here.
 
 ## Unreleased — `committed_this_turn`: the ninth caller, `assembler.py::did_you_mean` (host, VQD, 2026-09-30)
 

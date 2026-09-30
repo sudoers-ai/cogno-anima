@@ -11,7 +11,7 @@ reject names about to be repaired.
 Proven in both worlds:
 
 * WITHOUT a declared language (absent, blank, not a language tag) — or with one but no held
-  message — the judge's system + prompt are byte for byte the ones anima ``4eeeb2f`` built (the
+  message — the judge's system + prompt are byte for byte the ones anima ``7450e57`` built (the
   tree before this change), with a CONTROL showing the digest DOES move when the language is
   declared, and that what moved is the rule alone;
 * WITH it, criterion (e) renders inside the held-message rule, naming the language — and only
@@ -74,7 +74,7 @@ def _no_hold_turn():
 TXT = {mk.HELD_DELIVERED_TEXT: {"notify_user": "message"}}
 EN = {"target": "Block 17 Teachers", "message": MSG_EN}
 
-# (name, context builder, digest of system + NUL + prompt on anima 4eeeb2f)
+# (name, context builder, digest of system + NUL + prompt on anima 7450e57 — the same bytes 4eeeb2f built: #203 moved the voice, not the judge)
 _BASE = [
     ("text declared, no language",
      lambda: _ctx_with([_held(EN)], TXT),

@@ -571,3 +571,63 @@ async def test_voice_on_exhaustion_does_not_reconstruct_a_list_nobody_read():
     values = stated_values(r.response)
     assert 3840.0 in values or {960.0, 480.0, 1440.0} <= values, (
         f"the estimate was read and the reply does not state it: {r.response!r}")
+
+
+# ── ON A RE-VOICE, WHAT THE DATA HOLDS STAYS (2026-09-30) ─────────────────────────────
+#
+# The model half of `tests/unit/test_voice_revoice_keeps_what_the_data_holds.py`: the unit
+# file pins that the list RENDERS, this asks whether the voice OBEYS it. The shape is the
+# rehearsal tenant's (two traces, invented values): three rules read from a document, one of
+# them framed wrongly (the institution's payment day given as a deadline of the professor's),
+# a rejection for that framing, and a re-voice that fixed it and dropped the invoice line too.
+#
+# Cloud-only, like the canary above, and for a weaker reason stated as such: this one is NOT
+# measured on qwen3:8b, and the voice that shipped the defect is a cloud model. A red canary
+# on a model that does not ship would block a deterministic change. Point COGNO_TEST_MODEL at a
+# cloud spec to run it; the A/B over the real traces is the consultant's replay.
+_PROFESSOR_RULES = (
+    "Valores e prazos do professor\n"
+    "- Notas e faltas: lançar em até 3 semanas após o fim da disciplina; é também condição "
+    "para receber o bônus.\n"
+    "- Nota fiscal (NF): enviar até o dia 10 de cada mês.\n"
+    "- Pagamento: a instituição paga no dia 28 de cada mês.\n"
+    "- Bônus: devido se pelo menos 40% da turma responder à avaliação."
+)
+
+
+@pytest.mark.asyncio
+async def test_voice_revoice_keeps_the_values_the_data_holds():
+    """Every value of the rejected draft is in the document (3 weeks, day 10, day 28), and the
+    critique refused how the payment day (28, which it cites) was FRAMED. The reply must still
+    carry the invoice day (10) and the grades deadline (3), which the critique does not cite;
+    asserted on VALUES (``stated_values``), never on a Portuguese phrasing. Nothing is asserted
+    about 28: the payment line is off the list, and the voice may reframe or drop it."""
+    spec = backends.model_spec()
+    if backends.is_ollama(spec):
+        pytest.skip(f"{spec}: unmeasured on qwen3:8b, and the voice that ships this is a cloud "
+                    "model. Point COGNO_TEST_MODEL at a cloud spec to run it.")
+    await backends.skip_unless_available()
+    ctx = _ctx("Quais são os prazos que o professor precisa cumprir?",
+               intent_class="INFORMATION_REQUEST",
+               goal="the deadlines a professor must meet",
+               tool="consult_documents", args={"query": "prazos do professor"},
+               result=_PROFESSOR_RULES,
+               draft=("Os prazos que o professor precisa cumprir são:\n"
+                      "- Notas e faltas: até 3 semanas após o fim da disciplina.\n"
+                      "- Nota fiscal: enviar até o dia 10.\n"
+                      "- Pagamento: previsto para o dia 28.\n"
+                      "Se precisar de mais alguma coisa, estou à disposição."))
+    ctx.metadata[mk.VOICE_CORRECTION] = {
+        "kind": "not_executed",
+        "reason": ("O dia 28 é a data de pagamento da instituição; separar essa informação dos "
+                   "prazos de responsabilidade do professor (lançamento de notas e faltas e "
+                   "envio da nota fiscal).")}
+    r = await SuperegoStage().voice(ctx, _text_backend(),
+                                    voice_prompt="You are a friendly assistant for a school's "
+                                                 "teaching staff.")
+    assert "voice:kept_values" in r.adjustments, "the list did not render"
+    assert r.response, "the voice wrote nothing"
+    values = stated_values(r.response)
+    assert {3.0, 10.0} <= values, (
+        f"the document holds the grades deadline and the invoice day and the reply dropped "
+        f"one: {r.response!r}")
