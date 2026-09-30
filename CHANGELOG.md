@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased — "did you mean…?" on a refused turn: a strict selector over a CLOSED list (VQD, 2026-09-30)
+
+### Added
+
+- **`cogno_anima.stages.scope_options`** — `select_options(message, options, backend)` and
+  `select_scope_options(ctx, backend, *, options)` (exported from `cogno_anima.stages`), plus
+  `OptionSelection`, `parse_selection`, `closed_options`, `SELECT_STAGE = "superego_select"` and the
+  closed outcome alphabet `covered | suggested | none | error`. One strict model call, only on a
+  turn the scope guard BLOCKED and only when the host injects a backend and the list.
+- **`metakeys.SCOPE_OPTIONS_SELECTION`** — the per-turn record (outcome, the picked option texts,
+  `asked`, `offered`, `discarded`); the orchestrator pops it before the guard runs.
+
+### Why
+
+- The owner's order: a reply that says "I did not find it" when the answer IS there should offer
+  what is there instead. Measured downstream (offline replay, gpt-4o-mini, strict prompt): the
+  target option came back in 11 of 15 labelled cases, "the Wi-Fi password" drew 0 options on both
+  reader profiles, and a free (non-strict) selector invented 6 options in 15 — so the closed
+  alphabet is enforced by `parse_selection`, never requested.
+- **`covered` wins, and it means LET IT THROUGH.** Of the real refusals on which the strict
+  selector found anything, 5 of 6 were the guard refusing something the persona held; answering
+  those with "did you mean <what you asked>?" would hide a false refusal. Only a `suggested`-only
+  pick may become the question, which the host renders.
+
+### Unchanged
+
+- `check_input_scope` and every other prompt of the SUPEREGO: not a byte. Nothing calls the
+  selector unless an orchestrator does; `SuperegoStage` and the protocols a host double implements
+  do not move.
+
 ## Unreleased — o juiz da mensagem RETIDA sabe que a pergunta de confirmação é do HOST (Pilha B item 7, variante (a2), 2026-09-30)
 
 ### Changed

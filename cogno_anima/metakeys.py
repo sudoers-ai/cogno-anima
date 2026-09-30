@@ -439,6 +439,18 @@ SCOPE_PROMPT_SHA = "scope_prompt_sha"
 # recomputes it every turn or it does not stamp it.
 SCOPE_PENDING_REQUEST = "scope_pending_request"
 
+# What the "did you mean…?" SELECTOR decided on a turn the scope guard refused
+# (``cogno_anima.stages.scope_options``): ``{"outcome", "covered", "suggested", "asked",
+# "offered", "discarded"}``, every option text one the host itself offered (the closed alphabet
+# is enforced by the code, never requested of the model). ``covered`` means the refusal was FALSE
+# and the orchestrator let the turn through; ``suggested`` means the host may turn the refusal
+# into the closed question; ``none``/``error`` mean the refusal of today.
+#
+# **A PER-TURN fact, never carry-over**: the orchestrator pops it before the guard runs, so a
+# turn on which no selection ran never wears an earlier turn's. A trace writer copies the COUNTS
+# and the outcome, never the option texts (section titles are the tenant's content).
+SCOPE_OPTIONS_SELECTION = "scope_options_selection"
+
 # ── session stamps (soma stamps; host/telemetry read) ────────────────────────
 ACTIVE_PERSONA_ID = "active_persona_id"
 ACTIVE_MCP_MODULE = "active_mcp_module"

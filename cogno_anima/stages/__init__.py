@@ -6,6 +6,7 @@ from cogno_anima.stages.ego import EgoStage
 from cogno_anima.stages.superego import SuperegoStage
 from cogno_anima.stages.drift import DriftCalculator
 from cogno_anima.stages.proposal_judge import ProposalJudge
+from cogno_anima.stages.scope_options import OptionSelection, select_options, select_scope_options
 
 __all__ = [
     "BaseStage",
@@ -16,4 +17,7 @@ __all__ = [
     "SuperegoStage",
     "DriftCalculator",
     "ProposalJudge",
+    "OptionSelection",
+    "select_options",
+    "select_scope_options",
 ]

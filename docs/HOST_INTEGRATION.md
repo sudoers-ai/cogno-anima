@@ -85,8 +85,14 @@ if ctx.id_result.blocked:
 # 2) cheap scope guard (fail-OPEN: never refuse a legit user on error)
 scope = await superego.check_input_scope(ctx, gen_backend, scope_prompt=scope_prompt)
 if scope.blocked:
-    ctx.stop_reason = "scope_blocked"
-    return ...(scope.refusal_message)
+    # optional "did you mean…?" (cogno_anima.stages.scope_options): only with a selector
+    # backend AND a closed list the host built (readable section titles + table capabilities)
+    sel = await select_scope_options(ctx, selector_backend, options=options) if selector_backend and options else None
+    if sel is not None and sel.outcome == "covered":
+        pass                                   # a FALSE refusal: let the turn through, no question
+    else:
+        ctx.stop_reason = "scope_blocked"      # "suggested" → the host may render the closed question
+        return ...(scope.refusal_message)      # "none"/"error"/no selector → the refusal of today
 
 # 3) EGO route (tool gateway): execute, then the correction loop
 if ctx.id_result.triad_route == "EGO":
