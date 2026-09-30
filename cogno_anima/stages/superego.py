@@ -1054,29 +1054,78 @@ _HELD_MESSAGES_HEADER = ("# Messages HELD for the user's confirmation — each i
 # question the empty draft did not contain — two of them calling the hold itself correct. Spliced
 # into `_HELD_MESSAGE_RULE` by reference, so it renders exactly where that rule does (a turn with
 # no declared held message renders byte for byte as before) and a mutation can remove it alone.
-_HELD_ASKING_IS_THE_HOSTS = (
-    "THE ASKING IS NOT THE DRAFT'S JOB ON THIS TURN: the question that shows the user each held "
-    "message and asks whether to send it is ADDED BY THE HOST, AFTER this judgement. So an EMPTY "
-    "EGO draft ('(none)'), or a draft that does not ask for confirmation, next to a held message "
-    "is NOT a defect — never reject for it, and never ask for that question in the critique. "
-    "Judge the held message's own text by (a)-(d) above. "
-)
-_HELD_MESSAGE_RULE = (
-    "JUDGE EACH HELD MESSAGE AS IF IT WERE BEING SENT NOW — this is criterion #1 (goal <-> "
-    "execution) applied to the message's own text, because that text is what its recipient "
-    "will read and a message that has been sent cannot be recalled. REJECT when a held "
-    "message: (a) does NOT CARRY what the request asked to pass on — content the request asked "
-    "to include, or that this turn READ in order to pass on, must be IN the text itself, not "
-    "promised ('I am writing to share the summary'), announced or pointed to elsewhere ('see "
-    "the details in your usual channel'); (b) is addressed to the WRONG person — a question the "
-    "user asked the assistant, forwarded to the recipient; (c) contains an INSTRUCTION meant "
-    "for whoever writes the message ('include the introduction we agreed') instead of words "
-    "meant for the recipient; (d) states anything the request and the successful tool results "
-    "above do not support. The MID-FLOW and confirmation allowances cover ASKING the user "
-    "before sending; they never cover the content of the message being asked about. "
-    f"{_HELD_ASKING_IS_THE_HOSTS}"
-    "Name in the critique what the message must say instead, so the retry can write it.\n\n"
-)
+def _held_asking_is_the_hosts(criteria: str) -> str:
+    return (
+        "THE ASKING IS NOT THE DRAFT'S JOB ON THIS TURN: the question that shows the user each "
+        "held message and asks whether to send it is ADDED BY THE HOST, AFTER this judgement. So "
+        "an EMPTY EGO draft ('(none)'), or a draft that does not ask for confirmation, next to a "
+        "held message is NOT a defect — never reject for it, and never ask for that question in "
+        f"the critique. Judge the held message's own text by {criteria} above. "
+    )
+
+
+_HELD_ASKING_IS_THE_HOSTS = _held_asking_is_the_hosts("(a)-(d)")
+
+# CRITERION (e) — THE LANGUAGE OF THE MESSAGE (2026-09-30). The executor reads only the
+# canonical-English rewrite, so a held message can come out written in English for a contact who
+# writes in another language — and this rule, which judged what the text SAYS, approved it: the
+# recipient reads those exact words. The language is the one the host already DECLARES for the
+# turn (`ctx.force_language`, the tenant/session language the NOUMENO reads first) — no new
+# declaration, and no guess from the text: `noumeno.language` is a detection and may be the
+# langdetect fallback. CONDITIONAL on that declaration: with none (or one that is not a language
+# tag) the rule is `_HELD_MESSAGE_RULE`, byte for byte. It is about the TEXT only — the RECIPIENT
+# is the host's to align, deterministically, and it does so AFTER this judgement (the orchestrator
+# fires `after_ego` once the judge has run), so a judge shown the executor's recipient would
+# reject names the host is about to repair and spend the one correction on them.
+def _held_language_criterion(language: str) -> str:
+    return (
+        f"; (e) is NOT WRITTEN in the language the user writes in, «{language}» — its text "
+        "reaches the recipient word for word, and the executor's English working language is "
+        "not theirs; a message in another language is rejected unless the request itself asks "
+        "for that language. This is about the language of the message TEXT alone: names, "
+        "figures and other values inside it are judged by (a)-(d)"
+    )
+
+
+def _held_message_rule(language: str = "") -> str:
+    """The held-message rule; a declared ``language`` adds criterion (e) — ONE text, two
+    renderings, so the legacy one is the same bytes it always was."""
+    return (
+        "JUDGE EACH HELD MESSAGE AS IF IT WERE BEING SENT NOW — this is criterion #1 (goal <-> "
+        "execution) applied to the message's own text, because that text is what its recipient "
+        "will read and a message that has been sent cannot be recalled. REJECT when a held "
+        "message: (a) does NOT CARRY what the request asked to pass on — content the request "
+        "asked to include, or that this turn READ in order to pass on, must be IN the text "
+        "itself, not promised ('I am writing to share the summary'), announced or pointed to "
+        "elsewhere ('see the details in your usual channel'); (b) is addressed to the WRONG "
+        "person — a question the user asked the assistant, forwarded to the recipient; (c) "
+        "contains an INSTRUCTION meant for whoever writes the message ('include the introduction "
+        "we agreed') instead of words meant for the recipient; (d) states anything the request "
+        "and the successful tool results above do not support"
+        f"{_held_language_criterion(language) if language else ''}. The MID-FLOW and "
+        "confirmation allowances cover ASKING the user before sending; they never cover the "
+        "content of the message being asked about. "
+        f"{_held_asking_is_the_hosts('(a)-(e)' if language else '(a)-(d)')}"
+        "Name in the critique what the message must say instead, so the retry can write it.\n\n"
+    )
+
+
+_HELD_MESSAGE_RULE = _held_message_rule()
+
+#: A declared language renders only when it LOOKS like one (a BCP-47-ish tag: ``pt``, ``pt-BR``,
+#: ``es_419``). Anything else is treated as undeclared — the rule never quotes free text into the
+#: prompt, and a garbled setting falls back to the prompt the judge always had.
+_LANGUAGE_TAG_RE = re.compile(r"^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8}){0,3}$")
+
+
+def held_message_language(ctx: "PipelineContext") -> str:
+    """The language criterion (e) holds a held message to: ``ctx.force_language`` when it is a
+    language tag, else ``""`` (no criterion). Never raises."""
+    try:
+        raw = str(getattr(ctx, "force_language", "") or "").strip()
+    except Exception:      # noqa: BLE001 — an unreadable carrier must not cost the turn
+        return ""
+    return raw if _LANGUAGE_TAG_RE.fullmatch(raw) else ""
 
 # THE ASK RECORDED FOR THE RECIPIENT (`mk.HELD_RECORDED_ASK`). A message that asks its
 # recipient to answer something («escolha as disciplinas…») is answered LATER, on the
@@ -2480,7 +2529,7 @@ class SuperegoStage:
             f"{held_messages}"
             f"# EGO draft\n{draft}\n\n"
             f"{criteria}"
-            f"{_HELD_MESSAGE_RULE if held_messages else ''}"
+            f"{_held_message_rule(held_message_language(ctx)) if held_messages else ''}"
             f"{self._held_ask_rule(ctx) if held_messages else ''}"
             f"{_MEMO_RULE if memo_block else ''}"
             "TRUST THE TOOLS: values a tool returned — resolved dates, ids, availability, "
