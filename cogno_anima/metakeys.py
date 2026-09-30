@@ -46,19 +46,6 @@ HELD_DELIVERED_TEXT = "held_delivered_text"
 # nobody asked. Absent / not a mapping / no value on the call → the judge's prompt is byte for
 # byte what it was.
 HELD_RECORDED_ASK = "held_recorded_ask"
-# …and the argument of that SAME held call that NAMES the person the text goes to (a
-# ``notify_user``'s ``target``).
-#
-# Host-declared ``{tool name: argument name}``, read from the tool's own manifest, and only ever
-# read for a tool ``HELD_DELIVERED_TEXT`` also declares: a recipient with no message is nothing.
-# The executor reads only the canonical-English rewrite, so it can address a message to the
-# English rendering of a name the contact typed in their own language — and the judge, shown the
-# text alone, had nothing to compare. With the declaration the recipient renders FENCED beside
-# the text, inside the held-messages block, and the held-message rule gains its criterion (e):
-# the recipient and the text must be in the language and the form the contact wrote them in
-# (``types.held_message_recipients``). Absent / not a mapping / no argument for the tool → the
-# judge's prompt is byte for byte what it was.
-HELD_RECIPIENT_NAME = "held_recipient_name"
 
 # An EARLIER attempt of THIS turn committed a mutating tool, and its trace is GONE.
 #

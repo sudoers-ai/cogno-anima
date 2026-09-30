@@ -256,31 +256,16 @@ async def test_judge_still_rejects_a_draft_that_MANGLES_a_preserved_figure():
     assert r.critique
 
 
-# ── criterion (e): the held message's RECIPIENT and language (model half) ────────────
-
-
-def _held_notify_ctx(target: str, message: str):
-    """A proposal turn holding one ``notify_user``, with the host's two declarations. The
-    request names the recipient in Portuguese; names and texts are invented."""
-    ctx = _ctx("avisa os Docentes Bloco 17 que a reunião passou para quinta às 15h",
-               goal="notify the Block 17 teachers that the meeting moved to Thursday at 3 pm")
-    held = ToolExecution(tool="notify_user", arguments={"target": target, "message": message},
-                         ok=False, error="needs_confirmation", result="", tool_mutating=True)
-    ctx.ego_result = EgoResult(
-        steps=[EgoStep(index=0, path="native", assistant_text="", tool_calls=[held])],
-        pending_confirmation=[held], metrics=_m("ego"))
-    ctx.metadata[mk.HELD_DELIVERED_TEXT] = {"notify_user": "message"}
-    ctx.metadata[mk.HELD_RECIPIENT_NAME] = {"notify_user": "target"}
-    return ctx
+# ── criterion (e): the held message's LANGUAGE (model half) ──────────────────────────
 
 
 def _skip_on_ollama_for_criterion_e() -> None:
-    """Measured on this PR's own CI (anima #204, qwen3:8b, temperature 0): the local judge
-    REJECTED the correct held message — the critique conceded the recipient and the text were
-    right and failed the turn because the tool "returned needs_confirmation, which means the
-    message was not sent" (the hold read as an incomplete execution). A judge that rejects the
-    right message cannot make the rejection twin mean anything, so the pair runs only against a
-    cloud spec; the production judge's measurement is the host's, before landing."""
+    """Measured on anima #204's own CI (qwen3:8b, temperature 0): the local judge REJECTED the
+    correct held message — the critique conceded it was right and failed the turn because the
+    tool "returned needs_confirmation, which means the message was not sent" (the hold read as an
+    incomplete execution). A judge that rejects the right message cannot make the rejection twin
+    mean anything, so the pair runs only against a cloud spec; the production judge's
+    measurement is the host's, before landing."""
     spec = backends.model_spec()
     if backends.is_ollama(spec):
         pytest.skip(f"{spec}: qwen3:8b rejects the CORRECT held message for being held "
@@ -288,28 +273,42 @@ def _skip_on_ollama_for_criterion_e() -> None:
                     "discriminate there. Point COGNO_TEST_MODEL at a cloud spec to run it.")
 
 
+def _held_notify_ctx(message: str):
+    """A proposal turn holding one ``notify_user``, the delivered text declared and the turn's
+    language declared (``force_language``) as the host declares it. Names and texts invented."""
+    ctx = _ctx("avisa os Docentes Bloco 17 que a reunião passou para quinta às 15h",
+               goal="notify the Block 17 teachers that the meeting moved to Thursday at 3 pm")
+    held = ToolExecution(tool="notify_user",
+                         arguments={"target": "Docentes Bloco 17", "message": message},
+                         ok=False, error="needs_confirmation", result="", tool_mutating=True)
+    ctx.ego_result = EgoResult(
+        steps=[EgoStep(index=0, path="native", assistant_text="", tool_calls=[held])],
+        pending_confirmation=[held], metrics=_m("ego"))
+    ctx.metadata[mk.HELD_DELIVERED_TEXT] = {"notify_user": "message"}
+    ctx.force_language = "pt-BR"
+    return ctx
+
+
 @pytest.mark.asyncio
-async def test_judge_rejects_a_held_message_addressed_and_written_in_the_rewrite_english():
-    """The defect criterion (e) exists for: the executor read only the English rewrite, so the
-    recipient came out as the English rendering of the name the contact typed, and the text in
-    English. Shown the text alone, the judge approved it."""
+async def test_judge_rejects_a_held_message_written_in_the_rewrite_english():
+    """The defect criterion (e) exists for: the executor read only the English rewrite and wrote
+    the message in English for a contact who writes in Portuguese. Judged on what it SAID, it was
+    approved; the recipient reads those exact words."""
     _skip_on_ollama_for_criterion_e()
     await backends.skip_unless_available()
-    ctx = _held_notify_ctx("Block 17 Teachers",
-                           "Hello! The coordination meeting was moved to Thursday at 3 pm.")
+    ctx = _held_notify_ctx("Hello! The coordination meeting was moved to Thursday at 3 pm.")
     r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
-    assert r.approved is False, "an English recipient + text for a Portuguese request must fail"
+    assert r.approved is False, "an English message for a pt-BR contact must fail"
     assert r.critique
 
 
 @pytest.mark.asyncio
-async def test_judge_approves_the_same_held_message_in_the_contacts_own_words():
-    """The twin: the same proposal, addressed as the contact wrote it and in their language.
-    Without it the rejection above could be a judge that rejects every held message."""
+async def test_judge_approves_the_same_held_message_in_the_contacts_language():
+    """The twin: the same proposal, written in the contact's language. Without it the rejection
+    above could be a judge that rejects every held message."""
     _skip_on_ollama_for_criterion_e()
     await backends.skip_unless_available()
-    ctx = _held_notify_ctx("Docentes Bloco 17",
-                           "Olá! A reunião de coordenação passou para quinta-feira às 15h.")
+    ctx = _held_notify_ctx("Olá! A reunião de coordenação passou para quinta-feira às 15h.")
     r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
     assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
 

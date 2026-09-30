@@ -45,7 +45,6 @@ from cogno_anima import metakeys as mk
 from cogno_anima import vocab
 from cogno_anima.types import (
     PipelineContext, StageMetrics, SuperegoResult, ScopeCheckResult, ToolExecution,
-    held_message_recipients,
     held_messages_with_asks,
     read_succeeded_this_turn,
     write_attempted_this_turn,
@@ -1004,31 +1003,30 @@ def _held_asking_is_the_hosts(criteria: str) -> str:
 
 _HELD_ASKING_IS_THE_HOSTS = _held_asking_is_the_hosts("(a)-(d)")
 
-# CRITERION (e) — THE RECIPIENT, AND THE LANGUAGE (`mk.HELD_RECIPIENT_NAME`, 2026-09-30). The
-# executor reads only the canonical-English rewrite, never the contact's own words, so a held
-# message can come out addressed to the English rendering of a name the contact typed in their
-# own language («Block 17 Teachers» for «Docentes Bloco 17»), with its text in English too — and
-# this rule, shown the text alone, approved it: nothing on the page said whom it was TO. When
-# the host declares which argument names the recipient, the block renders it fenced beside the
-# text and the rule gains (e). CONDITIONAL on that declaration and on nothing else: without it
-# the rule is `_HELD_MESSAGE_RULE`, byte for byte. The raw request is in the prompt (`# User
-# request`), so the comparison it asks for is one the judge can make; a name a successful read
-# returned is the other legitimate form, because a directory label is how the person is FOUND.
-_HELD_RECIPIENT_CRITERION = (
-    "; (e) is ADDRESSED or WRITTEN in a language or a form the user did not write it in — the "
-    "RECIPIENT (`held_recipient`) must name the person or group the way the user's own request "
-    "names them (their words, in their language), or exactly as a successful tool result above "
-    "names them, and never as a TRANSLATION or paraphrase of that name (an English rendering of "
-    "a name, title or group the user wrote in another language is the wrong recipient: nobody "
-    "by that name will receive it); and the TEXT must be written in the language of the user's "
-    "request, unless the request asks for another one — it reaches its recipient word for "
-    "word, and the executor's English working language is not theirs. Capitalisation, accents "
-    "or singular versus plural alone are not a different form"
-)
+# CRITERION (e) — THE LANGUAGE OF THE MESSAGE (2026-09-30). The executor reads only the
+# canonical-English rewrite, so a held message can come out written in English for a contact who
+# writes in another language — and this rule, which judged what the text SAYS, approved it: the
+# recipient reads those exact words. The language is the one the host already DECLARES for the
+# turn (`ctx.force_language`, the tenant/session language the NOUMENO reads first) — no new
+# declaration, and no guess from the text: `noumeno.language` is a detection and may be the
+# langdetect fallback. CONDITIONAL on that declaration: with none (or one that is not a language
+# tag) the rule is `_HELD_MESSAGE_RULE`, byte for byte. It is about the TEXT only — the RECIPIENT
+# is the host's to align, deterministically, and it does so AFTER this judgement (the orchestrator
+# fires `after_ego` once the judge has run), so a judge shown the executor's recipient would
+# reject names the host is about to repair and spend the one correction on them.
+def _held_language_criterion(language: str) -> str:
+    return (
+        f"; (e) is NOT WRITTEN in the language the user writes in, «{language}» — its text "
+        "reaches the recipient word for word, and the executor's English working language is "
+        "not theirs; a message in another language is rejected unless the request itself asks "
+        "for that language. This is about the language of the message TEXT alone: names, "
+        "figures and other values inside it are judged by (a)-(d)"
+    )
 
 
-def _held_message_rule(recipient: bool) -> str:
-    """The held-message rule; ``recipient`` adds criterion (e) — ONE text, two renderings."""
+def _held_message_rule(language: str = "") -> str:
+    """The held-message rule; a declared ``language`` adds criterion (e) — ONE text, two
+    renderings, so the legacy one is the same bytes it always was."""
     return (
         "JUDGE EACH HELD MESSAGE AS IF IT WERE BEING SENT NOW — this is criterion #1 (goal <-> "
         "execution) applied to the message's own text, because that text is what its recipient "
@@ -1041,20 +1039,30 @@ def _held_message_rule(recipient: bool) -> str:
         "contains an INSTRUCTION meant for whoever writes the message ('include the introduction "
         "we agreed') instead of words meant for the recipient; (d) states anything the request "
         "and the successful tool results above do not support"
-        f"{_HELD_RECIPIENT_CRITERION if recipient else ''}. The MID-FLOW and confirmation "
-        "allowances cover ASKING the user before sending; they never cover the content of the "
-        "message being asked about. "
-        f"{_held_asking_is_the_hosts('(a)-(e)' if recipient else '(a)-(d)')}"
+        f"{_held_language_criterion(language) if language else ''}. The MID-FLOW and "
+        "confirmation allowances cover ASKING the user before sending; they never cover the "
+        "content of the message being asked about. "
+        f"{_held_asking_is_the_hosts('(a)-(e)' if language else '(a)-(d)')}"
         "Name in the critique what the message must say instead, so the retry can write it.\n\n"
     )
 
 
-_HELD_MESSAGE_RULE = _held_message_rule(False)
-_HELD_MESSAGE_RULE_WITH_RECIPIENT = _held_message_rule(True)
-# The line that opens a declared recipient inside the held-messages block (no header of its own,
-# so `_JUDGE_BLOCKS` and the persisted inventory keep their rows).
-_HELD_RECIPIENT_LEAD = ("  addressed to (`held_recipient`, the name the executor wrote — "
-                        "judge it by criterion (e)):")
+_HELD_MESSAGE_RULE = _held_message_rule()
+
+#: A declared language renders only when it LOOKS like one (a BCP-47-ish tag: ``pt``, ``pt-BR``,
+#: ``es_419``). Anything else is treated as undeclared — the rule never quotes free text into the
+#: prompt, and a garbled setting falls back to the prompt the judge always had.
+_LANGUAGE_TAG_RE = re.compile(r"^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8}){0,3}$")
+
+
+def held_message_language(ctx: "PipelineContext") -> str:
+    """The language criterion (e) holds a held message to: ``ctx.force_language`` when it is a
+    language tag, else ``""`` (no criterion). Never raises."""
+    try:
+        raw = str(getattr(ctx, "force_language", "") or "").strip()
+    except Exception:      # noqa: BLE001 — an unreadable carrier must not cost the turn
+        return ""
+    return raw if _LANGUAGE_TAG_RE.fullmatch(raw) else ""
 
 # THE ASK RECORDED FOR THE RECIPIENT (`mk.HELD_RECORDED_ASK`). A message that asks its
 # recipient to answer something («escolha as disciplinas…») is answered LATER, on the
@@ -2458,7 +2466,7 @@ class SuperegoStage:
             f"{held_messages}"
             f"# EGO draft\n{draft}\n\n"
             f"{criteria}"
-            f"{self._held_message_rule(ctx) if held_messages else ''}"
+            f"{_held_message_rule(held_message_language(ctx)) if held_messages else ''}"
             f"{self._held_ask_rule(ctx) if held_messages else ''}"
             f"{_MEMO_RULE if memo_block else ''}"
             "TRUST THE TOOLS: values a tool returned — resolved dates, ids, availability, "
@@ -2518,28 +2526,13 @@ class SuperegoStage:
         texts = held_messages_with_asks(ctx)
         if not texts:
             return ""
-        # Index-aligned with `texts`: the SAME walk (`types._held_message_rows`). ``None`` =
-        # no recipient declared for the tool, so the row renders exactly as it always did.
-        recipients = [to for _t, _x, to in held_message_recipients(ctx)]
         lines = "\n".join(
-            f"- {tool} →\n"
-            + (f"{_HELD_RECIPIENT_LEAD}\n<held_recipient name=\"{tool}\">\n"
-               f"{sanitize_untrusted(to, names) if to else '(EMPTY)'}\n</held_recipient>\n"
-               if to is not None else "")
-            + f"<held_message name=\"{tool}\">\n"
+            f"- {tool} →\n<held_message name=\"{tool}\">\n"
             f"{sanitize_untrusted(text, names) if text else '(EMPTY)'}\n</held_message>"
             + (f"\n{_HELD_ASK_LEAD}\n<held_ask name=\"{tool}\">\n"
                f"{sanitize_untrusted(ask, names)}\n</held_ask>" if ask else "")
-            for (tool, text, ask), to in zip(texts, recipients))
+            for tool, text, ask in texts)
         return f"{_HELD_MESSAGES_HEADER}\n{lines}\n\n"
-
-    @staticmethod
-    def _held_message_rule(ctx: PipelineContext) -> str:
-        """:data:`_HELD_MESSAGE_RULE`, or its criterion-(e) rendering when a held message on this
-        turn has a DECLARED recipient — read from the SAME reader the block uses, so the rule
-        travels with the evidence it asks about."""
-        declared = any(to is not None for _t, _x, to in held_message_recipients(ctx))
-        return _HELD_MESSAGE_RULE_WITH_RECIPIENT if declared else _HELD_MESSAGE_RULE
 
     @staticmethod
     def _held_ask_rule(ctx: PipelineContext) -> str:

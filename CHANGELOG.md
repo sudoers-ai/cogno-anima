@@ -1,47 +1,44 @@
 # Changelog
 
-## Unreleased — `mk.HELD_RECIPIENT_NAME`: o juiz da mensagem retida vê a quem ela vai, e a regra (e) (2026-09-30)
+## Unreleased — regra (e): a mensagem retida tem de estar na língua em que o contacto escreve (2026-09-30)
 
 ### Added
 
-- **`metakeys.HELD_RECIPIENT_NAME`** (`"held_recipient_name"`): o host declara `{tool: argument}` —
-  o argumento de uma chamada retida que NOMEIA o destinatário (o `target` de um `notify_user`),
-  lido do manifesto da ferramenta como `HELD_DELIVERED_TEXT`. Só é lido para uma ferramenta que
-  `HELD_DELIVERED_TEXT` também declara.
-- **`types.held_message_recipients`** (exportado): `(tool, text, recipient)`, a MESMA caminhada de
-  `held_messages_with_asks` (as duas passam a ser escritas sobre `_held_message_rows`). `recipient`
-  é `None` quando nada está declarado para a ferramenta e `""` quando está declarado e a chamada
-  não traz nenhum — dois factos opostos: o primeiro renderiza como sempre, o segundo é um achado.
-- **O juiz mostra o destinatário CERCADO ao lado do texto**, dentro do bloco das mensagens
-  retidas (`<held_recipient>`, `sanitize_untrusted` como todo o texto do modelo, sem cabeçalho
-  próprio: `_JUDGE_BLOCKS` e o inventário não ganham linha), e `_HELD_MESSAGE_RULE` ganha o
-  critério (e) (`_HELD_RECIPIENT_CRITERION`, renderizado por `_HELD_MESSAGE_RULE_WITH_RECIPIENT`):
-  rejeita quando o destinatário ou o texto não estão na língua ou na forma em que o contacto os
-  escreveu. As formas legítimas do destinatário são as palavras do próprio pedido ou o nome
-  exactamente como um resultado de ferramenta bem-sucedido o dá; maiúsculas, acentos ou
-  singular/plural sozinhos não são outra forma. A regra só renderiza quando alguma mensagem
-  retida tem destinatário DECLARADO.
+- **Critério (e) em `_HELD_MESSAGE_RULE`** (`_held_message_rule(language)`,
+  `_held_language_criterion`): rejeita uma mensagem retida que não está escrita na língua em que o
+  contacto escreve, excepto quando o próprio pedido pede outra língua. A regra fala só da língua do
+  TEXTO. Nomes, figuras e outros valores dentro dele continuam julgados por (a)-(d).
+- **A língua é a que o host JÁ declara**: `ctx.force_language`, a língua do tenant ou da sessão,
+  que o NOUMENO lê primeiro. Não há metakey novo. `held_message_language(ctx)` só a aceita quando
+  tem forma de etiqueta de língua (`pt`, `pt-BR`, `es_419`); o resto conta como não declarado, e o
+  prompt nunca cita texto livre. O `noumeno.language` não serve, porque é uma DETECÇÃO e pode vir
+  do langdetect.
 
 ### Why
 
-- O executor lê só a reescrita em inglês canónico, nunca as palavras do contacto, e pode dirigir
-  um recado à tradução inglesa de um nome que o contacto escreveu na sua língua, com o texto em
-  inglês também. O juiz aprovou essa proposta a jusante: via só o TEXTO, nada no prompt dizia a
-  quem ia. A rede do host e o alinhamento do destinatário (`held_recipient`) já existem; isto é o
-  juiz.
+- O executor lê só a reescrita em inglês e pode escrever o recado em inglês para um contacto que
+  escreve em português. O juiz julgava o que o texto DIZ e aprovou-o; o destinatário lê essas
+  palavras tal e qual.
+- **O destinatário NÃO vai ao juiz.** Esta foi a primeira forma deste PR, retirada por decisão do
+  Director. O host alinha-o de forma determinística DEPOIS do juiz, porque a soma dispara o
+  `after_ego` só depois do ciclo EGO⇄juiz. Medido pelo `Host.step` real: o juiz via «Piso 63
+  Teacher» e a proposta armava com o nome alinhado. Um juiz que visse o destinatário rejeitaria
+  nomes prestes a ser reparados e gastaria a única correcção. Só volta com um alinhamento ANTES
+  do juiz na soma.
 
 ### Unchanged
 
-- Sem a declaração (ausente, para outra ferramenta, que não é um mapa, sem nome de argumento, ou
-  sem texto entregue ao lado) o system + prompt do juiz são byte a byte os de `4eeeb2f`: sete
-  contextos com digest tirado na árvore anterior, e um CONTROLO que mostra o digest a mexer
-  quando a declaração entra — e que o que mexeu foi só o destinatário e o critério (e).
-  `cogno-soma` não muda (continua a ler `held_delivered_texts` para decidir julgar a proposta).
-- Prova: `tests/unit/test_judge_reads_the_held_recipient.py`; a metade do MODELO é o par em
-  `tests/integration/test_superego.py` (inglês rejeitado / as palavras do contacto aprovadas),
-  escrito e não corrido localmente; SALTA num spec Ollama, porque na CI deste PR o qwen3:8b
-  rejeitou a mensagem CERTA por estar retida («needs_confirmation» lido como não executado) e o
-  par não discrimina lá. A medição com o juiz de produção é do host, antes do aterro.
+- Sem língua declarada (ausente, em branco, ou algo que não é uma etiqueta), ou com língua mas sem
+  mensagem retida, o system + prompt do juiz são byte a byte os de `4eeeb2f`. Está provado em sete
+  contextos com digest tirado na árvore anterior. Um CONTROLO mostra o digest a mexer quando a
+  língua entra, e que o que mexeu foi só a regra.
+- O `_JUDGE_BLOCKS`, o inventário e o system message não mudam. `cogno-soma` também não.
+- Provas:
+  - `tests/unit/test_judge_holds_the_held_message_to_the_language.py`;
+  - a metade do MODELO é o par em `tests/integration/test_superego.py` (inglês rejeitado,
+    português aprovado). SALTA num spec Ollama: na CI deste PR o qwen3:8b rejeitou a mensagem
+    CERTA por estar retida («needs_confirmation» lido como não executado).
+- A medição com o juiz de produção é do host, antes do aterro.
 
 ## Unreleased — `committed_this_turn`: the ninth caller, `assembler.py::did_you_mean` (host, VQD, 2026-09-30)
 
