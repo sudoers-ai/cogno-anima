@@ -45,6 +45,7 @@ from cogno_anima import metakeys as mk
 from cogno_anima import vocab
 from cogno_anima.types import (
     PipelineContext, StageMetrics, SuperegoResult, ScopeCheckResult, ToolExecution,
+    held_message_recipients,
     held_messages_with_asks,
     read_succeeded_this_turn,
     write_attempted_this_turn,
@@ -991,29 +992,69 @@ _HELD_MESSAGES_HEADER = ("# Messages HELD for the user's confirmation — each i
 # question the empty draft did not contain — two of them calling the hold itself correct. Spliced
 # into `_HELD_MESSAGE_RULE` by reference, so it renders exactly where that rule does (a turn with
 # no declared held message renders byte for byte as before) and a mutation can remove it alone.
-_HELD_ASKING_IS_THE_HOSTS = (
-    "THE ASKING IS NOT THE DRAFT'S JOB ON THIS TURN: the question that shows the user each held "
-    "message and asks whether to send it is ADDED BY THE HOST, AFTER this judgement. So an EMPTY "
-    "EGO draft ('(none)'), or a draft that does not ask for confirmation, next to a held message "
-    "is NOT a defect — never reject for it, and never ask for that question in the critique. "
-    "Judge the held message's own text by (a)-(d) above. "
+def _held_asking_is_the_hosts(criteria: str) -> str:
+    return (
+        "THE ASKING IS NOT THE DRAFT'S JOB ON THIS TURN: the question that shows the user each "
+        "held message and asks whether to send it is ADDED BY THE HOST, AFTER this judgement. So "
+        "an EMPTY EGO draft ('(none)'), or a draft that does not ask for confirmation, next to a "
+        "held message is NOT a defect — never reject for it, and never ask for that question in "
+        f"the critique. Judge the held message's own text by {criteria} above. "
+    )
+
+
+_HELD_ASKING_IS_THE_HOSTS = _held_asking_is_the_hosts("(a)-(d)")
+
+# CRITERION (e) — THE RECIPIENT, AND THE LANGUAGE (`mk.HELD_RECIPIENT_NAME`, 2026-09-30). The
+# executor reads only the canonical-English rewrite, never the contact's own words, so a held
+# message can come out addressed to the English rendering of a name the contact typed in their
+# own language («Block 17 Teachers» for «Docentes Bloco 17»), with its text in English too — and
+# this rule, shown the text alone, approved it: nothing on the page said whom it was TO. When
+# the host declares which argument names the recipient, the block renders it fenced beside the
+# text and the rule gains (e). CONDITIONAL on that declaration and on nothing else: without it
+# the rule is `_HELD_MESSAGE_RULE`, byte for byte. The raw request is in the prompt (`# User
+# request`), so the comparison it asks for is one the judge can make; a name a successful read
+# returned is the other legitimate form, because a directory label is how the person is FOUND.
+_HELD_RECIPIENT_CRITERION = (
+    "; (e) is ADDRESSED or WRITTEN in a language or a form the user did not write it in — the "
+    "RECIPIENT (`held_recipient`) must name the person or group the way the user's own request "
+    "names them (their words, in their language), or exactly as a successful tool result above "
+    "names them, and never as a TRANSLATION or paraphrase of that name (an English rendering of "
+    "a name, title or group the user wrote in another language is the wrong recipient: nobody "
+    "by that name will receive it); and the TEXT must be written in the language of the user's "
+    "request, unless the request asks for another one — it reaches its recipient word for "
+    "word, and the executor's English working language is not theirs. Capitalisation, accents "
+    "or singular versus plural alone are not a different form"
 )
-_HELD_MESSAGE_RULE = (
-    "JUDGE EACH HELD MESSAGE AS IF IT WERE BEING SENT NOW — this is criterion #1 (goal <-> "
-    "execution) applied to the message's own text, because that text is what its recipient "
-    "will read and a message that has been sent cannot be recalled. REJECT when a held "
-    "message: (a) does NOT CARRY what the request asked to pass on — content the request asked "
-    "to include, or that this turn READ in order to pass on, must be IN the text itself, not "
-    "promised ('I am writing to share the summary'), announced or pointed to elsewhere ('see "
-    "the details in your usual channel'); (b) is addressed to the WRONG person — a question the "
-    "user asked the assistant, forwarded to the recipient; (c) contains an INSTRUCTION meant "
-    "for whoever writes the message ('include the introduction we agreed') instead of words "
-    "meant for the recipient; (d) states anything the request and the successful tool results "
-    "above do not support. The MID-FLOW and confirmation allowances cover ASKING the user "
-    "before sending; they never cover the content of the message being asked about. "
-    f"{_HELD_ASKING_IS_THE_HOSTS}"
-    "Name in the critique what the message must say instead, so the retry can write it.\n\n"
-)
+
+
+def _held_message_rule(recipient: bool) -> str:
+    """The held-message rule; ``recipient`` adds criterion (e) — ONE text, two renderings."""
+    return (
+        "JUDGE EACH HELD MESSAGE AS IF IT WERE BEING SENT NOW — this is criterion #1 (goal <-> "
+        "execution) applied to the message's own text, because that text is what its recipient "
+        "will read and a message that has been sent cannot be recalled. REJECT when a held "
+        "message: (a) does NOT CARRY what the request asked to pass on — content the request "
+        "asked to include, or that this turn READ in order to pass on, must be IN the text "
+        "itself, not promised ('I am writing to share the summary'), announced or pointed to "
+        "elsewhere ('see the details in your usual channel'); (b) is addressed to the WRONG "
+        "person — a question the user asked the assistant, forwarded to the recipient; (c) "
+        "contains an INSTRUCTION meant for whoever writes the message ('include the introduction "
+        "we agreed') instead of words meant for the recipient; (d) states anything the request "
+        "and the successful tool results above do not support"
+        f"{_HELD_RECIPIENT_CRITERION if recipient else ''}. The MID-FLOW and confirmation "
+        "allowances cover ASKING the user before sending; they never cover the content of the "
+        "message being asked about. "
+        f"{_held_asking_is_the_hosts('(a)-(e)' if recipient else '(a)-(d)')}"
+        "Name in the critique what the message must say instead, so the retry can write it.\n\n"
+    )
+
+
+_HELD_MESSAGE_RULE = _held_message_rule(False)
+_HELD_MESSAGE_RULE_WITH_RECIPIENT = _held_message_rule(True)
+# The line that opens a declared recipient inside the held-messages block (no header of its own,
+# so `_JUDGE_BLOCKS` and the persisted inventory keep their rows).
+_HELD_RECIPIENT_LEAD = ("  addressed to (`held_recipient`, the name the executor wrote — "
+                        "judge it by criterion (e)):")
 
 # THE ASK RECORDED FOR THE RECIPIENT (`mk.HELD_RECORDED_ASK`). A message that asks its
 # recipient to answer something («escolha as disciplinas…») is answered LATER, on the
@@ -2417,7 +2458,7 @@ class SuperegoStage:
             f"{held_messages}"
             f"# EGO draft\n{draft}\n\n"
             f"{criteria}"
-            f"{_HELD_MESSAGE_RULE if held_messages else ''}"
+            f"{self._held_message_rule(ctx) if held_messages else ''}"
             f"{self._held_ask_rule(ctx) if held_messages else ''}"
             f"{_MEMO_RULE if memo_block else ''}"
             "TRUST THE TOOLS: values a tool returned — resolved dates, ids, availability, "
@@ -2477,13 +2518,28 @@ class SuperegoStage:
         texts = held_messages_with_asks(ctx)
         if not texts:
             return ""
+        # Index-aligned with `texts`: the SAME walk (`types._held_message_rows`). ``None`` =
+        # no recipient declared for the tool, so the row renders exactly as it always did.
+        recipients = [to for _t, _x, to in held_message_recipients(ctx)]
         lines = "\n".join(
-            f"- {tool} →\n<held_message name=\"{tool}\">\n"
+            f"- {tool} →\n"
+            + (f"{_HELD_RECIPIENT_LEAD}\n<held_recipient name=\"{tool}\">\n"
+               f"{sanitize_untrusted(to, names) if to else '(EMPTY)'}\n</held_recipient>\n"
+               if to is not None else "")
+            + f"<held_message name=\"{tool}\">\n"
             f"{sanitize_untrusted(text, names) if text else '(EMPTY)'}\n</held_message>"
             + (f"\n{_HELD_ASK_LEAD}\n<held_ask name=\"{tool}\">\n"
                f"{sanitize_untrusted(ask, names)}\n</held_ask>" if ask else "")
-            for tool, text, ask in texts)
+            for (tool, text, ask), to in zip(texts, recipients))
         return f"{_HELD_MESSAGES_HEADER}\n{lines}\n\n"
+
+    @staticmethod
+    def _held_message_rule(ctx: PipelineContext) -> str:
+        """:data:`_HELD_MESSAGE_RULE`, or its criterion-(e) rendering when a held message on this
+        turn has a DECLARED recipient — read from the SAME reader the block uses, so the rule
+        travels with the evidence it asks about."""
+        declared = any(to is not None for _t, _x, to in held_message_recipients(ctx))
+        return _HELD_MESSAGE_RULE_WITH_RECIPIENT if declared else _HELD_MESSAGE_RULE
 
     @staticmethod
     def _held_ask_rule(ctx: PipelineContext) -> str:

@@ -704,6 +704,10 @@ _HELD_DELIVERED_TEXT = "held_delivered_text"
 # (`tests/unit/test_judge_reads_the_recorded_ask.py`). Read ONLY by `held_messages_with_asks`.
 _HELD_RECORDED_ASK = "held_recorded_ask"
 
+# Mirrors ``metakeys.HELD_RECIPIENT_NAME``, inlined for the same reason and pinned the same way
+# (`tests/unit/test_judge_reads_the_held_recipient.py`). Read ONLY by `held_message_recipients`.
+_HELD_RECIPIENT_NAME = "held_recipient_name"
+
 #: A recorded ask is ONE line and bounded. Past this it is cut with a visible stump, never
 #: dropped: an ask this long is a host rendering something it should not, and the judge must see
 #: that rather than have it vanish.
@@ -749,6 +753,32 @@ def held_messages_with_asks(ctx: "PipelineContext") -> "list[tuple[str, str, str
 
     Anything unreadable answers ``[]``, which is today's behaviour exactly.
     """
+    return [(tool, text, ask) for tool, text, ask, _to in _held_message_rows(ctx)]
+
+
+def held_message_recipients(ctx: "PipelineContext") -> "list[tuple[str, str, Optional[str]]]":
+    """``(tool, text, recipient)`` — :func:`held_delivered_texts`, plus WHOM each message is TO.
+
+    The same walk and the same filter, in the same order, as :func:`held_messages_with_asks`: a
+    held call appears here exactly when it appears there. ``recipient`` is the value of the
+    argument the host declares under ``metakeys.HELD_RECIPIENT_NAME`` for that tool — the name
+    the executor addressed the message to — collapsed to one line and bounded like an ask.
+
+    Three states, and the first two are opposite facts: ``None`` when NOTHING is declared for
+    the tool (no mapping, the tool absent from it, an argument name that is not a string) — the
+    judge then renders the message as it always did; ``""`` when the recipient IS declared and
+    the call carries none (absent, blank, not a string) — an unaddressed message about to be
+    proposed is a finding, and the judge must see it rather than have it vanish.
+
+    Anything unreadable answers ``[]``, which is today's behaviour exactly.
+    """
+    return [(tool, text, to) for tool, text, _ask, to in _held_message_rows(ctx)]
+
+
+def _held_message_rows(ctx: "PipelineContext") -> "list[tuple[str, str, str, Optional[str]]]":
+    """``(tool, text, ask, recipient)`` for every held call that delivers a declared text — the
+    ONE walk the public readers above slice, so they can never disagree about WHICH calls are
+    messages. See them for what each field means; anything unreadable answers ``[]``."""
     try:
         meta = getattr(ctx, "metadata", None) or {}
         declared = meta.get(_HELD_DELIVERED_TEXT)
@@ -757,8 +787,11 @@ def held_messages_with_asks(ctx: "PipelineContext") -> "list[tuple[str, str, str
         asks = meta.get(_HELD_RECORDED_ASK)
         if not isinstance(asks, dict):
             asks = {}
+        recipients = meta.get(_HELD_RECIPIENT_NAME)
+        if not isinstance(recipients, dict):
+            recipients = {}
         held = getattr(getattr(ctx, "ego_result", None), "pending_confirmation", None) or []
-        out: "list[tuple[str, str, str]]" = []
+        out: "list[tuple[str, str, str, Optional[str]]]" = []
         for call in held:
             tool = str(getattr(call, "tool", "") or "")
             arg = declared.get(tool)
@@ -766,16 +799,20 @@ def held_messages_with_asks(ctx: "PipelineContext") -> "list[tuple[str, str, str
                 continue
             args = getattr(call, "arguments", None) or {}
             raw = args.get(arg)
+            to_arg = recipients.get(tool)
             out.append((tool, raw.strip() if isinstance(raw, str) else "",
                         _one_line_ask(args.get(asks.get(tool)) if isinstance(asks.get(tool), str)
-                                      else None)))
+                                      else None),
+                        _one_line_ask(args.get(to_arg))
+                        if isinstance(to_arg, str) and to_arg else None))
         return out
     except Exception:      # noqa: BLE001 — an unreadable carrier must not cost the turn
         return []
 
 
 def _one_line_ask(raw: object) -> str:
-    """A recorded ask as the judge reads it: one line, bounded, ``""`` for anything else."""
+    """A recorded ask — or a recipient — as the judge reads it: one line, bounded, ``""`` for
+    anything else."""
     if not isinstance(raw, str):
         return ""
     flat = " ".join(raw.split())

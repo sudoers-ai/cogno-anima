@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased — `mk.HELD_RECIPIENT_NAME`: o juiz da mensagem retida vê a quem ela vai, e a regra (e) (2026-09-30)
+
+### Added
+
+- **`metakeys.HELD_RECIPIENT_NAME`** (`"held_recipient_name"`): o host declara `{tool: argument}` —
+  o argumento de uma chamada retida que NOMEIA o destinatário (o `target` de um `notify_user`),
+  lido do manifesto da ferramenta como `HELD_DELIVERED_TEXT`. Só é lido para uma ferramenta que
+  `HELD_DELIVERED_TEXT` também declara.
+- **`types.held_message_recipients`** (exportado): `(tool, text, recipient)`, a MESMA caminhada de
+  `held_messages_with_asks` (as duas passam a ser escritas sobre `_held_message_rows`). `recipient`
+  é `None` quando nada está declarado para a ferramenta e `""` quando está declarado e a chamada
+  não traz nenhum — dois factos opostos: o primeiro renderiza como sempre, o segundo é um achado.
+- **O juiz mostra o destinatário CERCADO ao lado do texto**, dentro do bloco das mensagens
+  retidas (`<held_recipient>`, `sanitize_untrusted` como todo o texto do modelo, sem cabeçalho
+  próprio: `_JUDGE_BLOCKS` e o inventário não ganham linha), e `_HELD_MESSAGE_RULE` ganha o
+  critério (e) (`_HELD_RECIPIENT_CRITERION`, renderizado por `_HELD_MESSAGE_RULE_WITH_RECIPIENT`):
+  rejeita quando o destinatário ou o texto não estão na língua ou na forma em que o contacto os
+  escreveu. As formas legítimas do destinatário são as palavras do próprio pedido ou o nome
+  exactamente como um resultado de ferramenta bem-sucedido o dá; maiúsculas, acentos ou
+  singular/plural sozinhos não são outra forma. A regra só renderiza quando alguma mensagem
+  retida tem destinatário DECLARADO.
+
+### Why
+
+- O executor lê só a reescrita em inglês canónico, nunca as palavras do contacto, e pode dirigir
+  um recado à tradução inglesa de um nome que o contacto escreveu na sua língua, com o texto em
+  inglês também. O juiz aprovou essa proposta a jusante: via só o TEXTO, nada no prompt dizia a
+  quem ia. A rede do host e o alinhamento do destinatário (`held_recipient`) já existem; isto é o
+  juiz.
+
+### Unchanged
+
+- Sem a declaração (ausente, para outra ferramenta, que não é um mapa, sem nome de argumento, ou
+  sem texto entregue ao lado) o system + prompt do juiz são byte a byte os de `4eeeb2f`: sete
+  contextos com digest tirado na árvore anterior, e um CONTROLO que mostra o digest a mexer
+  quando a declaração entra — e que o que mexeu foi só o destinatário e o critério (e).
+  `cogno-soma` não muda (continua a ler `held_delivered_texts` para decidir julgar a proposta).
+- Prova: `tests/unit/test_judge_reads_the_held_recipient.py`. A medição por modelo é do host.
+
 ## Unreleased — `committed_this_turn`: the ninth caller, `assembler.py::did_you_mean` (host, VQD, 2026-09-30)
 
 ### Changed
