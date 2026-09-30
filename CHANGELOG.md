@@ -10,9 +10,17 @@
   prompt renders (`_payload_records`). The voice is told to keep each value exactly as the data
   writes it, and to correct only what the critique says about framing or attribution. Chosen in
   code by `SuperegoStage._statements_the_data_holds`, with the digit-string provenance the figure
-  net already uses (`_numeral_forms`). **The critique is not an input.** On the measured turns it
-  names the true lines to ENDORSE them, and telling endorsement from contest is polarity, which
-  no deterministic rule reads. Gated like `read_worked` (`read_is_visible`), so the list renders
+  net already uses (`_numeral_forms`). **The critique's meaning is never read.** On the measured
+  turns it names the true lines to ENDORSE them, and telling endorsement from contest is
+  polarity, which no deterministic rule reads.
+- **The one exception: the critique's VALUES, never its polarity.** A statement carrying a value
+  the critique cites (the same `_numeral_forms` extraction, plus e-mails and URLs) is not listed.
+  Measured by replay (n=12 per arm): without the exception the invoice line came back 12/12
+  (3/12 on `main`) and the FAB arm stayed 0/12, but the payment line the judge had rejected came
+  back 7/12 (6/6 on one trace) in the SAME rejected framing. Its value was in the data, the
+  framing was the error, and "keep it" handed the rejected statement back. **The declared
+  cost:** a critique that cites a value to ENDORSE it takes that line off the list too. On one of
+  the two measured shapes that is the invoice line, which then gets today's behaviour. Gated like `read_worked` (`read_is_visible`), so the list renders
   only when the data it points to is in the prompt. No new header: `_VOICE_BLOCKS` and the
   persisted inventory do not move.
 - Two flag-only adjustments: `voice:kept_values` (the list rendered) and

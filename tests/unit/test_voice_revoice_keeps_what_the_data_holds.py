@@ -10,11 +10,18 @@ draft for that FRAMING. The budget was 1, so the turn exhausted into `# Executio
 with the draft withheld. The re-voiced reply fixed the payment line and also dropped the
 invoice line, which was in the document and which the critique never refused.
 
-The critique does not decide what stays. On both turns it names the invoice line to ENDORSE
-it ("the reply should present the invoice deadline …"), so any rule over the critique's text
-misreads it one way or the other. The rule is the grounding rule turned around: every value of
-the rejected draft that is written in a successful read the prompt renders MUST stay, and only
-a value the data does not hold may go (`superego._KEPT_VALUES_OPENING`).
+The critique's MEANING does not decide what stays. On both turns it names the invoice line to
+ENDORSE it ("the reply should present the invoice deadline …"), so any rule over what the
+critique says misreads it one way or the other. The rule is the grounding rule turned around:
+every value of the rejected draft that is written in a successful read the prompt renders
+stays, and only a value the data does not hold may go (`superego._KEPT_VALUES_OPENING`).
+
+ONE EXCEPTION, measured by the consultant's replay (n=12 per arm): a statement carrying a
+value the critique CITES is not listed. Without it the rejected payment line came back 7/12
+in its rejected framing (its value was in the data; the framing was the error). The critique
+is read for its SET OF VALUES only, never its meaning, and the cost is pinned below: on the
+2254 shape the critique cites the invoice day to endorse it, so the invoice line leaves the
+list too and gets today's behaviour.
 
 The two shapes pinned here:
 
@@ -23,13 +30,13 @@ The two shapes pinned here:
 * **2256**: the draft is in PORTUGUESE, and a second read (`check_deadlines`) returned a
   sentence with no value.
 
-What is pinned: the twins in both shapes (the invoice line and the payment line are both
-listed), the FAB control (an invented value is never listed, and may go), the controls
+What is pinned: the twins in both shapes (2256: the invoice line stays and the cited payment
+line leaves; 2254: both leave, the declared cost), the FAB control (an invented value is never listed, and may go), the controls
 (without a judge rejection, and on every branch this does not reach, the prompt is byte for
 byte `main`'s, by whole-prompt digests measured on ``4eeeb2f`` with this exact fixture), and
 the audit tokens. MUTATIONS: remove the splice (the twins go red); accept a value that is not
-in the data (the FAB control goes red); drop the `read_is_visible` gate (the failed-read
-control goes red).
+in the data (the FAB control goes red); ignore the critique's values (the 2256 twin goes red);
+drop the `read_is_visible` gate (the failed-read control goes red).
 
 Deterministic: every assertion is on the RENDERED voice prompt or on `voice()` over a scripted
 backend. The model half (does the voice obey the list) is the consultant's replay, not a unit.
@@ -166,27 +173,32 @@ def _sha(text: str) -> str:
 
 # ── THE TWINS ─────────────────────────────────────────────────────────────────────────
 
-def test_2256_the_invoice_and_the_payment_both_stay_listed():
-    """The Portuguese shape. The three rules each carry a value the document holds, so all
-    three are listed, the invoice line (the one the reply dropped) included, and the payment
-    line too: its day IS in the data, and what the critique corrects is its framing. The
-    opening and the closing carry no value and are not listed.
+def test_2256_the_invoice_stays_and_the_cited_payment_line_leaves():
+    """The Portuguese shape. The three rules each carry a value the document holds. The
+    critique cites 28 and not 10, so the payment line leaves the list and the invoice line
+    (the one the reply dropped) stays, with the grades line. The opening and the closing carry
+    no value and are not listed.
 
     On `main` there is no list at all (the invoice line reaches the voice nowhere): red.
     MUTATION: remove the `kept_values` splice from `# Execution verdict`: red here.
+    MUTATION: ignore the critique's values: the payment line comes back, red here.
     """
     prompt = _render(_t2256(), reason=CRITIQUE_PT)
     section = _verdict(prompt)
     assert CRITIQUE_PT in section, "the scaffold did not render the critique"
     assert OPENING in section
-    assert _listed(prompt) == [GRADES_PT, INVOICE_PT, PAYMENT_PT]
+    assert _listed(prompt) == [GRADES_PT, INVOICE_PT]
 
 
-def test_2254_the_english_draft_meets_the_portuguese_document_by_its_values():
-    """The English shape: "by the 10th" and "the 28th" against «dia 10» and «dia 28». Only
-    the digit strings meet across the two languages, and they are enough."""
+def test_2254_the_endorsed_invoice_leaves_too_the_declared_cost():
+    """The English shape: "by the 10th" and "the 28th" against «dia 10» and «dia 28». The
+    critique cites BOTH days (28 to refuse its framing, 10 to endorse it), and polarity is not
+    read, so both lines leave: the invoice line gets today's behaviour, which is the cost of
+    the exception. The grades line stays, because the critique writes «três semanas» in words
+    and cites no 3."""
     prompt = _render(_t2254(), reason=CRITIQUE_EN)
-    assert _listed(prompt) == [GRADES_EN, INVOICE_EN, PAYMENT_EN]
+    assert _listed(prompt) == [GRADES_EN]
+    assert INVOICE_EN not in _verdict(prompt) and PAYMENT_EN not in _verdict(prompt)
 
 
 def test_the_list_sits_inside_the_verdict_after_the_critique_and_before_the_last_word():
@@ -200,12 +212,16 @@ def test_the_list_sits_inside_the_verdict_after_the_critique_and_before_the_last
     assert section.rstrip().endswith("however plausible it looks.")
 
 
-def test_the_critique_is_not_an_input():
-    """The list does not move with the critique: the same turn under the other shape's
-    critique, and under a critique naming no value at all, lists the same statements."""
-    base = _listed(_render(_t2256(), reason=CRITIQUE_PT))
-    assert _listed(_render(_t2256(), reason=CRITIQUE_EN)) == base
-    assert _listed(_render(_t2256(), reason="The framing is wrong.")) == base
+def test_the_critique_is_read_for_its_values_never_its_meaning():
+    """Only the SET of values the critique cites moves the list. A critique citing no value
+    leaves every grounded statement listed; two critiques citing the same values with opposite
+    words (refusing, endorsing) give the same list."""
+    assert _listed(_render(_t2256(), reason="The framing is wrong.")) == [
+        GRADES_PT, INVOICE_PT, PAYMENT_PT]
+    refusing = _listed(_render(_t2256(), reason="O dia 10 está errado."))
+    endorsing = _listed(_render(_t2256(), reason="O dia 10 está certo e deve aparecer."))
+    assert refusing == endorsing == [GRADES_PT, PAYMENT_PT]
+    assert _listed(_render(_t2256(), reason=CRITIQUE_EN)) == [GRADES_PT]
 
 
 # ── THE FAB CONTROL ───────────────────────────────────────────────────────────────────
@@ -220,7 +236,7 @@ def test_fab_a_value_the_data_does_not_hold_is_never_listed_and_may_go():
     """
     prompt = _render(_turn(DRAFT_FAB, _read()), reason=CRITIQUE_PT)
     listed = _listed(prompt)
-    assert listed == [GRADES_PT, INVOICE_PT, PAYMENT_PT]
+    assert listed == [GRADES_PT, INVOICE_PT]
     assert not any("12" in s or "5%" in s for s in listed)
     assert "Reunião de professores" not in _verdict(prompt)
 

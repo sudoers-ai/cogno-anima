@@ -424,12 +424,21 @@ _NOTHING_BEYOND_WHAT_WAS_READ = (
 # reply kept one rule and dropped the other two, including an invoice deadline that was in
 # the document.
 #
-# THE CRITIQUE IS NEVER READ TO DECIDE WHAT STAYS. On the measured turns it touches the right
-# lines to ENDORSE them ("the reply should present only the invoice deadline …"), and telling
-# endorsement from contest is polarity, which no deterministic rule reads. So the rule is the
-# grounding rule turned around: every VALUE of the rejected draft that is written in the
-# executor data MUST stay, and only a value the data does not hold may go. What the critique
-# corrects is the FRAMING around a value, and it still reaches the voice for that.
+# THE CRITIQUE'S MEANING IS NEVER READ, ONLY ITS VALUES. On the measured turns it touches the
+# right lines to ENDORSE them ("the reply should present only the invoice deadline …"), and
+# telling endorsement from contest is polarity, which no deterministic rule reads. So the rule
+# is the grounding rule turned around: every VALUE of the rejected draft that is written in the
+# executor data stays, and only a value the data does not hold may go.
+#
+# WITH ONE EXCEPTION, MEASURED (consultant's replay, n=12 per arm): a statement carrying a value
+# the critique CITES is not listed. The first cut ignored the critique entirely, and the invoice
+# line came back 12/12 (3/12 on `main`) with the FAB arm at 0/12; but the payment line the judge
+# rejected came back 7/12, 6/6 on one of the two traces, in the SAME rejected framing. Its value
+# was in the data; the error was the framing, and "keep it as it is" handed the rejected
+# statement back. So the critique is read for its SET OF VALUES only — the digit strings
+# `_numeral_forms` extracts, plus e-mails and URLs — never for what it says about them. The
+# cost is declared: a critique that cites a value to ENDORSE it (the invoice day, on one of the
+# two traces) takes that line off the list too, and that line gets today's behaviour.
 #
 # Decided in code (`_statements_the_data_holds`), with the provenance the figure net already
 # uses (`_numeral_forms`, the digit-string reading, over the reads `_payload_records` renders).
@@ -3658,11 +3667,13 @@ class SuperegoStage:
                 # ── AND A VALUE THE DATA HOLDS STAYS (2026-09-30) ──────────────────────
                 # The statements are chosen in code (`_statements_the_data_holds`; the
                 # measured turn and the rule are on `_KEPT_VALUES_OPENING`), and the critique
-                # is not an input. Gated on `read_is_visible` like `read_worked`: the premise
+                # is read for its VALUES only, the RAW text: masking the note removes words,
+                # and a value removed there would put a cited statement back on the list. Gated on `read_is_visible` like `read_worked`: the premise
                 # "written in the executor data above" is true only when that data is in THIS
                 # prompt. Each statement goes through the same fencing as the payload and is
                 # masked of the contact's note. Nothing to list → "", byte for byte.
-                kept = self._statements_the_data_holds(ctx) if read_is_visible else []
+                kept = (self._statements_the_data_holds(ctx, str(rejection["reason"]))
+                        if read_is_visible else [])
                 if kept:
                     names = {t.tool for t in self._payload_records(ctx) if t.tool}
                     kept_values = _KEPT_VALUES_OPENING + "".join(
@@ -3949,13 +3960,15 @@ class SuperegoStage:
         return out
 
     @classmethod
-    def _statements_the_data_holds(cls, ctx: PipelineContext) -> "list[str]":
+    def _statements_the_data_holds(cls, ctx: PipelineContext,
+                                   critique: str = "") -> "list[str]":
         """The rejected draft's statements whose every value is written in a successful read
-        THIS prompt renders. Decided in code, never by the model, and the critique is NOT an
-        input: see `_KEPT_VALUES_OPENING` for why.
+        THIS prompt renders, minus every statement carrying a value ``critique`` cites. Decided
+        in code, never by the model; the critique is read for its VALUES only, never for its
+        meaning (see `_KEPT_VALUES_OPENING` for the measurement behind the exception).
 
         ``[]`` (today's prompt, byte for byte) when there is no draft, no successful read in
-        the payload, or no statement whose values are all in it.
+        the payload, or no statement left.
         """
         draft = ((ctx.ego_result.draft if ctx.ego_result else "") or "").strip()
         if not draft:
@@ -3968,6 +3981,10 @@ class SuperegoStage:
         if not evidence:
             return []
         grounded = cls._numeral_forms(evidence)
+        # The critique's values, in the widened reading on both sides (a statement's "1.440,00"
+        # meets a critique's "1440"): widening only takes MORE statements off the list.
+        cited = cls._numeral_forms(_ADDRESS_RE.sub(" ", critique or ""))
+        cited_text = (critique or "").lower()
         keep: "list[str]" = []
         for piece in _STATEMENT_SPLIT_RE.split(draft):
             statement = _STATEMENT_MARK_RE.sub("", piece).strip()
@@ -3976,6 +3993,9 @@ class SuperegoStage:
             addresses = [a.rstrip(".,;:!?") for a in _ADDRESS_RE.findall(statement)]
             numerals = cls._statement_numerals(statement)
             if not (numerals or addresses):
+                continue
+            if cls._numeral_forms(_ADDRESS_RE.sub(" ", statement)) & cited \
+                    or any(a.lower() in cited_text for a in addresses):
                 continue
             if all(n in grounded for n in numerals) and all(a in evidence for a in addresses):
                 keep.append(statement)

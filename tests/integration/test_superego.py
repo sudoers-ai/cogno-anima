@@ -541,9 +541,10 @@ _PROFESSOR_RULES = (
 @pytest.mark.asyncio
 async def test_voice_revoice_keeps_the_values_the_data_holds():
     """Every value of the rejected draft is in the document (3 weeks, day 10, day 28), and the
-    critique refused only how the payment day was FRAMED. The reply must still carry the
-    invoice day (10), the grades deadline (3) and the payment day (28); asserted on VALUES (``stated_values``), never
-    on a Portuguese phrasing."""
+    critique refused how the payment day (28, which it cites) was FRAMED. The reply must still
+    carry the invoice day (10) and the grades deadline (3), which the critique does not cite;
+    asserted on VALUES (``stated_values``), never on a Portuguese phrasing. Nothing is asserted
+    about 28: the payment line is off the list, and the voice may reframe or drop it."""
     spec = backends.model_spec()
     if backends.is_ollama(spec):
         pytest.skip(f"{spec}: unmeasured on qwen3:8b, and the voice that ships this is a cloud "
@@ -570,6 +571,6 @@ async def test_voice_revoice_keeps_the_values_the_data_holds():
     assert "voice:kept_values" in r.adjustments, "the list did not render"
     assert r.response, "the voice wrote nothing"
     values = stated_values(r.response)
-    assert {3.0, 10.0, 28.0} <= values, (
-        f"the document holds the grades deadline, the invoice day and the payment day and the "
-        f"reply dropped one: {r.response!r}")
+    assert {3.0, 10.0} <= values, (
+        f"the document holds the grades deadline and the invoice day and the reply dropped "
+        f"one: {r.response!r}")
