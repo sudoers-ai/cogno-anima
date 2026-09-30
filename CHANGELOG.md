@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased — `mk.HELD_RECORDED_ASK`: o juiz lê, na PROPOSTA, o pedido que um recado deixa do lado de quem o recebe (M6-b, 2026-09-29)
+
+### Added
+
+- **`metakeys.HELD_RECORDED_ASK`** (`"held_recorded_ask"`): o host declara `{tool: argument}` —
+  o argumento de uma chamada retida que ele REGISTA do lado do destinatário como o que a mensagem
+  lhe pede para responder, e que no turno do destinatário vira `mk.SCOPE_PENDING_REQUEST`. Só é
+  lido para uma ferramenta que `HELD_DELIVERED_TEXT` também declara.
+- **`types.held_messages_with_asks`** (exportado): `(tool, text, ask)`, a MESMA caminhada e o
+  MESMO filtro de `held_delivered_texts` (que passa a ser escrito sobre ela), mais o pedido numa
+  linha e com tecto (`_MAX_RECORDED_ASK_CHARS`, 200, com toco visível).
+- **O juiz mostra o pedido DENTRO do bloco das mensagens retidas** (`<held_ask>`, cercado como
+  todo o texto do modelo, sem cabeçalho próprio: o inventário não ganha linha) e acrescenta
+  `_HELD_ASK_RULE` depois de `_HELD_MESSAGE_RULE`, só quando alguma mensagem retida traz um.
+  A regra é de UM lado: rejeita um pedido que a mensagem não faz, ou mais largo do que ela;
+  um pedido ausente nunca é rejeição.
+
+### Why
+
+- O pedido RELAXA um guarda para OUTRA pessoa e foi escrito pelo modelo, por isso é julgado na
+  proposta, ao lado da mensagem que diz descrever, e nunca composto mais tarde no envio.
+- Medido a jusante, guarda de produção, n=5 por braço, intercalado: sem pedido pendente BLOCK
+  5/5; genérico BLOCK 5/5; ESPECÍFICO ALLOW 5/5. Só o pedido que diz O QUÊ serve.
+
+### Unchanged
+
+- Sem pedido declarado (ou declarado vazio, ou para outra ferramenta) o prompt do juiz é byte a
+  byte o de `e9898d1`: seis contextos com digest tirado na árvore anterior, e um CONTROLO que
+  mostra o digest a mexer quando o pedido entra. `cogno-soma` não muda (continua a ler
+  `held_delivered_texts`).
+
 ## Unreleased — `committed_this_turn`: o oitavo chamador, `pipeline.py::_owes_a_read` (soma #54), e a frase da direcção posta em dia (2026-09-29)
 
 ### Changed

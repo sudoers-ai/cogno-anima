@@ -32,6 +32,20 @@ EGO_CORRECTION = "ego_correction"              # correction loop: {reason, attem
 # judge's prompt: a wrong message caught before the "yes" costs a rewrite, a wrong message sent
 # cannot be recalled. Absent / not a mapping → no held call delivers text (today's behaviour).
 HELD_DELIVERED_TEXT = "held_delivered_text"
+# …and the argument of that SAME held call that the host RECORDS ON THE RECIPIENT'S SIDE as what
+# the message asks them to answer — so that their reply, however bare, is read as the answer it
+# is (a list of two names, «sim», a date).
+#
+# Host-declared ``{tool name: argument name}``, read from the tool's own manifest, and only ever
+# read for a tool ``HELD_DELIVERED_TEXT`` also declares: an ask with no message is nothing. The
+# host writes the value into the recipient's session and stamps it, on the recipient's next turn,
+# as ``SCOPE_PENDING_REQUEST`` — i.e. it RELAXES a guard for somebody else. That is why it is
+# composed at the PROPOSAL, where the model wrote it, and judged there beside the message it
+# describes (``types.held_messages_with_asks``, rendered inside the held-messages block with its
+# own rule): an ask the message does not make is an instruction to accept a reply to a question
+# nobody asked. Absent / not a mapping / no value on the call → the judge's prompt is byte for
+# byte what it was.
+HELD_RECORDED_ASK = "held_recorded_ask"
 
 # An EARLIER attempt of THIS turn committed a mutating tool, and its trace is GONE.
 #

@@ -45,7 +45,7 @@ from cogno_anima import metakeys as mk
 from cogno_anima import vocab
 from cogno_anima.types import (
     PipelineContext, StageMetrics, SuperegoResult, ScopeCheckResult, ToolExecution,
-    held_delivered_texts,
+    held_messages_with_asks,
     read_succeeded_this_turn,
     write_attempted_this_turn,
 )
@@ -997,6 +997,32 @@ _HELD_MESSAGE_RULE = (
     "above do not support. The MID-FLOW and confirmation allowances cover ASKING the user "
     "before sending; they never cover the content of the message being asked about. Name in "
     "the critique what the message must say instead, so the retry can write it.\n\n"
+)
+
+# THE ASK RECORDED FOR THE RECIPIENT (`mk.HELD_RECORDED_ASK`). A message that asks its
+# recipient to answer something («escolha as disciplinas…») is answered LATER, on the
+# recipient's own turn, often with a bare value — two names, a «sim» — that a contextless scope
+# guard refuses. So the host records, on the recipient's side, WHAT the message asked, and stamps
+# it there as the pending request (`mk.SCOPE_PENDING_REQUEST`). Measured downstream on a
+# production guard: no pending request BLOCK 5/5, a generic one («an answer to a message the
+# business sent them») BLOCK 5/5, a SPECIFIC one ALLOW 5/5 — the ask only works when it says
+# what was asked. That ask RELAXES a guard for another person, and it was written by the model,
+# so it is judged here, at the proposal, beside the message it claims to describe — never
+# composed later at the send. The rule is ONE-SIDED on purpose: an ask the message does not make,
+# or one wider than it, is rejected; a missing ask is never a rejection (the recipient's side
+# then behaves as it always has), because failing a correct message over an absent helper field
+# would trade a guard miss for an undelivered message. CONDITIONAL, like the held-message rule:
+# no ask on any held message → the prompt is byte for byte what it was.
+_HELD_ASK_LEAD = ("  recorded on the recipient's side as WHAT THIS MESSAGE ASKS THEM — their "
+                  "reply will be read as answering it:")
+_HELD_ASK_RULE = (
+    "JUDGE EACH RECORDED ASK (`held_ask`) AGAINST ITS OWN MESSAGE: it is what the recipient's "
+    "reply will be read as answering, so a bare answer to it is let through on their side. "
+    "REJECT when the ask names something its message does NOT ask the recipient, or is wider "
+    "than the message (anything they want, their opinion in general, 'a reply') — that would "
+    "tell the recipient's side to accept replies to a question nobody asked. An ask that names "
+    "what the message asks them is correct; its wording and its language do not matter, only "
+    "that the message really asks it. Name in the critique what the ask must say instead.\n\n"
 )
 
 # The CONTACT'S NOTE — the business's private memo about the person this conversation is with
@@ -2376,6 +2402,7 @@ class SuperegoStage:
             f"# EGO draft\n{draft}\n\n"
             f"{criteria}"
             f"{_HELD_MESSAGE_RULE if held_messages else ''}"
+            f"{self._held_ask_rule(ctx) if held_messages else ''}"
             f"{_MEMO_RULE if memo_block else ''}"
             "TRUST THE TOOLS: values a tool returned — resolved dates, ids, availability, "
             "figures — are AUTHORITATIVE. Do NOT re-derive them from your own reasoning or "
@@ -2431,14 +2458,22 @@ class SuperegoStage:
         message is exactly the place a planted instruction would sit. An empty text is rendered
         as such, never dropped — an empty message about to be proposed is a finding.
         """
-        texts = held_delivered_texts(ctx)
+        texts = held_messages_with_asks(ctx)
         if not texts:
             return ""
         lines = "\n".join(
             f"- {tool} →\n<held_message name=\"{tool}\">\n"
             f"{sanitize_untrusted(text, names) if text else '(EMPTY)'}\n</held_message>"
-            for tool, text in texts)
+            + (f"\n{_HELD_ASK_LEAD}\n<held_ask name=\"{tool}\">\n"
+               f"{sanitize_untrusted(ask, names)}\n</held_ask>" if ask else "")
+            for tool, text, ask in texts)
         return f"{_HELD_MESSAGES_HEADER}\n{lines}\n\n"
+
+    @staticmethod
+    def _held_ask_rule(ctx: PipelineContext) -> str:
+        """:data:`_HELD_ASK_RULE` when a held message on this turn carries a recorded ask, else
+        ``""`` — the rule travels with its evidence, read from the SAME reader the block uses."""
+        return _HELD_ASK_RULE if any(ask for _t, _x, ask in held_messages_with_asks(ctx)) else ""
 
     @staticmethod
     def _format_calls(calls: "Any", names: "set[str]") -> str:
