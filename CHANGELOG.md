@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased — nenhum teste UNITÁRIO chama o Ollama local: portão imposto, não prometido (2026-09-30)
+
+### Added
+
+- **`tests/unit/conftest.py` + `tests/unit/_ollama_gate.py`**: uma fixture de sessão autouse
+  recusa qualquer ligação ao Ollama durante a suíte unit (porto 11434 em qualquer anfitrião, e o
+  host:porto de `OLLAMA_BASE_URL`/`COGNO_OLLAMA_URL`/`OLLAMA_HOST`, lidos no instante da ligação)
+  com `OllamaGateError`, e uma fixture por teste FALHA o teste no teardown quando houve tentativa —
+  mesmo que o código sob teste tenha engolido a recusa (`is_available` → `False`).
+- Corta em dois pontos, um predicado: `socket.socket.connect`/`connect_ex` (o ponto mais baixo,
+  onde todo o cliente acaba — httpx, SDK OpenAI, `urllib`) e `httpcore.{AnyIO,Sync}Backend.connect_tcp`
+  (medido: recusada só no socket, a chamada `httpx.AsyncClient` chega ao teste dentro do
+  `ExceptionGroup` do anyio; aqui chega o erro do portão, limpo).
+
+### Why
+
+- O Ollama local é a GPU que serve tráfego real. Incidente no host: um teste unitário deixou o
+  backend a `None`, o código construiu o `OllamaBackend` real por omissão e chamou
+  `localhost:11434`. A convenção «unit usa stubs» não tinha nada que a impusesse.
+
+### Unchanged
+
+- `tests/integration` não carrega esta conftest. Um servidor de loopback que um teste levanta
+  noutro porto passa (controlo em `tests/unit/test_ollama_gate.py`).
+
 ## Unreleased — "did you mean…?" on a refused turn: a strict selector over a CLOSED list (VQD, 2026-09-30)
 
 ### Added
