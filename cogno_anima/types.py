@@ -697,8 +697,17 @@ _ROUTING_ONLY_TOOLS = "routing_only_tools"
 
 
 # Mirrors ``metakeys.HELD_DELIVERED_TEXT``, inlined for the same reason and pinned by the same
-# test. Read ONLY by `held_delivered_texts`.
+# test. Read ONLY by `held_delivered_texts` / `held_messages_with_asks`.
 _HELD_DELIVERED_TEXT = "held_delivered_text"
+
+# Mirrors ``metakeys.HELD_RECORDED_ASK``, inlined for the same reason and pinned the same way
+# (`tests/unit/test_judge_reads_the_recorded_ask.py`). Read ONLY by `held_messages_with_asks`.
+_HELD_RECORDED_ASK = "held_recorded_ask"
+
+#: A recorded ask is ONE line and bounded. Past this it is cut with a visible stump, never
+#: dropped: an ask this long is a host rendering something it should not, and the judge must see
+#: that rather than have it vanish.
+_MAX_RECORDED_ASK_CHARS = 200
 
 # Mirrors ``metakeys.SOURCE_READS``, inlined for the same reason and pinned the same way
 # (`tests/unit/test_source_reads_not_called.py`). Read ONLY by `source_reads_not_called`.
@@ -723,22 +732,56 @@ def held_delivered_texts(ctx: "PipelineContext") -> "list[tuple[str, str]]":
     Anything unreadable — no trace, no declaration, a declaration that is not a mapping —
     answers ``[]``, which is today's behaviour exactly: nothing here may cost a turn.
     """
+    return [(tool, text) for tool, text, _ask in held_messages_with_asks(ctx)]
+
+
+def held_messages_with_asks(ctx: "PipelineContext") -> "list[tuple[str, str, str]]":
+    """``(tool, text, ask)`` — :func:`held_delivered_texts`, plus what each message ASKS.
+
+    The same walk and the same filter, in the same order: a held call appears here exactly when
+    it appears there, so the two readings can never disagree about WHICH calls are messages.
+    ``ask`` is the value of the argument the host declares under ``metakeys.HELD_RECORDED_ASK``
+    for that tool — what the host will record on the RECIPIENT's side as the question their reply
+    answers — collapsed to one line and bounded (a visible stump past
+    :data:`_MAX_RECORDED_ASK_CHARS`), or ``""`` when nothing is declared, the value is absent,
+    blank or not a string. ``""`` is not a finding: a message that asks the recipient nothing
+    needs no ask.
+
+    Anything unreadable answers ``[]``, which is today's behaviour exactly.
+    """
     try:
-        declared = (getattr(ctx, "metadata", None) or {}).get(_HELD_DELIVERED_TEXT)
+        meta = getattr(ctx, "metadata", None) or {}
+        declared = meta.get(_HELD_DELIVERED_TEXT)
         if not isinstance(declared, dict) or not declared:
             return []
+        asks = meta.get(_HELD_RECORDED_ASK)
+        if not isinstance(asks, dict):
+            asks = {}
         held = getattr(getattr(ctx, "ego_result", None), "pending_confirmation", None) or []
-        out: "list[tuple[str, str]]" = []
+        out: "list[tuple[str, str, str]]" = []
         for call in held:
             tool = str(getattr(call, "tool", "") or "")
             arg = declared.get(tool)
             if not tool or not isinstance(arg, str) or not arg:
                 continue
-            raw = (getattr(call, "arguments", None) or {}).get(arg)
-            out.append((tool, raw.strip() if isinstance(raw, str) else ""))
+            args = getattr(call, "arguments", None) or {}
+            raw = args.get(arg)
+            out.append((tool, raw.strip() if isinstance(raw, str) else "",
+                        _one_line_ask(args.get(asks.get(tool)) if isinstance(asks.get(tool), str)
+                                      else None)))
         return out
     except Exception:      # noqa: BLE001 — an unreadable carrier must not cost the turn
         return []
+
+
+def _one_line_ask(raw: object) -> str:
+    """A recorded ask as the judge reads it: one line, bounded, ``""`` for anything else."""
+    if not isinstance(raw, str):
+        return ""
+    flat = " ".join(raw.split())
+    if len(flat) > _MAX_RECORDED_ASK_CHARS:
+        flat = flat[:_MAX_RECORDED_ASK_CHARS - 1].rstrip() + "…"
+    return flat
 
 
 def committed_this_turn(ctx: "PipelineContext") -> bool:
