@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — docs: the templated e-mail as the gate-C shape (E1, 2026-10-06)
+
+- `docs/ACT_CONFIRM_READONLY.md`: under «A held MESSAGE is judged before it is sent», the shape the
+  0.1.2 change was written for — a downstream templated e-mail, composed by the host, held by gate
+  C with the composed text in the call's own arguments, re-composed and compared on the «sim».
+- `docs/HOST_INTEGRATION.md`: the `held_delivered_text` row says the declared argument may be one
+  the host writes at the proposal. Docs only; no code moves.
+
 ## 0.1.2 — 2026-10-06 — the judge reads a gate-C proposal as a proposal, and its output grounds its own held message
 
 ### Changed
