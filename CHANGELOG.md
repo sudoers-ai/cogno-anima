@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — docs: the README, HOST_INTEGRATION and ACT_CONFIRM_READONLY catch up with #194–#204 (2026-10-06)
+
+### Changed (documentation only)
+
+- `README.md`: the SUPEREGO bullet names the optional "did you mean…?" selector (#200) and the judging of a held message before it is sent (#183, #198, #199, #204); the Testing section says the unit suite cannot reach a local Ollama (#202).
+- `docs/HOST_INTEGRATION.md` §5: rows for the per-turn host declarations `held_delivered_text` (#183, the language criterion #204), `held_recorded_ask` (#198) and `source_reads` (#196).
+- `docs/ACT_CONFIRM_READONLY.md`: a section on the held message judged on the proposal turn, with the three refinements since (#198, #199, #204).
+
+No code, test or configuration changed.
+
 ## Unreleased — regra (e): a mensagem retida tem de estar na língua em que o contacto escreve (2026-09-30)
 
 ### Added
