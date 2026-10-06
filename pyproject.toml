@@ -1,6 +1,6 @@
 [project]
 name = "cogno-anima"
-version = "0.1.0"
+version = "0.1.1"
 description = "Infrastructure-agnostic cognitive pipeline core (NOUMENO/NER/ID/EGO/SUPEREGO + Drift)"
 readme = "README.md"
 requires-python = ">=3.10"

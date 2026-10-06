@@ -123,12 +123,23 @@ EVIDENCE_PREFIX = 6
 #: too, so a word here removes every word sharing its first six letters: «matéria» is NOT listed
 #: because it would take «material» with it, nor «informação», which would take «informática»
 #: (a unit test pins both pairs).
+#:
+#: The last Portuguese line is the VERBS a contact asks with («O que sabe sobre…?», «Conhece…?»,
+#: «Fala sobre…?»), added 2026-10-06 when the inverse heading rescue downstream (it reads this
+#: constant) found that «sabe» is not «saber» at the 6-character prefix, so the literal sentence
+#: «O que sabe sobre o X?» named a word no section carries. Each form is listed only because its
+#: own cut is NOT already here: «sabe» covers «sabes» and «fala» covers «falas» (the plural rule),
+#: «conhece» covers every form of «conhecer» (all cut to «conhec»), while «sabem», «falam» and
+#: «falar» cut to prefixes of their own. «tem», «têm», «temos», «ter» and «há» are not listed
+#: because the tokenizer already drops them as stopwords. The declared cost of «conhece»:
+#: «conhecimento» shares its cut, so «base de conhecimento» is no longer evidence (pinned).
 GENERIC_SUBJECT_WORDS = """
 faculdade escola colegio universidade instituicao campus aula aulas curso cursos turma turmas
 aluno alunos aluna alunas estudante estudantes professor professores professora professoras
 docente docentes disciplina disciplinas estudar estudo empresa negocio loja
 clinica servico servicos atendimento duvida pergunta saber gostaria
 queria quero preciso posso pode poderia consigo documento documentos arquivo relatorio resumo
+sabe sabem conhece fala falam falar
 school college university class classes course courses student students teacher teachers
 lesson subject business company service services question document documents
 """

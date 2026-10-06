@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.1.1 — 2026-10-06 — the verbs a contact asks with are frame words (`scope_options`)
+
+### Changed
+
+- **`GENERIC_SUBJECT_WORDS` gains the question verbs** «sabe», «sabem», «conhece», «fala», «falam»
+  and «falar» (`cogno_anima/stages/scope_options.py`). Each one is listed because its own cut at
+  `EVIDENCE_PREFIX` (6) was not already in the list: «sabe» covers «sabes» and «fala» covers «falas»
+  through the tokenizer's plural rule, and «conhece» covers every form of «conhecer» (all cut to
+  «conhec»). «tem», «têm», «temos», «ter» and «há» are not listed, because the engram tokenizer
+  already drops them as stopwords.
+- **The version is 0.1.1**, so a downstream reader of `scope_options` (which exists since #200) can
+  declare `cogno-anima>=0.1.1`. This release also carries every `Unreleased` entry below, back to
+  0.1.0.
+
+### Why
+
+- The inverse heading rescue in `cogno-cortex` reads this constant and prefix. The literal sentence
+  «O que sabe sobre o X?» kept «sabe» as a subject, because «saber» is listed and «sabe» is not
+  «saber» at the 6-character prefix. Only a one-word query from the model was rescued. The sentence
+  now names only {x}.
+
+### Effect on "did you mean…?" (#200)
+
+- The same list decides `has_evidence`, so evidence gets STRICTER: a covered pick that shared only
+  one of these verbs with the message is now dropped. Over the six labelled real false refusals
+  (1a) of the VQD measurement, the shared non-generic terms with the target are the same before and
+  after (4 of 6 share ≥1). In none of them was a verb the only shared term.
+- **Declared cost:** «conhecimento» has the same cut as «conhece», so «base de conhecimento» no
+  longer counts as evidence. A unit test pins it.
+
+### Documentation
+
+- `CLAUDE.md` (the "did you mean…?" paragraph) and `docs/HOST_INTEGRATION.md` (the scope-guard
+  step names the downstream reader and the `>=0.1.1` requirement).
+
+### Tests
+
+- `tests/unit/test_scope_options.py`: the twin («O que sabe sobre o Xyz?» → {xyz}; it was
+  {sabe, xyz}), every form, a check that each verb is listed only because nothing else covers it,
+  the control («Qual o horário da aula de Xyz?» keeps {horari, xyz}), and the declared cost.
+
 ## Unreleased — docs: the README, HOST_INTEGRATION and ACT_CONFIRM_READONLY catch up with #194–#204 (2026-10-06)
 
 ### Changed (documentation only)

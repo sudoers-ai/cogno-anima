@@ -86,7 +86,9 @@ if ctx.id_result.blocked:
 scope = await superego.check_input_scope(ctx, gen_backend, scope_prompt=scope_prompt)
 if scope.blocked:
     # optional "did you mean…?" (cogno_anima.stages.scope_options): only with a selector
-    # backend AND a closed list the host built (readable section titles + table capabilities)
+    # backend AND a closed list the host built (readable section titles + table capabilities).
+    # Its frame words and prefix (GENERIC_SUBJECT_WORDS, EVIDENCE_PREFIX) are also read by
+    # cogno-cortex's inverse heading rescue; declare cogno-anima>=0.1.1 for either.
     sel = await select_scope_options(ctx, selector_backend, options=options) if selector_backend and options else None
     if sel is not None and sel.outcome == "covered":
         pass                                   # a FALSE refusal: let the turn through, no question
