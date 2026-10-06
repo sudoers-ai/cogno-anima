@@ -157,7 +157,10 @@ routes a confirmed call arrives by.
 had just read, was judged against a block that said the read had FAILED, under rules that read
 figures only off calls marked OK. Measured on a downstream host's templated e-mail (`send_email`,
 held by C, its rendered e-mail declared in `mk.HELD_DELIVERED_TEXT`): the figures appeared once,
-inside the held message, with no source anywhere on the page. Now `types.is_skill_proposal` (an
+inside the held message, with no source anywhere on the page — yet the production judge accepted
+them 5/5 on main all the same (M2b, downstream). What it did NOT accept was a draft that states the
+proposal without saying it is pending: rejected 5/5 on main, approved 5/5 with the call PROPOSED,
+because asking is the host's (`_HELD_ASKING_IS_THE_HOSTS`). Now `types.is_skill_proposal` (an
 `ok=False`, `error="needs_confirmation"` call whose result is not B's `HELD_BY_NAME_PREFIX`)
 renders `→ PROPOSED (held for the user's confirmation; nothing executed)` with its output, and the
 held-message rule gains ONE clause, only when such a call holds a message: that call's output

@@ -14,26 +14,33 @@
   (`_proposal_reads_clause`, spliced into `_held_message_rule` only when a proposed call holds a
   message). It supports nothing else: not the EGO draft, not another held message.
 
-### Why
+### Why it lands — and what it does NOT fix
 
-- Gate C records a proposal `ok=False` so that it can never count as a write, and the judge
-  rendered every `ok=False` as a failure. A held message composed by that very skill — a downstream
-  host's templated e-mail, every figure filled from the schedule the skill had just read — was
-  judged against an execution that said the read FAILED, under rules that read figures only off
-  calls marked OK. Measured deterministically: the figures appeared once, inside the held message,
-  and nowhere else on the page.
-
-### Behaviour that CHANGES
-
-- **With the call PROPOSED, the judge no longer requires the DRAFT to say the action is pending.**
-  On a gate-C proposal turn the loop stops at the hold and the draft is empty or does not ask; the
-  held-message rule already says the asking is the host's (`_HELD_ASKING_IS_THE_HOSTS`, #199), but
-  beside a call marked `ERROR` the judge read the turn as a failure the draft had to own. Measured
-  downstream (M2, `gpt-5.6-luna`, temperature 0, n=5, interleaved): a draft that cites a figure of
-  the output WITHOUT saying «pendente» was rejected 5/5 on main and approved 5/5 here; the three
-  falsifications of the held message (an invented figure, one digit changed, two bands' labels
-  swapped) were rejected 5/5 on both. `test_a_proposal_tells_the_judge_the_call_is_held_and_the_
-  asking_is_the_hosts` pins the prompt half.
+- **The figures risk does NOT reproduce on the production judge.** The deterministic reading was
+  that a held message's figures had no source: under main the proposal call renders `→ ERROR`, and
+  the rules read figures off calls marked OK. Measured on the production judge (`gpt-5.6-luna`,
+  temperature 0, n=5, interleaved BASE/BRANCH, with the REAL output of a downstream templated
+  e-mail tool): main already APPROVES that held message 5/5 under `→ ERROR`. This release does not
+  claim that fix.
+- **It lands for two reasons.** (1) The rendering is semantically right: a proposal is not an
+  error, and the trace and the prompt now say what happened — the call ran, committed nothing and
+  was held for the user's confirmation. (2) The MEASURED effect: on a proposal turn, a draft that
+  states the proposal's content WITHOUT saying it is pending («o Prof vai receber R$ 1.920,00 de
+  base em setembro, mais o bônus») goes from REJECTED 5/5 on main (the critiques ask the draft to
+  say the e-mail is pending) to APPROVED 5/5 here. Asking for the yes is the host's
+  (`_HELD_ASKING_IS_THE_HOSTS`, #199) — the rule was already in both prompts; beside a call marked
+  `ERROR` the judge read the turn as a failure the draft had to own. That rejection is the held-message
+  loop a downstream e2e would otherwise hit.
+- **The read clause does not leak to the draft.** A draft that DOES say «pendente» and cites a
+  figure of the output was approved 5/5 on both sides; the three falsifications of the held message
+  (an invented figure, one digit changed, two bands' labels swapped) were rejected 5/5 on the
+  branch. The clause stays: measured harmless, and its text is correct.
+- Evidence (downstream, 0600 critiques beside each): `_reguas/evidencia-2026-10-06-e1-m2/m2_*`
+  (hand-written shape, 7 arms) and `m2b_*` (the tool's real output, 4 arms). `system_fingerprint`
+  came back `None` on every call — an instrument limit of that model, noted.
+- `test_a_proposal_tells_the_judge_the_call_is_held_and_the_asking_is_the_hosts` pins the PROMPT
+  half of the measured pair: the same draft without «pendente», with the call PROPOSED and with it
+  ERROR.
 
 ### What does not change
 

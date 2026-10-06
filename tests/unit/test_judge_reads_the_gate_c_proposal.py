@@ -4,10 +4,10 @@ Gate C (``stages/ego.py``): the skill RAN, committed nothing, and asked about TH
 (``ToolResult(needs_confirmation=True)``). The core records it ``ok=False`` — a proposal must never
 count as a write — and the judge's execution block rendered every ``ok=False`` as ``→ ERROR``. So a
 held message composed by that very skill, quoting the figures the skill read («R$ 1.920,00»), was
-judged against an execution block that said the only read had FAILED, under rules that read figures
-off calls marked OK: no source at all. Measured deterministically on a downstream host's templated
-e-mail (``send_email``, E1): the figures appeared once, inside the held message, and the execution
-read ``(no tools executed)`` under gate B or ``→ ERROR`` under gate C.
+judged against an execution block that said the only read had FAILED. On the production judge the
+figures were accepted anyway (measured downstream, M2b: main approves 5/5); the change that IS
+measured is the draft — a draft that does not say «pendente» goes from rejected 5/5 to approved 5/5
+once the call reads PROPOSED, because asking is the host's.
 
 The fix is narrow on purpose:
 
@@ -148,27 +148,27 @@ def test_the_proposal_is_still_NOT_a_write():
 # ── the behaviour that CHANGES: the draft no longer has to say «pendente» ───────────────────
 
 def test_a_proposal_tells_the_judge_the_call_is_held_and_the_asking_is_the_hosts():
-    """Measured downstream (M2, gpt-5.6-luna, n=5): over an empty draft beside a held proposal,
-    the judge of main REJECTED 5/5 asking the draft to say the e-mail was pending, and the branch
-    APPROVED 5/5. The two prompts differ only in the status word: `→ ERROR` (main) against
-    `→ PROPOSED (held for the user's confirmation; nothing executed)` — and the held-message rule
-    already says the asking is the HOST's (`_HELD_ASKING_IS_THE_HOSTS`, #199). With PROPOSED the
-    two facts are on the page together, so a draft that does not say «pendente» is no longer a
-    defect. This pins the PROMPT half of that change; the model half is the downstream M2."""
-    ctx = _turn(_proposal(), held=[_proposal()], declared={"send_email": "rendered"})
-    p = _prompt(ctx)
-    assert f"→ {PROPOSED_STATUS}:" in p
-    assert "ADDED BY THE HOST, AFTER this judgement" in p
+    """The pair measured downstream (M2b, gpt-5.6-luna, n=5): THIS draft — the proposal's content,
+    no «pendente» — beside a held proposal was REJECTED 5/5 on main (asked to say the e-mail is
+    pending) and APPROVED 5/5 on the branch. The two prompts differ only in the status word of the
+    call: `→ ERROR` (main) against `→ PROPOSED (held for the user's confirmation; nothing executed)`;
+    the rule that the asking is the HOST's (`_HELD_ASKING_IS_THE_HOSTS`, #199) is in both. This pins
+    the PROMPT half of that pair; the model half is the downstream evidence."""
+    draft = "O Prof Alfa vai receber R$ 1.920,00 de base em setembro, mais o bônus."
+    p = _prompt(_turn(_proposal(), held=[_proposal()], declared={"send_email": "rendered"},
+                      draft=draft))
+    assert f"→ {PROPOSED_STATUS}:" in p and "→ ERROR" not in p
+    assert "ADDED BY THE HOST, AFTER this judgement" in p and draft in p
     import cogno_anima.stages.superego as sg
     real = sg.is_skill_proposal
     try:
         sg.is_skill_proposal = lambda call: False          # the main's rendering of the call
         before = _prompt(_turn(_proposal(), held=[_proposal()],
-                               declared={"send_email": "rendered"}))
+                               declared={"send_email": "rendered"}, draft=draft))
     finally:
         sg.is_skill_proposal = real
     assert "→ ERROR:" in before and PROPOSED_STATUS not in before
-    assert "ADDED BY THE HOST, AFTER this judgement" in before   # the rule was already there
+    assert "ADDED BY THE HOST, AFTER this judgement" in before and draft in before
 
 
 # ── byte for byte when there is no proposal (digests taken on origin/main 02e1850) ───────────
