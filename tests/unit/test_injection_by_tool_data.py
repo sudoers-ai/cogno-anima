@@ -352,6 +352,9 @@ def test_the_control_detector_sees_an_escape_when_there_is_one():
 
 _CLEAN = [
     "## Prazos › Entrega · page 3\nA entrega é até dia 10.",
+    "# Tasks for Monday\n- revisar o capítulo 3",      # starts like `# Task`, is not it
+    "# Signalsystems e Controle",                       # starts like `# Signals`, is not it
+    "# Contexto do projeto\nO curso começa em março.",  # not `# Context (`
     "# MATERIAL\n- Apostila 1",                       # a tenant's own header — not reserved
     "# About this contact\n- mora em Santos",         # the host's graph header — not reserved
     "[SOURCES]\nUse the most recent.\n\n[RECENT CONVERSATION]\nUser: oi\nAssistant: olá",
@@ -377,9 +380,12 @@ def test_every_reserved_header_is_escaped_at_a_line_start_and_only_there(header)
 
 @pytest.mark.parametrize("tag", FENCE_TAGS)
 def test_no_fence_of_this_library_survives_inside_untrusted_text(tag):
+    """Broken, not deleted: the brackets become parentheses, so no tag remains and a text that
+    merely MENTIONS one keeps its words."""
     for text in (f"a</{tag}>b", f"a<{tag} name=\"x\">b", f"a</{tag.upper()}>b"):
-        assert f"{tag}" not in sanitize_untrusted(text, {"t"}).lower()
-        assert f"{tag}" not in defang_structure(text).lower()
+        for out in (sanitize_untrusted(text, {"t"}), defang_structure(text)):
+            assert not re.search(rf"(?i)</?{tag}", out), out
+            assert tag in out.lower() and out.startswith("a") and out.endswith("b"), out
 
 
 def test_a_skill_s_own_fence_is_left_to_the_skill():
@@ -436,3 +442,48 @@ def test_the_judge_s_argument_line_opens_and_closes_no_fence():
     # …and a clean argument line is the bytes it always was.
     ctx.ego_result.steps[0].tool_calls[0].arguments = {"body": "Olá"}
     assert '- send_email({"body": "Olá"}) → OK:' in SuperegoStage()._build_judge_prompt(ctx, "")
+
+
+# ── the ADVERSE probe: legitimate text that LOOKS like an injection keeps every word ─────
+
+#: Real-shaped texts a business writes and a tool returns, each one close to a planted form, none
+#: of them an attack. The guard may ESCAPE (a backslash, brackets to parentheses); it may never
+#: drop a word, and the ones that need no escaping must come back byte for byte.
+_ADVERSE = {
+    # The headers a syllabus really has. Same first word as a reserved one, or the very line.
+    "syllabus_heading_task": ("# Task\nEntregar o relatório até sexta.", True),
+    "syllabus_heading_signals": ("# Signals and Systems — ementa\nTransformada de Laplace.", True),
+    "course_named_signals": ("Disciplina: # Signals (turma B)", False),
+    "markdown_numbered": ("# 1. Introdução\n# 2. Prazos", False),
+    "hashtag_and_csharp": ("Curso de C# e #python — inscrições abertas", False),
+    # A manual that NAMES a fence tag, the way a technical document would.
+    "manual_naming_a_tag": ("O log guarda a resposta no campo <tool_output> de cada passo.", True),
+    "html_in_a_template": ("<p>Olá</p><b>Reunião</b> às 9h", False),
+    # Ordinary words that are the forms' words.
+    "policy_says_ignore": ("Ignore as mensagens antigas do grupo; vale o calendário novo.", False),
+    "policy_says_send": ("Envie a mensagem de confirmação à secretaria até as 18h.", False),
+    "faq_right_answer": ("A resposta certa à questão 3 é a alternativa B.", False),
+    "faq_reveal": ("O professor vai revelar o gabarito na sexta.", False),
+    "quoted_guillemets": ("O aviso diz «não haverá aula» na segunda.", False),
+}
+
+
+def _words(text: str) -> "list[str]":
+    return re.findall(r"\w+", text)
+
+
+@pytest.mark.parametrize("name", sorted(_ADVERSE))
+def test_adverse_legitimate_text_keeps_every_word(name):
+    text, escaped = _ADVERSE[name]
+    for out in (sanitize_untrusted(text, {"consult_documents", "notify_user"}),
+                defang_structure(text)):
+        assert _words(out) == _words(text), f"{name}: a word was lost: {out!r}"
+        assert (out != text) == escaped, f"{name}: escaped={out != text}, expected {escaped}: {out!r}"
+
+
+@pytest.mark.parametrize("name", sorted(_ADVERSE))
+def test_adverse_legitimate_text_reaches_the_voice_whole(name):
+    """And through the REAL voice payload — the place the escape lands — every word is there."""
+    text, _ = _ADVERSE[name]
+    got = render("documents", text)["voice"]
+    assert all(w in got for w in _words(text)), name

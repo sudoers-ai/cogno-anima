@@ -56,6 +56,15 @@ FENCE_TAGS: "tuple[str, ...]" = (
 _FENCE_TAG_RE = re.compile(r"(?i)</?(?:%s)[^>]*>" % "|".join(FENCE_TAGS))
 
 
+def _break_fence_tags(text: str) -> str:
+    """Every fence tag of :data:`FENCE_TAGS` with its angle brackets turned into parentheses.
+
+    ``</held_message>`` becomes ``(/held_message)``: still readable, since a document about logs may
+    name the tag, but no longer a tag. Dropping it outright, which is what ``<tool_output>`` used to
+    get, would delete the words of a legitimate text that mentions one."""
+    return _FENCE_TAG_RE.sub(lambda m: m.group(0).replace("<", "(").replace(">", ")"), text)
+
+
 @functools.lru_cache(maxsize=1)
 def reserved_headers() -> "tuple[str, ...]":
     """Every top-level section header this library renders into a prompt — DERIVED, not listed.
@@ -77,7 +86,9 @@ def reserved_headers() -> "tuple[str, ...]":
 @functools.lru_cache(maxsize=1)
 def _reserved_line_re() -> "re.Pattern[str]":
     alts = "|".join(re.escape(h) for h in sorted(reserved_headers(), key=len, reverse=True))
-    return re.compile(rf"(?m)^([ \t]*)(?=(?:{alts}))")
+    # The header must END where the prompt's own does: `# Task` escapes `# Task` and `# Task:`,
+    # never `# Tasks for Monday` — a document's heading that merely starts with the same word.
+    return re.compile(rf"(?m)^([ \t]*)(?=(?:{alts})(?!\w))")
 
 
 def defang_headers(text: str) -> str:
@@ -104,14 +115,14 @@ def defang_structure(text: str) -> str:
     """
     if not text:
         return ""
-    return defang_headers(_FENCE_TAG_RE.sub("", text))
+    return defang_headers(_break_fence_tags(text))
 
 
 def _defang_once(text: str, names: str) -> str:
     """One readable pass: remove the tag blocks, break the JSON key, unwrap the brackets."""
     # A result must not break out of the fence that wraps it — nor out of any other fence this
     # library renders, since the same text reaches several prompts (:data:`FENCE_TAGS`).
-    text = _FENCE_TAG_RE.sub("", text)
+    text = _break_fence_tags(text)
     # Format 1: a <TOOL_CALL> block is never legitimate tool output — drop it WHOLE (stripping
     # only the tags would leave the inner JSON as a live Format-2 call).
     text = re.sub(r"(?is)<TOOL_CALL>.*?</TOOL_CALL>", " ", text)

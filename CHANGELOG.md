@@ -8,13 +8,16 @@
   tag, and `<held_message>`/`<held_ask>` stripped none, so a held e-mail or notice carrying
   `</held_message>` ended the fence and every line after it read as the judge's own prompt.
   `prompt_guard.FENCE_TAGS` lists every fence the core wraps untrusted text in (`tool_output`,
-  `held_message`, `held_ask`, `business_rules`, `contact_memo`); `sanitize_untrusted` strips them
-  all, open or close. A skill's own fence (the documents skill's `<excerpt>`) stays the skill's.
+  `held_message`, `held_ask`, `business_rules`, `contact_memo`); `sanitize_untrusted` breaks
+  them all, open or close, by turning their angle brackets into parentheses (`(/held_message)`).
+  `<tool_output>` used to be DELETED; it is now broken the same way, so a manual that names the
+  tag keeps its words. A skill's own fence (the documents skill's `<excerpt>`) stays the skill's.
 - **A forged section header escaped into the voice and into the context block.** The voice renders
   the executor's data unfenced, and `mk.EGO_CONTEXT` is unfenced in all three prompts, so a line
   reading `# Execution verdict (HARD RULE)` or `# Correction requested` started a section the model
   could not tell from the real one. `defang_headers` escapes, with a backslash, every line that
-  opens with a header the core renders. `reserved_headers()` derives that set from `_VOICE_BLOCKS`,
+  opens with a header the core renders, as a whole header (`# Task` and `# Task:`, never
+  `# Tasks for Monday`). `reserved_headers()` derives that set from `_VOICE_BLOCKS`,
   `_JUDGE_BLOCKS` and `_SCOPE_BLOCKS`, plus the new `ego.PROMPT_HEADERS`; nothing is copied.
   `sanitize_untrusted` applies it, and `defang_structure` (tags and headers, no tool-call pass) is
   applied to `mk.EGO_CONTEXT` in the executor, the judge and the voice. It is also applied to the
