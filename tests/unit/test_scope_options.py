@@ -315,3 +315,67 @@ def test_without_the_tokenizer_no_covered_pick_has_evidence(monkeypatch):
         return real(name, *a, **kw)
     monkeypatch.setattr(builtins, "__import__", _no_engram)
     assert so.has_evidence("Quando começa a oficina de fotografia?", "Oficina de Fotografia") is False
+
+
+# ── the VERBS a contact asks with are frame words too (2026-10-06) ────────────────────────
+#
+# The inverse heading rescue downstream reads GENERIC_SUBJECT_WORDS cut to EVIDENCE_PREFIX, and the
+# literal sentence «O que sabe sobre o Xyz?» kept «sabe» as a subject («saber» is listed, and at the
+# 6-character prefix «sabe» is not «saber»). These tests go through the same public pair the
+# downstream reader uses — the constant and the prefix, over the engram's tokenizer — and import
+# nothing from it.
+
+#: The question verbs, each listed because its own cut was NOT already in the list.
+QUESTION_VERBS = ("sabe", "sabem", "conhece", "fala", "falam", "falar")
+
+
+def _subject_terms(text: str) -> frozenset:
+    from cogno_engram.lexical import terms
+    return terms(text, so.EVIDENCE_PREFIX) - terms(so.GENERIC_SUBJECT_WORDS, so.EVIDENCE_PREFIX)
+
+
+def test_twin_the_literal_sentence_with_sabe_names_only_its_subject():
+    """Before the verbs were listed this was {'sabe', 'xyz'}."""
+    assert _subject_terms("O que sabe sobre o Xyz?") == {"xyz"}
+
+
+@pytest.mark.parametrize("sentence", [
+    "Tu sabes do Xyz?",            # «sabes» → «sabe» by the plural rule
+    "Vocês sabem do Xyz?",
+    "Conhece o Xyz?",
+    "Vocês conhecem o Xyz?",       # every form of «conhecer» cuts to «conhec»
+    "Fala sobre o Xyz?",
+    "Vocês falam do Xyz?",
+    "Pode falar do Xyz?",
+    "Tem Xyz?",                    # «tem» is a stopword of the tokenizer, not a listed word
+])
+def test_every_form_of_the_question_verbs_names_only_its_subject(sentence):
+    assert _subject_terms(sentence) == {"xyz"}
+
+
+def test_each_question_verb_is_listed_because_nothing_else_covers_it():
+    """No form is listed twice: each verb's cut is absent from the list WITHOUT it."""
+    from cogno_engram.lexical import terms
+    words = so.GENERIC_SUBJECT_WORDS.split()
+    for verb in QUESTION_VERBS:
+        assert verb in words, verb
+        rest = " ".join(w for w in words if w != verb)
+        cut = terms(verb, so.EVIDENCE_PREFIX)
+        assert cut and not cut <= terms(rest, so.EVIDENCE_PREFIX), verb
+
+
+def test_control_a_question_with_a_real_subject_keeps_its_terms():
+    assert _subject_terms("Qual o horário da aula de Xyz?") == {"horari", "xyz"}
+
+
+def test_the_verbs_lift_no_section_by_themselves_but_the_subject_still_does():
+    assert so.has_evidence("O que sabe sobre o Xyz?", "Receita do Xyz") is True
+    assert so.has_evidence("O que sabe sobre o Xyz?", "Quem sabe, sabe") is False
+    assert so.has_evidence("Vocês falam de preços?", "Fala com a coordenação") is False
+
+
+def test_declared_cost_conhecimento_shares_the_cut_of_conhece():
+    """«conhece» cuts to «conhec», and so does «conhecimento»: a section about a knowledge base is
+    no longer evidence for a question that names it by that word alone. Declared, not an accident."""
+    assert so.has_evidence("O que diz a base de conhecimento?", "Conhecimento") is False
+    assert so.has_evidence("O que diz a base de conhecimento?", "Base de dados") is True
