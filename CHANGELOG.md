@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.1.2 — 2026-10-06 — the judge reads a gate-C proposal as a proposal, and its output grounds its own held message
+
+### Changed
+
+- **A call held by gate C renders `→ PROPOSED (held for the user's confirmation; nothing executed)`
+  with its output** in the judge's execution block (`stages/superego.py`, `_format_calls`), never
+  `→ ERROR`. `types.is_skill_proposal` is the one predicate: `ok=False`,
+  `error="needs_confirmation"`, and a result that is not gate B's `HELD_BY_NAME_PREFIX` (the
+  `[PENDING CONFIRMATION]` marker of a call held by NAME, now one constant in `types.py` that
+  `stages/ego.py` writes). Both are exported at the package root.
+- **The held-message rule counts that output as a READ for the held message of THAT SAME call**
+  (`_proposal_reads_clause`, spliced into `_held_message_rule` only when a proposed call holds a
+  message). It supports nothing else: not the EGO draft, not another held message.
+
+### Why
+
+- Gate C records a proposal `ok=False` so that it can never count as a write, and the judge
+  rendered every `ok=False` as a failure. A held message composed by that very skill — a downstream
+  host's templated e-mail, every figure filled from the schedule the skill had just read — was
+  judged against an execution that said the read FAILED, under rules that read figures only off
+  calls marked OK. Measured deterministically: the figures appeared once, inside the held message,
+  and nowhere else on the page.
+
+### What does not change
+
+- A call held by NAME (gate B, never executed) and a real failure render `→ ERROR` as before.
+- `committed_this_turn` and its family: the proposal is still `ok=False`.
+- A prompt with no proposal is byte for byte `02e1850`'s (4 digests pinned, with a control that sees
+  the proposal enter). Names in the tests are invented.
+- Tests: `tests/unit/test_judge_reads_the_gate_c_proposal.py`. Docs: `docs/ACT_CONFIRM_READONLY.md`
+  (Fonte C; the held-message list), the gate C line in `CLAUDE.md`.
+
 ## Unreleased — docs(types): `committed_this_turn` — the tenth caller, `pipeline.py::_owes_a_held_rewrite` (soma #60) (2026-10-06)
 
 - The docstring of `committed_this_turn` counts TEN callers and names the tenth: soma #60's
