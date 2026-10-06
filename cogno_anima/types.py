@@ -837,9 +837,9 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
     host is the only layer that knows, so it says so (``mk.PRIOR_ATTEMPT_COMMITTED``) and this
     predicate believes it.
 
-    Fixing it HERE and not in each caller is the whole point. NINE places CALL this — six
+    Fixing it HERE and not in each caller is the whole point. TEN places CALL this — six
     measured 2026-09-06 rather than recalled, the seventh and the eighth added 2026-09-29, the ninth
-    2026-09-30 — and not more, because
+    2026-09-30, the tenth 2026-10-06 — and not more, because
     the enumeration SPLIT: seven callers were asking a different question and moved to
     `wrote_for_the_contact` (its docstring carries that list). What stayed are the callers for
     whom the answer is *"repeating is unsafe"*, which is what this predicate means:
@@ -881,6 +881,12 @@ def committed_this_turn(ctx: "PipelineContext") -> bool:
         A / B?». Same reason as its sibling, word for word: the executor never ran on a refused
         turn, so an act can only be the host's declaration for a fallback retry whose attempt 1
         committed, and any commit keeps the refusal as it was;
+      * the held-message rewrite gate (`pipeline.py::_owes_a_held_rewrite`, soma #60) — the tenth,
+        added 2026-10-06, the third sibling of `_owes_an_action`/`_owes_a_read` under the same
+        ceiling. It grants ONE more EGO pass, with the judge's critique, to a proposal turn whose
+        HELD message the judge rejected, and the recomposition is judged again before it is
+        proposed. It calls this predicate for its siblings' reason: re-running a turn that already
+        acted commits a SECOND time;
       * and `wrote_for_the_contact` itself, which delegates here when the host declares no
         routing set. Named for the same reason as the others: a delegation the enumeration does
         not list is a re-derivation hiding behind a call.

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — docs(types): `committed_this_turn` — the tenth caller, `pipeline.py::_owes_a_held_rewrite` (soma #60) (2026-10-06)
+
+- The docstring of `committed_this_turn` counts TEN callers and names the tenth: soma #60's
+  held-message rewrite gate, which grants one more EGO pass to a proposal turn whose held message
+  the judge rejected. Prose only; no code moves. The host asserts the count and the names
+  (`test_committed_prose_matches_code.py`), and its pilha with the soma #60 pin failed on the
+  stale NINE.
+
 ## 0.1.1 — 2026-10-06 — the verbs a contact asks with are frame words (`scope_options`)
 
 ### Changed
