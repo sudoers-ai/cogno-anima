@@ -145,6 +145,32 @@ def test_the_proposal_is_still_NOT_a_write():
     assert write_attempted_this_turn(ctx) is True          # it IS an attempt, as before
 
 
+# ── the behaviour that CHANGES: the draft no longer has to say «pendente» ───────────────────
+
+def test_a_proposal_tells_the_judge_the_call_is_held_and_the_asking_is_the_hosts():
+    """Measured downstream (M2, gpt-5.6-luna, n=5): over an empty draft beside a held proposal,
+    the judge of main REJECTED 5/5 asking the draft to say the e-mail was pending, and the branch
+    APPROVED 5/5. The two prompts differ only in the status word: `→ ERROR` (main) against
+    `→ PROPOSED (held for the user's confirmation; nothing executed)` — and the held-message rule
+    already says the asking is the HOST's (`_HELD_ASKING_IS_THE_HOSTS`, #199). With PROPOSED the
+    two facts are on the page together, so a draft that does not say «pendente» is no longer a
+    defect. This pins the PROMPT half of that change; the model half is the downstream M2."""
+    ctx = _turn(_proposal(), held=[_proposal()], declared={"send_email": "rendered"})
+    p = _prompt(ctx)
+    assert f"→ {PROPOSED_STATUS}:" in p
+    assert "ADDED BY THE HOST, AFTER this judgement" in p
+    import cogno_anima.stages.superego as sg
+    real = sg.is_skill_proposal
+    try:
+        sg.is_skill_proposal = lambda call: False          # the main's rendering of the call
+        before = _prompt(_turn(_proposal(), held=[_proposal()],
+                               declared={"send_email": "rendered"}))
+    finally:
+        sg.is_skill_proposal = real
+    assert "→ ERROR:" in before and PROPOSED_STATUS not in before
+    assert "ADDED BY THE HOST, AFTER this judgement" in before   # the rule was already there
+
+
 # ── byte for byte when there is no proposal (digests taken on origin/main 02e1850) ───────────
 
 def _digest(ctx) -> str:

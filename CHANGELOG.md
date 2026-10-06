@@ -23,6 +23,18 @@
   calls marked OK. Measured deterministically: the figures appeared once, inside the held message,
   and nowhere else on the page.
 
+### Behaviour that CHANGES
+
+- **With the call PROPOSED, the judge no longer requires the DRAFT to say the action is pending.**
+  On a gate-C proposal turn the loop stops at the hold and the draft is empty or does not ask; the
+  held-message rule already says the asking is the host's (`_HELD_ASKING_IS_THE_HOSTS`, #199), but
+  beside a call marked `ERROR` the judge read the turn as a failure the draft had to own. Measured
+  downstream (M2, `gpt-5.6-luna`, temperature 0, n=5, interleaved): a draft that cites a figure of
+  the output WITHOUT saying «pendente» was rejected 5/5 on main and approved 5/5 here; the three
+  falsifications of the held message (an invented figure, one digit changed, two bands' labels
+  swapped) were rejected 5/5 on both. `test_a_proposal_tells_the_judge_the_call_is_held_and_the_
+  asking_is_the_hosts` pins the prompt half.
+
 ### What does not change
 
 - A call held by NAME (gate B, never executed) and a real failure render `→ ERROR` as before.
