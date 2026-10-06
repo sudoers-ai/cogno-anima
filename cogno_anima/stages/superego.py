@@ -1172,6 +1172,57 @@ _MEMO_RULE = (
 )
 
 
+# SEVERAL CONTACTS ANSWER TO ONE NAME (2026-10-06). A conversation digest a host returns for a
+# name can match more than one contact record: the directory has one identity per CHANNEL, so
+# one person on two channels is two records, and two people who share a name are two records
+# too — nothing in the evidence says which. Measured on a downstream host: the digest held two
+# such blocks, the executor summarised one contact's conversation as the other's, and this judge
+# APPROVED it, because nothing in its criteria asks WHOSE block a summarised fact came from — the
+# fact was in the evidence, so it read as grounded.
+#
+# The host now says it first: its digest opens with ``N contacts match this name: …`` and labels
+# every block by its channel. That HEADER is the condition, read off the result's own bytes —
+# never a guess from a tool name, a name shape or a count of dashes — so this rule renders only
+# on a turn whose evidence carries it, and every other turn is judged byte for byte as before.
+# Anchored to the start of a line and required to say at least two: the host emits it only when
+# two or more records match, and a contact's message inside a digest is rendered INDENTED
+# (``   User: …``), so it cannot start a line of its own. A forged header could only switch ON a
+# stricter rule, never relax one. Read off calls that SUCCEEDED, the EGO's and the consulted
+# specialist's alike: those are the results this prompt renders as evidence.
+HOMONYM_DIGEST_RE = re.compile(r"^(?:[2-9]|[1-9]\d+) contacts match this name: ", re.MULTILINE)
+
+_HOMONYM_ATTRIBUTION_RULE = (
+    "SEVERAL CONTACTS MATCH ONE NAME. A tool result above says that more than one contact record "
+    "matches the name asked about, and renders each one's conversation in its OWN block, "
+    "labelled by its channel. A shared name is NOT evidence that two records are one "
+    "conversation. A summary of these conversations must attribute EVERY fact — what was said, "
+    "asked, reported, booked or cancelled — to the contact whose block it comes from. REJECT a "
+    "draft that attributes to one contact anything that appears only in ANOTHER contact's "
+    "block, or that merges the blocks into a single person's conversation. Summarising each "
+    "block separately under its own contact, or asking the user which of them they meant, is "
+    "CORRECT. When you reject for this, name in the critique which contact (by channel) each "
+    "misattributed fact belongs to.\n\n"
+)
+
+
+def _results_name_several_contacts(calls: "Sequence[Any]") -> bool:
+    """True when a SUCCESSFUL call's result opens a line with the host's homonym header.
+
+    Duck-typed and guarded: a record this stage cannot read contributes nothing, so a turn with
+    an odd record is judged as it was before — the rule is an ADDITION to the criteria, and its
+    absence is the prompt the judge always had.
+    """
+    for t in calls:
+        try:
+            result = getattr(t, "result", None)
+            if getattr(t, "ok", False) is True and isinstance(result, str) \
+                    and HOMONYM_DIGEST_RE.search(result):
+                return True
+        except Exception:      # noqa: BLE001 — a prompt condition must never cost the turn
+            continue
+    return False
+
+
 # The READ-ONLY branch. A turn that ran, whose every call SUCCEEDED and whose every call was a
 # READ, has no mutation to verify — so criteria #1 (GOAL<->EXECUTION) and #3 (COMPLETENESS)
 # have nothing to bind to and decay into "does the reply satisfy the user", which is a
@@ -2425,6 +2476,9 @@ class SuperegoStage:
         executed = self._format_calls(ego.tools_executed, names) or "(no tools executed)"
         consulted = self._format_consulted(ctx, consulted_calls, names)
         held_messages = self._format_held_messages(ctx, names)
+        # Several contacts answer to the name asked about: the rule travels with the host's own
+        # header, read off the results rendered below (`_HOMONYM_ATTRIBUTION_RULE`).
+        homonyms = _results_name_several_contacts([*ego.tools_executed, *(consulted_calls or ())])
         draft = ego.draft or "(none)"
         # The section's own bytes; the blank line that separates it from its neighbour is the
         # template's, below, and it is the same "\n" wherever the section sits.
@@ -2532,6 +2586,7 @@ class SuperegoStage:
             f"{_held_message_rule(held_message_language(ctx)) if held_messages else ''}"
             f"{self._held_ask_rule(ctx) if held_messages else ''}"
             f"{_MEMO_RULE if memo_block else ''}"
+            f"{_HOMONYM_ATTRIBUTION_RULE if homonyms else ''}"
             "TRUST THE TOOLS: values a tool returned — resolved dates, ids, availability, "
             "figures — are AUTHORITATIVE. Do NOT re-derive them from your own reasoning or "
             "reject them as wrong (e.g. do not second-guess a resolved calendar date against "

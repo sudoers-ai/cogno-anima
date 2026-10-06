@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased — o juiz atribui cada facto ao contacto do bloco de onde vem (homónimos, 2026-10-06)
+
+### Added
+
+- **`_HOMONYM_ATTRIBUTION_RULE`** no juiz (`cogno_anima/stages/superego.py`), depois dos
+  critérios: quando um resultado de leitura diz que vários contactos casam o nome pedido, um resumo
+  de conversas tem de atribuir cada facto ao contacto do bloco de onde ele vem. O juiz rejeita um
+  rascunho que dá a um contacto o que só está no bloco de OUTRO, ou que funde os blocos. Resumir
+  cada bloco à parte, ou perguntar qual deles era, está CERTO.
+- **`HOMONYM_DIGEST_RE`**, exportado na raiz do pacote: a condição é o cabeçalho do PRÓPRIO host
+  (`N contacts match this name: `, cogno-host #1144) no início de uma linha, com N ≥ 2, no resultado
+  de uma chamada que teve SUCESSO (do EGO ou da especialista consultada). Não há heurística sobre
+  nomes de ferramenta nem sobre a forma dos nomes. O host pode fixar o seu cabeçalho contra esta
+  expressão.
+
+### Why
+
+- Medido num host a jusante: o digest trazia dois blocos homónimos, o executor resumiu a conversa
+  de um como se fosse a do outro, e o juiz APROVOU. O facto estava na evidência, por isso parecia
+  fundamentado, e nenhum critério perguntava de QUEM era o bloco.
+
+### Unchanged
+
+- Sem o cabeçalho (um bloco, chamada falhada, cabeçalho citado a meio de uma linha, `1 contacts`,
+  nenhum digest), o system e o prompt do juiz ficam byte a byte os da árvore-mãe (anima `94263aa`),
+  provados por digest. O gémeo de dois blocos com a regra retirada também dá os bytes da mãe, portanto
+  só a regra mudou. Sem cabeçalho novo, sem linha nova em `_JUDGE_BLOCKS`, system message intacto.
+- Se um modelo rejeita de facto o rascunho mal atribuído é uma medição com modelo, que esta suíte
+  não faz.
+
 ## Unreleased — regra (e): a mensagem retida tem de estar na língua em que o contacto escreve (2026-09-30)
 
 ### Added
