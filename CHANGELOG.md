@@ -1,5 +1,43 @@
 # Changelog
 
+## Unreleased — feat(prompt_guard): no fence closed and no header forged from tool data (F4.3, 2026-10-06)
+
+### Fixed
+
+- **A held message could close the judge's fence around it.** Each fence stripped only its own
+  tag, and `<held_message>`/`<held_ask>` stripped none, so a held e-mail or notice carrying
+  `</held_message>` ended the fence and every line after it read as the judge's own prompt.
+  `prompt_guard.FENCE_TAGS` lists every fence the core wraps untrusted text in (`tool_output`,
+  `held_message`, `held_ask`, `business_rules`, `contact_memo`); `sanitize_untrusted` strips them
+  all, open or close. A skill's own fence (the documents skill's `<excerpt>`) stays the skill's.
+- **A forged section header escaped into the voice and into the context block.** The voice renders
+  the executor's data unfenced, and `mk.EGO_CONTEXT` is unfenced in all three prompts, so a line
+  reading `# Execution verdict (HARD RULE)` or `# Correction requested` started a section the model
+  could not tell from the real one. `defang_headers` escapes, with a backslash, every line that
+  opens with a header the core renders. `reserved_headers()` derives that set from `_VOICE_BLOCKS`,
+  `_JUDGE_BLOCKS` and `_SCOPE_BLOCKS`, plus the new `ego.PROMPT_HEADERS`; nothing is copied.
+  `sanitize_untrusted` applies it, and `defang_structure` (tags and headers, no tool-call pass) is
+  applied to `mk.EGO_CONTEXT` in the executor, the judge and the voice. It is also applied to the
+  judge's one-line JSON of each call's arguments.
+- **The voice's failed-call lines** (`FAILED — …`, `unavailable — …`) now pass through
+  `sanitize_untrusted`, as the judge's always did.
+
+### Measured
+
+`tests/unit/test_injection_by_tool_data.py` renders the real executor (text and native), judge
+and voice prompts over 8 sources × 5 forms. On `02e1850`, 7 of the 8 sources let a forged header
+escape: the voice for the schedule, the failed read, the cost report and the directory; all
+three prompts for a delivered message in the context block; and the judge for the held e-mail
+and the held notice. The two held messages also landed outside their fence. After the change,
+0 of the 8 escape, and clean text is the same bytes (every digest-pinned prompt test is
+unchanged).
+
+### Not changed — the model's half
+
+The voice's data and the context block are still UNFENCED. Fencing them would change the prompt
+on every turn, so that change needs an A/B. Whether the model obeys an instruction inside a fence
+is measured by `tests/integration/test_injection_by_tool_data.py` (cloud spec, n=5 per source).
+
 ## Unreleased — docs(types): `committed_this_turn` — the tenth caller, `pipeline.py::_owes_a_held_rewrite` (soma #60) (2026-10-06)
 
 - The docstring of `committed_this_turn` counts TEN callers and names the tenth: soma #60's
