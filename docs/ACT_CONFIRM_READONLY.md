@@ -191,6 +191,16 @@ calls holds the one that asked and executes its sibling, so one turn can truthfu
   alongside (SUPEREGO 100%). The earlier advisory act-confirm hint in the EGO was
   removed (superseded by these capability gates).
 
+## A held MESSAGE is judged before it is sent
+
+A hold normally ends the turn without a judge: nothing was executed, so there is nothing to verify. A held call whose argument will be SENT to a person on the contact's yes is the exception, because a wrong message that has gone out cannot be recalled (#183). The host declares which tools those are and which argument carries the text (`mk.HELD_DELIVERED_TEXT`); the orchestrator then judges the proposal turn, and `_format_held_messages` renders each held text with `_HELD_MESSAGE_RULE` (`stages/superego.py`). Since then:
+
+- **The ask the message records for its recipient is judged beside it** (#198): `mk.HELD_RECORDED_ASK` names the argument the host writes on the recipient's side, where it later relaxes their scope guard; `_HELD_ASK_RULE` rejects an ask the message does not make, and never rejects a missing one.
+- **Asking for the yes is the host's** (#199): on a proposal turn the executor stops at the hold and the draft is empty, so `_HELD_ASKING_IS_THE_HOSTS` tells the judge an empty draft is not a defect.
+- **The text is held to the declared language** (#204): when `ctx.force_language` is a language tag (`held_message_language`), criterion (e) rejects a held message not written in it, unless the request asks for another language. The recipient is not judged: the host aligns it after the judge.
+
+With nothing declared, the judge's prompt is the one it had before each of these changes; the pins are `tests/unit/test_judge_reads_the_held_message.py`, `test_judge_reads_the_recorded_ask.py`, `test_judge_held_is_not_a_failure.py` and `test_judge_holds_the_held_message_to_the_language.py`.
+
 ## Shadow — the judge reads a write BEFORE it goes out (F2.3a, 2026-09-24)
 
 The three gates above decide whether a write runs **without the contact's say-so**. None of them

@@ -28,6 +28,7 @@ NOUMENO  →  NER  →  ID  →  EGO  →  SUPEREGO        (+ Drift, woven throu
 - **ID** — strategic router & continuity (heuristic, no LLM): goal lifecycle, BDI intentions, attention, safety gate, drift.
 - **EGO** — executor: runs an agent loop and dispatches tools (native function calling *or* a `<TOOL_CALL>` text fallback). It gathers data; it does **not** write the reply.
 - **SUPEREGO** — locutor: scope guard + judge (three branches — goal↔execution, truth, grounding — chosen per turn) + **writes** the final response in the persona's voice, grounded in the EGO's data.
+  On a turn the scope guard refused, an optional strict selector over a host-built closed list (`cogno_anima.stages.scope_options`) either proves the refusal false or offers a closed "did you mean…?" (#200). A message the executor HOLDS for the contact's yes is judged before it is sent: the text the recipient will read (#183), the ask it records for them (#198), with the confirmation question left to the host (#199) and, when the host declares `ctx.force_language`, the language it is written in (#204).
 - **Drift** — pure, no I/O: epistemological → ontological → situational → execution → synthesis → cumulative, emitting a `drift_action` signal.
 
 ## Philosophy: the core signals, the host decides
@@ -182,6 +183,8 @@ python3 -m pytest tests/integration  # real Ollama; auto-skips if unavailable
 
 A bare `pytest` never collects `tests/integration`: integration is opt-in by path because
 it uses the local GPU, which may be serving real traffic.
+
+The unit suite cannot reach a local Ollama: `tests/unit/conftest.py` installs `tests/unit/_ollama_gate.py`, which refuses any connection to Ollama's port or to the address in `OLLAMA_BASE_URL`/`COGNO_OLLAMA_URL`/`OLLAMA_HOST`, and fails the test even when the code under test swallowed the refusal (#202).
 
 Unit tests run on a coverage gate (`--cov-fail-under=85`) and use the
 `StubBackend`/`StubEmbedder` doubles in `tests/conftest.py`. Integration tests
