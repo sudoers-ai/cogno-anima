@@ -151,6 +151,25 @@ committed nothing and there is nobody left to ask — `_refuse_if_still_asking` 
 (`ok=False`, named error) rather than shipping "done" over a turn that wrote nothing, on both
 routes a confirmed call arrives by.
 
+**The judge sees a C proposal as a PROPOSAL, not a failure (0.1.2, 2026-10-06).** The call is
+`ok=False` so that it can never count as a write, and the judge's execution block rendered every
+`ok=False` as `→ ERROR` — so a held message composed by that very skill, quoting what the skill
+had just read, was judged against a block that said the read had FAILED, under rules that read
+figures only off calls marked OK. Measured on a downstream host's templated e-mail (`send_email`,
+held by C, its rendered e-mail declared in `mk.HELD_DELIVERED_TEXT`): the figures appeared once,
+inside the held message, with no source anywhere on the page — yet the production judge accepted
+them 5/5 on main all the same (M2b, downstream). What it did NOT accept was a draft that states the
+proposal without saying it is pending: rejected 5/5 on main, approved 5/5 with the call PROPOSED,
+because asking is the host's (`_HELD_ASKING_IS_THE_HOSTS`). Now `types.is_skill_proposal` (an
+`ok=False`, `error="needs_confirmation"` call whose result is not B's `HELD_BY_NAME_PREFIX`)
+renders `→ PROPOSED (held for the user's confirmation; nothing executed)` with its output, and the
+held-message rule gains ONE clause, only when such a call holds a message: that call's output
+counts as a READ for **that call's own held message** under (a) and (d) — and for nothing else,
+not the EGO draft, not another message. A call held by NAME (B, never executed) and a real failure
+render as before; `committed_this_turn` and its family do not move; a prompt with no proposal is
+byte for byte the one before (`tests/unit/test_judge_reads_the_gate_c_proposal.py`, digests taken
+on `02e1850` with a control).
+
 **B and C hold per CALL, not per turn** — they stop the LOOP, not the STEP. A step with two
 calls holds the one that asked and executes its sibling, so one turn can truthfully report both
 "I am holding this" and "I committed that".
@@ -197,6 +216,7 @@ A hold normally ends the turn without a judge: nothing was executed, so there is
 
 - **The ask the message records for its recipient is judged beside it** (#198): `mk.HELD_RECORDED_ASK` names the argument the host writes on the recipient's side, where it later relaxes their scope guard; `_HELD_ASK_RULE` rejects an ask the message does not make, and never rejects a missing one.
 - **Asking for the yes is the host's** (#199): on a proposal turn the executor stops at the hold and the draft is empty, so `_HELD_ASKING_IS_THE_HOSTS` tells the judge an empty draft is not a defect.
+- **A held message of a gate-C PROPOSAL is grounded by that proposal's own output** (0.1.2): see «Fonte C» above — the call renders `PROPOSED`, and its output is a read for its own held message only.
 - **The text is held to the declared language** (#204): when `ctx.force_language` is a language tag (`held_message_language`), criterion (e) rejects a held message not written in it, unless the request asks for another language. The recipient is not judged: the host aligns it after the judge.
 
 With nothing declared, the judge's prompt is the one it had before each of these changes; the pins are `tests/unit/test_judge_reads_the_held_message.py`, `test_judge_reads_the_recorded_ask.py`, `test_judge_held_is_not_a_failure.py` and `test_judge_holds_the_held_message_to_the_language.py`.
