@@ -39,7 +39,7 @@ from cogno_anima.types import (
     EgoStep,
     EgoResult, ToolResult, HELD_BY_NAME_PREFIX,
 )
-from cogno_anima.security.prompt_guard import defang_structure, sanitize_untrusted
+from cogno_anima.security.prompt_guard import render_context, sanitize_untrusted
 from cogno_synapse import (LLMBackend, cached_tokens_of, served_model_of,
                            system_fingerprint_of)
 from cogno_synapse.base import ToolCallingBackend
@@ -496,13 +496,17 @@ class EgoStage:
         if task_ctx:
             parts.append(task_ctx)
 
-        injected = ctx.metadata.get(mk.EGO_CONTEXT)
-        if injected:
-            # The host's block carries third-party text (a delivered message, memories, the
-            # conversation) and is not fenced: it may not open a line with one of this
-            # prompt's own headers — a planted `# Correction requested` would read as the
-            # judge's. Identity on clean text (`defang_structure`).
-            parts.append(defang_structure(str(injected).strip()))
+        # The context, in its two halves. `mk.EGO_CONTEXT` is the host's own text: it may not
+        # open a line with one of this prompt's headers (a planted `# Correction requested`
+        # would read as the judge's), and is otherwise rendered as it always was.
+        # `mk.EGO_CONTEXT_UNTRUSTED` is what other people wrote (the conversation, memories, a
+        # delivered message): fenced, under a sentence saying an instruction in it is data.
+        # Without the second half this is the bytes of before (`render_context`).
+        context = render_context(
+            ctx.metadata.get(mk.EGO_CONTEXT), ctx.metadata.get(mk.EGO_CONTEXT_UNTRUSTED),
+            {(t.get("function") or {}).get("name", "") for t in tools})
+        if context:
+            parts.append(context)
 
         actions = self._actions_already_executed(ctx)
         if actions:
