@@ -178,12 +178,18 @@ def test_control_a_digest_is_taken_and_a_closed_record_takes_nothing():
     closed.finish("timeout", None)
     closed.note_prompt(500, "e8b9344aed58")
     assert (closed.metrics.tokens_in, closed.metrics.prompt_sha) == (0, "")
+    # …and not only on the row already built: the record itself took nothing
+    assert (closed.prompt_tokens_estimated, closed.prompt_sha_noted) == (None, "")
 
 
 def test_a_label_without_a_valid_estimate_is_not_taken():
     """The digest rides WITH the estimate: junk tokens record nothing at all, label included."""
     entry = _Entry(tool=_WRITE, model="m", started=time.perf_counter())
     entry.note_prompt(-3, "e8b9344aed58")
+    # asserted on the RECORD, before any row is built: today the label is only ever read off a
+    # row that has an estimate, so a label taken alone would be invisible there — and would
+    # start labelling rows the day a second reader of the field appears.
+    assert (entry.prompt_tokens_estimated, entry.prompt_sha_noted) == (None, "")
     entry.finish("timeout", None)
     assert (entry.metrics.stage, entry.metrics.prompt_sha) == (JUDGE_PRE_STAGE, "")
 
