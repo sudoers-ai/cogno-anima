@@ -26,11 +26,14 @@ the tenant's configuration, fenced as data — still not the persona's rules.
 
 **Separate from** :mod:`cogno_anima.stages.superego` on purpose — no clause of the post-execution
 judge moves, and no rendering of its prompt changes by a byte. The two share the parser
-(``SuperegoStage.strip_cot`` / ``_parse_json``), because two JSON extractors are two contracts.
+(``SuperegoStage.strip_cot`` and the strict reader ``cogno_anima.verdict.read_verdict``),
+because two JSON extractors are two contracts.
 
 **Strict about the verdict.** Only a JSON boolean ``approved`` is a verdict; anything else
-(no JSON, a string ``"false"``, a missing key) is ``error`` — never a guess in either direction,
-because the whole value of the shadow is a clean agreement matrix and a coerced cell poisons it.
+(no JSON, a string ``"false"``, a missing key, the key written twice) is ``error`` — never a
+guess in either direction, because the whole value of the shadow is a clean agreement matrix
+and a coerced cell poisons it. This was the precedent; since 0.1.3 it is the rule of every
+stage that reads a boolean a model wrote, and the reader is one function.
 """
 
 from __future__ import annotations
@@ -55,6 +58,7 @@ from cogno_anima.tools.pre_judge import (
     Proposal,
 )
 from cogno_anima.types import StageMetrics
+from cogno_anima.verdict import read_verdict
 
 __all__ = ["ProposalJudge", "PersonaCard", "estimate_prompt_tokens"]
 
@@ -308,7 +312,9 @@ class ProposalJudge:
         cost = _cost(int(ti or 0), int(to or 0), cached_tokens_of(self._backend),
                      system_fingerprint_of(self._backend), served_model_of(self._backend))
         text, _ = SuperegoStage.strip_cot(str(raw or ""))
-        approved = SuperegoStage._parse_json(text).get("approved")
-        if not isinstance(approved, bool):
+        # The ONE strict reader (``cogno_anima.verdict``), shared with the judge and the scope
+        # guard: only a JSON boolean is a verdict, and a key written twice is not one.
+        approved = read_verdict(text, "approved").value
+        if approved is None:
             return PreJudgment(PRE_ERROR, cost)  # tokens were spent; the verdict was not given
         return PreJudgment(PRE_APPROVED if approved else PRE_CRITIQUE, cost)

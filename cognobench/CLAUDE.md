@@ -8,7 +8,10 @@ per run (every CheckResult + run metadata) and `--repeat N` reports the stable
 score + noise floor; `compare.py` does paired A/B and guard/discriminator
 tagging over those artifacts; `--mutate <mode>` sabotages ONE stage over the
 stub base (a case that stays green under its stage's sabotage observes
-nothing); `--<slot>-model` routes any of noumeno/ner/ego/scope/judge/voice to
+nothing — and two modes run the OTHER way: `judge_string_false` and
+`scope_string_false` answer with the boolean spelled as a string, under which
+the must-reject judge cases and the must-allow scope cases must stay GREEN,
+because only a JSON boolean is a verdict); `--<slot>-model` routes any of noumeno/ner/ego/scope/judge/voice to
 its own backend so slot sweeps are not contaminated by the upstream stages.
 **Editing any `*_cases.py` requires bumping its `SUITE_ID` and re-recording**
 (`python -m cognobench.suites --update`, refused without the bump) — the pin

@@ -585,6 +585,24 @@ class ScopeCheckResult(BaseModel):
     # ``None`` = NO PROMPT WAS BUILT (a bypass), the same rule as an empty ``prompt_blocks``.
     # The fail-OPEN error path DID build one and records its digest like every other path.
     prompt_sha: Optional[str] = None
+    # HOW the classifier's verdict was read — one of ``cogno_anima.verdict.VALID_VERDICT_READS``
+    # — because three different turns all come back ``blocked=False`` from a fail-OPEN guard:
+    #
+    #   ``boolean``      the classifier answered with a JSON boolean and that is the decision
+    #                    (the ONLY value under which ``blocked`` is something the model said);
+    #   ``string_bool`` / ``not_boolean`` / ``missing`` / ``duplicated`` / ``unparseable``
+    #                    it answered and the answer was not a verdict — ALLOWED by the
+    #                    fail-open contract, not by the classifier;
+    #   ``call_failed``  the call raised and there was no answer to read.
+    #
+    # Until this field the last two groups were byte for byte the record of the first (same
+    # ``blocked``, same blocks, same digest), and ``bool("false")`` made a fourth: a string
+    # "false" read as a BLOCK. Only a JSON boolean counts now.
+    #
+    # ``""`` = NO VERDICT WAS ASKED (a bypass) — the rule an empty ``prompt_blocks`` and a
+    # ``None`` ``prompt_sha`` already carry; the metadata key is then ABSENT
+    # (``metakeys.SCOPE_VERDICT_READ``). Closed alphabet, so it is safe to persist as it is.
+    verdict_read: str = ""
     metrics: StageMetrics
 
 
@@ -657,6 +675,19 @@ class SuperegoResult(BaseModel):
     # attempt that wrote is no longer read-only), so the verdict alone cannot stand in for it.
     # Closed alphabet — the value comes from `_judge_branch`, never from the turn.
     judge_branch: str = ""
+    # HOW the judge's verdict was read — one of ``cogno_anima.verdict.VALID_VERDICT_READS``.
+    # Filled by `evaluate`; empty on `voice`, and on the `evaluate` path that asked nothing
+    # (no execution to judge).
+    #
+    # ``boolean`` is the only value under which ``approved`` is what the judge SAID. Every other
+    # one is the fail-CLOSED fallback: ``approved=False`` with a fixed critique
+    # (``stages.superego.UNREADABLE_VERDICT_CRITIQUE`` when the judge answered and the answer
+    # was not a JSON boolean — a string "false", a number, a missing or repeated key, no JSON —
+    # and the older "could not verify" sentence under ``call_failed``, when the call raised).
+    # A rejection the judge gave and a rejection we fell back to feed the same correction loop
+    # and cost the same budget, which is exactly why a reader must be able to tell them apart:
+    # the first is about the EXECUTION, the second is about the JUDGE.
+    verdict_read: str = ""
     # The rendered voice prompt, IN MEMORY, for the turn the host is holding right now.
     #
     # It carries contact data — the user's own words, retrieved memories, the graph block — and

@@ -342,6 +342,15 @@ _SABOTAGE_PAYLOADS = {
     # Judge approves everything with an empty critique — the exact failure mode
     # measured on mistral:latest (3/3 false approvals); must-reject cases flip.
     "judge_approve": json.dumps({"approved": True, "critique": ""}),
+    # A judge that REJECTS and spells the boolean as a STRING — the shape a `bool(...)` read
+    # took for an approval (a non-empty string is truthy). Directional the OTHER way from
+    # `judge_approve`: under it every must-REJECT case must stay GREEN, because the gate is
+    # fail-CLOSED and a verdict that is not a JSON boolean is not an approval.
+    "judge_string_false": json.dumps({"approved": "false", "critique": "not what was asked"}),
+    # A scope guard that ALLOWS and spells the boolean as a string — the same read took it
+    # for a BLOCK. Under it every must-ALLOW case must stay green: the guard is fail-OPEN and
+    # must not refuse a contact over its own misreading.
+    "scope_string_false": json.dumps({"blocked": "false", "refusal_message": ""}),
     # EGO emits no tool call ever — tool_selected/order checks flip.
     "ego_none": "I will not use any tool.",
     # Voice says nothing — response_nonempty flips.
@@ -355,6 +364,7 @@ SABOTAGE_TARGET_SLOT = {
     "noumeno_echo": "noumeno", "ner_unknown": "ner", "scope_allow": "scope",
     "judge_approve": "judge", "ego_none": "ego", "voice_empty": "voice",
     "garbage": "ner",
+    "judge_string_false": "judge", "scope_string_false": "scope",
 }
 
 

@@ -242,7 +242,11 @@ every write, so it is preceded by an instrument that changes nothing:
   judge (goal↔execution) asked of the call, never of the tool results. The host may hand it the
   context the first replay showed it lacked (F2.3a-v2: the clock, the running persona, the
   tenant's persona roster, facts-not-wording), each optional and each rendering its own rule only
-  when given (`stages/proposal_judge.py`, `tests/unit/test_pre_judge_context.py`).
+  when given (`stages/proposal_judge.py`, `tests/unit/test_pre_judge_context.py`). Its verdict is
+  read by `cogno_anima.verdict.read_verdict`, the one strict reader the post-execution judge and
+  the scope guard also use since 0.1.3: only a JSON boolean `approved` is `approved`/`critique`;
+  a string `"false"`, a missing key, a key written TWICE or no JSON at all is `error` (which,
+  under enforcement, runs the call fail open and is counted — the table below).
 
 **Where it sits relative to the gates.** A call held by gate B never reaches `execute`, so it is
 not pre-judged on the turn that PROPOSES it; it is pre-judged on the turn that REPLAYS it after the

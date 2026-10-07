@@ -29,6 +29,7 @@ NOUMENO  →  NER  →  ID  →  EGO  →  SUPEREGO        (+ Drift, woven throu
 - **EGO** — executor: runs an agent loop and dispatches tools (native function calling *or* a `<TOOL_CALL>` text fallback). It gathers data; it does **not** write the reply.
 - **SUPEREGO** — locutor: scope guard + judge (three branches — goal↔execution, truth, grounding — chosen per turn) + **writes** the final response in the persona's voice, grounded in the EGO's data.
   On a turn the scope guard refused, an optional strict selector over a host-built closed list (`cogno_anima.stages.scope_options`) either proves the refusal false or offers a closed "did you mean…?" (#200). A message the executor HOLDS for the contact's yes is judged before it is sent: the text the recipient will read (#183), the ask it records for them (#198), with the confirmation question left to the host (#199) and, when the host declares `ctx.force_language`, the language it is written in (#204).
+  Only a JSON boolean is a verdict (`cogno_anima.verdict`, 0.1.3): a judge answering `"approved": "false"` in a string does not approve (fail-closed), a guard answering `"blocked": "false"` does not block (fail-open), and each result says how its verdict was read (`verdict_read`).
 - **Drift** — pure, no I/O: epistemological → ontological → situational → execution → synthesis → cumulative, emitting a `drift_action` signal.
 
 ## Philosophy: the core signals, the host decides
