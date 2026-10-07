@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.1.4 — 2026-10-07 — the pre-judge stamps the digest of its own template
+
+### Fixed
+
+- **`judge_pre` rows carried no prompt digest.** Every stage that authors a prompt names it on its
+  metrics row with `prompts.prompt_digest` — NOUMENO and NER stamp their templates, a host labels
+  the slots it authors. `stages.ProposalJudge` authored one and stamped nothing, so a `judge_pre`
+  row said which model answered and never under which prompt. Counted on a downstream host's
+  stage rows: 27 `judge_pre` rows that RAN (tokens above zero) and not one with a digest — 22
+  with an empty label and 5 with no key at all — plus one `judge_pre:estimated` row in the same
+  state. Those rows are filed by the host and never pass through an orchestrator's stamp, so
+  nobody downstream could add the label.
+
+### Changed
+
+- **`ProposalJudge.prompt_sha`** — `prompt_digest(_SYSTEM, <the "# Decide" block with the rules
+  this construction turns on>)`, computed once at construction and stamped on EVERY row the
+  judge builds (`approved`, `critique` and `error` alike; a backend that raised too — the prompt
+  was built). It is the digest of the TEMPLATE: the VALUES of the context (the clock, a persona's
+  name and purpose, the roster's entries, the contact's words, the arguments) never enter it, so
+  two contacts under one configuration share the label; whether a clock, a persona, a roster or
+  `facts_not_wording` was GIVEN turns a rule on, and that is a different configuration.
+- **The estimated row carries it too.** `judge_pre:estimated` is the cost of a request that WAS
+  sent under that configuration, so it carries the same label. The hook the callback calls before
+  it awaits takes the digest as an OPTIONAL second argument — `Proposal.note_prompt(tokens,
+  prompt_sha)` — and `PreJudgeDispatcher` writes it on the estimated row. Only something shaped
+  like a digest is taken (lower-case hex, 8 to 64 characters): the hook is called by foreign code
+  and the value rides into a ledger. A callback that passes only the tokens records the estimate
+  unlabelled, as before; a hook that accepts only one argument still receives the tokens
+  (`ProposalJudge` falls back to the one-argument call).
+- **Absence stays the right value where nothing was sent:** a judgement cut before its callback
+  noted anything has no estimated row and no label.
+- **No prompt moved.** The label is ABOUT the prompt; the rendering is the one
+  `test_pre_judge_context.py` pins by digest, untouched.
+
+`tests/unit/test_the_pre_judge_stamps_its_digest.py`.
+
 ## 0.1.3 — 2026-10-07 — only a JSON boolean is a verdict: the judge no longer approves `"false"`, the guard no longer blocks on it
 
 ### Fixed

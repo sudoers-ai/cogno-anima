@@ -98,6 +98,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Optional
@@ -134,6 +135,11 @@ JUDGE_PRE_STAGE = "judge_pre"
 #: are the callback's ESTIMATE, not a count the provider reported. The suffix is the host's own
 #: convention for an estimated charge (``kb_ingest:estimated``) — one spelling for both.
 JUDGE_PRE_ESTIMATED_STAGE = f"{JUDGE_PRE_STAGE}:estimated"
+
+#: What a prompt digest handed in through ``Proposal.note_prompt`` may look like: lower-case
+#: hex, the shape ``cogno_anima.prompts.prompt_digest`` produces. The hook is called by foreign
+#: code and the value rides into a ledger, so anything else is dropped rather than stored.
+_DIGEST_RE = re.compile(r"[0-9a-f]{8,64}")
 
 PRE_APPROVED = "approved"
 PRE_CRITIQUE = "critique"
@@ -183,8 +189,14 @@ class Proposal:
     #: answer was read — recording 0 there makes the activation's cost per turn come out LOW. A
     #: callback that never calls it (every callback written before the hook) records 0 as
     #: before. Not part of equality: two proposals are the same call whatever hook rides along.
-    note_prompt: "Optional[Callable[[int], None]]" = field(default=None, compare=False,
-                                                           repr=False)
+    #:
+    #: The hook also takes, as an OPTIONAL second argument, the DIGEST of the template the
+    #: callback is about to send (``cogno_anima.prompts.prompt_digest``): the estimated row is
+    #: the cost of a request that WAS sent under that configuration, so it carries the label of
+    #: that configuration like the row of a judgement that answered. A callback that passes
+    #: only the tokens records the estimate with no label, as before.
+    note_prompt: "Optional[Callable[..., None]]" = field(default=None, compare=False,
+                                                         repr=False)
 
 
 @dataclass(frozen=True)
@@ -219,14 +231,23 @@ class _Entry:
     outcome: Optional[str] = None
     #: What the callback said its prompt would cost, BEFORE it awaited (``Proposal.note_prompt``).
     prompt_tokens_estimated: Optional[int] = None
+    #: …and the digest of the template it was about to send, when it said so.
+    prompt_sha_noted: str = ""
 
-    def note_prompt(self, tokens: int) -> None:
+    def note_prompt(self, tokens: int, prompt_sha: str = "") -> None:
         """The callback's estimate, taken only while the record is open and only as a
         non-negative integer — a hook handed to foreign code must not be a way to write junk
-        into a ledger, nor to rewrite a closed record."""
+        into a ledger, nor to rewrite a closed record.
+
+        ``prompt_sha`` is taken under the same two rules and a third: only something shaped
+        like a digest (:data:`_DIGEST_RE`). Anything else — the rendered prompt, a sentence, a
+        number — is dropped and the estimate is still recorded: a label is never worth losing
+        the cost it labels."""
         if self.verdict is None and isinstance(tokens, int) and not isinstance(tokens, bool) \
                 and tokens >= 0:
             self.prompt_tokens_estimated = tokens
+            if isinstance(prompt_sha, str) and _DIGEST_RE.fullmatch(prompt_sha):
+                self.prompt_sha_noted = prompt_sha
 
     def finish(self, verdict: str, metrics: Optional[StageMetrics]) -> None:
         # FIRST WORD WINS, and it is load-bearing, not tidiness: the ceiling and `settle` write
@@ -245,9 +266,12 @@ class _Entry:
             # the clock's verdict takes this path — a judgement that answered reports its own
             # tokens, and an `error` keeps what the callback measured (a backend that raised
             # before sending spent nothing a caller can see).
+            # …and under WHICH configuration: the request was sent, so the row carries the
+            # digest of the template the callback noted — the same label the row of a judgement
+            # that answered carries. Not noted → no label, never an invented one.
             base = StageMetrics(stage=JUDGE_PRE_ESTIMATED_STAGE, elapsed_ms=self.elapsed_ms,
                                 tokens_in=self.prompt_tokens_estimated, tokens_out=0,
-                                model=self.model)
+                                model=self.model, prompt_sha=self.prompt_sha_noted)
             stage = JUDGE_PRE_ESTIMATED_STAGE
         else:
             base = StageMetrics(stage=JUDGE_PRE_STAGE, elapsed_ms=self.elapsed_ms, tokens_in=0,

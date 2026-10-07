@@ -269,7 +269,12 @@ received whether or not anybody read the answer (F2.3a-bis). The callback report
 `Proposal.note_prompt(n)` BEFORE it awaits (`ProposalJudge` does, with `estimate_prompt_tokens`,
 one token per four characters, declared); a callback that never calls the hook, or a judgement
 cut before its first step, still records 0 — and its `timeout` record is what makes that zero
-readable.
+readable. Since 0.1.4 the hook takes the digest of the template as an optional second argument,
+`note_prompt(n, prompt_sha)`, and the estimated row then carries it: the request was SENT under
+that configuration. `ProposalJudge` passes its own (`ProposalJudge.prompt_sha`, which it also
+stamps on every `judge_pre` row it builds). These rows reach your ledger through
+`ctx.retry_metrics.extend(sink.metrics)` and through no orchestrator's stamp, so the label has to
+come from the callback — persist `prompt_sha` from the row as it arrives.
 
 ```python
 from cogno_anima import ToolResult
