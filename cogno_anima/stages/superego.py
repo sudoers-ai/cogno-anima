@@ -55,6 +55,7 @@ from cogno_synapse import (LLMBackend, cached_tokens_of, served_model_of,
 from cogno_anima.preserved import CRITICAL_TERM_RE
 from cogno_anima.prompts import prompt_digest
 from cogno_anima.utils import WarnOnce
+from cogno_anima.verdict import VERDICT_BOOLEAN, VERDICT_CALL_FAILED, parse_object, read_verdict
 from cogno_anima.security.prompt_guard import (defang_structure, render_context,
                                                sanitize_untrusted)
 from cogno_anima.security.contact_memo import (
@@ -74,7 +75,19 @@ from cogno_anima.security.redaction import (
 logger = logging.getLogger("cogno_anima.superego")
 
 _COT_RE = re.compile(r"<think(?:ing)?>.*?</think(?:ing)?>", re.DOTALL | re.IGNORECASE)
-_JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+# The critique of a judge call whose VERDICT COULD NOT BE READ — it answered, and what it
+# answered was not a JSON boolean (``cogno_anima.verdict``). A constant, exported, and worded
+# for both of its readers: the executor on a retry (it is told to retry, and told that this
+# note names no defect — there is none to fix on the note's authority) and the voice on
+# exhaustion, which renders a critique verbatim. Being a constant is also what makes the case
+# COUNTABLE from a per-attempt ledger that keeps the critique and nothing else of the result.
+# Distinct from the sentence of the path where the CALL failed, on purpose: there, there was
+# no reply at all.
+UNREADABLE_VERDICT_CRITIQUE = (
+    "the review's verdict could not be read, so the execution was not verified; "
+    "this note does not say that anything was wrong with it; please retry"
+)
 # A preserved term is "critical" (worth a grounding backstop) when it carries a
 # figure or is an email/URL — altering one of these silently corrupts the answer.
 # The definition lives in `cogno_anima.preserved` since the NOUMENO reads the e-mail/URL half
@@ -1975,6 +1988,12 @@ class SuperegoStage:
         Writes ``ctx.metadata[mk.SCOPE_PROMPT_BLOCKS]`` on every path — the prompt inventory
         also carried on the result, stamped where a trace writer can reach it because this
         result is consumed by the orchestrator and dropped.
+
+        **Only a JSON boolean ``blocked`` is a verdict** (``cogno_anima.verdict``). Anything
+        else the classifier answers — a string ``"false"``, a number, no JSON at all — is
+        ALLOWED, because the guard is fail-open, and MARKED: ``ScopeCheckResult.verdict_read``
+        and ``ctx.metadata[mk.SCOPE_VERDICT_READ]`` say how the verdict was read, so an allow
+        the classifier gave and an allow nobody decided are different records.
         """
         t0 = time.perf_counter()
         model = getattr(backend, "model", "unknown")
@@ -1982,7 +2001,7 @@ class SuperegoStage:
         def _result(blocked: bool, msg: str, ti: int = 0, to: int = 0,
                     cached: int = 0, prompt: str = "",
                     fingerprint: Optional[str] = None,
-                    served: Optional[str] = None) -> ScopeCheckResult:
+                    served: Optional[str] = None, read: str = "") -> ScopeCheckResult:
             # What this call was actually ASKED. Built on every path that BUILT a prompt, the
             # fail-OPEN one included — the early bypasses below pass none because none was
             # built, and that is the distinction the empty list carries.
@@ -2007,8 +2026,18 @@ class SuperegoStage:
                 ctx.metadata[mk.SCOPE_PROMPT_SHA] = sha
             else:
                 ctx.metadata.pop(mk.SCOPE_PROMPT_SHA, None)
+            # HOW the verdict was read, by the same rule and for the same reader: stamped on
+            # every path that ASKED the classifier, popped on a bypass. This is what separates
+            # "the classifier read the input and allowed it" (``boolean``) from "we could not
+            # read what it answered" and from "the call blew up" — three turns that all come
+            # back ``blocked=False``. See ``metakeys.SCOPE_VERDICT_READ``.
+            if read:
+                ctx.metadata[mk.SCOPE_VERDICT_READ] = read
+            else:
+                ctx.metadata.pop(mk.SCOPE_VERDICT_READ, None)
             return ScopeCheckResult(
                 blocked=blocked, refusal_message=msg, prompt_blocks=blocks, prompt_sha=sha,
+                verdict_read=read,
                 metrics=StageMetrics(stage="superego_scope",
                                      elapsed_ms=(time.perf_counter() - t0) * 1000,
                                      tokens_in=ti, tokens_out=to, cached_tokens=cached,
@@ -2082,18 +2111,31 @@ class SuperegoStage:
             fingerprint = system_fingerprint_of(backend)
             served = served_model_of(backend)
             raw, _ = self.strip_cot(raw)
-            data = self._parse_json(raw)
-            blocked = bool(data.get("blocked", False))
-            msg = str(data.get("refusal_message", "")) if blocked else ""
+            # STRICT: only a JSON boolean is a verdict (``cogno_anima.verdict``). This line was
+            # ``bool(data.get("blocked", False))``, which read the STRING "false" as a block —
+            # a legitimate contact refused by a classifier that had just allowed them — and
+            # read a reply with no JSON in it as an ALLOW nothing could tell from a real one.
+            verdict = read_verdict(raw, "blocked")
+            if verdict.value is None:
+                # Fail-OPEN, as the contract says — a cost guard never refuses a contact
+                # because of OUR reading — and MARKED, which is the part that was missing.
+                # The call completed, so its tokens and its fingerprint are this row's.
+                logger.warning("stage=superego event=scope_verdict_unreadable read=%s "
+                               "— allowing by default (fail-open)", verdict.read)
+                return _result(False, "", ti, to, cached, prompt, fingerprint, served,
+                               verdict.read)
+            blocked = verdict.value
+            msg = str(verdict.data.get("refusal_message", "")) if blocked else ""
             logger.info("SUPEREGO scope blocked=%s", blocked)
-            return _result(blocked, msg, ti, to, cached, prompt, fingerprint, served)
+            return _result(blocked, msg, ti, to, cached, prompt, fingerprint, served,
+                           VERDICT_BOOLEAN)
         except Exception as exc:  # noqa: BLE001 — fail-open: never refuse on error
             logger.warning("scope guard failed (%s) — allowing by default", exc)
             # The PROMPT is recorded (it was built: blocks and digest both) and the per-call
             # numbers are not — no fingerprint, no tokens — because this path cannot say which
             # of them, if any, describe a completed call. Same trade the token counts have
-            # always made here.
-            return _result(False, "", prompt=prompt)
+            # always made here. The READ says which failure this was: there was no reply.
+            return _result(False, "", prompt=prompt, read=VERDICT_CALL_FAILED)
 
     @staticmethod
     def _pending_requests(raw: object) -> "tuple[str, ...]":
@@ -2235,6 +2277,13 @@ class SuperegoStage:
         """Judge the EGO's execution. Fail-CLOSED (don't approve unverified).
 
         Criterion #1: goal↔execution — the user asked X and X (not Y) was done.
+
+        **Only a JSON boolean ``approved`` is a verdict** (``cogno_anima.verdict``). A string
+        ``"false"`` — or ``"true"`` —, a number, a missing or repeated key, no JSON at all:
+        not approved, with :data:`UNREADABLE_VERDICT_CRITIQUE` and the read on
+        ``SuperegoResult.verdict_read``. The judge is asked ONCE per call; it does not re-ask,
+        so to the caller's correction loop an unread verdict is a rejection like any other —
+        one it can tell apart by that field.
         """
         t0 = time.perf_counter()
         model = getattr(backend, "model", "unknown")
@@ -2242,9 +2291,15 @@ class SuperegoStage:
         def _result(approved: bool, critique: Optional[str], ti: int = 0, to: int = 0,
                     cached: int = 0, prompt: str = "", branch: str = "",
                     fingerprint: Optional[str] = None,
-                    served: Optional[str] = None) -> SuperegoResult:
+                    served: Optional[str] = None, read: str = "") -> SuperegoResult:
             return SuperegoResult(
                 approved=approved, critique=critique,
+                # HOW the verdict was read (``cogno_anima.verdict``): ``boolean`` when the
+                # judge answered with one, the reason when it did not, ``call_failed`` when
+                # there was no reply — and ``""`` on the path that asked nothing. A rejection
+                # the judge GAVE and a rejection we fell back to are different facts, and
+                # until this field the only difference between them was the critique's text.
+                verdict_read=read,
                 # What this attempt was actually ASKED — the sections of the prompt it got and
                 # which criteria block it got. Carried on the RESULT rather than logged,
                 # because the caller is the one that keeps a per-attempt record and a log line
@@ -2279,8 +2334,22 @@ class SuperegoStage:
             fingerprint = system_fingerprint_of(backend)
             served = served_model_of(backend)
             raw, _ = self.strip_cot(raw)
-            data = self._parse_json(raw)
-            approved = bool(data.get("approved", False))
+            # STRICT: only a JSON boolean is a verdict (``cogno_anima.verdict``). This line was
+            # ``bool(data.get("approved", False))``, and a non-empty string is truthy: the
+            # judge answering ``"approved": "false"`` APPROVED the execution it had just
+            # rejected — a fail-CLOSED gate failing open on the field that decides it.
+            verdict = read_verdict(raw, "approved")
+            if verdict.value is None:
+                # Fail-CLOSED, and it says why. Nothing of the unread reply is used — not its
+                # critique either: taking guidance from a reply whose verdict could not be
+                # read is reading it after all. The call completed, so its tokens and its
+                # fingerprint are this attempt's.
+                logger.warning("stage=superego event=judge_verdict_unreadable read=%s branch=%s "
+                               "— not approving (fail-closed)", verdict.read, branch)
+                return _result(False, UNREADABLE_VERDICT_CRITIQUE, ti, to, cached, asked,
+                               branch, fingerprint, served, verdict.read)
+            approved = verdict.value
+            data = verdict.data
             critique = None if approved else str(data.get("critique", "")) or "execution rejected"
             # The critique travels — to the EGO's retry, to the voice on exhaustion, to the log
             # line below and to the trace a host persists — and a judge rejecting a LEAK of the
@@ -2300,11 +2369,11 @@ class SuperegoStage:
                 logger.warning("stage=superego event=judge approved=false branch=%s critique=%s",
                                branch, (critique or "")[:80])
             return _result(approved, critique, ti, to, cached, asked, branch,
-                           fingerprint, served)
+                           fingerprint, served, VERDICT_BOOLEAN)
         except Exception as exc:  # noqa: BLE001 — fail-CLOSED: don't pass unverified
             logger.warning("judge failed (%s) — not approving (fail-closed)", exc)
             return _result(False, "could not verify the execution; please retry",
-                           prompt=asked, branch=branch)
+                           prompt=asked, branch=branch, read=VERDICT_CALL_FAILED)
 
     @staticmethod
     def _is_readonly_turn(ctx: PipelineContext) -> bool:
@@ -4243,11 +4312,13 @@ class SuperegoStage:
 
     @staticmethod
     def _parse_json(raw: str) -> dict:
-        match = _JSON_RE.search(raw or "")
-        if not match:
-            return {}
-        try:
-            data = json.loads(match.group())
-            return data if isinstance(data, dict) else {}
-        except json.JSONDecodeError:
-            return {}
+        """The JSON object in ``raw``, or ``{}`` — the TOLERANT read, for a caller whose own
+        parser decides what an empty object means (``scope_options.parse_selection``).
+
+        The extraction is ``cogno_anima.verdict.parse_object``, the same one the strict
+        verdict reader uses: one extractor, two readings. A BOOLEAN that decides something is
+        never read from here — ``{}`` cannot tell "no JSON" from "no such key", and
+        ``bool(...)`` over a model's value is the defect that module exists to end.
+        """
+        data, _ = parse_object(raw)
+        return data if data is not None else {}

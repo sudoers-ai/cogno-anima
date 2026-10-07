@@ -425,6 +425,25 @@ SCOPE_PROMPT_BLOCKS = "scope_prompt_blocks"
 # of the same question and nothing wider. See ``types.ScopeCheckResult.prompt_sha``.
 SCOPE_PROMPT_SHA = "scope_prompt_sha"
 
+# HOW the guard's verdict was read — same writer, same reader, same reason as the two keys
+# above: the ``ScopeCheckResult`` carrying it (``verdict_read``) is consumed by the orchestrator
+# and dropped, and a fail-OPEN guard answers ``blocked=False`` for three different reasons.
+#
+# One value of ``cogno_anima.verdict.VALID_VERDICT_READS``. ``boolean`` — the classifier
+# answered with a JSON boolean, and ``blocked`` is what it said. ``string_bool``,
+# ``not_boolean``, ``missing``, ``duplicated``, ``unparseable`` — it answered, the answer was
+# not a verdict, and the turn was ALLOWED by the fail-open contract rather than by the
+# classifier. ``call_failed`` — the call raised. A host that counts refusals needs the first
+# apart from the rest: an allow nobody decided is the guard being absent on that turn, and
+# before this key it was indistinguishable from the guard working.
+#
+# **ABSENT means no verdict was asked** (a bypass: no prompt was built), and the key is actively
+# REMOVED on those paths — the rule, and the reason, of ``SCOPE_PROMPT_SHA`` above. A PER-TURN
+# fact, never carry-over.
+#
+# Safe to persist as it is: a closed alphabet, with nothing of the model's reply in it.
+SCOPE_VERDICT_READ = "scope_verdict_read"
+
 # What THIS ASSISTANT asked the contact for on the previous turn — the one fact the scope
 # guard needs and cannot have, because it reads the SENTENCE and never the conversation.
 #

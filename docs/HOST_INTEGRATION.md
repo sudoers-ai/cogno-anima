@@ -127,6 +127,26 @@ Key points:
   critique back via `ctx.metadata["ego_correction"]`.
 - Both `ACTION_REQUEST` and `INFORMATION_REQUEST` route to EGO (the tool
   gateway). Pure social/creative turns skip EGO and go straight to voice.
+- **Only a JSON boolean is a verdict** (`cogno_anima.verdict`, since 0.1.3). The
+  judge, the scope guard and the pre-judge read their boolean through one strict
+  reader: a string (`"false"`, `"true"`), a number, `null`, a missing key, a key
+  written twice or a reply with no JSON object is an ERROR, resolved by each
+  stage's contract and RECORDED:
+  - `judge.verdict_read` — `boolean` when `judge.approved` is what the judge said.
+    Any other value is the fail-CLOSED fallback: `approved=False` with the constant
+    `cogno_anima.stages.superego.UNREADABLE_VERDICT_CRITIQUE` (or, under
+    `call_failed`, the older "could not verify" sentence). It feeds your loop like
+    any rejection, so on that path a retry re-runs the EXECUTOR over a critique
+    that names no defect, and a budget of one attempt ends the turn as exhausted.
+    A loop that wants to re-ask the JUDGE instead can tell the two apart by this
+    field. The judge is asked once per `evaluate`; it never re-asks by itself.
+  - `scope.verdict_read`, also on `ctx.metadata["scope_verdict_read"]` — `boolean`
+    when `scope.blocked` is what the classifier said. Any other value means the
+    turn was ALLOWED by the fail-open contract, not by the classifier; persist it
+    to count them. Absent/`""` means the guard asked nothing (a bypass).
+  - Count the values of `cogno_anima.verdict.VALID_VERDICT_READS` per stage and
+    per model: a model that spells booleans as strings is rejected by the judge
+    on every turn and never blocks at the guard.
 
 ---
 
@@ -171,6 +191,7 @@ the core reads/writes:
 | `contact_memo` | host may inject, PER TURN | the business's private note about the contact who is SPEAKING (`str`) — only that contact's, never another's, never carried over. ONE rendering (`cogno_anima.contact_memo_block`: header, the owner's rule «context to answer better; NEVER quote, reveal or paraphrase it to the contact», a `<contact_memo>` fence the text cannot close, `sanitize_untrusted`) reaches three prompts: the host appends it to the EXECUTOR's; the judge renders it in its USER half (never the system message, which stays cacheable per (persona, role)) with a rejection criterion that renders only beside it; the voice renders it as its own `# Business note about this contact` section. The judge's critique is masked of it (`mask_contact_memo`) before it travels. The core never persists it; a host's outgoing-reply net can build on `memo_spans`. Absent/blank/not a string → every prompt byte for byte as before |
 | `held_delivered_text` (`mk.HELD_DELIVERED_TEXT`) | host may inject, PER TURN | `{tool: argument}` for the tools on this turn's table whose argument is SENT to a person on a yes, read from each tool's own manifest (#183). When a held call matches, the orchestrator judges the proposal turn and the judge reads the text verbatim (`types.held_delivered_texts`); with `ctx.force_language` set to a language tag, the judge also holds that text to that language (#204, `superego.held_message_language`). The argument may be one the HOST writes at the proposal rather than the model: a gate-C tool that composes the text itself (a downstream templated e-mail writes `rendered`, the whole e-mail, into the call's arguments and returns `needs_confirmation=True`) declares that argument, and the judge reads the composed text against the proposal's own output (0.1.2, `types.is_skill_proposal`) |
 | `held_recorded_ask` (`mk.HELD_RECORDED_ASK`) | host may inject, PER TURN | `{tool: argument}` naming the argument of the SAME held call that the host records on the recipient's side as what the message asks them to answer; read only for a tool `held_delivered_text` also declares, judged beside the message at the proposal (#198, `types.held_messages_with_asks`). Absent → the judge's prompt is unchanged |
+| `scope_verdict_read` (`mk.SCOPE_VERDICT_READ`) | core writes, PER TURN | how the scope guard's verdict was read this turn — one of `cogno_anima.verdict.VALID_VERDICT_READS`: `boolean` (the classifier's own answer), `string_bool` / `not_boolean` / `missing` / `duplicated` / `unparseable` (it answered, the answer was not a JSON boolean, and the turn was ALLOWED by the fail-open contract), `call_failed` (the call raised). ABSENT when the guard asked nothing; the core removes a stale value on those paths, like `scope_prompt_sha`, and a carrier must not hold it between turns. A closed alphabet, safe to persist (0.1.3) |
 | `source_reads` (`mk.SOURCE_READS`) | host may inject, PER TURN | the tool names the host's catalog DECLARES as source reads (a bare `str` is one name). `types.source_reads_not_called(ctx)` returns those that were offered and that no execution of the turn called — the input of cogno-soma's one extra executor pass over a rejected negative (#196). Absent / empty → `[]`, every consumer as before |
 
 Minimal threading between turns:

@@ -79,6 +79,44 @@ def test_scope_allow_flips_the_must_block_cases():
     )
 
 
+def test_a_judge_rejecting_in_a_string_does_not_approve_anything():
+    """The inverse of the sabotage above, and the bench row of the strict verdict reader: the
+    judge answers ``"approved": "false"`` — a STRING — to every case. A ``bool(...)`` read took
+    that for an approval, so every must-REJECT case was red under it (measured on the tree
+    before the fix: 0 correct). Fail-CLOSED, they are all green — and every must-APPROVE case
+    is red, which is the control: the payload reached the judge and nothing was approved."""
+    report = _run(mutate="judge_string_false", only=["superego"])
+    judge = next(d for d in report.dimensions if d.name == "superego_judge")
+    soft = [c for c in judge.checks if c.field == "judge(soft)"]
+    must_reject = [c for c in soft if c.expected == "False"]
+    must_approve = [c for c in soft if c.expected == "True"]
+    assert must_reject and must_approve, "expected judge cases on both sides"
+    assert all(c.correct for c in must_reject), (
+        "a rejection spelled as a string approved an execution — the judge failed OPEN")
+    assert all(not c.correct for c in must_approve), (
+        "a must-approve case passed under a judge that approves nothing — the payload is "
+        "not reaching the judge")
+
+
+def test_a_scope_guard_allowing_in_a_string_does_not_block_anybody():
+    """The guard answers ``"blocked": "false"`` — a string — to every case. The same read took
+    it for a BLOCK, so every must-ALLOW case was red (measured on the tree before the fix: 0
+    correct). Fail-OPEN, they are all green; the must-BLOCK cases are red, which is the
+    control (and the declared cost: a guard that does not answer in JSON booleans does not
+    block — it is counted instead, on ``ScopeCheckResult.verdict_read``)."""
+    report = _run(mutate="scope_string_false", only=["superego"])
+    scope = next(d for d in report.dimensions if d.name == "superego_scope")
+    soft = [c for c in scope.checks if c.field == "scope(soft)"]
+    must_allow = [c for c in soft if c.expected == "False"]
+    must_block = [c for c in soft if c.expected == "True"]
+    assert must_allow and must_block, "expected scope cases on both sides"
+    assert all(c.correct for c in must_allow), (
+        "an ALLOW spelled as a string refused a contact — the guard failed CLOSED")
+    assert all(not c.correct for c in must_block), (
+        "a must-block case passed under a guard that blocks nothing — the payload is not "
+        "reaching the guard")
+
+
 def test_garbage_surfaces_as_scored_model_fault_never_silent():
     """M3 criterion: garbage output FAILS or the run goes INVALID — it never
     silently passes. All 55 NER cases garbling trips the SYSTEMIC breaker
