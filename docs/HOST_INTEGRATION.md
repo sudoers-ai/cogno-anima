@@ -159,7 +159,7 @@ the core reads/writes:
 | `turn_number` | host sets (authoritative) | the turn index (`turns.turn_n`); else ID auto-increments |
 | `last_rewritten`, `last_context_turn` | host sets | previous turn's canonical text → NOUMENO subject continuity |
 | `attention_candidates` | host injects | items the `AttentionFilter` scores |
-| `ego_context` | host injects | retrieved memories/KG facts the voice should ground in |
+| `ego_context` | host injects | retrieved memories/KG facts the voice should ground in. UNFENCED in the executor, the judge and the voice, so it is treated as untrusted STRUCTURE (`prompt_guard.defang_structure`, F4.3): no fence tag of `FENCE_TAGS` survives in it, and a line that opens with a header the core renders (`reserved_headers()` — `# Task`, `# EGO draft`, `# Correction requested`…) is escaped with a backslash. Identity on clean text; a host that needs a header of its own picks one the core does not render (`[RECADO]`, `# About this contact` are untouched) |
 | `emotional_override` | host may inject | force de-escalation (else ID derives it from a frustration streak) |
 | `pii_session_hint` | host may inject | a known-PII session, tightens goal continuity |
 | `ego_correction` | host sets in the loop | `{reason, attempt}` fed back to the EGO on retry |

@@ -266,6 +266,41 @@ The model-transport layer (formerly `cogno_anima/llm/`) was **extracted into the
 
 **Cloud backends** (`cogno_synapse/{openai,anthropic,groq,gemini,bedrock}_backend.py`): adapted from the parent — each implements `LLMBackend` + `ToolCallingBackend` (`generate` + `chat_with_tools` converting the unified OpenAI-format messages/tools to the provider's shape + `supports_native_tools`). **SDKs are lazy-imported** (optional extras: `pip install "cogno-synapse[openai|anthropic|groq|gemini|bedrock|llm]"`; the convenience extra `cogno-anima[llm]` pulls `cogno-synapse[llm]`). Two deliberate divergences from the parent: (1) **errors propagate** — they **raise** on transport/auth failure (`InvalidAPIKeyError` for 401/403) instead of returning `("",0,0)`, matching the core contract; (2) **no tenant-key contextvar** (host owns key rotation). `cogno_synapse/fallback.py: FallbackBackend` is a slim, infra-agnostic failover chain (try each, first success wins, last error propagates; skips non-FC backends for `chat_with_tools`) whose loop now runs over `cogno_homeo.resilient_call`, so a host can opt into a circuit breaker / retry / metrics by passing them to the constructor — with none supplied it behaves exactly as before (the parent's Redis circuit-breaker + probe threads remain host concerns and were NOT ported). `cogno_synapse/factory.py: create_backend("provider:model")` instantiates a single backend (raises `MissingAPIKeyError` for a cloud provider without a key); the business `_FALLBACK_MATRIX` (model ladders) is host, not core. **OpenAI-compatible providers** (DeepSeek, Moonshot/Kimi, xAI/Grok, OpenRouter, Together, Fireworks) reuse `OpenAIBackend` via its `base_url` param instead of a class each — the factory's `_OPENAI_COMPATIBLE` registry maps each prefix to `(base_url, key_env)`, e.g. `create_backend("deepseek:deepseek-chat")`. There is deliberately **no `mistral:` prefix** (it would clobber Ollama's `mistral:latest`, the default local model). Unit tests mock the SDK clients (no network); integration tests are gated on real keys (auto-skip). All of these tests live in the `cogno-synapse` repo now.
 
+### Untrusted text in prompts (`cogno_anima/security/prompt_guard.py`)
+
+Third-party text reaches three prompts: the executor's, the judge's and the voice's. That text is
+a tool result, a held message, the persona's rules, the contact's note, or the host's
+`mk.EGO_CONTEXT`. **`sanitize_untrusted` makes it inert in three ways:**
+- no tool-call trigger survives, checked by the real parser;
+- no fence of `FENCE_TAGS` (`tool_output`, `held_message`, `held_ask`, `business_rules`,
+  `contact_memo`) can be opened or closed from inside;
+- no line opens with a header the core renders (`defang_headers`, a backslash).
+
+`defang_structure` is the structural half alone (tags and headers), applied where the tool-call
+pass would rewrite legitimate text: `mk.EGO_CONTEXT` in all three prompts, and the judge's one-line
+JSON of each call's arguments.
+
+The reserved set is **derived**, never copied: `reserved_headers()` reads `_VOICE_BLOCKS`,
+`_JUDGE_BLOCKS` and `_SCOPE_BLOCKS` plus `ego.PROMPT_HEADERS`. Each of those is pinned to its
+rendered prompt by a sync test, so a new section is reserved the day it is listed. Clean text is
+the same bytes. A skill's own fence (`<excerpt>`) is the skill's to defang.
+
+**Measured (F4.3, 2026-10-06):** `tests/unit/test_injection_by_tool_data.py` renders 8 sources ×
+5 forms over the real stages.
+- On `02e1850`, 7 of the 8 sources let a forged header escape.
+- After the change, none do.
+
+**What stays OPEN is outside the fence.** The fix is structural and does not move what a model
+does with an instruction. Measured downstream (2026-10-07, n=1 per cell, sampling; the full row is
+in `CHANGELOG.md`):
+- inside a fence the instruction was ignored 15/15 by one model and 13–15/15 by the other;
+- in the unfenced context block (`mk.EGO_CONTEXT`, a delivered message) one of the two obeyed 3/5.
+
+The voice's data and the context block are unfenced by design. Fencing them changes every turn's
+prompt, so the A/B of a fence around the context block is the next item. The meter is
+`tests/integration/test_injection_by_tool_data.py` (cloud spec); its judge test runs a clean
+CONTROL first, which must be approved before a rejection counts.
+
 ### Prompts
 
 Prompt templates live under `cogno_anima/prompt_templates/<stage>/` (`noumeno/`, `ner/`) as plain text files, loaded via `cogno_anima.prompts.load_prompt(stage, prompt_name, prompts_dir=...)`. The loader strips YAML frontmatter (`---\n...\n---\n`) and any `TODO(docs)` lines. `IntentAnalyzer` can load an alternate system prompt via `system_prompt_name` (default `system.txt`); the default NER prompt is concise (~3.4k tokens) so it fits Ollama's default `num_ctx=8192` with room for input/output.

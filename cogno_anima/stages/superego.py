@@ -55,7 +55,7 @@ from cogno_synapse import (LLMBackend, cached_tokens_of, served_model_of,
 from cogno_anima.preserved import CRITICAL_TERM_RE
 from cogno_anima.prompts import prompt_digest
 from cogno_anima.utils import WarnOnce
-from cogno_anima.security.prompt_guard import sanitize_untrusted
+from cogno_anima.security.prompt_guard import defang_structure, sanitize_untrusted
 from cogno_anima.security.contact_memo import (
     MEMO_HEADER, contact_memo_block, mask_contact_memo, sanitize_contact_memo)
 from cogno_anima.stages.drift import DriftCalculator
@@ -2476,7 +2476,12 @@ class SuperegoStage:
         # resolution ("resolved 'July 9th' to 2026-07-09 — wrong"), dead-ending a
         # valid turn in a handoff.
         injected = ctx.metadata.get(mk.EGO_CONTEXT)
-        context = f"# Context (authoritative — clock/memories/history)\n{str(injected).strip()}\n\n" if injected else ""
+        # Unfenced, and it carries third-party text (a delivered message, memories, the
+        # conversation): no line of it may open with one of this prompt's headers, or a planted
+        # `# EGO draft` starts a section the judge cannot tell from ours (F4.3). Identity on
+        # clean text.
+        context = (f"# Context (authoritative — clock/memories/history)\n"
+                   f"{defang_structure(str(injected).strip())}\n\n" if injected else "")
         # The CONTACT'S NOTE, in the USER half: it is per contact, so in the system message it
         # would break the (persona, role) prefix the business rules were moved there to make
         # cacheable. Sanitized with the turn's own tool set, like the tool results below it.
@@ -2659,8 +2664,13 @@ class SuperegoStage:
         untrusted third-party text arriving at the fail-CLOSED gate), and half a policy applied
         to the second block is the shape this repo keeps paying for.
         """
+        # The ARGUMENTS too: the executor writes them, often by copying what a tool returned
+        # (a document's paragraph into an e-mail body), so they can carry a fence tag — a
+        # stray `<tool_output>` opened on this line would swallow every section after it into
+        # "data". One JSON line, so no header can start a line; `defang_structure` takes the
+        # tags and is identity on clean arguments (F4.3).
         return "\n".join(
-            f"- {t.tool}({json.dumps(t.arguments, ensure_ascii=False)}) → "
+            f"- {t.tool}({defang_structure(json.dumps(t.arguments, ensure_ascii=False))}) → "
             f"{_status_of(t)}:\n<tool_output name=\"{t.tool}\">\n"
             f"{sanitize_untrusted(t.result or t.error or '', names)}\n</tool_output>"
             for t in calls)
@@ -3460,7 +3470,10 @@ class SuperegoStage:
         # Host-injected context (retrieved memories / history / clock) — the same
         # block the EGO sees; included so memories can ground the final reply.
         injected = ctx.metadata.get(mk.EGO_CONTEXT)
-        context_section = f"# Context (memories/history)\n{str(injected).strip()}\n\n" if injected else ""
+        # The judge's rule (`_build_judge_prompt`): unfenced third-party text, so no reserved
+        # header may open a line of it. Identity on clean text.
+        context_section = (f"# Context (memories/history)\n"
+                           f"{defang_structure(str(injected).strip())}\n\n" if injected else "")
         # The contact's note, for the voice too: it is the voice that addresses the contact, and
         # a nickname the executor alone had would reach the reply only if the draft happened to
         # carry it past the persona's own form-of-address line. Its own section, with a header
@@ -4179,7 +4192,8 @@ class SuperegoStage:
                 # successful reads + the model's optimistic draft and falsely reports the action as
                 # done ("marcado com sucesso") while the DB was never changed. The voice prompt's
                 # rule ("a FAILED write is not a success") then reports the real outcome.
-                parts.append(f"{t.tool}: FAILED — {t.error or 'the operation did not complete'} "
+                parts.append(f"{t.tool}: FAILED — "
+                             f"{sanitize_untrusted(t.error or '', names) or 'the operation did not complete'} "
                              f"(NOTHING was changed; do NOT report this as done, and do NOT "
                              f"invent alternatives the tool did not return)")
             elif t.error:
@@ -4188,7 +4202,7 @@ class SuperegoStage:
                 # voice falls back to the model's optimistic DRAFT, which fabricates substitute data
                 # (offering slots the tool refused). Grounding the voice in the real error kills the
                 # fabrication at the source (the reply the user sees).
-                parts.append(f"{t.tool}: unavailable — {t.error} "
+                parts.append(f"{t.tool}: unavailable — {sanitize_untrusted(t.error, names)} "
                              f"(no data was returned; relay THIS, do NOT invent alternatives)")
         if parts:
             return "\n".join(parts)

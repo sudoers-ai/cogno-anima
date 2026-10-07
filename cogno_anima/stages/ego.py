@@ -39,7 +39,7 @@ from cogno_anima.types import (
     EgoStep,
     EgoResult, ToolResult, HELD_BY_NAME_PREFIX,
 )
-from cogno_anima.security.prompt_guard import sanitize_untrusted
+from cogno_anima.security.prompt_guard import defang_structure, sanitize_untrusted
 from cogno_synapse import (LLMBackend, cached_tokens_of, served_model_of,
                            system_fingerprint_of)
 from cogno_synapse.base import ToolCallingBackend
@@ -51,11 +51,23 @@ logger = logging.getLogger("cogno_anima.ego")
 
 STAGE_NAME = "ego"
 
+# The executor prompt's own top-level headers — one row per section `_build_system` can render.
+# Untrusted text reaching this prompt (tool results, the host's `mk.EGO_CONTEXT`) may not open a
+# line with any of them: `cogno_anima.security.prompt_guard.reserved_headers` reads this tuple,
+# and `tests/unit/test_injection_by_tool_data.py` pins it to what the prompt really renders.
+_H_TASK_CONTEXT = "# Task context"
+_H_AVAILABLE_TOOLS = "# Available tools"
+_H_TOOL_CALLS = "# Tool calls"
+_H_ACTIONS_DONE = "# ACTIONS ALREADY EXECUTED"
+_H_CORRECTION = "# Correction requested"
+PROMPT_HEADERS: "tuple[str, ...]" = (
+    _H_TASK_CONTEXT, _H_AVAILABLE_TOOLS, _H_TOOL_CALLS, _H_ACTIONS_DONE, _H_CORRECTION)
+
 # How to call tools on the text-fallback path (omitted on native FC — the API
 # carries the tool format). The persona prompt must NOT contain this; the core
 # owns it and never edits the host's text.
 _TOOL_MECHANICS = (
-    "# Tool calls\n"
+    _H_TOOL_CALLS + "\n"
     "To use a tool, emit EXACTLY one block per call, nothing else around it:\n"
     '<TOOL_CALL>{"tool": "<name>", "args": {<json args>}}</TOOL_CALL>\n'
     "Call tools as needed. When you are done, reply with your final answer and "
@@ -486,7 +498,11 @@ class EgoStage:
 
         injected = ctx.metadata.get(mk.EGO_CONTEXT)
         if injected:
-            parts.append(str(injected).strip())
+            # The host's block carries third-party text (a delivered message, memories, the
+            # conversation) and is not fenced: it may not open a line with one of this
+            # prompt's own headers — a planted `# Correction requested` would read as the
+            # judge's. Identity on clean text (`defang_structure`).
+            parts.append(defang_structure(str(injected).strip()))
 
         actions = self._actions_already_executed(ctx)
         if actions:
@@ -510,7 +526,7 @@ class EgoStage:
     def _render_tools(tools: list[dict]) -> str:
         if not tools:
             return ""
-        lines = ["# Available tools"]
+        lines = [_H_AVAILABLE_TOOLS]
         for t in tools:
             fn = t.get("function", {})
             name = fn.get("name", "")
@@ -631,7 +647,7 @@ class EgoStage:
                 "for the user to confirm; do NOT commit — mutating tools are "
                 "intentionally unavailable this turn."
             )
-        return "# Task context\n" + "\n".join(lines)
+        return _H_TASK_CONTEXT + "\n" + "\n".join(lines)
 
     @staticmethod
     def _refuse_if_still_asking(r: ToolResult, name: str) -> ToolResult:
@@ -725,10 +741,10 @@ class EgoStage:
                 lines.append(f"- {t.tool}({json.dumps(t.arguments, ensure_ascii=False)})")
         block = ""
         if lines:
-            block += "# ACTIONS ALREADY EXECUTED (do NOT repeat these)\n" + "\n".join(lines) + "\n\n"
+            block += f"{_H_ACTIONS_DONE} (do NOT repeat these)\n" + "\n".join(lines) + "\n\n"
         reason = correction.get("reason")
         if reason:
-            block += f"# Correction requested\n{reason}"
+            block += f"{_H_CORRECTION}\n{reason}"
         return block.strip()
 
     # ── loop helpers ─────────────────────────────────────────────────
