@@ -1,5 +1,87 @@
 # Changelog
 
+## 0.1.5 — 2026-10-07 — the executor's prompt leaves a record: which parts, how long, a digest, the path — never the text
+
+### Added
+
+- **`EgoResult.prompt_blocks` — the inventory of the executor's system prompt, the fourth of the
+  family.** `[{"block": slug, "chars": n}]`, one row per part the prompt carried, in the order
+  sent. The slugs are the closed `stages.ego.EGO_BLOCKS` (exported as `EGO_PROMPT_BLOCKS`):
+
+  | slug | the part | who writes it |
+  | --- | --- | --- |
+  | `persona` | the `system_prompt` handed to `process` | the host |
+  | `task_context` | `# Task context` | this library |
+  | `context` | `mk.EGO_CONTEXT`, the host's notes, unfenced | the host |
+  | `context_data` | `mk.EGO_CONTEXT_UNTRUSTED`, inside its fence | other people |
+  | `actions_done` | `# ACTIONS ALREADY EXECUTED` (a correction retry) | this library |
+  | `correction` | `# Correction requested` (a correction retry) | the judge |
+  | `available_tools` | `# Available tools` (text path only) | the host's catalogue |
+  | `tool_calls` | `# Tool calls` (text path only) | this library |
+
+  The voice, the judge and the scope guard each had an inventory; the executor had none, and it
+  is the stage that acts. Measured on a downstream host: with a proposal waiting, the executor
+  proposed the text of the last delivery instead, and nothing persisted could say which part of
+  its prompt had shown it that text.
+- **`EgoResult.prompt_text`** — the rendered system prompt, in memory. The core never persists
+  or logs it. `EgoStage.prompt_block(prompt_text, prompt_blocks, slug)` cuts one part out, and
+  returns `""` when the lengths do not add up to the text.
+- **`EgoResult.prompt_sha`** — the digest of what the attempt starts from: the system prompt,
+  the task, and on the native path the tool schemas the API carries. No tool result is in it
+  (a confirmed replay's and the loop's are appended after, and live in `steps`). Through
+  `prompts.prompt_digest`. A per-attempt label (the contact's words are inside it);
+  `metrics.prompt_sha` stays the deployment-level one. `None` when it is not on record, which
+  includes tool schemas that cannot be serialised (the turn goes on; a `WARNING` says so).
+- **`EgoResult.prompt_path`** — `native` or `fallback`, from the closed
+  `VALID_EGO_PROMPT_PATHS`. Both an empty catalogue on the text path and any catalogue on the
+  native path render no `available_tools` row; this field tells them apart.
+- `prompt_guard.render_context_parts(notes, data, tool_names)` — the two halves of the context
+  apart. `render_context` is those two joined, as before.
+
+### Changed
+
+- **`EgoStage._build_system` is the join of `EgoStage._system_parts`**, which returns
+  `(slug, text)`. One list, two readers: the prompt and its inventory. **The prompt did not
+  change by a byte**: 47 configurations (native or text path × notes × third-party data ×
+  correction × prior committed actions, plus the edges — a blank persona, an empty catalogue, a
+  correction with no reason, a reason of blanks, a forged header, a fence closed from inside)
+  have the digest they had on `1923c85`.
+- **`ego.PROMPT_HEADERS` is derived from `EGO_BLOCKS`**, and `prompt_guard.reserved_headers()`
+  reads the table instead of the tuple. The reserved set is the same 36 headers, by count and
+  by digest.
+
+### Why the inventory is not scanned from the text
+
+The other three inventories find their sections by header. Three of the executor's eight parts
+have no header of this library's: the persona prompt, the host's notes and the fenced data. A
+scan over the five headers, measured on a synthetic prompt of 2556 characters (the test pins
+the shape — the context filed under `task_context` — not these four numbers):
+
+| | by header scan | from the parts |
+| --- | --- | --- |
+| `persona` | no row | 473 |
+| `task_context` | 2081 | 88 |
+| `context` | no row | 868 |
+| `context_data` | no row | 1121 |
+
+Giving the context a header would have made the scan work. It would also have changed the
+bytes of every turn's executor prompt, which is a prompt change and needs its own A/B.
+
+### What a host does with it
+
+- `prompt_blocks`, `prompt_sha` and `prompt_path` are safe to persist. `prompt_text` is not.
+- The record is per `process` call, i.e. per correction attempt. `ctx.ego_result` is replaced on
+  every retry, so only the survivor's record is there at the end of the turn. A loop that wants
+  each attempt's copies it before the next attempt runs.
+- A forged header adds no row: a row is a part the builder made, whatever the text inside says.
+
+### Tests
+
+`tests/unit/test_ego_prompt_inventory.py` (262 tests) and `tests/unit/_ego_prompt_matrix.py`
+(the configurations): the 47 digests with their control, the table against the rendered prompt
+both ways, the reserved set, the pair `sum(chars) + 2 * (rows - 1) == len(prompt_text)`, one
+twin per path, one record per attempt, and a canary in every part that must not reach the
+record or a log line. Integration and CognoBench: not applicable — nothing a model reads moved.
 ## 0.1.4 — 2026-10-07 — the pre-judge stamps the digest of its own template
 
 ### Fixed
