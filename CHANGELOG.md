@@ -26,8 +26,9 @@
 - **`EgoResult.prompt_text`** — the rendered system prompt, in memory. The core never persists
   or logs it. `EgoStage.prompt_block(prompt_text, prompt_blocks, slug)` cuts one part out, and
   returns `""` when the lengths do not add up to the text.
-- **`EgoResult.prompt_sha`** — the digest of what the first model call of the attempt was handed:
-  the system prompt, the task, and on the native path the tool schemas the API carries. Through
+- **`EgoResult.prompt_sha`** — the digest of what the attempt starts from: the system prompt,
+  the task, and on the native path the tool schemas the API carries. No tool result is in it
+  (a confirmed replay's and the loop's are appended after, and live in `steps`). Through
   `prompts.prompt_digest`. A per-attempt label (the contact's words are inside it);
   `metrics.prompt_sha` stays the deployment-level one. `None` when it is not on record, which
   includes tool schemas that cannot be serialised (the turn goes on; a `WARNING` says so).
@@ -76,7 +77,7 @@ bytes of every turn's executor prompt, which is a prompt change and needs its ow
 
 ### Tests
 
-`tests/unit/test_ego_prompt_inventory.py` (260 tests) and `tests/unit/_ego_prompt_matrix.py`
+`tests/unit/test_ego_prompt_inventory.py` (262 tests) and `tests/unit/_ego_prompt_matrix.py`
 (the configurations): the 47 digests with their control, the table against the rendered prompt
 both ways, the reserved set, the pair `sum(chars) + 2 * (rows - 1) == len(prompt_text)`, one
 twin per path, one record per attempt, and a canary in every part that must not reach the

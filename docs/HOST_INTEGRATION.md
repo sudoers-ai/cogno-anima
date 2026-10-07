@@ -131,7 +131,8 @@ Key points:
   four fields on `ctx.ego_result`:
   - `prompt_blocks` — `[{"block", "chars"}]`, slugs from the closed
     `cogno_anima.EGO_PROMPT_BLOCKS`. Safe to persist: no byte of the prompt is in it.
-  - `prompt_sha` — the digest of what the first model call was handed. Safe to persist
+  - `prompt_sha` — the digest of what the attempt started from (system prompt, task,
+    native tool schemas; no tool result). Safe to persist
     as a per-ATTEMPT label; it is a digest of rendered text, so it belongs wherever the
     turn's own record is purged.
   - `prompt_path` — `native` or `fallback` (`cogno_anima.VALID_EGO_PROMPT_PATHS`).

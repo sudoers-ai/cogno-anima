@@ -377,6 +377,28 @@ async def test_the_digest_is_of_what_the_first_call_was_handed():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("native", [True, False], ids=["native", "text"])
+async def test_the_digest_is_of_where_the_attempt_starts_not_of_a_replayed_result(native):
+    """A confirmed replay runs BEFORE the first model call and feeds its result in. That result
+    is a tool result — it is in `steps` — and the digest does not move with it: the same
+    attempt whose replayed tool answers differently has the same starting point."""
+    async def run(answer):
+        backend = _backend(native)
+        disp = StubDispatcher.with_tools("add_income", handlers={"add_income": lambda a: answer})
+        ctx = _ctx(**{mk.EGO_CONFIRMED_CALLS: [{"tool": "add_income", "arguments": {"amount": 40}}]})
+        ctx = await EgoStage().process(ctx, backend, disp, system_prompt=_SYS)
+        return ctx.ego_result, json.dumps(backend.calls[0], ensure_ascii=False, default=str)
+
+    one, sent_one = await run("recorded as entry 7")
+    two, sent_two = await run("recorded as entry 8")
+    # The control: the first model call DID receive the replayed result, and it differed.
+    assert "entry 7" in sent_one and "entry 8" in sent_two
+    assert one.tools_executed[0].result != two.tools_executed[0].result
+    assert one.prompt_sha == two.prompt_sha and one.prompt_text == two.prompt_text
+    assert "entry 7" not in one.prompt_text
+
+
+@pytest.mark.asyncio
 async def test_same_input_same_digest_and_each_input_moves_it():
     async def sha(*, system=_SYS, rewritten="Record 40 as income.", tools=("add_income",),
                   native=False, notes=None):

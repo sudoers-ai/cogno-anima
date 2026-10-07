@@ -226,7 +226,8 @@ class EgoStage:
         parts = self._system_parts(ctx, system_prompt, use_native, tools)
         system = _PART_SEPARATOR.join(text for _slug, text in parts)
         task = ctx.noumeno.rewritten or ctx.user_input
-        # Taken BEFORE the loop, over exactly what the first model call is handed.
+        # Taken HERE, over what the attempt STARTS from. The results of a confirmed replay
+        # (just below) and of the loop's tool calls are appended after it; they are in `steps`.
         prompt_sha = self._prompt_sha(system, task, tools if use_native else None)
 
         # Native keeps an OpenAI-format message list; fallback grows a text prompt.
@@ -633,11 +634,12 @@ class EgoStage:
     @staticmethod
     def _prompt_sha(system: str, task: str, native_tools: "Optional[list[dict]]",
                     ) -> Optional[str]:
-        """The digest of what the FIRST model call of this attempt is handed, through
-        ``prompts.prompt_digest`` (the one digest algorithm in the ecosystem): the system
-        prompt, then the task, then — on the native path only — the tool schemas the API
-        carries beside them (canonical JSON; on the text path the catalogue is already inside
-        the system prompt). See ``EgoResult.prompt_sha`` for what it may be compared with.
+        """The digest of what this attempt STARTS from, through ``prompts.prompt_digest`` (the
+        one digest algorithm in the ecosystem): the system prompt, then the task, then — on the
+        native path only — the tool schemas the API carries beside them (canonical JSON; on the
+        text path the catalogue is already inside the system prompt). Tool results are not in
+        it: neither a confirmed replay's nor the loop's. See ``EgoResult.prompt_sha`` for what
+        it may be compared with.
 
         ``None`` when the schemas cannot be serialised: a digest of half the input would read
         as "the same prompt" over a call that was not, and a diagnostic field must never cost
@@ -645,7 +647,7 @@ class EgoStage:
         try:
             catalogue = ("" if native_tools is None else
                          json.dumps(native_tools, sort_keys=True, ensure_ascii=False))
-        except (TypeError, ValueError):
+        except Exception:                 # noqa: BLE001 — a trace field must not abort a turn
             logger.warning("stage=ego event=prompt_sha_unavailable reason=tools_not_json")
             return None
         return prompt_digest(system, task, catalogue) or None

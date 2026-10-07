@@ -537,11 +537,12 @@ class EgoResult(BaseModel):
     # ``EgoStage.prompt_block(prompt_text, prompt_blocks, slug)`` — three of the parts have no
     # header to match on, so a host scanning the text would cut in the wrong place.
     prompt_text: str = ""
-    # The digest of what the FIRST model call of this attempt was handed — the system prompt,
-    # the task, and on the native path the tool schemas — through ``prompts.prompt_digest``
-    # (the one digest algorithm in the ecosystem). The inventory says WHICH parts rendered and
-    # how long each was; this says whether the bytes were the same ones: between two attempts
-    # of one turn, or between two runs of one fixed input.
+    # The digest of what this attempt STARTED from — the system prompt, the task, and on the
+    # native path the tool schemas — through ``prompts.prompt_digest`` (the one digest
+    # algorithm in the ecosystem). The inventory says WHICH parts rendered and how long each
+    # was; this says whether the bytes were the same ones: between two attempts of one turn,
+    # or between two runs of one fixed input. Tool results are NOT in it — neither those of a
+    # confirmed replay nor the loop's; they are appended after the start and live in ``steps``.
     #
     # **Only the digest leaves the stage, never a byte of the prompt.** And because the
     # contact's words are inside it, it is a **per-ATTEMPT** label and not a deployment one:
