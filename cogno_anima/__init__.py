@@ -68,7 +68,7 @@ from cogno_anima.stages.base import BaseStage
 from cogno_anima.stages.noumeno import Noumeno
 from cogno_anima.stages.ner import IntentAnalyzer
 from cogno_anima.stages.id import IDStage
-from cogno_anima.stages.ego import EgoStage
+from cogno_anima.stages.ego import EGO_PROMPT_BLOCKS, VALID_EGO_PROMPT_PATHS, EgoStage
 from cogno_anima.stages.superego import (
     SCOPE_PENDING_REQUEST_HEADER, SCOPE_TENANT_FACTS_HEADER, SCOPE_TOOL_TABLE_HEADER,
     UNREADABLE_VERDICT_CRITIQUE, SuperegoStage)
@@ -157,6 +157,8 @@ __all__ = [
     "IntentAnalyzer",
     "IDStage",
     "EgoStage",
+    "EGO_PROMPT_BLOCKS",
+    "VALID_EGO_PROMPT_PATHS",
     "SCOPE_PENDING_REQUEST_HEADER",
     "SCOPE_TENANT_FACTS_HEADER",
     "SCOPE_TOOL_TABLE_HEADER",

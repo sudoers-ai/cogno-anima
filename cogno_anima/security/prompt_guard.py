@@ -73,17 +73,17 @@ def _break_fence_tags(text: str) -> str:
 def reserved_headers() -> "tuple[str, ...]":
     """Every top-level section header this library renders into a prompt — DERIVED, not listed.
 
-    Read off the closed tables the prompts are inventoried by (the voice's, the judge's and the
-    scope guard's, each pinned to its prompt by a sync test) plus the executor's own
-    :data:`cogno_anima.stages.ego.PROMPT_HEADERS`. Imported lazily: this module is imported BY
-    those stages, and the tables are only needed once a prompt is being built.
+    Read off the closed tables the prompts are inventoried by — the voice's, the judge's, the
+    scope guard's and the executor's (:data:`cogno_anima.stages.ego.EGO_BLOCKS`), each pinned to
+    its prompt by a sync test. A row without a header (three of the executor's parts have none)
+    reserves nothing. Imported lazily: this module is imported BY those stages, and the tables
+    are only needed once a prompt is being built.
     """
-    from cogno_anima.stages.ego import PROMPT_HEADERS
+    from cogno_anima.stages.ego import EGO_BLOCKS
     from cogno_anima.stages.superego import SuperegoStage
 
     found = {h for table in (SuperegoStage._VOICE_BLOCKS, SuperegoStage._JUDGE_BLOCKS,
-                             SuperegoStage._SCOPE_BLOCKS) for h, _slug in table}
-    found.update(PROMPT_HEADERS)
+                             SuperegoStage._SCOPE_BLOCKS, EGO_BLOCKS) for h, _slug in table}
     return tuple(sorted(h for h in found if h.startswith("#")))
 
 
@@ -207,12 +207,21 @@ def render_context_data(text: object, tool_names: "Iterable[str]" = ()) -> str:
     return f"{CONTEXT_DATA_SAYS}\n<{CONTEXT_DATA_TAG}>\n{body}\n</{CONTEXT_DATA_TAG}>"
 
 
-def render_context(notes: object, data: object, tool_names: "Iterable[str]" = ()) -> str:
-    """Both halves of the context as the three prompts carry them, in order.
+def render_context_parts(notes: object, data: object,
+                         tool_names: "Iterable[str]" = ()) -> "tuple[str, str]":
+    """The two halves of the context, each as a prompt carries it — ``""`` for a half with
+    nothing to render.
 
     ``notes`` is `mk.EGO_CONTEXT` — the host's own text, rendered as it always was
     (:func:`defang_structure`, no fence). ``data`` is `mk.EGO_CONTEXT_UNTRUSTED`, fenced
-    (:func:`render_context_data`). With no data the result is exactly what `mk.EGO_CONTEXT`
-    alone rendered before the second half existed."""
-    parts = [defang_structure(str(notes or "").strip()), render_context_data(data, tool_names)]
-    return "\n\n".join(p for p in parts if p)
+    (:func:`render_context_data`). Apart, for the one caller that counts them apart: the
+    executor's prompt inventory, where "the host's notes" and "what other people wrote" are two
+    rows. :func:`render_context` is these two joined, and nothing else."""
+    return (defang_structure(str(notes or "").strip()), render_context_data(data, tool_names))
+
+
+def render_context(notes: object, data: object, tool_names: "Iterable[str]" = ()) -> str:
+    """Both halves of the context as the three prompts carry them, in order
+    (:func:`render_context_parts`, joined by a blank line). With no data the result is exactly
+    what `mk.EGO_CONTEXT` alone rendered before the second half existed."""
+    return "\n\n".join(p for p in render_context_parts(notes, data, tool_names) if p)

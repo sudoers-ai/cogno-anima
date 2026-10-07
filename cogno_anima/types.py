@@ -506,6 +506,61 @@ class EgoResult(BaseModel):
     # the catalog, not copied per turn into a trace.
     tools_offered: list[str] = Field(default_factory=list)
 
+    # Which PARTS the executor's system prompt carried on this call, and how long each was —
+    # ``{"block": slug, "chars": n}``, the slug from the closed ``stages.ego.EGO_BLOCKS``, never
+    # a byte of the persona, of a memory or of the contact's words, so the record needs no purge
+    # path of its own. The voice, the judge and the scope guard have had theirs
+    # (``SuperegoResult.prompt_blocks``, ``ScopeCheckResult.prompt_blocks``); the executor was
+    # the one stage whose prompt left nothing behind, and it is the stage that ACTS.
+    #
+    # Measured on a downstream host: a contact asked for a message to go to a second person
+    # while a proposal was waiting, and the executor proposed the text of the LAST DELIVERY
+    # instead of the waiting one. Which part of its prompt had shown it that text could not be
+    # answered from anything persisted.
+    #
+    # **Per CALL, i.e. per correction attempt.** The prompt is assembled once per ``process``
+    # and re-sent on every step of the loop, and a correction retry builds a new one (it gains
+    # ``correction``, and ``actions_done`` when the previous attempt wrote). The orchestrator
+    # REPLACES ``ctx.ego_result`` on every retry, so only the surviving attempt's inventory is
+    # here; a layer that wants each attempt's copies it before the next one runs.
+    #
+    # The lengths add up: ``sum(chars) + 2 * (rows - 1) == len(prompt_text)``. Empty means this
+    # result was NOT produced by ``EgoStage.process`` (a hand-built one, a host's stand-in, a
+    # library that predates the field) — a prompt that was built always has at least
+    # ``task_context``.
+    prompt_blocks: list[dict[str, Any]] = Field(default_factory=list)
+    # The executor's rendered SYSTEM prompt, IN MEMORY, for the turn the host is holding right
+    # now — the twin of ``SuperegoResult.prompt_text`` and under the same rule: it carries
+    # contact data (the conversation, memories, the host's notes) and the core NEVER persists
+    # it, logs it or copies it anywhere. Populated on every call, not only on an interesting
+    # one: the turn that looks normal is the comparison half. Cut a part out of it with
+    # ``EgoStage.prompt_block(prompt_text, prompt_blocks, slug)`` — three of the parts have no
+    # header to match on, so a host scanning the text would cut in the wrong place.
+    prompt_text: str = ""
+    # The digest of what the FIRST model call of this attempt was handed — the system prompt,
+    # the task, and on the native path the tool schemas — through ``prompts.prompt_digest``
+    # (the one digest algorithm in the ecosystem). The inventory says WHICH parts rendered and
+    # how long each was; this says whether the bytes were the same ones: between two attempts
+    # of one turn, or between two runs of one fixed input.
+    #
+    # **Only the digest leaves the stage, never a byte of the prompt.** And because the
+    # contact's words are inside it, it is a **per-ATTEMPT** label and not a deployment one:
+    # ``metrics.prompt_sha`` (stamped by the orchestrator from the TEMPLATES) stays the label
+    # to group by across contacts, and the two must never be read as the same kind of thing —
+    # the distinction ``ScopeCheckResult.prompt_sha`` already draws.
+    #
+    # ``None`` = not on record: a result ``EgoStage.process`` did not produce, or tool schemas
+    # that could not be serialised (a digest of half the input would claim an identity it had
+    # not checked).
+    prompt_sha: Optional[str] = None
+    # How the catalogue reached the model on this call: ``native`` (the provider's
+    # function-calling API carried the schemas; the prompt renders no ``available_tools``) or
+    # ``fallback`` (rendered into the prompt with the ``<TOOL_CALL>`` mechanics). Closed —
+    # ``stages.ego.VALID_EGO_PROMPT_PATHS``. It is what tells "no ``available_tools`` row
+    # because the path is native" from "…because the catalogue was empty", which the
+    # inventory alone cannot. ``""`` = not on record, the rule of the fields above.
+    prompt_path: str = ""
+
     metrics: StageMetrics
 
     @property

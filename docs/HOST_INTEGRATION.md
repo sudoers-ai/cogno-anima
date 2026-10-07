@@ -127,6 +127,23 @@ Key points:
   critique back via `ctx.metadata["ego_correction"]`.
 - Both `ACTION_REQUEST` and `INFORMATION_REQUEST` route to EGO (the tool
   gateway). Pure social/creative turns skip EGO and go straight to voice.
+- **The executor's prompt leaves a record** (since 0.1.5). Every `ego.process` fills
+  four fields on `ctx.ego_result`:
+  - `prompt_blocks` — `[{"block", "chars"}]`, slugs from the closed
+    `cogno_anima.EGO_PROMPT_BLOCKS`. Safe to persist: no byte of the prompt is in it.
+  - `prompt_sha` — the digest of what the first model call was handed. Safe to persist
+    as a per-ATTEMPT label; it is a digest of rendered text, so it belongs wherever the
+    turn's own record is purged.
+  - `prompt_path` — `native` or `fallback` (`cogno_anima.VALID_EGO_PROMPT_PATHS`).
+  - `prompt_text` — the rendered system prompt, in memory. **Never persist or log it**:
+    it carries the conversation, memories and your own notes. Read a part of it with
+    `EgoStage.prompt_block(prompt_text, prompt_blocks, slug)`; do not match on headers,
+    three of the parts have none.
+
+  Your loop REPLACES `ctx.ego_result` on every retry, so copy the three persistable
+  fields per attempt, before the next `ego.process`, if you want more than the
+  survivor's. A second executor (an intra-turn consult) returns its own `EgoResult`
+  with its own record.
 - **Only a JSON boolean is a verdict** (`cogno_anima.verdict`, since 0.1.3). The
   judge, the scope guard and the pre-judge read their boolean through one strict
   reader: a string (`"false"`, `"true"`), a number, `null`, a missing key, a key

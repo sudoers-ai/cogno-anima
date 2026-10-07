@@ -39,7 +39,8 @@ from cogno_anima.types import (
     EgoStep,
     EgoResult, ToolResult, HELD_BY_NAME_PREFIX,
 )
-from cogno_anima.security.prompt_guard import render_context, sanitize_untrusted
+from cogno_anima.prompts import prompt_digest
+from cogno_anima.security.prompt_guard import render_context_parts, sanitize_untrusted
 from cogno_synapse import (LLMBackend, cached_tokens_of, served_model_of,
                            system_fingerprint_of)
 from cogno_synapse.base import ToolCallingBackend
@@ -51,17 +52,54 @@ logger = logging.getLogger("cogno_anima.ego")
 
 STAGE_NAME = "ego"
 
-# The executor prompt's own top-level headers — one row per section `_build_system` can render.
-# Untrusted text reaching this prompt (tool results, the host's `mk.EGO_CONTEXT`) may not open a
-# line with any of them: `cogno_anima.security.prompt_guard.reserved_headers` reads this tuple,
-# and `tests/unit/test_injection_by_tool_data.py` pins it to what the prompt really renders.
+# The executor prompt's PARTS, as literal header → stable slug: one row per part
+# `EgoStage._system_parts` can render, in the order it renders them. The fourth table of the
+# family (`SuperegoStage._VOICE_BLOCKS`, `_JUDGE_BLOCKS`, `_SCOPE_BLOCKS`) and closed for the same
+# reason: what a host persists about this prompt is drawn from these slugs alone.
+#
+# **It is not scanned for, and that is measured.** The other three inventories find their
+# sections by header in the rendered text. Here three of the eight parts have NO header of this
+# library's — the host's persona prompt, the host's context notes (`mk.EGO_CONTEXT`) and the
+# fenced third-party half (`mk.EGO_CONTEXT_UNTRUSTED`) — so a scan over the five headers gave
+# the persona no row at all and filed the whole context under `task_context` (2081 characters
+# against a real 88, on a prompt of 2556). The inventory is therefore taken from the PARTS the
+# prompt is joined from: one list, two readers (`_build_system` and `prompt_inventory`), so the
+# record cannot describe a prompt other than the one sent. Giving the context a header would
+# have made the scan work and changed the bytes of every turn's prompt; an instrument does not.
+#
+# The header column is what untrusted text may not open a line with:
+# `cogno_anima.security.prompt_guard.reserved_headers` reads THIS table, and
+# `tests/unit/test_ego_prompt_inventory.py` pins it to what the prompt really renders.
 _H_TASK_CONTEXT = "# Task context"
 _H_AVAILABLE_TOOLS = "# Available tools"
 _H_TOOL_CALLS = "# Tool calls"
 _H_ACTIONS_DONE = "# ACTIONS ALREADY EXECUTED"
 _H_CORRECTION = "# Correction requested"
-PROMPT_HEADERS: "tuple[str, ...]" = (
-    _H_TASK_CONTEXT, _H_AVAILABLE_TOOLS, _H_TOOL_CALLS, _H_ACTIONS_DONE, _H_CORRECTION)
+EGO_BLOCKS: "tuple[tuple[str, str], ...]" = (
+    ("", "persona"),                        # the host's `system_prompt`, as handed in
+    (_H_TASK_CONTEXT, "task_context"),
+    ("", "context"),                        # `mk.EGO_CONTEXT`: the host's notes, unfenced
+    ("", "context_data"),                   # `mk.EGO_CONTEXT_UNTRUSTED`, inside its fence
+    (_H_ACTIONS_DONE, "actions_done"),
+    (_H_CORRECTION, "correction"),
+    (_H_AVAILABLE_TOOLS, "available_tools"),    # text path only: the catalogue, rendered
+    (_H_TOOL_CALLS, "tool_calls"),              # text path only: the `<TOOL_CALL>` mechanics
+)
+#: The closed alphabet a row's ``block`` is drawn from — what a layer that persists the
+#: inventory closes its values with.
+EGO_PROMPT_BLOCKS: "tuple[str, ...]" = tuple(slug for _header, slug in EGO_BLOCKS)
+#: The headers of the table above. DERIVED: a part that gains a header is reserved the day its
+#: row says so.
+PROMPT_HEADERS: "tuple[str, ...]" = tuple(header for header, _slug in EGO_BLOCKS if header)
+
+#: How the catalogue reached the model on this call: through the provider's function-calling
+#: API (`native`) or rendered into the prompt with the `<TOOL_CALL>` mechanics (`fallback`).
+#: The two values `EgoStep.path` has always carried, now named once.
+PATH_NATIVE = "native"
+PATH_FALLBACK = "fallback"
+VALID_EGO_PROMPT_PATHS: "frozenset[str]" = frozenset({PATH_NATIVE, PATH_FALLBACK})
+
+_PART_SEPARATOR = "\n\n"
 
 # How to call tools on the text-fallback path (omitted on native FC — the API
 # carries the tool format). The persona prompt must NOT contain this; the core
@@ -139,7 +177,7 @@ class EgoStage:
             else None
         )
         use_native = fc_backend is not None
-        path = "native" if use_native else "fallback"
+        path = PATH_NATIVE if use_native else PATH_FALLBACK
 
         # Host-declared tool classification (optional; mirrors ToolCallingBackend).
         policy: Optional[ToolPolicyDispatcher] = (
@@ -181,8 +219,15 @@ class EgoStage:
         force_first = ((ctx.intent.intent_class == "ACTION_REQUEST" or force_tool)
                        and not readonly and not conversational)
 
-        system = self._build_system(ctx, system_prompt, use_native, tools)
+        # The parts ONCE, and both the prompt and its record from that one list: what is
+        # persisted about this prompt cannot describe another one. Built per `process` call —
+        # i.e. per correction attempt — and never per step: the loop below re-sends this same
+        # `system` and grows only the user half (tool results), which `steps` already records.
+        parts = self._system_parts(ctx, system_prompt, use_native, tools)
+        system = _PART_SEPARATOR.join(text for _slug, text in parts)
         task = ctx.noumeno.rewritten or ctx.user_input
+        # Taken BEFORE the loop, over exactly what the first model call is handed.
+        prompt_sha = self._prompt_sha(system, task, tools if use_native else None)
 
         # Native keeps an OpenAI-format message list; fallback grows a text prompt.
         messages: list[dict] = [
@@ -456,6 +501,10 @@ class EgoStage:
             # What this call was OFFERED, after every mask — the answer to "did the model
             # decline, or was it never given the option", which `tools_executed` cannot give.
             tools_offered=sorted(valid_names),
+            prompt_blocks=self.prompt_inventory(parts),
+            prompt_text=system,
+            prompt_sha=prompt_sha,
+            prompt_path=path,
             metrics=StageMetrics(
                 stage=STAGE_NAME, elapsed_ms=elapsed_ms,
                 tokens_in=total_in, tokens_out=total_out, cached_tokens=total_cached,
@@ -486,15 +535,25 @@ class EgoStage:
         """[host persona-exec] + [task ctx] + [host injected text] +
         [ACTIONS ALREADY EXECUTED] + [tool list + mechanics — fallback only].
 
-        On native FC the tool schemas travel via the API, so they are NOT
-        rendered into the prompt; on the fallback path the model can only see
-        tools that are written here, so they (and the <TOOL_CALL> format) are.
+        The parts of :meth:`_system_parts`, joined by a blank line — and nothing else, so the
+        prompt and its inventory are two readings of one list.
         """
-        parts: list[str] = [system_prompt.strip()]
+        return _PART_SEPARATOR.join(
+            text for _slug, text in self._system_parts(ctx, system_prompt, native, tools))
 
-        task_ctx = self._task_context(ctx)
-        if task_ctx:
-            parts.append(task_ctx)
+    def _system_parts(
+        self, ctx: PipelineContext, system_prompt: str, native: bool, tools: list[dict],
+    ) -> "list[tuple[str, str]]":
+        """The executor's system prompt as ``(slug, text)`` parts, in the order they are sent.
+
+        Every slug is a row of :data:`EGO_BLOCKS`; a part with nothing to say is not in the
+        list (it never was in the prompt either). On native FC the tool schemas travel via the
+        API, so they are NOT rendered into the prompt; on the fallback path the model can only
+        see tools that are written here, so they (and the <TOOL_CALL> format) are.
+        """
+        parts: "list[tuple[str, str]]" = [("persona", system_prompt.strip())]
+
+        parts.append(("task_context", self._task_context(ctx)))
 
         # The context, in its two halves. `mk.EGO_CONTEXT` is the host's own text: it may not
         # open a line with one of this prompt's headers (a planted `# Correction requested`
@@ -502,29 +561,94 @@ class EgoStage:
         # `mk.EGO_CONTEXT_UNTRUSTED` is what other people wrote (the conversation, memories, a
         # delivered message): fenced, under a sentence saying an instruction in it is data.
         # Without the second half this is the bytes of before (`render_context`).
-        context = render_context(
+        notes, data = render_context_parts(
             ctx.metadata.get(mk.EGO_CONTEXT), ctx.metadata.get(mk.EGO_CONTEXT_UNTRUSTED),
             {(t.get("function") or {}).get("name", "") for t in tools})
-        if context:
-            parts.append(context)
+        parts += [("context", notes), ("context_data", data)]
 
-        actions = self._actions_already_executed(ctx)
-        if actions:
-            parts.append(actions)
+        parts += self._correction_parts(ctx)
 
         if not native:
             rendered = self._render_tools(tools)
             if rendered:
-                parts.append(rendered)
+                parts.append(("available_tools", rendered))
                 # ONLY with a catalogue. Teaching `<TOOL_CALL>` to a persona that has nothing to
                 # call is teaching a syntax whose only possible use is wrong — and the model
                 # takes it: measured live, a tool-less persona emitted the tag and it reached
                 # the contact, because nothing downstream strips a block that parses to a tool
                 # nobody offers. The instruction was appended unconditionally, so an empty
                 # catalogue still got the lesson.
-                parts.append(_TOOL_MECHANICS)
+                parts.append(("tool_calls", _TOOL_MECHANICS))
 
-        return "\n\n".join(p for p in parts if p)
+        return [(slug, text) for slug, text in parts if text]
+
+    @staticmethod
+    def prompt_inventory(parts: "list[tuple[str, str]]") -> "list[dict[str, object]]":
+        """Which parts the executor's system prompt carried, and how long each was — NO text.
+
+        The fourth of the family (`SuperegoStage.voice_prompt_inventory`,
+        `judge_prompt_inventory`, `scope_prompt_inventory`), with the same row and the same
+        guarantee: ``{"block": slug, "chars": n}``, the slug from the closed
+        :data:`EGO_BLOCKS`, so no byte of the persona, of a memory or of a contact's sentence
+        can reach whatever stores it. It takes the PARTS and not the rendered text because
+        three of them carry no header to find — see :data:`EGO_BLOCKS`.
+
+        Order is as sent, so two attempts of one turn diff as lists. The lengths add up to the
+        prompt: ``sum(chars) + 2 * (rows - 1) == len(prompt_text)``, the blank line between two
+        parts being the only byte nobody's row counts. A part with a slug outside the alphabet
+        is dropped rather than written — the list is built here, so that is a defect of this
+        module and never a turn's data.
+        """
+        return [{"block": slug, "chars": len(text)}
+                for slug, text in parts if slug in EGO_PROMPT_BLOCKS]
+
+    @staticmethod
+    def prompt_block(prompt_text: str, prompt_blocks: object, slug: str) -> str:
+        """One part of an executor prompt, by SLUG, cut out of ``prompt_text`` with the
+        inventory recorded beside it — ``""`` when that part did not render.
+
+        Exists so a host holding an `EgoResult` in memory can read "the context" without
+        knowing that the executor's prompt gives it no header, which is exactly what a host
+        matching on text would get wrong. The cut is by the recorded lengths, and it REFUSES
+        (``""``) when they do not add up to the text: an inventory and a prompt from two
+        different calls must not be sliced into something that looks like an answer. A slug
+        that rendered twice returns its first part.
+        """
+        if not isinstance(prompt_text, str) or not isinstance(prompt_blocks, (list, tuple)):
+            return ""
+        spans: "list[tuple[str, int, int]]" = []
+        at = 0
+        for row in prompt_blocks:
+            if not isinstance(row, dict):
+                return ""
+            chars = row.get("chars")
+            if isinstance(chars, bool) or not isinstance(chars, int) or chars < 0:
+                return ""
+            spans.append((str(row.get("block") or ""), at, at + chars))
+            at += chars + len(_PART_SEPARATOR)
+        if not spans or at - len(_PART_SEPARATOR) != len(prompt_text):
+            return ""
+        return next((prompt_text[a:b] for name, a, b in spans if name == slug), "")
+
+    @staticmethod
+    def _prompt_sha(system: str, task: str, native_tools: "Optional[list[dict]]",
+                    ) -> Optional[str]:
+        """The digest of what the FIRST model call of this attempt is handed, through
+        ``prompts.prompt_digest`` (the one digest algorithm in the ecosystem): the system
+        prompt, then the task, then — on the native path only — the tool schemas the API
+        carries beside them (canonical JSON; on the text path the catalogue is already inside
+        the system prompt). See ``EgoResult.prompt_sha`` for what it may be compared with.
+
+        ``None`` when the schemas cannot be serialised: a digest of half the input would read
+        as "the same prompt" over a call that was not, and a diagnostic field must never cost
+        the turn."""
+        try:
+            catalogue = ("" if native_tools is None else
+                         json.dumps(native_tools, sort_keys=True, ensure_ascii=False))
+        except (TypeError, ValueError):
+            logger.warning("stage=ego event=prompt_sha_unavailable reason=tools_not_json")
+            return None
+        return prompt_digest(system, task, catalogue) or None
 
     @staticmethod
     def _render_tools(tools: list[dict]) -> str:
@@ -733,23 +857,33 @@ class EgoStage:
     def _actions_already_executed(self, ctx: PipelineContext) -> str:
         """Built from the prior EgoResult on a SUPEREGO-driven retry. Renders
         whatever trace the host hands back — the core does NOT assume the prior
-        actions persisted (host rollback → empty trace → fresh retry)."""
+        actions persisted (host rollback → empty trace → fresh retry).
+
+        The two parts of :meth:`_correction_parts`, joined by a blank line."""
+        return _PART_SEPARATOR.join(text for _slug, text in self._correction_parts(ctx))
+
+    def _correction_parts(self, ctx: PipelineContext) -> "list[tuple[str, str]]":
+        """What a correction retry adds, as ``(slug, text)``: the writes the previous attempt
+        COMMITTED (``actions_done``) and the judge's reason (``correction``). Either may be
+        absent; with no correction on the turn there is neither."""
         correction = ctx.metadata.get("ego_correction")
         if not correction:
-            return ""
-        lines: list[str] = []
+            return []
+        parts: "list[tuple[str, str]]" = []
         prior = ctx.ego_result
         if prior:
             done = [t for t in prior.tools_executed if t.ok and t.side_effect]
-            for t in done:
-                lines.append(f"- {t.tool}({json.dumps(t.arguments, ensure_ascii=False)})")
-        block = ""
-        if lines:
-            block += f"{_H_ACTIONS_DONE} (do NOT repeat these)\n" + "\n".join(lines) + "\n\n"
+            if done:
+                lines = [f"- {t.tool}({json.dumps(t.arguments, ensure_ascii=False)})"
+                         for t in done]
+                parts.append(("actions_done",
+                              f"{_H_ACTIONS_DONE} (do NOT repeat these)\n" + "\n".join(lines)))
         reason = correction.get("reason")
         if reason:
-            block += f"{_H_CORRECTION}\n{reason}"
-        return block.strip()
+            # Trailing blanks of the reason are dropped, as they always were: it was the last
+            # thing in a block that was stripped whole.
+            parts.append(("correction", f"{_H_CORRECTION}\n{reason}".rstrip()))
+        return parts
 
     # ── loop helpers ─────────────────────────────────────────────────
 
