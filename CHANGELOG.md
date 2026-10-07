@@ -67,24 +67,63 @@
   accident that made `"false"` do so. A model that spells its booleans as strings is now
   rejected by the judge on every turn and never blocks at the guard — both counted, by
   `verdict_read`, instead of both silently wrong half of the time.
-- **An unreadable verdict costs the correction loop what a rejection costs.** `evaluate` asks
-  the judge ONCE; it does not re-ask. With an orchestrator budget of one attempt the turn ends as
-  `judge_exhausted`; with a budget of two the EXECUTOR is run again over a critique that names no
-  defect; with a two-tier judge an unreadable fast verdict escalates to the strong judge in the
-  same attempt (it used to be a final approval). Re-asking the judge rather than re-running the
-  executor is the better repair and is not in this release: it changes the call count, and the
-  rate it would act on has never been measured.
+- **An unread verdict costs the correction loop what a rejection costs — and `evaluate` asks
+  once.** It does not re-ask the judge (pinned by a test). Measured with the real stage under
+  cogno-soma `ed81f9a`, before and after:
+
+  | the judge answers | budget 1 (what hosts run) | budget 2 | two-tier judge |
+  | --- | --- | --- | --- |
+  | no JSON / no `approved` key | `judge_exhausted` at the first attempt — **the same as before this release** (it already read `approved=False`); only the critique text changes, to the constant | the EXECUTOR runs again, as before | the strong judge reads it, as before |
+  | `"approved": "false"` or `"true"` in a string, `1`, `[false]` | was a final APPROVAL → `judge_exhausted` at the first attempt | was a final approval → the executor runs again over a critique that names no defect | a fast verdict was a final approval → **the strong judge reads it in the same attempt** |
+  | the key twice, `false` then `true` | was a final approval → as the row above | as the row above | as the row above |
+
+  So what changes for a loop is the string, the truthy non-boolean and the duplicated key; the
+  unparseable family behaves as it did. Re-asking the JUDGE on an unread verdict, rather than
+  re-running the executor or exhausting, is the better repair and is NOT in this release: it
+  changes the call count, and the rate it would act on has never been measured. It is queued,
+  to be decided with the rate the mark now makes countable.
+
+### Landing is not serving
+
+- **A host re-pins this release only after the non-boolean rate is measured at ZERO on the models
+  it runs as judge and as scope guard.** The reason is the first cost above: a model that spells
+  its booleans as strings goes from "approves everything" to "rejects everything". If a production
+  model shows a rate above zero, the host does not re-pin and the judge re-ask moves to the front
+  of the queue. `tests/integration/test_superego.py::test_the_judge_and_the_guard_answer_in_json_booleans`
+  asserts the read on four canonical turns for whatever spec `COGNO_TEST_MODEL` names.
+- **The mark is not persisted by anybody yet.** It exists on the result and in `ctx.metadata`;
+  persisting it is one change in the orchestrator (the per-attempt judge ledger) and one in the
+  host (the trace). The names to read, exactly — never retyped:
+  - `SuperegoResult.verdict_read` (the judge, per `evaluate` call) and
+    `ScopeCheckResult.verdict_read` (the guard) — `str`, default `""`;
+  - `ctx.metadata[mk.SCOPE_VERDICT_READ]`, i.e. `"scope_verdict_read"` — the guard's, per turn,
+    ABSENT when it asked nothing;
+  - the alphabet: `cogno_anima.VALID_VERDICT_READS` (the table above, as one tuple);
+  - the judge's fixed critique: `cogno_anima.UNREADABLE_VERDICT_CRITIQUE`.
+
+  Until then the countable signals are that critique in a per-attempt ledger and two WARNING
+  lines, `event=judge_verdict_unreadable read=…` and `event=scope_verdict_unreadable read=…`.
 
 ### What could and could not be counted
 
 - **The raw reply of the judge and of the guard is persisted nowhere** — not in a trace, not in a
   ledger, not in a log — so how often a verdict arrived as a string in the past is NOT countable.
-  An approval by `"false"` leaves the record of a genuine approval; a block by `"false"` and an
-  allow over an unparseable reply leave the records of the genuine ones.
-- **One indirect signal exists, for the judge only:** a reply with no readable `approved` used
-  to leave exactly the default critique `"execution rejected"`. Counted on a downstream host's
-  per-attempt ledger: **0 in 916 judge rows**. That bounds the unparseable/missing family, and
-  says nothing about strings.
+  An approval by `"false"` left the record of a genuine approval (approved, no critique); a block
+  by `"false"` and an allow over an unparseable reply left the records of the genuine ones.
+- **Two PROXIES exist. Neither is the number.**
+  - **0 in 916.** *What it measures:* judge attempts whose critique is exactly the default
+    `"execution rejected"`, which is what a reply with no readable `approved` used to leave.
+    *Where from:* the per-attempt judge ledger of a downstream host. *What it cannot see:* a
+    string. `"approved": "false"` read as an approval left no critique at all, and
+    `"approved": "true"` read as the approval it meant. It bounds the unparseable/missing family
+    only — and it also counts a genuine JSON `false` with an empty critique, so it is an upper
+    bound even of that.
+  - **0 in 774.** *What it measures:* `error` verdicts of the pre-judge, which has been strict
+    since its first cut — `error` there is every reply that was not a JSON boolean.
+    *Where from:* two downstream replays of that judge over 129 real proposed writes, three
+    runs each, on the model that host runs as its judge. *What it cannot see:* the judge's own
+    prompt or the guard's — it is the same model and the same answer format under a DIFFERENT,
+    shorter prompt — nor the scope guard's model at all.
 - That is why this release LEAVES A MARK: from here on `verdict_read` is the count.
 
 ### Declared, not changed

@@ -420,6 +420,57 @@ def test_the_new_fields_default_to_no_verdict_asked():
     assert mk.SCOPE_VERDICT_READ == "scope_verdict_read"
 
 
+# ── the alphabet a persister reads is ONE exported constant ───────────────────────────────
+
+async def test_the_stages_emit_exactly_the_exported_alphabet():
+    """Whoever PERSISTS the mark (an orchestrator's ledger, a host's trace) validates it
+    against ``cogno_anima.VALID_VERDICT_READS`` and must never retype the values. This is the
+    other half of that deal: every value the two stages can put on a result is in the
+    constant, and every value of the constant is one a stage can produce — derived by running
+    every shape through both, not by listing them again here."""
+    assert cogno_anima.VALID_VERDICT_READS is VALID_VERDICT_READS, "one object, two import paths"
+    assert cogno_anima.UNREADABLE_VERDICT_CRITIQUE is UNREADABLE_VERDICT_CRITIQUE
+    stage = SuperegoStage()
+    judge: "set[str]" = set()
+    guard: "set[str]" = set()
+    stamped: "set[str]" = set()
+    replies = [(t, k) for t, _ in _NOT_A_VERDICT for k in ("approved", "blocked")]
+    replies += [('{{"{key}": true}}', "approved"), ('{{"{key}": false}}', "blocked")]
+    for template, key in replies:
+        raw = _shape(template, key)
+        if key == "approved":
+            judge.add((await stage.evaluate(_ctx(), ScriptedBackend([raw]),
+                                            limits_prompt="")).verdict_read)
+        else:
+            result, ctx, _ = await _guard(raw)
+            guard.add(result.verdict_read)
+            stamped.add(ctx.metadata[mk.SCOPE_VERDICT_READ])
+    judge.add((await stage.evaluate(_ctx(), RaisingBackend(), limits_prompt="")).verdict_read)
+    result, ctx, _ = await _guard(backend=RaisingBackend())
+    guard.add(result.verdict_read)
+    stamped.add(ctx.metadata[mk.SCOPE_VERDICT_READ])
+    assert judge == guard == stamped == set(VALID_VERDICT_READS)
+
+
+def test_the_documented_table_is_the_exported_alphabet():
+    """The table a downstream reader copies from lives in ``docs/HOST_INTEGRATION.md`` (the
+    metakey row) and in the CHANGELOG. Both must name every value of the constant, in
+    backticks, and the document must not name a read the constant does not have."""
+    import re
+    root = Path(cogno_anima.__file__).parent.parent
+    row = next(line for line in (root / "docs" / "HOST_INTEGRATION.md").read_text(
+        encoding="utf-8").splitlines() if line.startswith("| `scope_verdict_read`"))
+    named = set(re.findall(r"`([a-z_]+)`", row))
+    assert set(VALID_VERDICT_READS) <= named, set(VALID_VERDICT_READS) - named
+    # every snake_case token of the row that LOOKS like a read is one (the others are the
+    # key's own name and its sibling's)
+    assert named - set(VALID_VERDICT_READS) == {"scope_verdict_read", "scope_prompt_sha"}
+    changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
+    entry = changelog[changelog.index("## 0.1.3"):changelog.index("\n## ", changelog.index("## 0.1.3") + 1)]
+    for value in VALID_VERDICT_READS:
+        assert f"| `{value}` |" in entry, f"{value} is missing from the 0.1.3 table"
+
+
 # ── the pre-judge reads through the same reader ───────────────────────────────────────────
 
 async def _pre(raw: str) -> str:
