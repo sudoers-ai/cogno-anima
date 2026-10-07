@@ -39,7 +39,7 @@ import re
 import time
 import json
 import logging
-from typing import Any, Optional, Sequence
+from typing import Any, Iterable, Optional, Sequence
 
 from cogno_anima import metakeys as mk
 from cogno_anima import vocab
@@ -55,7 +55,8 @@ from cogno_synapse import (LLMBackend, cached_tokens_of, served_model_of,
 from cogno_anima.preserved import CRITICAL_TERM_RE
 from cogno_anima.prompts import prompt_digest
 from cogno_anima.utils import WarnOnce
-from cogno_anima.security.prompt_guard import defang_structure, sanitize_untrusted
+from cogno_anima.security.prompt_guard import (defang_structure, render_context,
+                                               sanitize_untrusted)
 from cogno_anima.security.contact_memo import (
     MEMO_HEADER, contact_memo_block, mask_contact_memo, sanitize_contact_memo)
 from cogno_anima.stages.drift import DriftCalculator
@@ -2439,6 +2440,15 @@ class SuperegoStage:
             return JUDGE_READONLY
         return JUDGE_EXECUTION
 
+    @staticmethod
+    def _context_body(ctx: PipelineContext, names: "Iterable[str]" = ()) -> str:
+        """What the judge and the voice render under their `# Context` header: `mk.EGO_CONTEXT`
+        as it always was, then — when the host hands one — `mk.EGO_CONTEXT_UNTRUSTED` inside its
+        fence. One call for both stages, and the executor makes the same one (`render_context`).
+        ``""`` when the turn carries neither, and then the section does not render at all."""
+        meta = getattr(ctx, "metadata", None) or {}
+        return render_context(meta.get(mk.EGO_CONTEXT), meta.get(mk.EGO_CONTEXT_UNTRUSTED), names)
+
     def _build_judge_prompt(self, ctx: PipelineContext, limits_prompt: str) -> str:
         ego = ctx.ego_result
         assert ego is not None  # evaluate() guarantees this before calling
@@ -2475,13 +2485,16 @@ class SuperegoStage:
         # dates from its own (wrong) sense of "now" and rejects a CORRECT tool
         # resolution ("resolved 'July 9th' to 2026-07-09 — wrong"), dead-ending a
         # valid turn in a handoff.
-        injected = ctx.metadata.get(mk.EGO_CONTEXT)
-        # Unfenced, and it carries third-party text (a delivered message, memories, the
-        # conversation): no line of it may open with one of this prompt's headers, or a planted
-        # `# EGO draft` starts a section the judge cannot tell from ours (F4.3). Identity on
-        # clean text.
-        context = (f"# Context (authoritative — clock/memories/history)\n"
-                   f"{defang_structure(str(injected).strip())}\n\n" if injected else "")
+        # Two halves under one header. `mk.EGO_CONTEXT` is the host's own text: no line of it
+        # may open with one of this prompt's headers, or a planted `# EGO draft` starts a
+        # section the judge cannot tell from ours (F4.3). `mk.EGO_CONTEXT_UNTRUSTED`, when the
+        # host hands one, is what other people wrote, between `<context_data>` fences. The
+        # header, the slug and every sentence that says "the Context above" hold for both, and
+        # with no second half these are the bytes of before.
+        body = self._context_body(ctx, names)
+        # (`or …EGO_CONTEXT`: a host context of blanks alone always rendered the bare header.)
+        context = (f"# Context (authoritative — clock/memories/history)\n{body}\n\n"
+                   if body or ctx.metadata.get(mk.EGO_CONTEXT) else "")
         # The CONTACT'S NOTE, in the USER half: it is per contact, so in the system message it
         # would break the (persona, role) prefix the business rules were moved there to make
         # cacheable. Sanitized with the turn's own tool set, like the tool results below it.
@@ -3168,7 +3181,7 @@ class SuperegoStage:
             return []
         grounded: "set[str]" = set()
         for evidence in (payload, ctx.user_input, str(ctx.metadata.get(mk.EGO_CONTEXT) or ""),
-                         system):
+                         str(ctx.metadata.get(mk.EGO_CONTEXT_UNTRUSTED) or ""), system):
             grounded |= set(cls._figure_keys(evidence))
         return sorted(k for k in cls._figure_keys(response)
                       if k in in_critique and k not in grounded)
@@ -3469,11 +3482,11 @@ class SuperegoStage:
         signals.append(f"Tone hints: {', '.join(rendered) or 'general:review'}")
         # Host-injected context (retrieved memories / history / clock) — the same
         # block the EGO sees; included so memories can ground the final reply.
-        injected = ctx.metadata.get(mk.EGO_CONTEXT)
-        # The judge's rule (`_build_judge_prompt`): unfenced third-party text, so no reserved
-        # header may open a line of it. Identity on clean text.
-        context_section = (f"# Context (memories/history)\n"
-                           f"{defang_structure(str(injected).strip())}\n\n" if injected else "")
+        # The judge's rule (`_build_judge_prompt`): the host's own text unfenced with no
+        # reserved header at a line start, then the third-party half inside its fence.
+        body = self._context_body(ctx, {t.tool for t in self._payload_records(ctx) if t.tool})
+        context_section = (f"# Context (memories/history)\n{body}\n\n"
+                           if body or ctx.metadata.get(mk.EGO_CONTEXT) else "")
         # The contact's note, for the voice too: it is the voice that addresses the contact, and
         # a nickname the executor alone had would reach the reply only if the draft happened to
         # carry it past the persona's own form-of-address line. Its own section, with a header

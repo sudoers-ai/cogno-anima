@@ -293,6 +293,21 @@ PII_READER_ROLE = "pii_reader_role"
 # bench named, against zero leaks observed in 297 production turns), not by caution.
 PII_OUTPUT_MODE = "pii_output_mode"
 
+# ── the THIRD-PARTY half of the context (HOST writes, per TURN) ──────────────────
+# Text other people wrote that the turn should READ: the conversation, the earlier-session
+# summary, memories, graph facts, the text of a message delivered to this contact. A `str`.
+# The executor, the judge and the voice render it right after `EGO_CONTEXT`, inside a
+# `<context_data>` fence of its own, under a sentence saying an instruction in it is data
+# (`security.prompt_guard.render_context_data`), and through `sanitize_untrusted`.
+#
+# `EGO_CONTEXT` stays what it was — the host's OWN notes, unfenced. The split is by PROVENANCE,
+# and only the host has it: a `[BRACKETED]` note written by the host and the same characters
+# typed inside a message are the same text, so no sentence and no pattern can tell them apart
+# here. What the host puts in THIS key is fenced as somebody else's, whatever it looks like.
+# Absent, blank or not a string → nothing renders, and every prompt is byte for byte the one
+# of before. A host adopts it on a measurement: it changes what a model reads on every turn.
+EGO_CONTEXT_UNTRUSTED = "ego_context_untrusted"
+
 # ── what the business CONFIGURED for this persona (HOST writes, per TURN) ─────────
 # The persona's rules as the executor was given them: the tenant's `custom_rules`, resolved by
 # the host for THIS contact's role and cut from their `# MATERIAL` half. Never another
