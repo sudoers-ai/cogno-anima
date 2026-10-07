@@ -290,9 +290,16 @@ the same bytes. A skill's own fence (`<excerpt>`) is the skill's to defang.
 - On `02e1850`, 7 of the 8 sources let a forged header escape.
 - After the change, none do.
 
-**What stays OPEN is the model's half.** The voice's data and the context block are unfenced by
-design, and fencing them changes every turn's prompt, so that needs an A/B. Whether the model obeys
-an instruction inside a fence is `tests/integration/test_injection_by_tool_data.py` (cloud spec).
+**What stays OPEN is outside the fence.** The fix is structural and does not move what a model
+does with an instruction. Measured downstream (2026-10-07, n=1 per cell, sampling; the full row is
+in `CHANGELOG.md`):
+- inside a fence the instruction was ignored 15/15 by one model and 13–15/15 by the other;
+- in the unfenced context block (`mk.EGO_CONTEXT`, a delivered message) one of the two obeyed 3/5.
+
+The voice's data and the context block are unfenced by design. Fencing them changes every turn's
+prompt, so the A/B of a fence around the context block is the next item. The meter is
+`tests/integration/test_injection_by_tool_data.py` (cloud spec); its judge test runs a clean
+CONTROL first, which must be approved before a rejection counts.
 
 ### Prompts
 
