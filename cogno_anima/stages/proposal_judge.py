@@ -48,6 +48,7 @@ from typing import Any, Iterable, Mapping, Optional, Sequence, Union
 
 from cogno_synapse import cached_tokens_of, served_model_of, system_fingerprint_of
 
+from cogno_anima.prompts import prompt_digest
 from cogno_anima.stages.superego import SuperegoStage
 from cogno_anima.tools.pre_judge import (
     JUDGE_PRE_STAGE,
@@ -234,6 +235,14 @@ class ProposalJudge:
         self._personas = [c for c in (_card(p) for p in list(personas or ())) if c][:_MAX_PERSONAS]
         self._facts_not_wording = bool(facts_not_wording)
         self.model = str(getattr(backend, "model", "") or "unknown")
+        # This judge's own prompt identity — the layer that AUTHORS a text owns its digest
+        # (``prompt_digest``, the one algorithm). The TEMPLATE: the system line and the
+        # ``# Decide`` block with the rules this construction turns on. Nothing of a turn is in
+        # it — not the clock's value, not a persona's name or purpose, not the contact's words,
+        # not the arguments — so two contacts under the same configuration share the label, and
+        # a different rule set (a clock given or not, facts-not-wording on or off) is a
+        # different one. Computed once: the four switches are fixed at construction.
+        self.prompt_sha = prompt_digest(_SYSTEM, self._decide())
 
     def _decide(self) -> str:
         """``_DECIDE``, with each context rule spliced in ONLY when its evidence is rendered."""
@@ -291,15 +300,27 @@ class ProposalJudge:
             return StageMetrics(stage=JUDGE_PRE_STAGE, elapsed_ms=(time.perf_counter() - t0) * 1000,
                                 tokens_in=ti, tokens_out=to, cached_tokens=cached,
                                 system_fingerprint=fingerprint, served_model=served,
-                                model=self.model)
+                                # Stamped HERE, on every row this judge builds — approved,
+                                # critique and error alike. Nobody downstream can add it: these
+                                # rows are filed by the host, not stamped by an orchestrator.
+                                prompt_sha=self.prompt_sha, model=self.model)
 
         system, prompt = self.render(proposal)
         # BEFORE the await: a judgement cut from here on was, in all likelihood, sent — and the
         # provider bills a request it received. A hook that misbehaves must not cost the call.
         note = getattr(proposal, "note_prompt", None)
         if callable(note):
+            estimate = estimate_prompt_tokens(system, prompt)
             try:
-                note(estimate_prompt_tokens(system, prompt))
+                # …and under WHICH configuration it was sent: the wrapper builds the estimated
+                # row of a judgement it cut, and that row is a cost under this template.
+                note(estimate, self.prompt_sha)
+            except TypeError:
+                # A hook that predates the second argument: the estimate still goes in.
+                try:
+                    note(estimate)
+                except Exception:                # noqa: BLE001
+                    pass
             except Exception:                    # noqa: BLE001
                 pass
         try:

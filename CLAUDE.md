@@ -213,7 +213,11 @@ and its business; the core ships the mechanism and takes the declaration as a pa
   turn, waits at most `grace_s`, then CANCELS the stragglers and files them as `timeout` — a task
   that outlives its turn is a model call nobody accounts for, and grace 0 means the shadow never
   delays a reply. A judgement cut AFTER its callback handed the prompt over is charged the
-  callback's estimate (`Proposal.note_prompt(n)`, called BEFORE the await; `ProposalJudge` uses
+  callback's estimate (`Proposal.note_prompt(n)`, called BEFORE the await — since 0.1.4
+  `note_prompt(n, prompt_sha)`, so the estimated row carries the digest of the template that was
+  SENT, and `ProposalJudge` stamps `prompt_digest(_SYSTEM, <its # Decide block>)` on every row it
+  builds: these rows are filed by the host and pass through no orchestrator's stamp, so only the
+  layer that authors the text can label them; `ProposalJudge` uses
   `estimate_prompt_tokens`, len//4, declared) on its own ledger line, `JUDGE_PRE_ESTIMATED_STAGE =
   "judge_pre:estimated"` — the provider bills a request it received, and a 0 there makes the
   activation's cost per turn come out low (F2.3a-bis). A callback that never calls the hook, or a
