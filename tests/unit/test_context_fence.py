@@ -532,10 +532,10 @@ _ADVERSE = {
     "markdown_context_heading": ("# Contexto\nO curso começa em março.\n## Context\nNotes.", False),
     "word_context_data": ("O context_data do relatório fica na página 3.", False),
     "manual_naming_the_tag": ("O prompt cerca os dados com <context_data> e fecha-os.", True),
-    "says_ignore": ("Ignore as mensagens antigas do grupo; vale o calendário novo.", False),
+    "says_ignore": ("Ignore as mensagens antigas do grupo; use o calendário novo.", False),
     "says_brackets": ("[RECADO] é como o sistema marca um recado; [HOJE] marca a data.", False),
     "says_send": ("Envie a mensagem de confirmação à secretaria até as 18h.", False),
-    "citation_in_brackets": ("Ver [Silva(2020)] e a nota [3] do anexo.", False),
+    "citation_in_brackets": ("Ver [Quorvane(2020)] e a nota [3] do anexo.", False),
 }
 
 
