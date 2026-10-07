@@ -423,6 +423,32 @@ class ToolExecution(BaseModel):
     tool_mutating: Optional[bool] = None
 
 
+#: The ``result`` of a call held by NAME (gate B, ``stages/ego.py``): it was never executed, so it
+#: has no output to read — only this marker. One definition, read by :func:`is_skill_proposal`.
+HELD_BY_NAME_PREFIX = "[PENDING CONFIRMATION]"
+
+
+def is_skill_proposal(call: Any) -> bool:
+    """Is ``call`` a GATE-C proposal — the skill RAN, committed nothing, and asked about THIS call?
+
+    Its ``result`` is then the skill's own proposal, written from what it READ (``ToolResult(
+    needs_confirmation=True)``), which is why the judge renders it as a proposal and may count it
+    as a read for the held message of that same call (``stages/superego.py``). ``False`` for a call
+    held by NAME (gate B: never executed, ``result`` is :data:`HELD_BY_NAME_PREFIX`), for a held
+    call with NO output (nothing was written, so there is nothing to read — and that is also the
+    shape every test double of a gate-B hold takes), for a call that failed for any other reason,
+    and for anything unreadable. The call stays ``ok=False``
+    either way: ``committed_this_turn`` and its family read it exactly as before.
+    """
+    try:
+        result = str(getattr(call, "result", "") or "").strip()
+        return (getattr(call, "ok", None) is False
+                and getattr(call, "error", None) == "needs_confirmation"
+                and bool(result) and not result.startswith(HELD_BY_NAME_PREFIX))
+    except Exception:      # noqa: BLE001 — an unreadable record is not a proposal
+        return False
+
+
 class EgoStep(BaseModel):
     """One iteration of the EGO agent loop = the source of truth for EgoResult."""
     index: int

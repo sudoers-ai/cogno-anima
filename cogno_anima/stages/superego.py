@@ -46,6 +46,7 @@ from cogno_anima import vocab
 from cogno_anima.types import (
     PipelineContext, StageMetrics, SuperegoResult, ScopeCheckResult, ToolExecution,
     held_messages_with_asks,
+    is_skill_proposal,
     read_succeeded_this_turn,
     write_attempted_this_turn,
 )
@@ -1087,9 +1088,38 @@ def _held_language_criterion(language: str) -> str:
     )
 
 
-def _held_message_rule(language: str = "") -> str:
-    """The held-message rule; a declared ``language`` adds criterion (e) — ONE text, two
-    renderings, so the legacy one is the same bytes it always was."""
+#: How the execution block names a GATE-C proposal (``types.is_skill_proposal``): the skill RAN,
+#: committed nothing and asked — its output is a proposal written from what it read, not a failure.
+#: Rendering it ``ERROR`` told the judge that read had failed, and the rules below read figures only
+#: off calls marked OK, so a held message quoting the proposal's own figures had no source at all.
+PROPOSED_STATUS = "PROPOSED (held for the user's confirmation; nothing executed)"
+
+
+def _status_of(call: Any) -> str:
+    """``OK`` / ``ERROR`` / :data:`PROPOSED_STATUS` — the word after the arrow of one call."""
+    if is_skill_proposal(call):
+        return PROPOSED_STATUS
+    return "OK" if call.ok else "ERROR"
+
+
+def _proposal_reads_clause(tools: "Sequence[str]") -> str:
+    """Criterion (d)'s ONE widening, and only for the held message of a PROPOSED call: that call's
+    own output is what this turn read in order to write it. Never a source for anything else."""
+    names = ", ".join(f"`{t}`" for t in tools)
+    return (
+        f"A held message of a call marked PROPOSED above ({names}) is judged against THAT call's "
+        "own proposal output as a READ: the call ran, read the data and wrote the proposal from "
+        "it, so a value written in that output supports the SAME value in that call's held "
+        "message under (a) and (d) — and a value it does not carry, or carries differently, is "
+        "still unsupported. It supports NOTHING else: not the EGO draft, not another held "
+        "message, not another call's claim. "
+    )
+
+
+def _held_message_rule(language: str = "", proposed: "Sequence[str]" = ()) -> str:
+    """The held-message rule; a declared ``language`` adds criterion (e), and held messages of
+    PROPOSED calls (``proposed``, their tools) add the read clause — each conditional, so the
+    legacy rendering is the same bytes it always was."""
     return (
         "JUDGE EACH HELD MESSAGE AS IF IT WERE BEING SENT NOW — this is criterion #1 (goal <-> "
         "execution) applied to the message's own text, because that text is what its recipient "
@@ -1105,6 +1135,7 @@ def _held_message_rule(language: str = "") -> str:
         f"{_held_language_criterion(language) if language else ''}. The MID-FLOW and "
         "confirmation allowances cover ASKING the user before sending; they never cover the "
         "content of the message being asked about. "
+        f"{_proposal_reads_clause(proposed) if proposed else ''}"
         f"{_held_asking_is_the_hosts('(a)-(e)' if language else '(a)-(d)')}"
         "Name in the critique what the message must say instead, so the retry can write it.\n\n"
     )
@@ -2534,7 +2565,7 @@ class SuperegoStage:
             f"{held_messages}"
             f"# EGO draft\n{draft}\n\n"
             f"{criteria}"
-            f"{_held_message_rule(held_message_language(ctx)) if held_messages else ''}"
+            f"{_held_message_rule(held_message_language(ctx), self._proposed_tools(ctx)) if held_messages else ''}"
             f"{self._held_ask_rule(ctx) if held_messages else ''}"
             f"{_MEMO_RULE if memo_block else ''}"
             "TRUST THE TOOLS: values a tool returned — resolved dates, ids, availability, "
@@ -2584,6 +2615,22 @@ class SuperegoStage:
         )
 
     @staticmethod
+    def _proposed_tools(ctx: PipelineContext) -> "tuple[str, ...]":
+        """The tools whose HELD call is a gate-C proposal and that deliver a held message, in
+        held order — ``()`` (the legacy rule) when there is none or nothing can be read."""
+        try:
+            held = getattr(getattr(ctx, "ego_result", None), "pending_confirmation", None) or []
+            delivering = {tool for tool, _text, _ask in held_messages_with_asks(ctx)}
+            out: "list[str]" = []
+            for call in held:
+                tool = str(getattr(call, "tool", "") or "")
+                if tool in delivering and is_skill_proposal(call) and tool not in out:
+                    out.append(tool)
+            return tuple(out)
+        except Exception:      # noqa: BLE001 — unreadable evidence widens nothing
+            return ()
+
+    @staticmethod
     def _format_held_messages(ctx: PipelineContext, names: "set[str]") -> str:
         """The held texts about to be sent, verbatim — or ``""`` when no held call delivers one.
 
@@ -2624,7 +2671,7 @@ class SuperegoStage:
         # tags and is identity on clean arguments (F4.3).
         return "\n".join(
             f"- {t.tool}({defang_structure(json.dumps(t.arguments, ensure_ascii=False))}) → "
-            f"{'OK' if t.ok else 'ERROR'}:\n<tool_output name=\"{t.tool}\">\n"
+            f"{_status_of(t)}:\n<tool_output name=\"{t.tool}\">\n"
             f"{sanitize_untrusted(t.result or t.error or '', names)}\n</tool_output>"
             for t in calls)
 

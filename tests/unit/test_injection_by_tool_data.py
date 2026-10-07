@@ -129,7 +129,7 @@ EXPECTED = {
 
 _FENCES = (*FENCE_TAGS, "excerpt")
 _TAG = re.compile(r"<(/?)(%s)\b[^>]*>" % "|".join(_FENCES))
-_ARGS_LINE = re.compile(r"^- \w+\(\{.*\}\) → (?:OK|ERROR):$")
+_ARGS_LINE = re.compile(r"^- \w+\(\{.*\}\) → [^:\n]+:$")
 
 
 # ── the stages, driven for real over a recording backend ─────────────────────────────────

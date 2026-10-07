@@ -37,7 +37,7 @@ from cogno_anima.types import (
     StageMetrics,
     ToolExecution,
     EgoStep,
-    EgoResult, ToolResult,
+    EgoResult, ToolResult, HELD_BY_NAME_PREFIX,
 )
 from cogno_anima.security.prompt_guard import defang_structure, sanitize_untrusted
 from cogno_synapse import (LLMBackend, cached_tokens_of, served_model_of,
@@ -368,7 +368,7 @@ class EgoStage:
                     held = ToolExecution(
                         tool=name, arguments=args, ok=False, error="needs_confirmation",
                         tool_mutating=self._declared_mutating(policy, name),
-                        result=(f"[PENDING CONFIRMATION] '{name}' is destructive and was "
+                        result=(f"{HELD_BY_NAME_PREFIX} '{name}' is destructive and was "
                                 "NOT executed; it needs explicit user confirmation first."),
                     )
                     execs.append(held)

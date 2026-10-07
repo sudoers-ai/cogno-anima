@@ -41,6 +41,74 @@ The voice's data and the context block are still UNFENCED. Fencing them would ch
 on every turn, so that change needs an A/B. Whether the model obeys an instruction inside a fence
 is measured by `tests/integration/test_injection_by_tool_data.py` (cloud spec, n=5 per source).
 
+## Unreleased — docs: the templated e-mail as the gate-C shape (E1, 2026-10-06)
+
+- `docs/ACT_CONFIRM_READONLY.md`: under «A held MESSAGE is judged before it is sent», the shape the
+  0.1.2 change was written for — a downstream templated e-mail, composed by the host, held by gate
+  C with the composed text in the call's own arguments, re-composed and compared on the «sim».
+- `docs/HOST_INTEGRATION.md`: the `held_delivered_text` row says the declared argument may be one
+  the host writes at the proposal. Docs only; no code moves.
+
+## Unreleased — ci: `test_judge_still_rejects_a_read_whose_draft_invents` marked `xfail(strict=False)` (2026-10-06)
+
+- **The defect.** The model canary `tests/integration/test_superego.py::test_judge_still_rejects_a_read_whose_draft_invents`
+  («an empty read grounds a negative answer, never a listing») fails on the local `qwen3:8b` runner: main 02e18509's
+  nightly (run 37459138949) and PR #209 twice, with the runner also logging `bind: address already in use`.
+- **What changes.** The test is `xfail(strict=False)` with the reason written on it. It still runs and its
+  assertion is unchanged; it turns back into a plain pass the day the model meets it. Nothing else moves.
+- **Follow-up (queued).** Re-measure this canary n=3 on a cloud judge, and fix the runner's port collision.
+
+## 0.1.2 — 2026-10-06 — the judge reads a gate-C proposal as a proposal, and its output grounds its own held message
+
+### Changed
+
+- **A call held by gate C renders `→ PROPOSED (held for the user's confirmation; nothing executed)`
+  with its output** in the judge's execution block (`stages/superego.py`, `_format_calls`), never
+  `→ ERROR`. `types.is_skill_proposal` is the one predicate: `ok=False`,
+  `error="needs_confirmation"`, and a result that is not gate B's `HELD_BY_NAME_PREFIX` (the
+  `[PENDING CONFIRMATION]` marker of a call held by NAME, now one constant in `types.py` that
+  `stages/ego.py` writes). Both are exported at the package root.
+- **The held-message rule counts that output as a READ for the held message of THAT SAME call**
+  (`_proposal_reads_clause`, spliced into `_held_message_rule` only when a proposed call holds a
+  message). It supports nothing else: not the EGO draft, not another held message.
+
+### Why it lands — and what it does NOT fix
+
+- **The figures risk does NOT reproduce on the production judge.** The deterministic reading was
+  that a held message's figures had no source: under main the proposal call renders `→ ERROR`, and
+  the rules read figures off calls marked OK. Measured on the production judge (`gpt-5.6-luna`,
+  temperature 0, n=5, interleaved BASE/BRANCH, with the REAL output of a downstream templated
+  e-mail tool): main already APPROVES that held message 5/5 under `→ ERROR`. This release does not
+  claim that fix.
+- **It lands for two reasons.** (1) The rendering is semantically right: a proposal is not an
+  error, and the trace and the prompt now say what happened — the call ran, committed nothing and
+  was held for the user's confirmation. (2) The MEASURED effect: on a proposal turn, a draft that
+  states the proposal's content WITHOUT saying it is pending («o Prof vai receber R$ 1.920,00 de
+  base em setembro, mais o bônus») goes from REJECTED 5/5 on main (the critiques ask the draft to
+  say the e-mail is pending) to APPROVED 5/5 here. Asking for the yes is the host's
+  (`_HELD_ASKING_IS_THE_HOSTS`, #199) — the rule was already in both prompts; beside a call marked
+  `ERROR` the judge read the turn as a failure the draft had to own. That rejection is the held-message
+  loop a downstream e2e would otherwise hit.
+- **The read clause does not leak to the draft.** A draft that DOES say «pendente» and cites a
+  figure of the output was approved 5/5 on both sides; the three falsifications of the held message
+  (an invented figure, one digit changed, two bands' labels swapped) were rejected 5/5 on the
+  branch. The clause stays: measured harmless, and its text is correct.
+- Evidence (downstream, 0600 critiques beside each): `_reguas/evidencia-2026-10-06-e1-m2/m2_*`
+  (hand-written shape, 7 arms) and `m2b_*` (the tool's real output, 4 arms). `system_fingerprint`
+  came back `None` on every call — an instrument limit of that model, noted.
+- `test_a_proposal_tells_the_judge_the_call_is_held_and_the_asking_is_the_hosts` pins the PROMPT
+  half of the measured pair: the same draft without «pendente», with the call PROPOSED and with it
+  ERROR.
+
+### What does not change
+
+- A call held by NAME (gate B, never executed) and a real failure render `→ ERROR` as before.
+- `committed_this_turn` and its family: the proposal is still `ok=False`.
+- A prompt with no proposal is byte for byte `02e1850`'s (4 digests pinned, with a control that sees
+  the proposal enter). Names in the tests are invented.
+- Tests: `tests/unit/test_judge_reads_the_gate_c_proposal.py`. Docs: `docs/ACT_CONFIRM_READONLY.md`
+  (Fonte C; the held-message list), the gate C line in `CLAUDE.md`.
+
 ## Unreleased — docs(types): `committed_this_turn` — the tenth caller, `pipeline.py::_owes_a_held_rewrite` (soma #60) (2026-10-06)
 
 - The docstring of `committed_this_turn` counts TEN callers and names the tenth: soma #60's
