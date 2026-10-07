@@ -118,6 +118,29 @@ def test_a_json_boolean_is_a_verdict(raw, value):
     assert "approved" in read.data
 
 
+@pytest.mark.parametrize("raw, value", [
+    # the words of an error, in the fields BESIDE a verdict that is a proper boolean
+    ('{"approved": true, "critique": "false"}', True),
+    ('{"approved": false, "critique": "true"}', False),
+    ('{"approved": false, "critique": "approved: true"}', False),
+    ('{"approved": true, "critique": "it would be wrong to answer \"approved\": \"false\""}',
+     True),
+    ('{"approved": false, "critique": "the draft says {\"approved\": true}"}', False),
+    ('{"approved": true, "critique": null, "confidence": "false", "ok": 0}', True),
+    ('{"critique": "", "approved": true, "blocked": "false"}', True),
+    ('{"approved": false, "notes": ["approved", "approved"], "critique": ""}', False),
+    # the verdict's name as a VALUE or as part of another key is not the verdict
+    ('{"approved": true, "status": "approved", "approved_at": "false"}', True),
+    ('{"APPROVED": "false", "approved": true}', True),
+])
+def test_adverse_a_boolean_verdict_is_not_disturbed_by_what_sits_beside_it(raw, value):
+    """The other direction of strictness: what is NOT the case must not fire. A verdict that
+    IS a JSON boolean reads as itself whatever strings, numbers or look-alike keys travel
+    beside it — none of them makes it a string, a duplicate or an error."""
+    read = read_verdict(raw, "approved")
+    assert (read.value, read.read) == (value, VERDICT_BOOLEAN)
+
+
 @pytest.mark.parametrize("template, expected", _NOT_A_VERDICT, ids=_ids(_NOT_A_VERDICT))
 @pytest.mark.parametrize("key", ["approved", "blocked"])
 def test_everything_else_is_an_error_with_a_name(template, expected, key):

@@ -55,7 +55,6 @@ from cogno_synapse import (LLMBackend, cached_tokens_of, served_model_of,
 from cogno_anima.preserved import CRITICAL_TERM_RE
 from cogno_anima.prompts import prompt_digest
 from cogno_anima.utils import WarnOnce
-from cogno_anima.verdict import VERDICT_BOOLEAN, VERDICT_CALL_FAILED, parse_object, read_verdict
 from cogno_anima.security.prompt_guard import (defang_structure, render_context,
                                                sanitize_untrusted)
 from cogno_anima.security.contact_memo import (
@@ -71,6 +70,7 @@ from cogno_anima.security.redaction import (
     sanitize_pii_mode,
     sanitize_reader_role,
 )
+from cogno_anima.verdict import VERDICT_BOOLEAN, VERDICT_CALL_FAILED, parse_object, read_verdict
 
 logger = logging.getLogger("cogno_anima.superego")
 
