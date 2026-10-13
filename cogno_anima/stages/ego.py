@@ -888,9 +888,14 @@ class EgoStage:
                               f"{_H_ACTIONS_DONE} (do NOT repeat these)\n" + "\n".join(lines)))
         reason = correction.get("reason")
         if reason:
+            # The other value this block interpolates. The reason is the judge's critique, and a
+            # critique quotes what it rejects — a tool result, a draft, the contact's words — so
+            # a line of it can open with one of this prompt's own headers or carry a fence tag.
+            # Same guard, same identity on a clean reason.
             # Trailing blanks of the reason are dropped, as they always were: it was the last
             # thing in a block that was stripped whole.
-            parts.append(("correction", f"{_H_CORRECTION}\n{reason}".rstrip()))
+            parts.append(("correction",
+                          f"{_H_CORRECTION}\n{defang_structure(str(reason))}".rstrip()))
         return parts
 
     # ── loop helpers ─────────────────────────────────────────────────

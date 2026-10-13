@@ -18,6 +18,15 @@ No design moves. Each item names what changed, its twin and its control.
     `actions_with_a_clean_note`, a note that only names a header.
   - A header inside an argument never started a line: the arguments are one JSON line. The test
     counts the `# Correction requested` lines so a change of serialisation would say so.
+- **…and the correction's reason, the other value that block interpolates.** The reason is the
+  judge's critique, and a critique quotes what it rejects: a tool result, a draft, the
+  contact's words. It was rendered raw under `# Correction requested`, so a line of it reading
+  `# Task context` started a second section of that name in the executor's prompt. Same guard,
+  same identity on a clean reason.
+  - The twin: `reason_forges_a_header` (`c78005c5168f250a` before, `8f98e9b09310843c` now).
+  - The control: every other cell with a correction keeps its digest.
+  - The executor's inventory was not affected either way: it is built from the parts, never
+    scanned from the text.
 - **The judge's consult section is a row of `_JUDGE_BLOCKS` (slug `consulted`).**
   `_format_consulted` rendered `# What the CONSULTED specialist executed (persona: …) — …` and
   the table did not list it. Two effects:
