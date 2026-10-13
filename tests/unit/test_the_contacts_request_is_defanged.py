@@ -59,6 +59,9 @@ CLEAN = {
     "quotes": 'ela disse "sim" e «depois confirmo»',
     # What the tool-call pass WOULD rewrite (`test_the_tool_call_pass_is_not_run`).
     "names_a_tool": 'usa [record_expense(50)] ou {"tool": "record_expense", "args": {}}',
+    # …and what it drops WHATEVER the tool set, an empty one included: the whole block.
+    "quotes_a_tool_call_tag": ('no registo aparece <TOOL_CALL>{"tool": "x", "args": {}}'
+                               "</TOOL_CALL> — o que é isso?"),
     "email_and_figure": "o e-mail é rosa.quintas@exemplo.com e o valor é R$ 1.440,00",
     "indented": "  #python\n\t# solto",
     "empty": "",
@@ -194,6 +197,11 @@ ON_THE_TREE_BEFORE: "dict[str, dict[str, str]]" = {
         "judge_no_goal": "3aed02b538a69a36",
         "voice_plain": "614ca7e9abcab769", "voice_rejected": "571a49ea4df219cb",
         "voice_unverified": "8346aae25b849330"},
+    "quotes_a_tool_call_tag": {
+        "judge_conversational": "913f3e69c8f495fc", "judge_execution": "7fda3d64f7313813",
+        "judge_no_goal": "56b2156c3ab90985",
+        "voice_plain": "231e86f152773d7c", "voice_rejected": "ee78788015abf1bf",
+        "voice_unverified": "b82e49c310f699a4"},
     "starts_like_a_header": {
         "judge_conversational": "ea2a96f31b168c4a", "judge_execution": "8b78fa67edcebfd0",
         "judge_no_goal": "27dece4b56a35553",
@@ -339,13 +347,15 @@ def test_control_the_goal_fallback_forged_a_header(guard_off):
 # ── the structural half ONLY ─────────────────────────────────────────────────────────────
 
 def test_the_tool_call_pass_is_not_run():
-    """`sanitize_untrusted` would rewrite this message — the contact's own words — and the
-    structural half leaves it alone. The control is the first assertion: the other guard, on
-    the same text and the same tool set, does change it."""
-    message = CLEAN["names_a_tool"]
-    assert sanitize_untrusted(message, {"record_expense"}) != message
-    for rendering in sorted(RENDERINGS):
-        assert f'# User request\n"{message}"\n' in RENDERINGS[rendering](message), rendering
+    """`sanitize_untrusted` would rewrite these messages — the contact's own words — and the
+    structural half leaves them alone. The control is the first assertion: the other guard, on
+    the same text, does change it — with the turn's tool set (a bracketed name, a JSON call)
+    and with NO tool set at all (it drops a quoted ``<TOOL_CALL>`` block whole)."""
+    for name, names in (("names_a_tool", {"record_expense"}), ("quotes_a_tool_call_tag", ())):
+        message = CLEAN[name]
+        assert sanitize_untrusted(message, names) != message, name
+        for rendering in sorted(RENDERINGS):
+            assert f'# User request\n"{message}"\n' in RENDERINGS[rendering](message), rendering
 
 
 # ── the sink, enumerated ─────────────────────────────────────────────────────────────────

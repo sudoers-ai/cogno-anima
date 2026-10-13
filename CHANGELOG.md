@@ -33,19 +33,21 @@
   in the five forms. On `ee9344d` its `header` form escaped in the judge and in the voice (5
   forged headers each): 1 failed of 174. Now 174 pass.
 - **`tests/unit/test_the_contacts_request_is_defanged.py`**:
-  - **Clean text is the bytes of before**: 66 digests taken on `ee9344d`, 11 messages that only
+  - **Clean text is the bytes of before**: 72 digests taken on `ee9344d`, 12 messages that only
     LOOK structural × 6 renderings sent by the real stages (the judge's execution and
     conversational branches and its goal fallback; the voice plain and under each verdict).
   - **The hostile message is not**: its 6 digests on that tree are pinned, the tree now must
     differ, and with the guard switched off it renders them again. That is the control.
   - **The inventories**: the hostile message and a clean one give the same rows. With the guard
     off the judge gains 1 row (2 on the goal fallback) and the voice 1.
-  - **The tool-call pass is not run**: a message naming a tool in brackets and in JSON arrives
-    whole, and `sanitize_untrusted` over the same text changes it.
+  - **The tool-call pass is not run**: a message naming a tool in brackets and in JSON, and
+    one quoting a `<TOOL_CALL>` block, arrive whole. `sanitize_untrusted` over the same texts
+    changes them. The second message joined after a mutation survived: the pass run with NO
+    tool set drops only such a block, and no cell had one.
   - **The sink, by AST**: no f-string of `stages/superego.py` interpolates `user_input`
     directly. One exemption is written down, with its reason.
 - On `ee9344d` the two files together gave 24 failed and 14 errors (the controls that switch the
-  guard off need the definition); 241 passed, the 66 clean digests among them.
+  guard off need the definition); 241 passed, the 66 clean digests of that commit among them.
 
 ### Not in this release
 

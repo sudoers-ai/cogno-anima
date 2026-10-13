@@ -313,7 +313,7 @@ rendered it raw under `# User request`. Measured on `ee9344d`: a message with a 
 - **It stays unfenced**, quoted as before. Every word stays: a tag loses its angle brackets, a
   reserved header at a line start gains a backslash.
 - **A clean message is the same bytes.** `tests/unit/test_the_contacts_request_is_defanged.py`
-  holds 66 digests taken on `ee9344d` (11 messages that only LOOK structural × 6 renderings of
+  holds 72 digests taken on `ee9344d` (12 messages that only LOOK structural × 6 renderings of
   the real stages), and 6 of the hostile message with the control that renders them again when
   the guard is off. It is a landing-time proof: regenerate it when one of these prompts changes
   on purpose. The same file counts the forged inventory rows (1 before in each prompt, 2 on the
