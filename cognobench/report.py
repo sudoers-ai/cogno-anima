@@ -83,6 +83,15 @@ def render(report: BenchReport, show_failures: bool = True) -> str:
         lines.append(f"  {'degradation':<15} {pairs}  (raw-output quality — the "
                      f"score cannot see this)")
     for dim in report.dimensions:
+        calls = dim.meta.get("repair_calls")
+        if calls:
+            # What the stage had to REPAIR in the model's JSON replies — the form of the
+            # reply, which the score cannot see. Always with its denominator.
+            tally = dim.meta.get("repairs") or {}
+            pairs = "  ".join(f"{k}={v}" for k, v in tally.items()) or "none"
+            lines.append(f"  {'repairs':<15} [{dim.name}] "
+                         f"{dim.meta.get('repaired_calls', 0)}/{calls} replies repaired: {pairs}")
+    for dim in report.dimensions:
         fails = dim.meta.get("tool_failures") or {}
         if fails:
             calls = dim.meta.get("tool_calls", {})

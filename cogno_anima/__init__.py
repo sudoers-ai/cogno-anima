@@ -68,6 +68,7 @@ from cogno_anima.stages.superego import (
     SCOPE_PENDING_REQUEST_HEADER, SCOPE_TENANT_FACTS_HEADER, SCOPE_TOOL_TABLE_HEADER,
     UNREADABLE_VERDICT_CRITIQUE, SuperegoStage)
 from cogno_anima.verdict import VALID_VERDICT_READS
+from cogno_anima.repairs import REPAIRS_BY_STAGE, VALID_REPAIRS, closed_repairs
 from cogno_anima.stages.drift import DriftCalculator, DriftThresholds
 from cogno_anima.vocab import sanitize_voice_traits
 from cogno_anima.security.detector import PiiDetector, PiiMatch, default_detector
@@ -159,6 +160,9 @@ __all__ = [
     "SCOPE_TOOL_TABLE_HEADER",
     "UNREADABLE_VERDICT_CRITIQUE",
     "VALID_VERDICT_READS",
+    "REPAIRS_BY_STAGE",
+    "VALID_REPAIRS",
+    "closed_repairs",
     "SuperegoStage",
     "DriftCalculator",
     "DriftThresholds",

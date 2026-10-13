@@ -17,6 +17,8 @@ from cogno_anima.errors import StageParseError
 from cogno_anima.preserved import filter_preserved_terms
 from cogno_anima.vocab import DRIFT_TAG_UNKNOWN, EMBED_UNAVAILABLE, PRESERVED_NOT_IN_INPUT
 from cogno_anima.verdict import VERDICT_MISSING, read_boolean
+from cogno_anima.repairs import (COERCED, DEFAULT, FENCE_OR_THINK_STRIPPED, NULL_FIELD,
+                                 SALVAGED_OBJECT, STRING_BOOL, RepairLog, spelled_boolean)
 
 logger = logging.getLogger("cogno_anima.noumeno")
 
@@ -85,6 +87,66 @@ def _split_examples(system: str) -> tuple[str, tuple[tuple[str, ...], ...],
 
     return head, _harvest(tail), _harvest(head)
 
+
+
+def _text(data: dict, key: str) -> str:
+    """The text field ``key`` of the rewriter's object, stripped.
+
+    An ABSENT key and a JSON ``null`` both read ``""``. The ``null`` half is the one change:
+    ``data.get(key, "").strip()`` raised ``AttributeError`` on it, which is not a
+    ``StageParseError`` and took the turn with it, over a reply that is otherwise usable. It is
+    now the repair an absent key always was, and :func:`_reply_repairs` counts it
+    (``null_field:<key>``). A value that is neither a string nor ``null`` still raises, as it
+    always did.
+    """
+    value = data.get(key, "")
+    return "" if value is None else value.strip()
+
+
+def _reply_repairs(data: dict, log: RepairLog) -> None:
+    """Record what the stage has to repair in the six fields of the rewriter's object.
+
+    It DECIDES NOTHING: every value the stage uses is still read where it always was, a few
+    lines away, and this function only says which of those reads fell back. Pure; never raises
+    — a count must not cost a turn. See :mod:`cogno_anima.repairs` for the alphabet.
+    """
+    try:
+        for key in ("rewritten", "context_turn"):
+            if key not in data:
+                log.field(DEFAULT, key)
+            elif data[key] is None:
+                log.field(NULL_FIELD, key)
+        # An EMPTY rewrite is replaced by the contact's own text — the same default.
+        if isinstance(data.get("rewritten"), str) and not data["rewritten"].strip():
+            log.field(DEFAULT, "rewritten")
+
+        if "confidence" not in data:
+            log.field(DEFAULT, "confidence")
+        else:
+            value = data["confidence"]
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                log.field(COERCED, "confidence")          # `float("0.9")`, `float(True)`
+
+        if "changed" not in data:
+            log.field(DEFAULT, "changed")
+        else:
+            value = data["changed"]
+            if value is None:
+                log.field(NULL_FIELD, "changed")
+            elif spelled_boolean(value):
+                log.field(STRING_BOOL, "changed")
+            elif not isinstance(value, bool):
+                log.field(COERCED, "changed")
+
+        for key in ("preserved_terms", "rewrite_warnings"):
+            if key not in data:
+                log.field(DEFAULT, key)
+            elif data[key] is None:
+                log.field(NULL_FIELD, key)
+            elif not isinstance(data[key], list):
+                log.field(COERCED, key)
+    except Exception:  # noqa: BLE001 — a mark is telemetry; the rewrite is the product
+        logger.warning("stage=noumeno event=repair_marks_failed — the turn continues")
 
 
 def classify_drift(score: float) -> str:
@@ -219,14 +281,22 @@ class Noumeno:
 
         prompt = self._user_tpl.format(history=history_str, input=normalized_input)
 
+        # What this stage has to REPAIR in the model's reply — counted, never acted on
+        # (`cogno_anima.repairs`). One log for the turn: the primary call and the few-shot
+        # retry both write to it, so a mark says the repair happened at least once.
+        repairs = RepairLog(STAGE_NAME)
+
+        def _parse(raw: str) -> dict:
+            return self._parse_json(raw, repairs)
+
         # 5. Call LLM  +  6. Parse JSON Response
         # A response cut mid-stream is transient and buys exactly one more attempt; anything
         # else still raises on the first. Tokens are summed across attempts so a retry shows
         # up in metering instead of being billed invisibly.
         (data, tokens_in, tokens_out, cached_tokens,
          fingerprint, served_model) = await generate_json_resilient(
-            llm, self._system, prompt, self._parse_json, stage=STAGE_NAME)
-        rewritten = data.get("rewritten", "").strip() or user_input
+            llm, self._system, prompt, _parse, stage=STAGE_NAME, repairs=repairs)
+        rewritten = _text(data, "rewritten") or user_input
 
         # ── Few-shot echo backstop ────────────────────────────────────
         # The rewrite of a short reply matches one of the prompt's own example outputs —
@@ -250,8 +320,8 @@ class Noumeno:
                 "examples block", rewritten)
             try:
                 data2, t2, o2, c2, fp2, sm2 = await generate_json_resilient(
-                    llm, self._system_sans_examples, prompt, self._parse_json,
-                    stage=STAGE_NAME)
+                    llm, self._system_sans_examples, prompt, _parse,
+                    stage=STAGE_NAME, repairs=repairs)
                 tokens_in += t2
                 tokens_out += o2
                 cached_tokens += c2
@@ -309,12 +379,16 @@ class Noumeno:
                            "rewritten=%r — unsupported by input/conversation, flagged",
                            rewritten)
 
+        # The fields are marked on the object the stage ADOPTED (the retry's when it won), and
+        # before the echo flag below rewrites `rewrite_warnings` on a copy of it.
+        _reply_repairs(data, repairs)
+
         if echo_flagged:
             data = dict(data)
             kept = [w for w in (data.get("rewrite_warnings") or []) if w != FEW_SHOT_ECHO]
             data["rewrite_warnings"] = kept + [FEW_SHOT_ECHO]
 
-        context_turn = data.get("context_turn", "").strip()
+        context_turn = _text(data, "context_turn")
         confidence = float(data.get("confidence", DEFAULT_CONFIDENCE))
         # Only a JSON boolean is a boolean — the ONE strict reader, the judge's and the guard's
         # (`cogno_anima.verdict`). This was `bool(data.get("changed", False))`, and a non-empty
@@ -446,6 +520,7 @@ class Noumeno:
             rewrite_warnings=rewrite_warnings,
             degradations=degradations,
             preserved_dropped=preserved_dropped,
+            repairs=repairs.marks(),
             metrics=metrics
         )
 
@@ -526,9 +601,20 @@ class Noumeno:
             # it is counted as an attempt with 0 tokens rather than hidden from the trace.
             return None, 0, 2
 
-    def _parse_json(self, raw: str) -> dict:
+    def _parse_json(self, raw: str, repairs: Optional[RepairLog] = None) -> dict:
+        """Raw model text → the rewriter's JSON object, or ``StageParseError``.
+
+        ``repairs`` (optional, write-only) receives what had to come off before the read —
+        a chain-of-thought block or a fence (``fence_or_think_stripped``), an object dug out
+        of a reply that was not one JSON value (``salvaged_object``) — and ONLY when an
+        object is returned: a reply that raises recorded nothing.
+        """
+        marks: list[str] = []
         cleaned = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
+        if cleaned != raw.strip():
+            marks.append(FENCE_OR_THINK_STRIPPED)
         if cleaned.startswith("```"):
+            marks.append(FENCE_OR_THINK_STRIPPED)
             lines = cleaned.splitlines()
             if lines[0].startswith("```"):
                 lines = lines[1:]
@@ -538,6 +624,7 @@ class Noumeno:
         try:
             data = json.loads(cleaned)
         except json.JSONDecodeError as exc:
+            marks.append(SALVAGED_OBJECT)
             # Backends without format="json" (cloud) sometimes emit more than one top-level object
             # ("Extra data") — e.g. an empty/partial {} before the real one, or the object trailed
             # by prose. Pick the RICHEST object (not the first — a leading {} must not silently
@@ -551,4 +638,6 @@ class Noumeno:
         # parse failure so the contract stays "valid dict OR StageParseError".
         if not isinstance(data, dict):
             raise StageParseError(STAGE_NAME, raw, TypeError("JSON is not an object"))
+        if repairs is not None:
+            repairs.extend(marks)
         return data

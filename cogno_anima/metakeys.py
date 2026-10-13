@@ -444,6 +444,21 @@ SCOPE_PROMPT_SHA = "scope_prompt_sha"
 # Safe to persist as it is: a closed alphabet, with nothing of the model's reply in it.
 SCOPE_VERDICT_READ = "scope_verdict_read"
 
+# What had to be REPAIRED in the guard's reply before it could be used — same writer, same
+# reader, same reason as the three keys above: the ``ScopeCheckResult`` carrying it
+# (``repairs``) is consumed by the orchestrator and dropped.
+#
+# A list of marks from ``cogno_anima.repairs.VALID_SCOPE_REPAIRS``: a chain-of-thought block
+# or a code fence stripped, the object dug out of prose, a refusal message that was absent,
+# ``null`` or not a string on a block. It never repeats ``SCOPE_VERDICT_READ`` — how the
+# verdict KEY was read is that key's — and the two are read together.
+#
+# **ABSENT means no verdict was asked** (a bypass), and the key is actively REMOVED on those
+# paths; ``[]`` means the classifier was asked and its reply needed nothing (or the call raised
+# and there was no reply — ``SCOPE_VERDICT_READ`` says which). A PER-TURN fact, never
+# carry-over. Safe to persist as it is: a closed alphabet, with nothing of the reply in it.
+SCOPE_REPAIRS = "scope_repairs"
+
 # What THIS ASSISTANT asked the contact for on the previous turn — the one fact the scope
 # guard needs and cannot have, because it reads the SENTENCE and never the conversation.
 #

@@ -6,6 +6,8 @@ from typing import Optional, Any, Callable, Iterable
 
 from cogno_synapse import cached_tokens_of, served_model_of, system_fingerprint_of
 
+from cogno_anima.repairs import TRUNCATED_RETRY
+
 _logger = logging.getLogger("cogno_anima.utils")
 
 # What a stage records when the model OMITS its `confidence` key. Shared on purpose: the ID
@@ -287,8 +289,14 @@ async def generate_json_resilient(
     *,
     stage: str,
     attempts: int = 2,
+    repairs: "Optional[Any]" = None,
 ) -> "tuple[dict, int, int, int, Optional[str], Optional[str]]":
     """``llm.generate`` + parse, retrying ONLY a response that arrived truncated.
+
+    ``repairs`` is the caller's :class:`cogno_anima.repairs.RepairLog`, when it keeps one: a
+    retry records ``truncated_retry`` on it, so the repair that used to leave only a log line
+    is counted on the stage's result. Optional and write-only — the return value, the retry
+    rule and every exception are the same with it or without it.
 
     Returns ``(data, tokens_in, tokens_out, cached_tokens, system_fingerprint, served_model)``
     with every COUNT **summed across every attempt**. A retry that bills silently would understate the turn in metering, and the
@@ -344,6 +352,8 @@ async def generate_json_resilient(
                 "stage=%s event=truncated_response attempt=%d/%d chars=%d retrying; tail=%r",
                 stage, index + 1, attempts, len(raw), raw[-60:],
             )
+            if repairs is not None:
+                repairs.add(TRUNCATED_RETRY)
     # Unreachable: the loop's last iteration always re-raises. Kept explicit so a future
     # edit to the bounds fails loudly instead of returning None into a caller expecting a dict.
     raise AssertionError(f"{stage}: retry loop ended without a result or an error")

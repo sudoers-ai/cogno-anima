@@ -52,8 +52,11 @@ from typing import Any, Optional, Sequence
 from cogno_synapse import LLMBackend, cached_tokens_of, served_model_of, system_fingerprint_of
 
 from cogno_anima import metakeys as mk
+from cogno_anima.repairs import (COERCED, DEFAULT, NULL_FIELD, UNPARSEABLE, RepairLog,
+                                 note_text_field, reply_form_repairs)
 from cogno_anima.security.prompt_guard import defang_structure
 from cogno_anima.stages.superego import SuperegoStage
+from cogno_anima.verdict import parse_object
 from cogno_anima.types import PipelineContext, StageMetrics
 
 __all__ = [
@@ -194,6 +197,12 @@ class OptionSelection:
     (or were not strings) — the number that says whether the closed-alphabet check is doing work.
     ``called`` is False when no model call was made (nothing to select from), so no ledger line is
     owed.
+
+    ``repairs`` is what had to be repaired in the model's reply, from the closed
+    ``cogno_anima.repairs.VALID_SELECT_REPAIRS``. It is what tells the three ``error`` outcomes
+    apart: ``unparseable`` (no JSON object came back), ``default:answers`` + ``default:maybe``
+    or a ``coerced:…`` (an object came back without the lists), and no mark at all (the call
+    raised). An option that was not on the list is not a mark — ``discarded`` counts it.
     """
 
     outcome: str
@@ -204,6 +213,7 @@ class OptionSelection:
     discarded: int = 0
     covered_unsupported: int = 0
     called: bool = False
+    repairs: tuple[str, ...] = ()
     metrics: StageMetrics = field(default_factory=lambda: _no_call("unknown"))
 
     def record(self) -> "dict[str, Any]":
@@ -213,7 +223,8 @@ class OptionSelection:
         return {"outcome": self.outcome, "covered": list(self.covered),
                 "suggested": list(self.suggested), "asked": self.asked,
                 "offered": self.offered, "discarded": self.discarded,
-                "covered_unsupported": self.covered_unsupported}
+                "covered_unsupported": self.covered_unsupported,
+                "repairs": list(self.repairs)}
 
 
 def _no_call(model: str) -> StageMetrics:
@@ -313,6 +324,30 @@ def parse_selection(data: Any, options: Sequence[str], message: str,
     return OUTCOME_NONE, (), (), asked, discarded, 0
 
 
+def _reply_repairs(text: str, cot_stripped: bool) -> "list[str]":
+    """What had to be repaired in the selector's reply — counted, never acted on. ``text`` is
+    the reply after the chain-of-thought pass. Pure; never raises."""
+    log = RepairLog(SELECT_STAGE)
+    try:
+        log.extend(reply_form_repairs(text, cot_stripped=cot_stripped))
+        data, _ = parse_object(text)
+        if data is None:
+            log.add(UNPARSEABLE)
+            return log.marks()
+        for key in ("answers", "maybe"):
+            if key not in data:
+                log.field(DEFAULT, key)
+            elif data[key] is None:
+                log.field(NULL_FIELD, key)
+            elif not isinstance(data[key], list):
+                log.field(COERCED, key)
+        # An empty ``asked`` is a legitimate answer ("or \"\""), so a blank is no mark.
+        note_text_field(log, data, "asked", blank_is_default=False)
+    except Exception:  # noqa: BLE001 — a count never costs the courtesy, nor the turn
+        pass
+    return log.marks()
+
+
 def _prompt(message: str, options: Sequence[str]) -> str:
     # The user half measured downstream, unchanged: the message, then the options as a list.
     # The message is the contact's, so it goes through the structural guard — the cut first,
@@ -334,13 +369,15 @@ async def select_options(message: str, options: Any, backend: LLMBackend) -> Opt
     ti = to = cached = 0
     fingerprint: Optional[str] = None
     served: Optional[str] = None
+    repairs: "list[str]" = []
     try:
         raw, ti, to = await backend.generate(_SYSTEM, _prompt(message, offered))
         # Read with NO await in between — the contract of ``cached_tokens_of``.
         cached = cached_tokens_of(backend)
         fingerprint = system_fingerprint_of(backend)
         served = served_model_of(backend)
-        text, _ = SuperegoStage.strip_cot(raw)
+        text, cot_stripped = SuperegoStage.strip_cot(raw)
+        repairs = _reply_repairs(text, cot_stripped)
         outcome, covered, suggested, asked, discarded, unsupported = parse_selection(
             SuperegoStage._parse_json(text), offered, message)
     except asyncio.CancelledError:
@@ -357,7 +394,8 @@ async def select_options(message: str, options: Any, backend: LLMBackend) -> Opt
                 "covered_unsupported=%d", outcome, len(offered), discarded, unsupported)
     return OptionSelection(outcome=outcome, covered=covered, suggested=suggested, asked=asked,
                            offered=len(offered), discarded=discarded,
-                           covered_unsupported=unsupported, called=True, metrics=metrics)
+                           covered_unsupported=unsupported, called=True,
+                           repairs=tuple(repairs), metrics=metrics)
 
 
 async def select_scope_options(ctx: PipelineContext, backend: LLMBackend, *,
