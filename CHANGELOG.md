@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.1.10 — 2026-10-13 — the schema of each JSON stage's reply, derived from the vocabularies; nothing reads it yet
+
+### Added
+
+- **`cogno_anima.schemas`: one JSON Schema per JSON stage** — the NOUMENO, the NER, the scope
+  guard and the judge — built from the closed vocabularies those stages already validate
+  against. `STAGE_SCHEMAS` is keyed by `StageMetrics.stage`; `schema_for(stage)` hands out a
+  copy; `build_stage_schemas()` builds them again from the vocabularies as they are.
+  - **INERT.** No module of the package imports it and the root does not export it. No stage
+    passes a schema to a backend: every call is still `generate(system, prompt)`, two strings
+    and no keyword. No prompt changes.
+  - **Derived, never copied.** Each `enum` is the sorted contents of the object the stage
+    validates against (`VALID_INTENTS`, `NER_KNOWLEDGE_DOMAINS`, `VALID_PII_TYPES`, …). The
+    properties of each object are the fields the stage reads, from the `default` row of its
+    table in `cogno_anima.repairs`. A field with no type here raises at import.
+  - **The bridge to the repair marks (0.1.9).** A reply the schema ACCEPTS needs none of the
+    four form marks (`default`, `null_field`, `string_bool`, `coerced`) and never ends the turn.
+    For the NOUMENO and the NER the converse holds too.
+  - **What it does not refuse, declared:** a value of the right type and the wrong content (a
+    `confidence` of 1.5, a blank string, a domain listed twice), a value that is too long
+    (`cut:`), the two fallbacks, the reply's envelope. No range, length or uniqueness keyword is
+    used: which of those a provider's strict mode accepts is the transport's question.
+  - **It is not yet the request a strict provider takes.** The objects are as open as the
+    stages are (the NER ignores keys it does not read, and its prompt asks for three more). A
+    provider that wants every object closed and every key required needs that applied on top,
+    and that step changes what the model is asked to emit. The guard's and the judge's schemas
+    are what their PROMPT asks for, both keys always; the stage also reads `{"approved": true}`.
+
+### Tests
+
+- **`tests/unit/test_schemas_are_derived.py`**, 126 tests:
+  - **Both directions.** Every vocabulary of `ner._ENUM_FIELDS` and of the three enumerated
+    lists is the `enum` of its field. Every `enum` found by walking the four schemas is equal
+    to a vocabulary the package declares. A word added to a vocabulary is in the schemas built
+    next, and gone when it is taken out.
+  - **The bridge, through the real stages.** 859 NER replies and 235 NOUMENO replies: the clean
+    one, each field missing, each field under 38 dirty values. 91 and 48 are accepted. None of
+    those ends the turn, and the only form marks among them are the declared content-shaped
+    ones (9 and 2). Of the replies refused, 16 and 96 end the turn today. Every form mark of the
+    two alphabets, with the repairs suite's own dirty reply, is refused. Every `cut:` and
+    `fallback:` reply is accepted.
+  - **The verdict stages.** Over 184 objects per stage, the 10 the schema accepts are read with
+    `verdict_read == boolean`, and nothing is repaired but a blank text.
+  - **Inert.** No module imports it (by AST, with a control), the root does not export it, and
+    all six stage calls reach a backend as two positional strings with no keyword.
+  - A validator for the subset of JSON Schema used here lives in the test, with its own control.
+
+### Not in this release
+
+- **No stage sends a schema, and there is no switch.** Carrying one needs decisions the design
+  does not hold yet: what a backend announces (a `runtime_checkable` protocol cannot see a
+  keyword argument of `generate`), how the keyword crosses every wrapper a host stacks around a
+  backend, and which shape a provider's strict mode takes.
+- **No model was run.** Whether a schema reduces the repairs, and at what cost in tokens, is the
+  A/B this module is the first half of.
+
 ## 0.1.9 — 2026-10-13 — what a stage repairs in a model's JSON reply is counted
 
 ### Added

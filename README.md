@@ -31,6 +31,7 @@ NOUMENO  →  NER  →  ID  →  EGO  →  SUPEREGO        (+ Drift, woven throu
   On a turn the scope guard refused, an optional strict selector over a host-built closed list (`cogno_anima.stages.scope_options`) either proves the refusal false or offers a closed "did you mean…?" (#200). A message the executor HOLDS for the contact's yes is judged before it is sent: the text the recipient will read (#183), the ask it records for them (#198), with the confirmation question left to the host (#199) and, when the host declares `ctx.force_language`, the language it is written in (#204).
   Only a JSON boolean is a verdict (`cogno_anima.verdict`, 0.1.3): a judge answering `"approved": "false"` in a string does not approve (fail-closed), a guard answering `"blocked": "false"` does not block (fail-open), and each result says how its verdict was read (`verdict_read`).
   What each JSON stage had to repair in the model's reply — a key left out, a value outside the vocabulary, a fence stripped — is counted on its result (`repairs`, a closed alphabet per stage in `cogno_anima.repairs`, 0.1.9); the count decides nothing.
+  The JSON Schema of each of those replies is derived from the same vocabularies (`cogno_anima.schemas`, 0.1.10). Nothing reads it yet: no stage sends a schema.
 - **Drift** — pure, no I/O: epistemological → ontological → situational → execution → synthesis → cumulative, emitting a `drift_action` signal.
 
 ## Philosophy: the core signals, the host decides
