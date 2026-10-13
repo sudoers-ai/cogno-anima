@@ -10,7 +10,7 @@ This file holds it to three things:
   from the stage's own table in ``cogno_anima.repairs``.
 * **the bridge to the repair marks.** A reply the schema ACCEPTS needs no form repair
   (``default`` / ``null_field`` / ``string_bool`` / ``coerced``) and never ends the turn — over
-  every field under 37 dirty values, through the real stages. The values it accepts and the
+  every field under 38 dirty values, through the real stages. The values it accepts and the
   stage still marks are the declared ones: the right type, the wrong CONTENT. For the NOUMENO
   and the NER the converse holds as well: what the stage reads without a form mark is accepted.
 * **inert.** No module of the package imports it, and the package root does not export it.
@@ -253,7 +253,7 @@ DIRTY = [None, "", "  ", "true", "false", "yes", "x" * 90, 0, 1, 7.5, -1, 0.5, T
          ["NER.SYSTEM", "MATH", "ANALYSIS", "CREATIVE"], ["SYSTEM"],
          {"ACTION": "X | " + "d" * 60, "MOOD": 3}, {"ACTION": "  "}, {"TIME": "NOW | soon"},
          ["CPF", "EMAIL", 4], ["EMAIL"], "0.9", {"people": "x", "objects": [1, None, "a"]},
-         {"people": ["Ana"], "objects": [""]}]
+         {"people": ["Ana"], "objects": [""]}, {"people": [], "objects": [3]}]
 
 
 def _variants(clean: dict):
@@ -329,9 +329,9 @@ def test_ner_what_the_schema_accepts_needs_no_form_repair_and_ends_no_turn():
         for mark in _form(marks):
             assert _content_shaped("ner", mark, obj), f"{label}: {mark}"
             declared += 1
-    # 837 replies (the clean one, and each of 22 fields missing or under 37 dirty values). The
+    # 859 replies (the clean one, and each of 22 fields missing or under 38 dirty values). The
     # numbers are pinned so that a change in either module is SEEN: 91 accepted, 9 of them with
-    # a declared content-shaped mark; and of the 746 refused, 16 end the turn today.
+    # a declared content-shaped mark; and of the 768 refused, 16 end the turn today.
     assert (accepted, declared, refused_and_raised) == (91, 9, 16)
 
 
@@ -350,9 +350,9 @@ async def test_noumeno_what_the_schema_accepts_needs_no_form_repair_and_ends_no_
         for mark in _form(marks):
             assert _content_shaped("noumeno", mark, obj), f"{label}: {mark}"
             declared += 1
-    # 229 replies (6 fields): 48 accepted, 2 with the declared mark (a blank rewrite); of the
-    # 181 refused, 93 end the turn today — none of which the schema lets through.
-    assert (accepted, declared, refused_and_raised) == (48, 2, 93)
+    # 235 replies (6 fields): 48 accepted, 2 with the declared mark (a blank rewrite); of the
+    # 187 refused, 96 end the turn today — none of which the schema lets through.
+    assert (accepted, declared, refused_and_raised) == (48, 2, 96)
 
 
 @pytest.mark.parametrize("mark", sorted(m for m in rp.VALID_NER_REPAIRS if m.startswith(FORM)))

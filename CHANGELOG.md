@@ -35,10 +35,10 @@
     lists is the `enum` of its field. Every `enum` found by walking the four schemas is equal
     to a vocabulary the package declares. A word added to a vocabulary is in the schemas built
     next, and gone when it is taken out.
-  - **The bridge, through the real stages.** 837 NER replies and 229 NOUMENO replies: the clean
-    one, each field missing, each field under 37 dirty values. 91 and 48 are accepted. None of
+  - **The bridge, through the real stages.** 859 NER replies and 235 NOUMENO replies: the clean
+    one, each field missing, each field under 38 dirty values. 91 and 48 are accepted. None of
     those ends the turn, and the only form marks among them are the declared content-shaped
-    ones (9 and 2). Of the replies refused, 16 and 93 end the turn today. Every form mark of the
+    ones (9 and 2). Of the replies refused, 16 and 96 end the turn today. Every form mark of the
     two alphabets, with the repairs suite's own dirty reply, is refused. Every `cut:` and
     `fallback:` reply is accepted.
   - **The verdict stages.** Over 184 objects per stage, the 10 the schema accepts are read with
