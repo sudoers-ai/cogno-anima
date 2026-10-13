@@ -301,6 +301,29 @@ each call's arguments in the judge's prompt, and — since 0.1.6 — both values
 block interpolates: the arguments of the committed calls (`# ACTIONS ALREADY EXECUTED`) and the
 judge's reason (`# Correction requested`).
 
+**The contact's own message goes through it too, in the judge and in the voice (0.1.7).**
+`ctx.user_input` is the one text of a turn nobody but the contact wrote, and both prompts
+rendered it raw under `# User request`. Measured on `ee9344d`: a message with a line reading
+`# EGO draft` gave the judge two header lines of that name and two `draft` rows in its inventory.
+- **One definition**, `SuperegoStage._contact_request`, read by three sinks: the judge's
+  `# User request`, the judge's `# Active goal` when the NER gave no goal (it falls back to the
+  message, at the start of a line), and the voice's `# User request`.
+- **The structural half only.** The tool-call pass would rewrite the contact's own words (a
+  `[tool]` in brackets, a JSON object), and nothing parses a tool call out of these two prompts.
+- **It stays unfenced**, quoted as before. Every word stays: a tag loses its angle brackets, a
+  reserved header at a line start gains a backslash.
+- **A clean message is the same bytes.** `tests/unit/test_the_contacts_request_is_defanged.py`
+  holds 72 digests taken on `ee9344d` (12 messages that only LOOK structural × 6 renderings of
+  the real stages), and 6 of the hostile message with the control that renders them again when
+  the guard is off. It is a landing-time proof: regenerate it when one of these prompts changes
+  on purpose. The same file counts the forged inventory rows (1 before in each prompt, 2 on the
+  goal fallback; 0 now) and enumerates the sink by AST: no f-string of the stage interpolates
+  `user_input` directly, with one exemption written down.
+- **Not covered, and why.** The scope guard quotes the sentence as the thing it classifies
+  (`# User Input`), and is the written exemption. The executor's user message is the NOUMENO's
+  rewrite, another carrier. `ProposalJudge` fences the message with its own tag, and the options
+  selector takes it as its own argument. None of them moved.
+
 The reserved set is **derived**, never copied: `reserved_headers()` reads `_VOICE_BLOCKS`,
 `_JUDGE_BLOCKS`, `_SCOPE_BLOCKS` and the executor's `ego.EGO_BLOCKS` (whose header column
 `ego.PROMPT_HEADERS` is). Each of those is pinned to its
@@ -317,6 +340,8 @@ and the section's characters were counted under `executed`.
 5 forms over the real stages.
 - On `02e1850`, 7 of the 8 sources let a forged header escape.
 - After the change, none do.
+- The contact's message is the ninth source since 0.1.7. On `ee9344d` its `header` form escaped
+  in the judge and in the voice (5 forged headers each); now it does not.
 
 **What stays OPEN is outside the fence.** The fix is structural and does not move what a model
 does with an instruction. Measured downstream (2026-10-07, n=1 per cell, sampling; the full row is

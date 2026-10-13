@@ -48,7 +48,7 @@ def typed_verbatim(term: str, user_input: str) -> bool:
     """``term`` appears in ``user_input`` as a whole address, case included.
 
     Exact, because the two errors are not symmetric: a false DROP costs only the marking (the
-    contact's own words are already in the judge's prompt, verbatim, under ``# User request``),
+    contact's own words are already in the judge's prompt, every one, under ``# User request``),
     while a false KEEP is the measured defect. Case-folding cannot rescue a changed character;
     it could only admit a normalisation the MODEL chose, after which the judge would demand the
     model's spelling over the contact's. There is nothing to buy with it.

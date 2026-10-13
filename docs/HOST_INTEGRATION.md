@@ -169,6 +169,17 @@ Key points:
     a string `"false"` used to read `True`. An unreadable value is `False`, like an
     absent one, and a drift measured above 0.50 still forces `True`. Nothing is
     recorded beside it but a `WARNING` (`event=changed_unreadable read=<read>`).
+- **The contact's message is escaped in the judge's and the voice's prompt** (since
+  0.1.7). `ctx.user_input` is rendered through `prompt_guard.defang_structure`: a
+  fence tag of the core loses its angle brackets, and a line opening with one of the
+  core's headers gains a backslash. Every word stays, and a message with neither is
+  the same bytes.
+  - `ctx.user_input` itself is never modified.
+  - `superego_result.prompt_text` and
+    `SuperegoStage.voice_prompt_block(prompt, "user_request")` carry the escaped
+    form on such a message. Compare them with
+    `prompt_guard.defang_structure(ctx.user_input)`, not with the raw text.
+  - The scope guard's prompt still quotes the raw sentence.
 
 ---
 

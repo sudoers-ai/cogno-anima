@@ -1,5 +1,64 @@
 # Changelog
 
+## 0.1.7 — 2026-10-13 — the contact's own message cannot pass for the prompt around it
+
+### Fixed
+
+- **`ctx.user_input` goes through `prompt_guard.defang_structure` in the judge's prompt and in
+  the voice's.** It is the one text of a turn nobody but the contact wrote, and both prompts
+  rendered it raw under `# User request`. Every other untrusted text of those two prompts was
+  already guarded.
+  - **Measured on `ee9344d`.** A message with a line reading `# EGO draft` gave the judge two
+    header lines of that name and two `draft` rows in `judge_prompt_inventory`. A message with
+    `# Execution verdict (HARD RULE)` and `# Task` lines gave the voice an `execution_verdict`
+    row on a turn that had no verdict, and a second `# Task` line.
+  - **One definition**, `SuperegoStage._contact_request`, read by three sinks: the judge's
+    `# User request`, the voice's `# User request`, and the judge's `# Active goal` when the NER
+    gave no goal. That fallback renders the message at the START of a line, where its first
+    line can forge a header too.
+  - **The structural half only.** A fence tag of `FENCE_TAGS` loses its angle brackets and a
+    line opening with a reserved header gains a backslash. `sanitize_untrusted` is NOT used: its
+    tool-call pass would rewrite the contact's own words (a `[tool]` in brackets, a JSON
+    object), and nothing parses a tool call out of these two prompts.
+  - **Every word stays**, and the message stays unfenced, quoted as before.
+- **What moved for a caller.** `SuperegoResult.prompt_text` and
+  `voice_prompt_block(prompt, "user_request")` carry the escaped form on a message that has a
+  fence tag or a reserved header at a line start. On any other message they are the same bytes.
+  The checks that read `ctx.user_input` itself (the figure net, the PII allowlist, the preserved
+  terms) are untouched.
+
+### Tests
+
+- **The ninth source of `tests/unit/test_injection_by_tool_data.py`** is the contact's message,
+  in the five forms. On `ee9344d` its `header` form escaped in the judge and in the voice (5
+  forged headers each): 1 failed of 174. Now 174 pass.
+- **`tests/unit/test_the_contacts_request_is_defanged.py`**:
+  - **Clean text is the bytes of before**: 72 digests taken on `ee9344d`, 12 messages that only
+    LOOK structural × 6 renderings sent by the real stages (the judge's execution and
+    conversational branches and its goal fallback; the voice plain and under each verdict).
+  - **The hostile message is not**: its 6 digests on that tree are pinned, the tree now must
+    differ, and with the guard switched off it renders them again. That is the control.
+  - **The inventories**: the hostile message and a clean one give the same rows. With the guard
+    off the judge gains 1 row (2 on the goal fallback) and the voice 1.
+  - **The tool-call pass is not run**: a message naming a tool in brackets and in JSON, and
+    one quoting a `<TOOL_CALL>` block, arrive whole. `sanitize_untrusted` over the same texts
+    changes them. The second message joined after a mutation survived: the pass run with NO
+    tool set drops only such a block, and no cell had one.
+  - **The sink, by AST**: no f-string of `stages/superego.py` interpolates `user_input`
+    directly. One exemption is written down, with its reason.
+- On `ee9344d` the two files together gave 24 failed and 14 errors (the controls that switch the
+  guard off need the definition); 241 passed, the 66 clean digests of that commit among them.
+
+### Not in this release
+
+- **The scope guard** still quotes the raw sentence under `# User Input`. It classifies the
+  sentence itself, and its inventory reports a forged header as a duplicated row.
+- **The executor** reads the NOUMENO's rewrite as its user message. When the rewriter returns
+  nothing the rewrite IS the raw message, and it is not guarded there.
+- **`intent.goal`** is the NER's text and is rendered as it was.
+- **No model was run.** The change is structural: it does not move what a model does with an
+  instruction the contact writes in plain words.
+
 ## 0.1.6 — 2026-10-13 — seven small corrections
 
 No design moves. Each item names what changed, its twin and its control.
