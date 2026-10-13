@@ -71,6 +71,7 @@ from cogno_anima import metakeys as mk
 from cogno_anima.stages.superego import SuperegoStage
 from cogno_anima.types import EgoResult, EgoStep, ToolExecution
 
+from tests.unit._voice_context_clauses import with_the_context_clauses
 from tests.unit.test_superego import _ctx, _m
 
 # The measured pair, verbatim.
@@ -226,7 +227,11 @@ def test_a_turn_with_no_rejection_renders_byte_for_byte_as_before():
     prompt = SuperegoStage()._build_voice_prompt(
         ctx, SuperegoStage._tool_payload(ctx), ["general:review"])
     assert DRAFT in prompt, "the parked branch stopped handing the draft over"
-    assert hashlib.sha256(prompt.encode()).hexdigest()[:16] == _MAIN_NO_REJECTION, (
+    # No `# Context` section on this turn: the `# Task` sentence that named one is put back
+    # before hashing, so the digest stays main's (`_voice_context_clauses`, 0.1.6).
+    restored = with_the_context_clauses(prompt)
+    assert restored != prompt
+    assert hashlib.sha256(restored.encode()).hexdigest()[:16] == _MAIN_NO_REJECTION, (
         "the no-rejection rendering is not main's — this change must not touch it "
         "(`o-rascunho-viaja-por-duas-portas-e-uma-nao-tem-rotulo`)")
 

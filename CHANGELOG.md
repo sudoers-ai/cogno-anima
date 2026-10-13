@@ -1,5 +1,132 @@
 # Changelog
 
+## 0.1.6 — 2026-10-13 — seven small corrections
+
+No design moves. Each item names what changed, its twin and its control.
+
+### Fixed
+
+- **The executor's retry block passes the arguments of the committed calls through
+  `prompt_guard.defang_structure`.** `# ACTIONS ALREADY EXECUTED` lists the writes the previous
+  attempt committed, with their arguments, and the executor writes those arguments, often by
+  copying what a tool returned. They entered the retry prompt raw, so a `</tool_output>` or a
+  `</context_data>` in an e-mail body arrived whole. It is the call the judge already makes on
+  its own argument line, and it is identity on clean arguments.
+  - The twin: `actions_carry_a_fence` in `tests/unit/_ego_prompt_matrix.py`. Its digest was
+    `57d6975464d37946` on the tree before and is `017f9c87480dc94d` now.
+  - The control: the 47 digests taken on `1923c85` did not move, and neither does
+    `actions_with_a_clean_note`, a note that only names a header.
+  - A header inside an argument never started a line: the arguments are one JSON line. The test
+    counts the `# Correction requested` lines so a change of serialisation would say so.
+- **…and the correction's reason, the other value that block interpolates.** The reason is the
+  judge's critique, and a critique quotes what it rejects: a tool result, a draft, the
+  contact's words. It was rendered raw under `# Correction requested`, so a line of it reading
+  `# Task context` started a second section of that name in the executor's prompt. Same guard,
+  same identity on a clean reason.
+  - The twin: `reason_forges_a_header` (`c78005c5168f250a` before, `8f98e9b09310843c` now).
+  - The control: every other cell with a correction keeps its digest.
+  - The executor's inventory was not affected either way: it is built from the parts, never
+    scanned from the text.
+- **The judge's consult section is a row of `_JUDGE_BLOCKS` (slug `consulted`).**
+  `_format_consulted` rendered `# What the CONSULTED specialist executed (persona: …) — …` and
+  the table did not list it. Two effects:
+  - `prompt_guard.reserved_headers()` is derived from the tables, so that header was not
+    reserved. A line forging it in `mk.EGO_CONTEXT` reached the judge as a section it could not
+    tell from a second executor's evidence. It is now escaped, in the notes and in the fenced
+    third-party half.
+  - `judge_prompt_inventory` counted the section's characters under `executed`. A consulted turn
+    now has a `consulted` row right after it, and `executed` is as long as on a turn that
+    consulted nobody.
+
+  The row is the header's opening words (`superego._CONSULTED_HEADER`, read by the renderer and
+  by the table), matched by prefix like `# Context (authoritative` and the criteria rows. **No
+  prompt moved by a byte.** The reserved set goes from 36 headers to 37; without the new one it
+  is the 36 of before, by digest. A host that stores the judge's inventory sees one new slug.
+- **The NOUMENO's `changed` is read by the strict reader.** It was
+  `bool(data.get("changed", False))`, so a string `"false"` read `True`. It now reads through
+  `verdict.read_boolean(data, key)`, the value half of `read_verdict` for an object a stage
+  already decoded; `read_verdict` is expressed over it, so the rule has one definition.
+  - `true` and `false` as JSON booleans read as before. An absent key is `False`, as before.
+  - **An unreadable value is `False`**: a string in any spelling, a number, `null`, a list, an
+    object. `changed` is the rewriter's claim that it altered the text, and a field nobody
+    could read is not that claim. The measured drift still overrides it (above 0.50 forces
+    `True`), so a real change is not lost.
+  - It leaves a `WARNING` (`stage=noumeno event=changed_unreadable read=<read>`, the closed
+    `VALID_VERDICT_READS`, never the value). `NoumenoResult` gains no field: `changed` stays a
+    `bool`, so "unreadable" and "the rewriter said no" are the same value on the result.
+  - What moved for a caller: `"true"` as a string and the number `1` used to read `True` and
+    now read `False`.
+  - `read_boolean` cannot see a key written twice (a decoded object kept the last value). A
+    verdict that decides reads the raw reply with `read_verdict`.
+  - The walk for `bool(<x>.get("<literal>"))` over the stages now expects no hit, with a
+    control that the walk still sees the line it looks for.
+
+### Changed
+
+- **The judge says «the Context above» only when its prompt carries a `# Context` section.**
+  Two clauses pointed at that section by position and were said on every turn:
+  - criterion #1 of the conversational branch: a fact «that is NOT in the Context above, in the
+    persona's limits, or in what the user said»;
+  - TRUST THE TOOLS: «do not second-guess a resolved calendar date against your own idea of
+    today — the Context above carries the real clock».
+
+  The section renders only when the host injected a context. Without one, both named a section
+  the prompt did not carry. Each is now spliced by reference (`_IN_THE_CONTEXT_ABOVE`,
+  `_CONTEXT_HAS_THE_CLOCK`) and rendered with the section, in the pattern of
+  `_PRESERVED_CLAUSE`.
+  - **With a context: byte for byte.** 44 renderings (11 configurations × a limits slot or none
+    × business rules or none) have one combined digest on the tree before and on this one.
+  - **Without a context: the prompt changes, by those words and by nothing else.** 44 of 44
+    context-less renderings said «Context above» before and none does now. Put back by
+    `tests/unit/_judge_context_clauses.py`, every digest the older proofs pin for a
+    context-less prompt returns (`_ORIGIN_MAIN` and four more files).
+  - **The model half was NOT measured.** This is a prompt change on context-less turns and no
+    model was run. A host that always injects a context (a clock line is one) is not reached.
+  - Not covered: `_GROUNDING_SOURCE_SET` still names «the '# Context' section» on a turn that
+    carries only the limits slot. It cannot lose a name without being reworded, and that
+    sentence was settled against a model twice.
+- **The voice is sent to «the context» only when its prompt carries a `# Context` section.**
+  The same rule, for the two voice sentences of the same family that are a clause of their own:
+  - `# Task`: «Use the context for background.» (`_USE_THE_CONTEXT`);
+  - the approved-answer section: «it is your PRIMARY source for what to say; the context above
+    is background» (`_CONTEXT_IS_BACKGROUND`).
+
+  With a context: byte for byte (27 renderings, one combined digest on both trees). Without:
+  9 of 9 context-less renderings carried the `# Task` sentence before and none does now; put
+  back by `tests/unit/_voice_context_clauses.py`, the digests three older proofs pin return.
+  `_draft_section` takes the condition as a keyword that defaults to `True`. **The model half
+  was NOT measured.** Not covered: the review verdict's «Say ONLY what the Context above
+  supports; when it supports nothing, say plainly…», which cannot lose its first half without
+  being reworded.
+- **`cogno_anima.__version__` is the version of the code, written once.** It was
+  `importlib.metadata.version("cogno-anima")`, the version of whatever distribution is
+  INSTALLED. Imported from a source tree (an editable install older than a bump, a checkout on
+  `PYTHONPATH`) the code reported the old number. Measured on a development box, on the tree
+  before this change: `pyproject.toml` declared 0.1.5 and `cogno_anima.__version__` answered
+  0.1.0.
+  - The number lives in `cogno_anima/_version.py`. `cogno_anima.__version__` is that constant.
+  - `pyproject.toml` declares none: `dynamic = ["version"]`, read from the same line by
+    `[tool.setuptools.dynamic]`. A release bumps that one file.
+  - `tests/unit/test_version_has_one_source.py` fails when the package, the build
+    configuration or the first heading of this file says something else, and the wheel test
+    already in the suite now checks the version of the wheel it builds.
+  - The fallback `0.0.0` for a tree with no installed distribution is gone: there is always a
+    number.
+
+### Docs
+
+- **The recipient of a held message: what the judge sees, and when a host aligns it.** Four
+  places said «the recipient is deliberately not judged: the host aligns it AFTER the judge»
+  (`CLAUDE.md`, `docs/ACT_CONFIRM_READONLY.md`, a comment in `superego.py`, a test docstring).
+  Both halves were out of date. No behaviour changed here; what the code does:
+  - criterion (e) and the rest of the held-message rule are about the TEXT. No criterion names
+    the recipient argument and the held-messages block does not render it;
+  - the judge still SEES the recipient, on the held call's argument line under
+    `# What the EGO executed`. A new test pins that it is there and in no other section;
+  - so a host that aligns the recipient does it BEFORE the judge reads the call. `cogno_soma`
+    fires no hook between the executor and the judge, and `cogno-host` wraps the EGO stage it
+    hands the pipeline (since its #1198). Read on that host's `origin/main` at `42f644b3`.
+
 ## 0.1.5 — 2026-10-07 — the executor's prompt leaves a record: which parts, how long, a digest, the path — never the text
 
 ### Added

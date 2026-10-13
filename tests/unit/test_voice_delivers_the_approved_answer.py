@@ -75,7 +75,15 @@ async def test_the_approved_draft_reaches_the_voice_on_an_execution_turn():
     assert "R$ 120,00 per hour" in prompt, (
         "the approved draft is not in the voice prompt — this is the 650-turn defect")
     assert "REVIEWED AND APPROVED" in prompt
-    assert "PRIMARY" in prompt and "background" in prompt
+    assert "PRIMARY source for what to say" in prompt
+    # This turn carries no `# Context` section, so nothing is called "the context above"
+    # (0.1.6); the same turn with a context says it.
+    assert "the context above is background" not in prompt
+    carried = _turn()
+    carried.metadata[mk.EGO_CONTEXT] = "[MEMORIES]\nprefers mornings"
+    _, b2 = await _voice(carried, [_DRAFT])
+    assert "PRIMARY source for what to say; the context above is background." in (
+        b2.calls[0]["prompt"])
     # ...and the inventory the host persists says so, so a turn can be diagnosed after the fact
     assert "draft" in [b_["block"] for b_ in result.prompt_blocks]
 

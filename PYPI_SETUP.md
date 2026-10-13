@@ -60,7 +60,9 @@ already-uploaded versions are simply left in place; bump the version to re-push)
 
 Once the packages exist and Trusted Publishing is configured:
 
-1. Bump `version` in that repo's `pyproject.toml`.
+1. Bump `version` in that repo's `pyproject.toml`. In `cogno-anima` the number is written once,
+   in `cogno_anima/_version.py`; its `pyproject.toml` reads it from there and declares none.
+   Add the `CHANGELOG.md` entry in the same change (a unit test compares the two).
 2. Tag and cut a GitHub Release (`vX.Y.Z`).
 3. `publish.yml` builds and publishes automatically via OIDC.
 

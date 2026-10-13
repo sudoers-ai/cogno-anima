@@ -41,6 +41,7 @@ from cogno_anima.verdict import (
     VERDICT_STRING_BOOL,
     VERDICT_UNPARSEABLE,
     parse_object,
+    read_boolean,
     read_verdict,
 )
 from tests.unit.test_superego import RaisingBackend, ScriptedBackend, _ctx
@@ -573,6 +574,11 @@ def test_the_callers_of_each_reader_are_the_ones_this_file_tests():
         ("stages/superego.py", "check_input_scope"),
         ("stages/proposal_judge.py", "__call__"),
     }
+    # the same rule over an object ALREADY decoded: the strict reader itself, and the NOUMENO
+    assert _references("read_boolean") == {
+        ("verdict.py", "read_verdict"),
+        ("stages/noumeno.py", "process"),
+    }
 
 
 @pytest.mark.parametrize("raw", _REPLIES)
@@ -600,12 +606,9 @@ def test_the_selector_reads_no_boolean_at_all():
 
 #: ``bool(<x>.get("<field>"...))`` over a model's reply that is KNOWN and left as it is, with
 #: the reason. A signal, not a decision — and widening or tightening its coercion is a change
-#: to measure, not to slip into this one.
-_DECLARED_SIGNALS = {
-    ("stages/noumeno.py", "changed"):
-        "NoumenoResult.changed is recorded and reconciled against the measured drift; nothing "
-        "in this library branches on it",
-}
+#: to measure, not to slip into this one. EMPTY since the NOUMENO's ``changed`` — the one entry
+#: this table ever had — moved to the strict reader (``read_boolean``, below).
+_DECLARED_SIGNALS: "dict[tuple[str, str], str]" = {}
 
 
 def test_no_stage_reads_a_models_boolean_with_bool_except_the_declared_signals():
@@ -627,3 +630,44 @@ def test_no_stage_reads_a_models_boolean_with_bool_except_the_declared_signals()
     assert found == set(_DECLARED_SIGNALS), (
         "a model's field is being read with bool(...): use cogno_anima.verdict.read_verdict "
         "if it decides something, or declare it above with the reason")
+
+
+def test_the_walk_above_would_see_the_line_it_looks_for():
+    """The control of a table that is now EMPTY: an empty expectation is satisfied by a walk
+    that finds nothing because it cannot find anything. Given the line the NOUMENO had, the
+    same shape test names it."""
+    tree = ast.parse('changed = bool(data.get("changed", False))\nok = bool(meta.get(key))')
+    hits = [n.args[0].args[0].value for n in ast.walk(tree)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "bool"
+            and n.args and isinstance(n.args[0], ast.Call)
+            and isinstance(n.args[0].func, ast.Attribute) and n.args[0].func.attr == "get"
+            and n.args[0].args and isinstance(n.args[0].args[0], ast.Constant)
+            and isinstance(n.args[0].args[0].value, str)]
+    assert hits == ["changed"]
+
+
+# ── the same rule over a DECODED object: ``read_boolean``, and the NOUMENO's ``changed`` ──
+
+@pytest.mark.parametrize("template,expected", [
+    (t, e) for t, e in _NOT_A_VERDICT if e in (VERDICT_STRING_BOOL, VERDICT_NOT_BOOLEAN,
+                                              VERDICT_MISSING)])
+def test_read_boolean_answers_what_read_verdict_answers_over_the_decoded_object(template, expected):
+    """One definition, two doors. For every shape of the table that decodes to ONE object, the
+    reader of the decoded object and the reader of the raw reply say the same thing."""
+    raw = _shape(template, "changed")
+    data, repeated = parse_object(raw)
+    if data is None or "changed" in repeated:     # the two shapes only the raw reader can name
+        return
+    strict, decoded = read_verdict(raw, "changed"), read_boolean(data, "changed")
+    assert (decoded.value, decoded.read) == (strict.value, strict.read) == (None, expected)
+    assert decoded.data is data                   # the object itself, never a copy
+
+
+def test_read_boolean_reads_the_two_json_booleans_and_nothing_else():
+    assert read_boolean({"changed": True}, "changed") == read_verdict('{"changed": true}', "changed")
+    assert read_boolean({"changed": False}, "changed").value is False
+    assert read_boolean({"changed": 1}, "changed").value is None          # True == 1 in Python
+    assert read_boolean({}, "changed").read == VERDICT_MISSING
+    assert read_boolean(None, "changed").read == VERDICT_UNPARSEABLE     # type: ignore[arg-type]
+    assert read_boolean(["changed"], "changed").read == VERDICT_UNPARSEABLE  # type: ignore[arg-type]
+

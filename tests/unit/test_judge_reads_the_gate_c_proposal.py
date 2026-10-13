@@ -32,6 +32,7 @@ from cogno_anima import metakeys as mk
 from cogno_anima.stages.superego import PROPOSED_STATUS, SuperegoStage
 from cogno_anima.types import (HELD_BY_NAME_PREFIX, EgoResult, EgoStep, ToolExecution,
                                committed_this_turn, write_attempted_this_turn)
+from tests.unit._judge_context_clauses import with_the_context_clauses
 from tests.unit.test_superego import _ctx, _m
 
 #: What the e-mail skill READ and proposed — the output of the gate-C call.
@@ -174,7 +175,9 @@ def test_a_proposal_tells_the_judge_the_call_is_held_and_the_asking_is_the_hosts
 # ── byte for byte when there is no proposal (digests taken on origin/main 02e1850) ───────────
 
 def _digest(ctx) -> str:
-    return hashlib.sha256(_prompt(ctx).encode("utf-8")).hexdigest()
+    # No turn here carries a `# Context` section; the two clauses that named one are put back
+    # before hashing, so the digests stay the base tree's (`_judge_context_clauses`).
+    return hashlib.sha256(with_the_context_clauses(_prompt(ctx)).encode("utf-8")).hexdigest()
 
 
 def _fixtures():

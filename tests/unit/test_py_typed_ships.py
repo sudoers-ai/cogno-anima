@@ -62,6 +62,13 @@ def test_py_typed_is_inside_the_built_wheel(tmp_path):
 
     wheels = sorted((tmp_path / "wheel").glob("cogno_anima-*.whl"))
     assert len(wheels) == 1, f"expected exactly one wheel, got {[w.name for w in wheels]}"
+    # The same build answers a second question for free: WHICH version did it stamp? The number
+    # is written once, in `cogno_anima/_version.py`, and `pyproject.toml` reads it from there —
+    # so the wheel built from this tree must carry the version this tree's package reports
+    # (`test_version_has_one_source.py` holds the rest of that chain).
+    import cogno_anima
+    assert wheels[0].name.startswith(f"cogno_anima-{cogno_anima.__version__}-"), (
+        f"the wheel is {wheels[0].name} and the package reports {cogno_anima.__version__}")
     names = zipfile.ZipFile(wheels[0]).namelist()
     assert "cogno_anima/py.typed" in names, (
         "the wheel carries no PEP 561 marker — a consumer that installs this package type-checks "

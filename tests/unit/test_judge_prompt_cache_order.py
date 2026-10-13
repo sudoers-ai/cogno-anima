@@ -40,6 +40,7 @@ import pytest
 
 from cogno_anima import metakeys as mk
 from cogno_anima.stages.superego import _HELD_ASKING_IS_THE_HOSTS, _JUDGE_SYSTEM, SuperegoStage
+from tests.unit._judge_context_clauses import with_the_context_clauses
 from tests.unit.test_judge_blocks_sync import _configs
 from tests.unit.test_superego import _ctx
 
@@ -131,7 +132,8 @@ def test_the_system_message_is_still_only_the_fixed_instruction_without_rules():
 #: The order this prompt's sections had until F1.3, as the inventory names them. The limits
 #: section sat between the preserved terms and the execution; everything else is unchanged.
 _LEGACY_ORDER = ("user_request", "context", "contact_memo", "active_goal", "user_constraints", "unavailable",
-                 "preserved_terms", "persona_limits", "executed", "held_messages", "draft",
+                 "preserved_terms", "persona_limits", "executed", "consulted", "held_messages",
+                 "draft",
                  "criteria_execution", "criteria_conversational", "criteria_readonly")
 
 
@@ -229,9 +231,11 @@ def test_the_sections_are_the_same_multiset_as_before_only_the_order_moved(name,
 def _since_f13(prompt: str) -> str:
     """The prompt with the judge's DELIBERATE later text changes removed by name, so the digests
     below can keep being c0d6bb9's and keep proving that nothing ELSE moved. Each entry is a
-    change that has its own test pinning it; today one: `_HELD_ASKING_IS_THE_HOSTS` (2026-09-30,
-    rendered only on a turn with a declared held message — the `held` configuration here)."""
-    return prompt.replace(_HELD_ASKING_IS_THE_HOSTS, "")
+    change that has its own test pinning it; today two: `_HELD_ASKING_IS_THE_HOSTS` (2026-09-30,
+    rendered only on a turn with a declared held message — the `held` configuration here), and
+    the two "the Context above" clauses, which since 0.1.6 render only with the `# Context`
+    section and are put BACK here on the configurations that have none (ten of the eleven)."""
+    return with_the_context_clauses(prompt.replace(_HELD_ASKING_IS_THE_HOSTS, ""))
 
 
 _ORIGIN_MAIN = {
@@ -245,6 +249,9 @@ _ORIGIN_MAIN = {
     "preserved": "1e64f9f415cad36241e5eb58c768e8fe3fbd0fcfab45f4660b2b89df2d82f71b",
     "rules": "f9bf87af021403806ea51dc5ff13c5a0799faa60108908523942602538c6a9b8",
     "memo": "c407c2fa70bd7e4617c0423919ffef067220fb2707e3d27e4c409e4e13014000",
+    # Joined with the `consulted` row of `_JUDGE_BLOCKS`: the configuration is new, the prompt
+    # is not — rendered by the tree before that row existed (55788c8), like the ten above.
+    "consulted": "0291031dd95e97c8583613cea30fefac3e7c843890756ce39bc9efd0c866c619",
 }
 
 
@@ -274,6 +281,7 @@ _ORIGIN_MAIN_NO_LIMITS = {
     "preserved": "a025303cff3a32ad84f793da4bf7d2fc0858b777ac7f5223a09fd23712ca519e",
     "rules": "84fe08b0947f73bfcb93afb16f9d98f36bd7de0dfd4ca797d5744571c1ae02a4",
     "memo": "a0378001b23ff41f8781a0da798306c7fb34bdd5819ba38b48fb33e08cd4bfc4",
+    "consulted": "f1283b5245a02b0b22c8c7025a437083f33c0edfa240fb363d396a78be91190d",   # 55788c8
 }
 
 

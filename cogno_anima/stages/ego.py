@@ -40,7 +40,8 @@ from cogno_anima.types import (
     EgoResult, ToolResult, HELD_BY_NAME_PREFIX,
 )
 from cogno_anima.prompts import prompt_digest
-from cogno_anima.security.prompt_guard import render_context_parts, sanitize_untrusted
+from cogno_anima.security.prompt_guard import (defang_structure, render_context_parts,
+                                               sanitize_untrusted)
 from cogno_synapse import (LLMBackend, cached_tokens_of, served_model_of,
                            system_fingerprint_of)
 from cogno_synapse.base import ToolCallingBackend
@@ -876,15 +877,25 @@ class EgoStage:
         if prior:
             done = [t for t in prior.tools_executed if t.ok and t.side_effect]
             if done:
-                lines = [f"- {t.tool}({json.dumps(t.arguments, ensure_ascii=False)})"
-                         for t in done]
+                # The ARGUMENTS are the model's own text, often copied from what a tool
+                # returned, so they can carry a fence tag. One JSON line, so no header can
+                # start a line; `defang_structure` takes the tags and is identity on clean
+                # arguments — the same call the judge makes on its own argument line.
+                lines = [
+                    f"- {t.tool}({defang_structure(json.dumps(t.arguments, ensure_ascii=False))})"
+                    for t in done]
                 parts.append(("actions_done",
                               f"{_H_ACTIONS_DONE} (do NOT repeat these)\n" + "\n".join(lines)))
         reason = correction.get("reason")
         if reason:
+            # The other value this block interpolates. The reason is the judge's critique, and a
+            # critique quotes what it rejects — a tool result, a draft, the contact's words — so
+            # a line of it can open with one of this prompt's own headers or carry a fence tag.
+            # Same guard, same identity on a clean reason.
             # Trailing blanks of the reason are dropped, as they always were: it was the last
             # thing in a block that was stripped whole.
-            parts.append(("correction", f"{_H_CORRECTION}\n{reason}".rstrip()))
+            parts.append(("correction",
+                          f"{_H_CORRECTION}\n{defang_structure(str(reason))}".rstrip()))
         return parts
 
     # ── loop helpers ─────────────────────────────────────────────────

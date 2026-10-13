@@ -820,6 +820,36 @@ _GROUNDING_SOURCE_SET_NONE = (
 
 _GROUNDING_SOURCES = _GROUNDING_SOURCE_SET + _DERIVED_FROM_EVIDENCE
 
+# ── …AND SO DO THE SENTENCES THAT SAY "THE CONTEXT ABOVE" ────────────────────────────────
+#
+# Two sentences of this prompt point at the `# Context` section by position, and both were said
+# on every turn, the section rendered or not: criterion #1 of the conversational branch lists
+# "the Context above" among the places a fact may come from, and the TRUST THE TOOLS paragraph
+# says "the Context above carries the real clock". The section renders only when the host
+# injected a context (`mk.EGO_CONTEXT` / `mk.EGO_CONTEXT_UNTRUSTED`), so on a turn without one
+# both pointed at a section this prompt does not carry — the defect `_GROUNDING_SOURCE_SET_NONE`
+# and `_PRESERVED_CLAUSE` were each written for: a criterion that names evidence the prompt does
+# not hold is an invitation to guess.
+#
+# Each is spliced BY REFERENCE and removed with the section — the pattern of `_PRESERVED_CLAUSE`,
+# for the reason written there: a `str.replace` over a hand-written copy that drifts matches
+# nothing and does not raise. With the section present the prompt is byte for byte what it was.
+# Without it the prompt CHANGES, by these words and by nothing else
+# (`test_judge_context_clauses_travel_with_the_context.py` restores them and gets the pinned
+# digests back). What a model does with the shorter sentence was NOT measured.
+#
+# NOT covered, and named so nobody reads this as the whole class: `_GROUNDING_SOURCE_SET` names
+# "the '# Context' section" (and "the '# Persona limits' section") on a turn that carries only
+# ONE of the two. Dropping a name there needs the sentence reworded ("ground" → "grounds",
+# "those sections", "NONE of the three"), and that sentence was settled against a model twice.
+_IN_THE_CONTEXT_ABOVE = "in the Context above, "
+_CONTEXT_HAS_THE_CLOCK = " — the Context above carries the real clock"
+# The VOICE's two of the same family, travelling with ITS `# Context (memories/history)` section
+# by the same rule: the `# Task` sentence that sends the voice to the context for background, and
+# the approved-answer section's "the context above is background".
+_USE_THE_CONTEXT = "Use the context for background. "
+_CONTEXT_IS_BACKGROUND = "; the context above is background"
+
 # ── …AND IT NAMES THE BUSINESS RULES WHEN THEY ARE THERE ─────────────────────────────────
 #
 # When the host hands the rules to the judge (`mk.PERSONA_RULES`, rendered in the SYSTEM
@@ -841,9 +871,10 @@ _GROUNDING_SOURCE_SET_RULES = (
 _WITH_RULES: "tuple[tuple[str, str], ...]" = (
     (_GROUNDING_SOURCE_SET, _GROUNDING_SOURCE_SET_RULES),
     # conversational branch, criterion #1
-    ("that is NOT in the Context above, in the persona's limits, or in what the user said.",
-     "that is NOT in the Context above, in the persona's limits, in the business rules of the "
-     "system message, or in what the user said."),
+    ("that is NOT " + _IN_THE_CONTEXT_ABOVE + "in the persona's limits, or in what the user "
+     "said.",
+     "that is NOT " + _IN_THE_CONTEXT_ABOVE + "in the persona's limits, in the business rules "
+     "of the system message, or in what the user said."),
 )
 
 # EVERY phrasing #156 widened, paired with the original it widened FROM.
@@ -989,7 +1020,8 @@ _CONVERSATIONAL_CRITERIA = (
     "reject — a truthful, on-persona reply that moves the conversation forward is a PASS.\n"
     "REJECT only if one of these is TRUE:\n"
     "1. FABRICATION: the draft states a capability, price, integration, figure, case or fact "
-    "that is NOT in the Context above, in the persona's limits, or in what the user said. This "
+    "that is NOT " + _IN_THE_CONTEXT_ABOVE + "in the persona's limits, or in what the user "
+    "said. This "
     "is the one fatal error. A preserved term reproduced INCORRECTLY (a mangled figure, email "
     "or URL) counts as fabrication too.\n"
     "2. CONSTRAINTS: the draft ignores a restriction the user stated, or does what they "
@@ -1061,6 +1093,13 @@ _OUT_OF_REACH = (
 # for byte as before.
 _HELD_MESSAGES_HEADER = ("# Messages HELD for the user's confirmation — each is SENT, word for "
                          "word, to another person once the user says yes")
+# The opening words of the CONSULT section's header (`_format_consulted`). The header goes on
+# with the persona's label and a sentence, on the same line, so `_JUDGE_BLOCKS` lists these
+# words and the section is found by PREFIX — the rule `# Context (authoritative` and the three
+# criteria rows already follow. Written once: the renderer and the table read this constant, so
+# the header cannot be rendered under one spelling and inventoried (and RESERVED, see
+# `prompt_guard.reserved_headers`) under another.
+_CONSULTED_HEADER = "# What the CONSULTED specialist executed"
 # WHO ASKS (2026-09-30). On a proposal turn the executor's loop STOPS at the hold, so its draft is
 # empty, and the question that shows the user the message and asks "shall I send it?" is written
 # by the HOST, after this judgement — never by the draft. Nothing here said so, and measured on a
@@ -1088,10 +1127,15 @@ _HELD_ASKING_IS_THE_HOSTS = _held_asking_is_the_hosts("(a)-(d)")
 # turn (`ctx.force_language`, the tenant/session language the NOUMENO reads first) — no new
 # declaration, and no guess from the text: `noumeno.language` is a detection and may be the
 # langdetect fallback. CONDITIONAL on that declaration: with none (or one that is not a language
-# tag) the rule is `_HELD_MESSAGE_RULE`, byte for byte. It is about the TEXT only — the RECIPIENT
-# is the host's to align, deterministically, and it does so AFTER this judgement (the orchestrator
-# fires `after_ego` once the judge has run), so a judge shown the executor's recipient would
-# reject names the host is about to repair and spend the one correction on them.
+# tag) the rule is `_HELD_MESSAGE_RULE`, byte for byte. It is about the TEXT only: no criterion
+# names the RECIPIENT argument, and the held-messages block does not render it. The judge still
+# SEES it, on the held call's own argument line under `# What the EGO executed`, so which name is
+# there when the judge reads is the HOST's doing. A host that aligns the recipient
+# deterministically has to do it BEFORE this judgement, and the orchestrator fires no hook
+# between the executor and the judge (`after_ego` fires once the loop is over): the host wraps
+# the EGO stage it hands the pipeline. `cogno-host` does so (its #1198). Until then it aligned
+# from `after_ego`, and this comment said so and called it harmless — it was not: the judge read
+# the executor's own rendering of the name, rejected it, and the turn spent its correction.
 def _held_language_criterion(language: str) -> str:
     return (
         f"; (e) is NOT WRITTEN in the language the user writes in, «{language}» — its text "
@@ -1470,6 +1514,10 @@ class SuperegoStage:
     #
     # The criteria headers are the three BRANCHES, and each is matched by its opening words
     # only, because the branch constants continue in prose on the same line.
+    # The CONSULT section is matched the same way (`_CONSULTED_HEADER`): its header goes on
+    # with the persona's label. It was the one section of this prompt the table did not list,
+    # so its characters were filed under `executed` and — the half that mattered — its header
+    # was not reserved: a line forging it in the context block arrived unescaped.
     #
     # Listed in the order they are ASKED (system message first, then the prompt) — which the
     # scan does not need, since it sorts by position, but which a reader does. Since F1.3 the
@@ -1486,6 +1534,7 @@ class SuperegoStage:
         ("# NOT AVAILABLE this turn", "unavailable"),
         ("# Preserved terms", "preserved_terms"),
         ("# What the EGO executed", "executed"),
+        (_CONSULTED_HEADER, "consulted"),
         ("# Messages HELD for the user's confirmation", "held_messages"),
         ("# EGO draft", "draft"),
         ("# Judge the EXECUTION against these criteria", "criteria_execution"),
@@ -2608,6 +2657,14 @@ class SuperegoStage:
         # the other two never did, so on them this replace is a no-op by construction.
         if not preserved:
             criteria = criteria.replace(_PRESERVED_CLAUSE, "")
+        # …and so do the two sentences that say "the Context above" (`_IN_THE_CONTEXT_ABOVE`,
+        # `_CONTEXT_HAS_THE_CLOCK`). `context` is the section rendered below — the same string,
+        # not a second reading of the metadata — so neither can be said over a prompt that does
+        # not carry the section. AFTER the rules substitution above, which matches the phrase
+        # with the clause still in it. Only the conversational branch carries the first.
+        if not context:
+            criteria = criteria.replace(_IN_THE_CONTEXT_ABOVE, "")
+        the_clock = _CONTEXT_HAS_THE_CLOCK if context else ""
         # THE ORDER IS THE PROVIDER'S PROMPT CACHE (F1.3, 2026-09-24). A provider reuses only an
         # IDENTICAL PREFIX (OpenAI: at least 1024 tokens), and the system message above carries
         # nothing of the turn — `_judge_system` is the fixed instruction plus, when declared, the
@@ -2653,7 +2710,7 @@ class SuperegoStage:
             "TRUST THE TOOLS: values a tool returned — resolved dates, ids, availability, "
             "figures — are AUTHORITATIVE. Do NOT re-derive them from your own reasoning or "
             "reject them as wrong (e.g. do not second-guess a resolved calendar date against "
-            "your own idea of today — the Context above carries the real clock). Judge only "
+            f"your own idea of today{the_clock}). Judge only "
             "whether the execution USED them correctly, not whether the tool was right.\n\n"
             "EXCEPTION — an honestly-relayed tool FAILURE is a VALID outcome: when a tool "
             "returned ERROR (a business refusal like a taken slot or a reached limit) and the "
@@ -2833,7 +2890,7 @@ class SuperegoStage:
         rows = cls._format_calls(calls, names) or (
             "(the specialist was consulted and executed NO tool — this is evidence that the "
             "consult returned nothing, not evidence that no consult happened)")
-        return (f"# What the CONSULTED specialist executed ({who}) — this turn, on this "
+        return (f"{_CONSULTED_HEADER} ({who}) — this turn, on this "
                 f"contact's behalf. These calls are part of THIS turn's execution: judge the "
                 f"goal against them too, and treat their results as grounding exactly like the "
                 f"EGO's own.\n{rows}\n\n")
@@ -3955,11 +4012,11 @@ class SuperegoStage:
             f"{memo_section}"
             f"# Data gathered by the executor (ground figures/dates ONLY in this)\n{payload}\n\n"
             f"{traits_section}"
-            f"{self._draft_section(ctx, payload, rejection)}"
+            f"{self._draft_section(ctx, payload, rejection, context=bool(context_section))}"
             f"{rejection_section}"
             f"# Signals\n" + "\n".join(signals) + "\n\n"
             f"# Task\n{lang_rule}Write the final reply to the user in the persona's voice and "
-            "within its limits. Use the context for background. "
+            f"within its limits. {_USE_THE_CONTEXT if context_section else ''}"
             # The old wording here read "keep exact figures/dates verbatim from the
             # executor data" — a source set NARROWER than the one review approves
             # against, and the measured cost of that narrowness is turn 3 above. It is
@@ -4006,7 +4063,7 @@ class SuperegoStage:
 
     @staticmethod
     def _draft_section(ctx: PipelineContext, payload: str,
-                       rejection: "Optional[dict]") -> str:
+                       rejection: "Optional[dict]", *, context: bool = True) -> str:
         """The executor's own answer text, as its own clearly-subordinate section.
 
         EGO=executor, SUPEREGO=locutor: the draft is *what to say*, the tool results are *what
@@ -4073,7 +4130,7 @@ class SuperegoStage:
                 "rewrite it in the persona's voice)\n"
                 "Review compared this answer against the executor data and this persona's "
                 "limits and APPROVED it. It is this turn's answer and it is your PRIMARY "
-                "source for what to say; the context above is background.\n"
+                f"source for what to say{_CONTEXT_IS_BACKGROUND if context else ''}.\n"
                 f"{approved}\n"
                 "Two rules, and both are HARD. (1) You MUST NOT tell the user that you could "
                 "not find, do not have, or cannot access something this answer provides. That "

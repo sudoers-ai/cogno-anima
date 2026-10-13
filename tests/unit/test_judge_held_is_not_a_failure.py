@@ -24,6 +24,7 @@ from cogno_anima import metakeys as mk
 from cogno_anima.stages.superego import (_HELD_ASKING_IS_THE_HOSTS, _HELD_MESSAGE_RULE,
                                          _HELD_MESSAGES_HEADER, SuperegoStage)
 from cogno_anima.types import EgoResult, EgoStep, ToolExecution
+from tests.unit._judge_context_clauses import with_the_context_clauses
 from tests.unit.test_superego import _ctx, _m
 
 # The record gate B leaves in the executed step (`ego.py`): the call is IN the trace, marked
@@ -97,7 +98,10 @@ def _prompt(ctx) -> str:
 
 
 def _sha(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()
+    """The digest of a prompt AS THE TREE BEFORE said it: none of these turns carries a
+    `# Context` section, and since 0.1.6 the two clauses that named one are not rendered
+    without it — they are put back before hashing (`_judge_context_clauses`)."""
+    return hashlib.sha256(with_the_context_clauses(text).encode()).hexdigest()
 
 
 def _controls():

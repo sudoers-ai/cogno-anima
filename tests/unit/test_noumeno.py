@@ -378,6 +378,55 @@ class TestNoumenoStage:
         assert ctx.noumeno.drift_tag == "DRIFT"
         assert ctx.noumeno.changed is True  # Reconciled!
 
+    # ── `changed`: only a JSON boolean is a boolean ──────────────
+
+    @staticmethod
+    def _reply(changed: str) -> str:
+        return ('{"rewritten": "rewritten input", "context_turn": "", "confidence": 0.9, '
+                f'"changed": {changed}, "preserved_terms": [], "rewrite_warnings": []}}')
+
+    @pytest.mark.parametrize("literal,expected", [("true", True), ("false", False)])
+    async def test_changed_a_json_boolean_is_read_as_it_always_was(self, literal, expected, caplog):
+        """The control: the two JSON booleans, under a LOW drift so nothing reconciles them."""
+        noumeno = make_noumeno(embedder=FixedSimilarityEmbedder(0.9))
+        with caplog.at_level("WARNING", logger="cogno_anima.stages.noumeno"):
+            ctx = await noumeno.process(PipelineContext(user_input="original input"),
+                                        StubBackend(response=self._reply(literal)))
+        assert ctx.noumeno.changed is expected
+        assert ctx.noumeno.drift_tag == "REWRITTEN"
+        assert "changed_unreadable" not in caplog.text
+
+    @pytest.mark.parametrize("literal,read", [
+        ('"false"', "string_bool"), ('"true"', "string_bool"), ('"False"', "string_bool"),
+        ('"no"', "not_boolean"), ("1", "not_boolean"), ("0", "not_boolean"),
+        ("null", "not_boolean"), ('["true"]', "not_boolean"), ('{"v": true}', "not_boolean"),
+    ])
+    async def test_changed_that_is_not_a_json_boolean_is_false_and_says_so(self, literal, read, caplog):
+        """The twin. `bool("false")` is True: a STRING read as the rewriter saying it changed
+        the text. An unreadable `changed` is now the value an absent one always had — False —
+        with a WARNING naming the read, never the value."""
+        noumeno = make_noumeno(embedder=FixedSimilarityEmbedder(0.9))
+        with caplog.at_level("WARNING", logger="cogno_anima.stages.noumeno"):
+            ctx = await noumeno.process(PipelineContext(user_input="original input"),
+                                        StubBackend(response=self._reply(literal)))
+        assert ctx.noumeno.changed is False
+        assert f"event=changed_unreadable read={read}" in caplog.text
+
+    async def test_changed_absent_is_false_and_silent(self, caplog):
+        noumeno = make_noumeno(embedder=FixedSimilarityEmbedder(0.9))
+        reply = '{"rewritten": "rewritten input", "context_turn": "", "confidence": 0.9}'
+        with caplog.at_level("WARNING", logger="cogno_anima.stages.noumeno"):
+            ctx = await noumeno.process(PipelineContext(user_input="original input"),
+                                        StubBackend(response=reply))
+        assert ctx.noumeno.changed is False and "changed_unreadable" not in caplog.text
+
+    async def test_changed_unreadable_is_still_reconciled_by_the_measured_drift(self):
+        """Why False costs nothing: the measurement overrides the model's word, read or not."""
+        noumeno = make_noumeno(embedder=FixedSimilarityEmbedder(0.4))
+        ctx = await noumeno.process(PipelineContext(user_input="original input"),
+                                    StubBackend(response=self._reply('"false"')))
+        assert ctx.noumeno.drift_tag == "DRIFT" and ctx.noumeno.changed is True
+
     async def test_drift_zero_when_identical(self):
         """If input == rewritten, drift should be 0.0 and tag PASS_THROUGH."""
         embedder = FixedSimilarityEmbedder(1.0)
