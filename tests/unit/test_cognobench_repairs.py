@@ -52,6 +52,18 @@ def test_the_four_json_dimensions_carry_the_metric_and_the_others_do_not():
         assert "repair_calls" not in by_name[name].meta, name
 
 
+def test_a_call_is_a_reply_that_was_read_not_a_case_that_ran():
+    """The denominator counts REPLIES. A scope case the guard bypasses asked the classifier
+    nothing, so it is a case and not a call — counting it would dilute the rate with turns that
+    could never have carried a mark."""
+    report = _run_stub(["superego"], limit=0)
+    scope = next(d for d in report.dimensions if d.name == "superego_scope")
+    cases = {c.case_id for c in scope.checks}
+    assert scope.meta["repair_calls"] < len(cases), "the premise: the suite has a bypass case"
+    judge = next(d for d in report.dimensions if d.name == "superego_judge")
+    assert judge.meta["repair_calls"] == len({c.case_id for c in judge.checks})
+
+
 def test_the_score_is_what_it_was_without_the_metric(monkeypatch):
     """The control: with the tally replaced by nothing, every dimension scores the same."""
     with_metric = _run_stub(["noumeno", "ner", "superego"], limit=0)
