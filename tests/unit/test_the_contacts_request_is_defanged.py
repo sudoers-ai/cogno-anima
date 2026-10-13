@@ -26,6 +26,10 @@ What this file pins:
 * **the goal fallback**, the third sink;
 * **the sink enumeration**: no f-string of the stage interpolates the message directly.
 
+The scope guard's quoted sentence was the one exemption of that enumeration. 0.1.8 closed it
+(``test_contact_text_is_defanged_at_every_sink.py``, which also follows the text to the
+executor, to the NER's goal and to the selector), and the exemption table is empty.
+
 Every name and value here is invented.
 """
 
@@ -360,18 +364,15 @@ def test_the_tool_call_pass_is_not_run():
 
 # ── the sink, enumerated ─────────────────────────────────────────────────────────────────
 
-#: A function that interpolates the raw message into a prompt ON PURPOSE, and why.
-RAW_ON_PURPOSE = {
-    # The scope guard's prompt quotes the contact's sentence as the thing being classified, and
-    # its inventory records a forged header as a duplicated row. Not changed here.
-    "_build_scope_prompt": "the scope guard classifies the sentence itself",
-}
+#: A function that interpolates the raw message into a prompt ON PURPOSE, and why. EMPTY since
+#: 0.1.8: the scope guard's quoted sentence was the one entry, and it is guarded at its f-string.
+RAW_ON_PURPOSE: "dict[str, str]" = {}
 
 
-def _raw_interpolations() -> "list[tuple[str, int]]":
+def _raw_interpolations(source: "str | None" = None) -> "list[tuple[str, int]]":
     """(function, line) of every f-string in the stage that interpolates ``user_input`` — the
     attribute of a context or a bare parameter of that name — without a call around it."""
-    tree = ast.parse(inspect.getsource(superego_mod))
+    tree = ast.parse(inspect.getsource(superego_mod) if source is None else source)
     found = []
     for func in ast.walk(tree):
         if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -395,8 +396,15 @@ def test_no_prompt_of_the_stage_interpolates_the_raw_message():
 
 
 def test_control_the_enumeration_sees_a_raw_interpolation():
-    """The detector produces what it looks for: the scope guard's is found, by name."""
-    assert [name for name, _ in _raw_interpolations()] == ["_build_scope_prompt"]
+    """The detector produces what it looks for, on the scope guard's builder as it was written
+    before 0.1.8 — a bare parameter and a context's attribute — and not on its guarded twin."""
+    before = ("def _build_scope_prompt(scope_prompt, user_input):\n"
+              "    return f'# User Input\\n\"{user_input}\"\\n'\n"
+              "def other(ctx):\n    return f'{ctx.user_input}'\n")
+    assert [name for name, _ in _raw_interpolations(before)] == ["_build_scope_prompt", "other"]
+    guarded = before.replace("{user_input}", "{defang_structure(user_input)}").replace(
+        "{ctx.user_input}", "{_contact_request(ctx)}")
+    assert guarded != before and _raw_interpolations(guarded) == []
 
 
 def test_the_guard_has_one_definition():

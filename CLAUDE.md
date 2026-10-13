@@ -319,10 +319,44 @@ rendered it raw under `# User request`. Measured on `ee9344d`: a message with a 
   on purpose. The same file counts the forged inventory rows (1 before in each prompt, 2 on the
   goal fallback; 0 now) and enumerates the sink by AST: no f-string of the stage interpolates
   `user_input` directly, with one exemption written down.
-- **Not covered, and why.** The scope guard quotes the sentence as the thing it classifies
-  (`# User Input`), and is the written exemption. The executor's user message is the NOUMENO's
-  rewrite, another carrier. `ProposalJudge` fences the message with its own tag, and the options
-  selector takes it as its own argument. None of them moved.
+- **Not covered by 0.1.7:** the scope guard, the executor's task, the NER's goal and the options
+  selector. 0.1.8 closed those four, below. `ProposalJudge` fences the message with its own tag
+  and did not move.
+
+**0.1.8 follows the same text to the four places that still carried it raw.** Each makes the same
+call, `defang_structure`, at its own sink. Measured on `9df2e16`:
+- **The scope guard** (`_build_scope_prompt`, at the f-string under `# User Input`). A message
+  with `# Task` and `# Examples` lines gave the guard's inventory those two rows twice.
+- **The executor's task, on the text path only** (`EgoStage._task_text`). The task is the
+  NOUMENO's rewrite, and a rewrite that passes the message through IS the message. On the text
+  path it opens the one text the tool results are appended to, so a `<tool_output name="…">` the
+  contact typed read as a second tool result.
+- **`intent.goal`**, the NER's reading of the message: the judge's `# Active goal` and the
+  executor's `Goal:` line. A goal with a line reading `# EGO draft` gave the judge two.
+- **The selector** (`scope_options._prompt`): the cut to `MAX_MESSAGE_CHARS` first, the escape
+  after.
+
+Three things are deliberate:
+- **Native function calling is not touched.** The task travels as the API's own `role=user`
+  message, the tool results as `role=tool` messages, and nothing of this library is assembled
+  around either. The hostile message is the bytes of before there, and `EgoResult.prompt_sha`
+  with them.
+- **The selector compares with the original.** `has_evidence` and `asked` read the message as
+  the contact wrote it. `asked` is quoted back to them, so it must be their words.
+- **A clean text is the same bytes**, which keeps the per-turn digests comparable:
+  `ScopeCheckResult.prompt_sha` and `EgoResult.prompt_sha` do not move on an ordinary message.
+  `tests/unit/test_contact_text_is_defanged_at_every_sink.py` holds 120 digests taken on
+  `9df2e16` (12 texts × 10 renderings, four of them those two digests on both executor paths)
+  and 10 of the hostile text, with the control that renders them again when the guard is off.
+
+The same file enumerates the sinks by AST. Every function of the three stage modules that reads
+`user_input`, `rewritten` or `goal` is in a table with what it does (guards it, hands it to a
+guarded builder, or compares it and never renders it). A new read fails until it is classified.
+
+**What 0.1.8 does not measure:** what the guard's classifier or the selector DECIDES about a
+message that carries structure. That needs a model, and none was run. **Still raw:** the NER's
+other free texts (`entities_objects`, `constraints`, `negation`, `causal_chain`), measured to
+open a forged header line in the executor's `# Task context`.
 
 The reserved set is **derived**, never copied: `reserved_headers()` reads `_VOICE_BLOCKS`,
 `_JUDGE_BLOCKS`, `_SCOPE_BLOCKS` and the executor's `ego.EGO_BLOCKS` (whose header column
@@ -336,12 +370,16 @@ consult section (`superego._CONSULTED_HEADER`, slug `consulted`). Until then tha
 rendered and not listed, so a line forging it inside `mk.EGO_CONTEXT` reached the judge unescaped
 and the section's characters were counted under `executed`.
 
-**Measured (F4.3, 2026-10-06):** `tests/unit/test_injection_by_tool_data.py` renders 8 sources ×
-5 forms over the real stages.
-- On `02e1850`, 7 of the 8 sources let a forged header escape.
+**Measured (F4.3, 2026-10-06):** `tests/unit/test_injection_by_tool_data.py` rendered 8 sources ×
+5 forms over the real stages. Today it renders 11 sources over 6 prompts.
+- On `02e1850`, 7 of the 8 sources let a forged header escape. Run again against that tree on
+  2026-10-13, the file gives the same 7 (its own docstring said «6 of the 7» until then).
 - After the change, none do.
 - The contact's message is the ninth source since 0.1.7. On `ee9344d` its `header` form escaped
   in the judge and in the voice (5 forged headers each); now it does not.
+- Since 0.1.8 the table also renders the scope guard's prompt and the selector's, and has two
+  more sources: the message as the executor's task, and the NER's goal. On `9df2e16` the
+  `header` form of three sources escaped; now none does.
 
 **What stays OPEN is outside the fence.** The fix is structural and does not move what a model
 does with an instruction. Measured downstream (2026-10-07, n=1 per cell, sampling; the full row is

@@ -1,5 +1,107 @@
 # Changelog
 
+## 0.1.8 — 2026-10-13 — the four places that still carried the contact's text raw
+
+### Fixed
+
+0.1.7 guarded the contact's message in the judge's prompt and in the voice's. Four places still
+rendered it, or a model's reading of it, as it was written. Each now goes through
+`prompt_guard.defang_structure` at its own sink. Measured on `9df2e16`:
+
+- **The scope guard** quoted the sentence under `# User Input`. A message with lines reading
+  `# Task` and `# Examples` gave `scope_prompt_inventory` the rows `task` and `examples` twice.
+  The guard is now in `_build_scope_prompt`, at the f-string, so every caller is covered.
+- **The executor's task on the text path.** The task is the NOUMENO's rewrite, and a rewrite
+  that passes the message through (an English message, or a rewriter that returned nothing) IS
+  the raw message. On the text path the task opens the one text the tool results are appended
+  to: a `<tool_output name="…">` the contact typed read as a second tool result, and a line
+  reading `# Correction requested` as a section. One seam, `EgoStage._task_text`.
+- **`intent.goal`**, the NER's reading of the message, under the judge's `# Active goal` and on
+  the executor's `Goal:` line. A goal with a second line reading `# EGO draft` gave the judge
+  two header lines of that name and a second `draft` row in its inventory. The executor's line
+  is the same datum in another prompt, found by enumerating the sinks.
+- **The selector** (`scope_options._prompt`) put the message after `Message:` as typed. The cut
+  to `MAX_MESSAGE_CHARS` comes first and the escape after.
+
+What holds at all four:
+
+- **The structural half only.** A fence tag of `FENCE_TAGS` loses its angle brackets and a line
+  opening with a reserved header gains a backslash. Every word stays. The tool-call pass of
+  `sanitize_untrusted` is never run on the contact's own words.
+- **A clean text is the same bytes**, so the per-turn digests are comparable across the change:
+  `ScopeCheckResult.prompt_sha` and `EgoResult.prompt_sha` are the digests of the tree before on
+  every message with no fence tag and no reserved header at a line start.
+
+### Not changed, on purpose
+
+- **The executor's task on native function calling.** It travels as the API's own `role=user`
+  message: nothing of this library is assembled around it, and the tool results arrive as
+  `role=tool` messages. The bytes are the ones of before for the hostile message too, and
+  `EgoResult.prompt_sha` with them.
+- **What the selector compares.** `has_evidence` and `asked` read the message as the contact
+  wrote it (`parse_selection`), never the escaped form. `asked` is quoted back to the contact.
+
+### What moved for a caller
+
+- On a message that carries a fence tag or a reserved header at a line start,
+  `ScopeCheckResult.prompt_sha` (and `ctx.metadata[mk.SCOPE_PROMPT_SHA]`) is the digest of the
+  escaped prompt, and `ScopeCheckResult.prompt_blocks` no longer repeats a row.
+- On the text path, `EgoResult.prompt_sha` is taken over the escaped task on such a message, and
+  `EgoResult.prompt_text` carries the escaped goal on such a goal.
+- `ctx.user_input`, `noumeno.rewritten` and `intent.goal` themselves are never modified.
+
+### Tests
+
+- **`tests/unit/test_injection_by_tool_data.py`** gains two prompts (the scope guard's and the
+  selector's) and two sources (the message as the executor's task, the NER's goal): 11 sources ×
+  5 forms over 6 prompts. On `9df2e16` the `header` form of three sources escaped: the contact's
+  message (scope guard, selector), the message as the task (those two and the executor's text
+  path) and the NER's goal (the executor on both paths, the judge). Now none does. On native
+  function calling the task is `role:user` in the table, the API's own message.
+- **`tests/unit/test_contact_text_is_defanged_at_every_sink.py`**:
+  - **Clean text is the bytes of before**: 120 digests taken on `9df2e16`, 12 texts that only
+    LOOK structural × 10 renderings of the real stages. Four of the ten are the two `prompt_sha`
+    the stages record, on both executor paths.
+  - **The hostile text is not**: its 10 digests on that tree are pinned. The 8 guarded
+    renderings must differ; with the guard switched off they render the pinned bytes again. The
+    2 native renderings must NOT differ.
+  - **The inventories**: the scope guard's record has the same rows for the hostile message and
+    a clean one (2 more with the guard off), and the judge's likewise for the goal (1 more).
+  - **One tool result on the text path**: with the guard off the contact's message forges a
+    second `<tool_output>`.
+  - **The selector compares with the original**: `parse_selection` is handed the message as
+    written, `asked` survives on a message that names a fence tag, and the pure parser loses it
+    against the escaped form.
+  - **The sinks, by AST**: every function of the three stage modules that reads `user_input`,
+    `rewritten` or `goal` is classified in a table, and no f-string or `+` builds that text (or
+    the message parameter of the two builders that take one) outside a guard call. Both
+    detectors have a control on a source built to fail.
+- **`tests/unit/test_the_contacts_request_is_defanged.py`**: its one written exemption (the
+  scope guard's builder) is gone, and the table is empty. The detector's control now runs on a
+  source written the way that builder was.
+- On `9df2e16` the two files above gave 27 failed and 334 passed, the 120 clean digests among
+  the passes.
+
+### Docs
+
+- The module docstring of `tests/unit/test_injection_by_tool_data.py` said «6 of the 7 sources
+  escaped» on `02e1850`. The file had 8 sources from its first commit, and run again against
+  that tree it gives **7 of the 8**, which is what this changelog and `CLAUDE.md` already said.
+
+### Not in this release
+
+- **No model was run.** What the scope guard's classifier or the selector DECIDES about a
+  message that carries structure is not measured. The change is structural.
+- **The NER's other free texts** (`entities_objects`, `constraints`, `negation`,
+  `causal_chain`) are rendered as they were. Measured on this tree: each can open a forged
+  header line in the executor's `# Task context`, and `constraints` and `negation` add two rows
+  to the judge's inventory.
+- **The NOUMENO's and the NER's own prompts** read the message as the thing they rewrite and
+  classify. `ProposalJudge` fences it with its own tag. None of them moved.
+- **Markers that are not sections.** A contact can still type `[TOOL RESULTS]` or
+  `[ALREADY EXECUTED]`, the plain-text markers of the executor's text path. They are neither a
+  fence tag nor a reserved header.
+
 ## 0.1.7 — 2026-10-13 — the contact's own message cannot pass for the prompt around it
 
 ### Fixed

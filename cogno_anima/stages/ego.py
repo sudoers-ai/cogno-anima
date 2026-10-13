@@ -226,7 +226,7 @@ class EgoStage:
         # `system` and grows only the user half (tool results), which `steps` already records.
         parts = self._system_parts(ctx, system_prompt, use_native, tools)
         system = _PART_SEPARATOR.join(text for _slug, text in parts)
-        task = ctx.noumeno.rewritten or ctx.user_input
+        task = self._task_text(ctx, use_native)
         # Taken HERE, over what the attempt STARTS from. The results of a confirmed replay
         # (just below) and of the loop's tool calls are appended after it; they are in `steps`.
         prompt_sha = self._prompt_sha(system, task, tools if use_native else None)
@@ -531,6 +531,27 @@ class EgoStage:
 
     # ── prompt assembly ──────────────────────────────────────────────
 
+    @staticmethod
+    def _task_text(ctx: PipelineContext, native: bool) -> str:
+        """The executor's user message: the NOUMENO's rewrite, or the message when there is none.
+
+        That text is the contact's. A rewrite that passes the message through (an English
+        message, or a rewriter that returned nothing) IS the raw message, and a rewrite is a
+        model's rendering of it either way.
+
+        **On the text path it is guarded** (:func:`defang_structure`, the structural half only):
+        there the task opens the ONE text the tool results are appended to, so a
+        ``<tool_output name="…">`` the contact typed read as a tool result, and a line reading
+        ``# Correction requested`` as a section. Identity on an ordinary task.
+
+        **On native function calling it is left as it was.** The task is the API's own
+        ``role=user`` message: nothing of this library is assembled around it, the tool results
+        arrive as ``role=tool`` messages, and what the API already keeps apart is not rewritten.
+        """
+        assert ctx.noumeno is not None        # `process` guarantees this before calling
+        task = ctx.noumeno.rewritten or ctx.user_input
+        return task if native else defang_structure(task)
+
     def _build_system(
         self, ctx: PipelineContext, system_prompt: str, native: bool, tools: list[dict],
     ) -> str:
@@ -673,7 +694,10 @@ class EgoStage:
             return ""
         lines = [f"User intent: {intent.intent_class}"]
         if intent.goal:
-            lines.append(f"Goal: {intent.goal}")
+            # The NER's goal is a model's reading of the contact's message and can carry a line
+            # of it; a second line reading `# Correction requested` would be a section of this
+            # prompt. Same guard as the judge's `# Active goal`, identity on an ordinary goal.
+            lines.append(f"Goal: {defang_structure(intent.goal)}")
         if intent.domains:
             lines.append(f"Domains: {', '.join(intent.domains)}")
         if intent.entities_objects:
