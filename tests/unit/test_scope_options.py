@@ -231,7 +231,7 @@ def test_select_scope_options_reads_the_contacts_message_and_stamps_the_record()
     assert ctx.metadata[mk.SCOPE_OPTIONS_SELECTION] == {
         "outcome": "suggested", "covered": [], "suggested": ["Oficina de Fotografia"],
         "asked": "curso de Fotografia Digital", "offered": len(OPTIONS), "discarded": 1,
-        "covered_unsupported": 0}
+        "covered_unsupported": 0, "repairs": []}
     assert got.record() == ctx.metadata[mk.SCOPE_OPTIONS_SELECTION]
     assert set(got.record()["suggested"]) <= set(OPTIONS)
 

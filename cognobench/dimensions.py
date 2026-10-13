@@ -91,6 +91,25 @@ def systemic_guard(dim: DimensionResult, planned_cases: int) -> None:
             f"provider/instrument failure, not model quality")
 
 
+def _tally_repairs(dim: DimensionResult, result: object) -> None:
+    """Side metric: what ONE stage call had to repair in the model's JSON reply
+    (``cogno_anima.repairs``), tallied NEXT to the score and never in it.
+
+    ``repair_calls`` is the denominator — how many replies were READ — and it travels
+    with the tally on purpose: "3 marks" means nothing without the number of calls that
+    could have carried one. ``repaired_calls`` is how many of them carried at least one.
+    A result with no ``repairs`` list (a stand-in stage) counts as a call that repaired
+    nothing; a run that RAISED never reaches here, so a dead call is in neither number.
+    """
+    marks = [m for m in (getattr(result, "repairs", None) or ()) if isinstance(m, str)]
+    dim.meta["repair_calls"] = dim.meta.get("repair_calls", 0) + 1
+    dim.meta["repaired_calls"] = dim.meta.get("repaired_calls", 0) + (1 if marks else 0)
+    tally = dict(dim.meta.get("repairs", {}))
+    for mark in marks:
+        tally[mark] = tally.get(mark, 0) + 1
+    dim.meta["repairs"] = dict(sorted(tally.items()))
+
+
 def _lang_prefix(value: str) -> str:
     return (value or "").lower().split("-")[0]
 
@@ -145,6 +164,7 @@ async def run_noumeno(
             ctx = await pipe.run(case.input, force_language=language,
                                  stop_after="noumeno", metadata=metadata)
             n = ctx.noumeno
+            _tally_repairs(dim, n)
             checks: list[tuple[str, str, str, bool]] = []
 
             checks.append(("rewrite_nonempty", "non-empty", n.rewritten[:30],
@@ -188,6 +208,7 @@ async def run_ner(
             if intent is None:
                 dim.errors.append((case.id, "intent is None"))
                 continue
+            _tally_repairs(dim, intent)
 
             checks: list[tuple[str, str, str, bool]] = []
 
@@ -549,6 +570,8 @@ async def run_superego(
         try:
             if case.kind == "scope":
                 r = await stage.check_input_scope(ctx, scope_backend, scope_prompt=case.scope_prompt)
+                if r.verdict_read:             # a bypass asked nothing: not a call
+                    _tally_repairs(dim, r)
                 dim.checks.append(CheckResult(case.id, "blocked_is_bool", "bool",
                                               str(r.blocked), isinstance(r.blocked, bool)))
                 if case.expect_blocked is not None:
@@ -557,6 +580,8 @@ async def run_superego(
                                                   str(r.blocked), True if calibrate else ok))
             elif case.kind == "judge":
                 r = await stage.evaluate(ctx, judge_backend, limits_prompt="")
+                if r.verdict_read:
+                    _tally_repairs(dim, r)
                 dim.checks.append(CheckResult(case.id, "approved_is_bool", "bool",
                                               str(r.approved), isinstance(r.approved, bool)))
                 if case.expect_approved is not None:

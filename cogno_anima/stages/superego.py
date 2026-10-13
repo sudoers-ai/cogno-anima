@@ -71,6 +71,7 @@ from cogno_anima.security.redaction import (
     sanitize_reader_role,
 )
 from cogno_anima.verdict import VERDICT_BOOLEAN, VERDICT_CALL_FAILED, parse_object, read_verdict
+from cogno_anima.repairs import RepairLog, note_text_field, reply_form_repairs
 
 logger = logging.getLogger("cogno_anima.superego")
 
@@ -2050,7 +2051,8 @@ class SuperegoStage:
         def _result(blocked: bool, msg: str, ti: int = 0, to: int = 0,
                     cached: int = 0, prompt: str = "",
                     fingerprint: Optional[str] = None,
-                    served: Optional[str] = None, read: str = "") -> ScopeCheckResult:
+                    served: Optional[str] = None, read: str = "",
+                    repairs: "Optional[list[str]]" = None) -> ScopeCheckResult:
             # What this call was actually ASKED. Built on every path that BUILT a prompt, the
             # fail-OPEN one included — the early bypasses below pass none because none was
             # built, and that is the distinction the empty list carries.
@@ -2084,9 +2086,18 @@ class SuperegoStage:
                 ctx.metadata[mk.SCOPE_VERDICT_READ] = read
             else:
                 ctx.metadata.pop(mk.SCOPE_VERDICT_READ, None)
+            # What had to be REPAIRED in the reply (`cogno_anima.repairs`), by the same rule
+            # and for the same reader: stamped on every path that ASKED the classifier — `[]`
+            # when the reply needed nothing, and on the path where the call raised and there
+            # was no reply — and popped on a bypass, so absent keeps meaning "nothing was asked".
+            marks = list(repairs or [])
+            if read:
+                ctx.metadata[mk.SCOPE_REPAIRS] = list(marks)
+            else:
+                ctx.metadata.pop(mk.SCOPE_REPAIRS, None)
             return ScopeCheckResult(
                 blocked=blocked, refusal_message=msg, prompt_blocks=blocks, prompt_sha=sha,
-                verdict_read=read,
+                verdict_read=read, repairs=marks,
                 metrics=StageMetrics(stage="superego_scope",
                                      elapsed_ms=(time.perf_counter() - t0) * 1000,
                                      tokens_in=ti, tokens_out=to, cached_tokens=cached,
@@ -2159,7 +2170,11 @@ class SuperegoStage:
             cached = cached_tokens_of(backend)
             fingerprint = system_fingerprint_of(backend)
             served = served_model_of(backend)
-            raw, _ = self.strip_cot(raw)
+            raw, cot_stripped = self.strip_cot(raw)
+            # What had to come off the reply before it could be read — counted, never acted
+            # on. How the VERDICT key itself was read is `verdict_read`'s, below.
+            repairs = RepairLog("superego_scope")
+            repairs.extend(reply_form_repairs(raw, cot_stripped=cot_stripped))
             # STRICT: only a JSON boolean is a verdict (``cogno_anima.verdict``). This line was
             # ``bool(data.get("blocked", False))``, which read the STRING "false" as a block —
             # a legitimate contact refused by a classifier that had just allowed them — and
@@ -2172,12 +2187,15 @@ class SuperegoStage:
                 logger.warning("stage=superego event=scope_verdict_unreadable read=%s "
                                "— allowing by default (fail-open)", verdict.read)
                 return _result(False, "", ti, to, cached, prompt, fingerprint, served,
-                               verdict.read)
+                               verdict.read, repairs.marks())
             blocked = verdict.value
             msg = str(verdict.data.get("refusal_message", "")) if blocked else ""
+            if blocked:
+                # The refusal text is read only on a block, so only then can it need a repair.
+                note_text_field(repairs, verdict.data, "refusal_message")
             logger.info("SUPEREGO scope blocked=%s", blocked)
             return _result(blocked, msg, ti, to, cached, prompt, fingerprint, served,
-                           VERDICT_BOOLEAN)
+                           VERDICT_BOOLEAN, repairs.marks())
         except Exception as exc:  # noqa: BLE001 — fail-open: never refuse on error
             logger.warning("scope guard failed (%s) — allowing by default", exc)
             # The PROMPT is recorded (it was built: blocks and digest both) and the per-call
@@ -2346,9 +2364,15 @@ class SuperegoStage:
         def _result(approved: bool, critique: Optional[str], ti: int = 0, to: int = 0,
                     cached: int = 0, prompt: str = "", branch: str = "",
                     fingerprint: Optional[str] = None,
-                    served: Optional[str] = None, read: str = "") -> SuperegoResult:
+                    served: Optional[str] = None, read: str = "",
+                    repairs: "Optional[list[str]]" = None) -> SuperegoResult:
             return SuperegoResult(
                 approved=approved, critique=critique,
+                # What had to be REPAIRED in the judge's reply (`cogno_anima.repairs`): a
+                # chain-of-thought block or a fence stripped, the object dug out of prose, a
+                # critique that was missing on a rejection. `[]` when the reply needed nothing,
+                # and on the paths that had no reply to repair.
+                repairs=list(repairs or []),
                 # HOW the verdict was read (``cogno_anima.verdict``): ``boolean`` when the
                 # judge answered with one, the reason when it did not, ``call_failed`` when
                 # there was no reply — and ``""`` on the path that asked nothing. A rejection
@@ -2388,7 +2412,11 @@ class SuperegoStage:
             cached = cached_tokens_of(backend)
             fingerprint = system_fingerprint_of(backend)
             served = served_model_of(backend)
-            raw, _ = self.strip_cot(raw)
+            raw, cot_stripped = self.strip_cot(raw)
+            # What had to come off the reply before it could be read — counted, never acted
+            # on. How the VERDICT key itself was read is `verdict_read`'s, below.
+            repairs = RepairLog("superego_judge")
+            repairs.extend(reply_form_repairs(raw, cot_stripped=cot_stripped))
             # STRICT: only a JSON boolean is a verdict (``cogno_anima.verdict``). This line was
             # ``bool(data.get("approved", False))``, and a non-empty string is truthy: the
             # judge answering ``"approved": "false"`` APPROVED the execution it had just
@@ -2402,10 +2430,13 @@ class SuperegoStage:
                 logger.warning("stage=superego event=judge_verdict_unreadable read=%s branch=%s "
                                "— not approving (fail-closed)", verdict.read, branch)
                 return _result(False, UNREADABLE_VERDICT_CRITIQUE, ti, to, cached, asked,
-                               branch, fingerprint, served, verdict.read)
+                               branch, fingerprint, served, verdict.read, repairs.marks())
             approved = verdict.value
             data = verdict.data
             critique = None if approved else str(data.get("critique", "")) or "execution rejected"
+            if not approved:
+                # The critique is read only on a rejection, so only then can it need a repair.
+                note_text_field(repairs, data, "critique")
             # The critique travels — to the EGO's retry, to the voice on exhaustion, to the log
             # line below and to the trace a host persists — and a judge rejecting a LEAK of the
             # contact's note tends to quote the leaked words. Masked at the SOURCE, so none of
@@ -2424,7 +2455,7 @@ class SuperegoStage:
                 logger.warning("stage=superego event=judge approved=false branch=%s critique=%s",
                                branch, (critique or "")[:80])
             return _result(approved, critique, ti, to, cached, asked, branch,
-                           fingerprint, served, VERDICT_BOOLEAN)
+                           fingerprint, served, VERDICT_BOOLEAN, repairs.marks())
         except Exception as exc:  # noqa: BLE001 — fail-CLOSED: don't pass unverified
             logger.warning("judge failed (%s) — not approving (fail-closed)", exc)
             return _result(False, "could not verify the execution; please retry",

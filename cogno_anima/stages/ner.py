@@ -14,10 +14,14 @@ from cogno_anima.prompts import load_prompt, prompt_digest
 from cogno_anima.utils import (DEFAULT_CONFIDENCE, generate_json_resilient,
                                parse_json_object)
 from cogno_anima.security.pii import (
+    VALID_PII_TYPES,
     compute_pii_risk,
     filter_uncontextualized_dob,
     normalize_pii_types,
 )
+from cogno_anima.repairs import (COERCED, CUT, DEFAULT, FALLBACK, FENCE_OR_THINK_STRIPPED,
+                                 NER_REPAIR_FIELDS, NULL_FIELD, SALVAGED_OBJECT, STRING_BOOL,
+                                 RepairLog, spelled_boolean)
 from cogno_anima.security.detector import PiiDetector, default_detector
 from cogno_anima.errors import StageParseError
 
@@ -112,6 +116,143 @@ _TAG_TO_DOMAIN: dict[str, str] = {
     "NER.SYSTEM": "TECH",
     "NER.ANALYSIS": "SCIENCE",
 }
+
+
+# The caps `_build` cuts to — named because two readers need them: the cut itself and the
+# `cut:<field>` mark that says a cut happened (`_reply_repairs`). One number, two uses.
+_MAX_MANDATORY_TAGS = 3
+_MAX_ARISTO_CHARS = 40
+_MAX_GOAL_CHARS = 80
+_MAX_CAUSAL_ITEMS, _MAX_CAUSAL_CHARS = 4, 60
+_MAX_PHRASE_ITEMS, _MAX_PHRASE_CHARS = 4, 40        # negation, constraints
+_MAX_VERBS = 5
+
+# field -> (closed vocabulary, may the prompt's `null` stand for "none"?)
+_ENUM_FIELDS: "dict[str, tuple[set[str], bool]]" = {
+    "intent_class": (VALID_INTENTS, False),
+    "sentiment": (VALID_SENTIMENTS, False),
+    "temporal_class": (VALID_TEMPORAL, False),
+    "triad_signal": (VALID_TRIAD, False),
+    "parole": (VALID_PAROLE, True),
+    "modality": (VALID_MODALITY, True),
+    "speech_act": (VALID_SPEECH_ACTS, True),
+}
+# field -> (max items, max chars per item)
+_PHRASE_LISTS: "dict[str, tuple[int, int]]" = {
+    "causal_chain": (_MAX_CAUSAL_ITEMS, _MAX_CAUSAL_CHARS),
+    "negation": (_MAX_PHRASE_ITEMS, _MAX_PHRASE_CHARS),
+    "constraints": (_MAX_PHRASE_ITEMS, _MAX_PHRASE_CHARS),
+    "verbs": (_MAX_VERBS, _MAX_PHRASE_CHARS),
+}
+_FLAGS = ("context_dependent", "is_composite", "is_sequential")
+
+
+def _usable_phrase(item: object) -> bool:
+    return isinstance(item, str) and bool(item.strip())
+
+
+def _reply_repairs(data: dict, log: RepairLog) -> None:
+    """Record what ``IntentAnalyzer._build`` has to repair in the fields of the model's object.
+
+    It DECIDES NOTHING: ``_build`` reads and sanitises every field exactly as it always did,
+    and this function only says which of those reads did not keep what the model wrote. The
+    rule for ``coerced`` is the strict one — would a closed enumeration have refused this
+    value? — so a lower-case or aliased member is a mark even though ``_build`` recovers it.
+    Pure; never raises — a count must not cost a turn. See :mod:`cogno_anima.repairs`.
+    """
+    try:
+        for name in NER_REPAIR_FIELDS[DEFAULT]:
+            if name not in data:
+                log.field(DEFAULT, name)
+        for name in NER_REPAIR_FIELDS[NULL_FIELD]:
+            if name in data and data[name] is None:
+                log.field(NULL_FIELD, name)
+
+        for name, (vocabulary, _nullable) in _ENUM_FIELDS.items():
+            value = data.get(name)
+            if value is not None and not (isinstance(value, str) and value in vocabulary):
+                log.field(COERCED, name)
+
+        value = data.get("confidence")
+        if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))
+                                  or not 0.0 <= value <= 1.0):
+            log.field(COERCED, "confidence")
+
+        value = data.get("entities")
+        if value is not None:
+            if not isinstance(value, dict):
+                log.field(COERCED, "entities")
+            else:
+                for key in ("people", "objects", "concepts"):
+                    items = value.get(key, [])
+                    if not isinstance(items, list) or not all(_usable_phrase(i) for i in items):
+                        log.field(COERCED, "entities")
+
+        value = data.get("location")
+        if value is not None and not isinstance(value, str):
+            log.field(COERCED, "location")
+
+        value = data.get("mandatory_tags")
+        if value is not None:
+            if not isinstance(value, list) or not all(
+                    isinstance(t, str) and t in VALID_MANDATORY for t in value):
+                log.field(COERCED, "mandatory_tags")
+            if isinstance(value, list) and sum(
+                    1 for t in value if isinstance(t, str)
+                    and t.upper().split(".")[-1] in VALID_MANDATORY) > _MAX_MANDATORY_TAGS:
+                log.field(CUT, "mandatory_tags")
+
+        value = data.get("aristotelian")
+        if value is not None:
+            if not isinstance(value, dict) or not all(
+                    isinstance(k, str) and k in VALID_ARISTOTELIAN and _usable_phrase(v)
+                    for k, v in value.items()):
+                log.field(COERCED, "aristotelian")
+            if isinstance(value, dict):
+                for key, text in value.items():
+                    # only an entry `_build` KEEPS can be cut
+                    if str(key).upper() not in VALID_ARISTOTELIAN or not _usable_phrase(text):
+                        continue
+                    text = text.strip()
+                    tail = text.split(" | ", 1)[1].strip() if " | " in text else text
+                    if len(tail) > _MAX_ARISTO_CHARS:
+                        log.field(CUT, "aristotelian")
+
+        value = data.get("domains")
+        if value is not None and (not isinstance(value, list) or not all(
+                isinstance(d, str) and d in NER_KNOWLEDGE_DOMAINS for d in value)
+                or len(set(value)) != len(value)):
+            log.field(COERCED, "domains")
+
+        value = data.get("goal")
+        if value is not None and not isinstance(value, str):
+            log.field(COERCED, "goal")
+        if isinstance(value, str) and len(value.strip()) > _MAX_GOAL_CHARS:
+            log.field(CUT, "goal")
+
+        for name, (max_items, max_chars) in _PHRASE_LISTS.items():
+            value = data.get(name)
+            if value is None:
+                continue
+            if not isinstance(value, list) or not all(_usable_phrase(i) for i in value):
+                log.field(COERCED, name)
+            if isinstance(value, list):
+                kept = [i.strip() for i in value if _usable_phrase(i)]
+                if len(kept) > max_items or any(len(i) > max_chars for i in kept[:max_items]):
+                    log.field(CUT, name)
+
+        for name in _FLAGS:
+            value = data.get(name)
+            if value is None or isinstance(value, bool):
+                continue
+            log.field(STRING_BOOL if spelled_boolean(value) else COERCED, name)
+
+        value = data.get("pii")
+        if value is not None and (not isinstance(value, list) or not all(
+                isinstance(t, str) and t in VALID_PII_TYPES for t in value)):
+            log.field(COERCED, "pii")
+    except Exception:  # noqa: BLE001 — a mark is telemetry; the classification is the product
+        logger.warning("stage=ner event=repair_marks_failed — the turn continues")
 
 
 def _canonical_domains(raw: object) -> list[str]:
@@ -257,15 +398,19 @@ class IntentAnalyzer:
         #    (see generate_json_resilient); anything else raises on the first, as before.
         t0 = time.perf_counter()
         raw_response = ""
+        # What this stage has to REPAIR in the model's reply — counted, never acted on
+        # (`cogno_anima.repairs`).
+        repairs = RepairLog(STAGE_NAME)
 
         def _decode_capturing(raw: str) -> dict:
             nonlocal raw_response
             raw_response = raw
-            return self._decode(raw)
+            return self._decode(raw, repairs)
 
         (data, tokens_in, tokens_out, cached_tokens,
          fingerprint, served_model) = await generate_json_resilient(
-            backend, self._system, prompt, _decode_capturing, stage=STAGE_NAME)
+            backend, self._system, prompt, _decode_capturing, stage=STAGE_NAME,
+            repairs=repairs)
         elapsed_ms = (time.perf_counter() - t0) * 1000
 
         metrics = StageMetrics(
@@ -289,10 +434,15 @@ class IntentAnalyzer:
         # 4. Parse the response. Language is inherited from NOUMENO, never the LLM.
         #    PII is detected on the ORIGINAL text (not the rewrite, which may mask it).
         return self._build(data, raw_response, metrics, language=noumeno.language,
-                           original=noumeno.original, rewritten=noumeno.rewritten)
+                           original=noumeno.original, rewritten=noumeno.rewritten,
+                           repairs=repairs)
 
-    def _decode(self, raw: str) -> dict:
+    def _decode(self, raw: str, repairs: Optional[RepairLog] = None) -> dict:
         """Raw model text → a JSON object, or ``StageParseError``.
+
+        ``repairs`` (optional, write-only) receives what had to come off before the read —
+        ``fence_or_think_stripped``, ``salvaged_object`` — and ONLY when an object is
+        returned: a reply that raises recorded nothing.
 
         Split out of ``_parse`` so the retry wrapper has something to call: it needs a step
         that can FAIL on a truncated response before any IntentResult exists (the result
@@ -300,8 +450,12 @@ class IntentAnalyzer:
         Also mirrors NOUMENO, which has had ``_parse_json`` separate from the field logic
         all along.
         """
+        marks: list[str] = []
         cleaned = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
+        if cleaned != raw.strip():
+            marks.append(FENCE_OR_THINK_STRIPPED)
         if cleaned.startswith("```"):
+            marks.append(FENCE_OR_THINK_STRIPPED)
             lines = cleaned.splitlines()
             if lines[0].startswith("```"):
                 lines = lines[1:]
@@ -312,6 +466,7 @@ class IntentAnalyzer:
         try:
             data = json.loads(cleaned)
         except json.JSONDecodeError as exc:
+            marks.append(SALVAGED_OBJECT)
             # Backends without format="json" (cloud) sometimes emit more than one top-level object
             # ("Extra data") — e.g. an empty/partial {} before the real one, or the object trailed
             # by prose. Pick the RICHEST object (not the first — a leading {} must not silently win
@@ -325,6 +480,8 @@ class IntentAnalyzer:
         # so the contract stays "valid IntentResult OR StageParseError".
         if not isinstance(data, dict):
             raise StageParseError(STAGE_NAME, raw, TypeError("JSON is not an object"))
+        if repairs is not None:
+            repairs.extend(marks)
         return data
 
     def _parse(self, raw: str, metrics: StageMetrics, language: Optional[str] = None,
@@ -336,13 +493,23 @@ class IntentAnalyzer:
         separately only because the retry has to fail on a truncated response before any
         StageMetrics exists.
         """
-        return self._build(self._decode(raw), raw, metrics, language=language,
-                           original=original, rewritten=rewritten)
+        repairs = RepairLog(STAGE_NAME)
+        return self._build(self._decode(raw, repairs), raw, metrics, language=language,
+                           original=original, rewritten=rewritten, repairs=repairs)
 
     def _build(self, data: dict, raw: str, metrics: StageMetrics,
                language: Optional[str] = None,
-               original: str = "", rewritten: str = "") -> IntentResult:
-        """Sanitize the decoded fields into an IntentResult. Decoding is ``_decode``."""
+               original: str = "", rewritten: str = "",
+               repairs: Optional[RepairLog] = None) -> IntentResult:
+        """Sanitize the decoded fields into an IntentResult. Decoding is ``_decode``.
+
+        ``repairs`` is the log the decode already wrote to (a fresh one when the caller keeps
+        none); what THIS method repairs is added to it and the whole of it lands on
+        ``IntentResult.repairs``.
+        """
+        if repairs is None:
+            repairs = RepairLog(STAGE_NAME)
+        _reply_repairs(data, repairs)
         # intent_class
         llm_intent_class = str(data.get("intent_class", "UNKNOWN")).upper()
         intent_class = llm_intent_class
@@ -363,6 +530,9 @@ class IntentAnalyzer:
                 intent_class = "CREATIVE_TASK"
             elif {"ANALYSIS"} & set(raw_tags):
                 intent_class = "INFORMATION_REQUEST"
+            if intent_class != "UNKNOWN":
+                # The tags, not the model's own field, produced the class.
+                repairs.field(FALLBACK, "intent_class")
 
         # The LLM gave an invalid/absent intent_class and we coerced it from
         # tags/heuristics — a quality degradation worth surfacing (handled, not fatal).
@@ -451,7 +621,7 @@ class IntentAnalyzer:
                 mandatory.append(make_tag("NER", short))
         if not mandatory:
             mandatory = [make_tag("NER", "UNKNOWN")]
-        mandatory = mandatory[:3]
+        mandatory = mandatory[:_MAX_MANDATORY_TAGS]
 
 
         # aristotelian
@@ -466,9 +636,9 @@ class IntentAnalyzer:
                     val = v.strip()
                     if " | " in val:
                         tag, desc = val.split(" | ", 1)
-                        val = f"{tag.strip()} | {desc.strip()[:40]}"
+                        val = f"{tag.strip()} | {desc.strip()[:_MAX_ARISTO_CHARS]}"
                     else:
-                        val = val[:40]
+                        val = val[:_MAX_ARISTO_CHARS]
                     aristotelian[k_upper] = val
 
         # domains (aliased + filtered against the closed list; see module top)
@@ -482,10 +652,11 @@ class IntentAnalyzer:
                     domains.append(d)
             if domains:
                 logger.debug("stage=ner event=domains_fallback derived=%s", domains)
+                repairs.field(FALLBACK, "domains")
 
         # goal
         goal_raw = data.get("goal")
-        goal = (str(goal_raw).strip()[:80]
+        goal = (str(goal_raw).strip()[:_MAX_GOAL_CHARS]
                 if goal_raw and isinstance(goal_raw, str) and goal_raw.strip()
                 else None)
 
@@ -493,8 +664,8 @@ class IntentAnalyzer:
         causal_raw = data.get("causal_chain", [])
         causal_chain: list[str] = []
         if isinstance(causal_raw, list):
-            causal_chain = [str(x).strip()[:60] for x in causal_raw
-                            if isinstance(x, str) and str(x).strip()][:4]
+            causal_chain = [str(x).strip()[:_MAX_CAUSAL_CHARS] for x in causal_raw
+                            if isinstance(x, str) and str(x).strip()][:_MAX_CAUSAL_ITEMS]
 
         # parole
         parole_raw = data.get("parole")
@@ -511,15 +682,15 @@ class IntentAnalyzer:
         negation_raw = data.get("negation", [])
         negation = []
         if isinstance(negation_raw, list):
-            negation = [str(x).strip()[:40] for x in negation_raw
-                        if isinstance(x, str) and str(x).strip()][:4]
+            negation = [str(x).strip()[:_MAX_PHRASE_CHARS] for x in negation_raw
+                        if isinstance(x, str) and str(x).strip()][:_MAX_PHRASE_ITEMS]
 
         # constraints
         constraints_raw = data.get("constraints", [])
         constraints = []
         if isinstance(constraints_raw, list):
-            constraints = [str(x).strip()[:40] for x in constraints_raw
-                           if isinstance(x, str) and str(x).strip()][:4]
+            constraints = [str(x).strip()[:_MAX_PHRASE_CHARS] for x in constraints_raw
+                           if isinstance(x, str) and str(x).strip()][:_MAX_PHRASE_ITEMS]
 
         # modality
         modality_raw = data.get("modality")
@@ -539,8 +710,8 @@ class IntentAnalyzer:
         verbs_raw = data.get("verbs", [])
         verbs: list[str] = []
         if isinstance(verbs_raw, list):
-            verbs = [str(x).strip()[:40] for x in verbs_raw
-                     if isinstance(x, str) and str(x).strip()][:5]
+            verbs = [str(x).strip()[:_MAX_PHRASE_CHARS] for x in verbs_raw
+                     if isinstance(x, str) and str(x).strip()][:_MAX_VERBS]
 
         # context_dependent
         ctx_raw = data.get("context_dependent", False)
@@ -629,6 +800,7 @@ class IntentAnalyzer:
             is_sequential=is_sequential,
             pii=pii,
             pii_risk=pii_risk,
+            repairs=repairs.marks(),
             metrics=metrics,
             raw_response=raw,
         )

@@ -149,6 +149,18 @@ class NoumenoResult(BaseModel):
     # counts becomes the mechanism. See `cogno_anima.preserved`.
     preserved_dropped: int = 0
 
+    # ── Repairs ───────────────────────────────────────────
+    # What this stage had to REPAIR in the model's JSON reply this turn, from the closed
+    # `cogno_anima.repairs.VALID_NOUMENO_REPAIRS` (a key left out, a `null`, a boolean spelled
+    # as a string, a fence stripped, an object dug out of prose, a truncation retry). `[]` means
+    # the reply was read as it came. Marks only — never a byte of what the model wrote.
+    #
+    # Deliberately NOT folded into `degradations`: those say what the stage could NOT do, they
+    # seed `DriftMetrics.noumeno_degradations`, and `[]` there is read as "nothing degraded". A
+    # reply that needed a default filled in degraded nothing, and widening that list would move
+    # a field every existing reader already gives a meaning to.
+    repairs: list[str] = Field(default_factory=list)
+
     # ── Telemetry ─────────────────────────────────────────
     metrics: StageMetrics
 
@@ -200,6 +212,16 @@ class IntentResult(BaseModel):
     pii: list[str] = Field(default_factory=list)
     pii_risk: str = "NONE"
 
+
+    # ── Repairs ───────────────────────────────────────────
+    # What this stage had to REPAIR in the model's JSON reply, from the closed
+    # `cogno_anima.repairs.VALID_NER_REPAIRS`: `default:<field>` (the key was absent),
+    # `null_field:<field>`, `coerced:<field>` (a value outside the vocabulary or of another
+    # type), `string_bool:<field>`, `cut:<field>`, `fallback:<field>` (the two heuristics that
+    # fill `intent_class` and `domains` from the mandatory tags), and the three marks about the
+    # reply as a whole. `[]` means every field was kept as the model wrote it. Marks only —
+    # the field NAME is in a mark, the value never is.
+    repairs: list[str] = Field(default_factory=list)
 
     # ── Telemetry ─────────────────────────────────────────
     metrics: StageMetrics
@@ -659,6 +681,14 @@ class ScopeCheckResult(BaseModel):
     # ``None`` ``prompt_sha`` already carry; the metadata key is then ABSENT
     # (``metakeys.SCOPE_VERDICT_READ``). Closed alphabet, so it is safe to persist as it is.
     verdict_read: str = ""
+    # What had to be REPAIRED in the classifier's reply before it could be used, from the closed
+    # ``cogno_anima.repairs.VALID_SCOPE_REPAIRS``: a chain-of-thought block or a fence stripped,
+    # the object dug out of prose, a refusal message that was absent, ``null`` or not a string
+    # on a block. It never repeats ``verdict_read`` — HOW the verdict key was read is that
+    # field's, and the two are read together. ``[]`` on a path that asked a verdict means the
+    # reply needed nothing; on a bypass it is ``[]`` too, and ``verdict_read == ""`` is what
+    # says nothing was asked. Also on ``ctx.metadata[mk.SCOPE_REPAIRS]``.
+    repairs: list[str] = Field(default_factory=list)
     metrics: StageMetrics
 
 
@@ -744,6 +774,12 @@ class SuperegoResult(BaseModel):
     # and cost the same budget, which is exactly why a reader must be able to tell them apart:
     # the first is about the EXECUTION, the second is about the JUDGE.
     verdict_read: str = ""
+    # What had to be REPAIRED in the judge's reply before it could be used, from the closed
+    # ``cogno_anima.repairs.VALID_JUDGE_REPAIRS``: a chain-of-thought block or a fence stripped,
+    # the object dug out of prose, a critique that was absent, ``null`` or not a string on a
+    # rejection. Filled by `evaluate`; ``[]`` on `voice`. It never repeats ``verdict_read``:
+    # how the verdict key was read is that field's, and the two are read together.
+    repairs: list[str] = Field(default_factory=list)
     # The rendered voice prompt, IN MEMORY, for the turn the host is holding right now.
     #
     # It carries contact data — the user's own words, retrieved memories, the graph block — and

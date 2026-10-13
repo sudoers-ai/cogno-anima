@@ -169,6 +169,29 @@ Key points:
     a string `"false"` used to read `True`. An unreadable value is `False`, like an
     absent one, and a drift measured above 0.50 still forces `True`. Nothing is
     recorded beside it but a `WARNING` (`event=changed_unreadable read=<read>`).
+- **What a stage repairs in a model's JSON reply is counted** (`cogno_anima.repairs`,
+  since 0.1.9). Five results carry a `repairs` list of marks from a closed alphabet:
+  - `ctx.noumeno.repairs` and `ctx.intent.repairs`;
+  - the scope guard's, on `ctx.metadata["scope_repairs"]` (its result is consumed by
+    your orchestrator). Present whenever the classifier was asked, `[]` when the
+    reply needed nothing; ABSENT on a bypass;
+  - the judge's, on the `SuperegoResult` each `evaluate` returns. Your loop keeps one
+    result per attempt, so copy the list per attempt, like `verdict_read`;
+  - the selector's, inside `ctx.metadata["scope_options_selection"]["repairs"]`.
+
+  A mark is `default:<field>`, `null_field:<field>`, `string_bool:<field>`,
+  `coerced:<field>`, `cut:<field>`, `fallback:<field>`, or one of
+  `fence_or_think_stripped`, `salvaged_object`, `truncated_retry`, `unparseable`. It
+  names a field and never carries a value, so it is safe to persist. Close what you
+  persist with `cogno_anima.closed_repairs(raw, stage)`, where `stage` is the
+  `StageMetrics.stage` of the call (`noumeno`, `ner`, `superego_scope`,
+  `superego_judge`, `superego_select`): a mark of another stage, or any other string,
+  is dropped.
+
+  The guard's and the judge's lists do NOT repeat `verdict_read`. Count a stage's
+  repairs as its marks PLUS its non-`boolean` verdict reads. `[]` means the reply was
+  read as it came. An old result, or a stand-in stage, has no list: treat that as
+  "not on record", never as zero.
 - **The contact's message is escaped in the judge's and the voice's prompt** (since
   0.1.7). `ctx.user_input` is rendered through `prompt_guard.defang_structure`: a
   fence tag of the core loses its angle brackets, and a line opening with one of the
@@ -237,6 +260,7 @@ the core reads/writes:
 | `held_delivered_text` (`mk.HELD_DELIVERED_TEXT`) | host may inject, PER TURN | `{tool: argument}` for the tools on this turn's table whose argument is SENT to a person on a yes, read from each tool's own manifest (#183). When a held call matches, the orchestrator judges the proposal turn and the judge reads the text verbatim (`types.held_delivered_texts`); with `ctx.force_language` set to a language tag, the judge also holds that text to that language (#204, `superego.held_message_language`). The argument may be one the HOST writes at the proposal rather than the model: a gate-C tool that composes the text itself (a downstream templated e-mail writes `rendered`, the whole e-mail, into the call's arguments and returns `needs_confirmation=True`) declares that argument, and the judge reads the composed text against the proposal's own output (0.1.2, `types.is_skill_proposal`) |
 | `held_recorded_ask` (`mk.HELD_RECORDED_ASK`) | host may inject, PER TURN | `{tool: argument}` naming the argument of the SAME held call that the host records on the recipient's side as what the message asks them to answer; read only for a tool `held_delivered_text` also declares, judged beside the message at the proposal (#198, `types.held_messages_with_asks`). Absent → the judge's prompt is unchanged |
 | `scope_verdict_read` (`mk.SCOPE_VERDICT_READ`) | core writes, PER TURN | how the scope guard's verdict was read this turn — one of `cogno_anima.verdict.VALID_VERDICT_READS`: `boolean` (the classifier's own answer), `string_bool` / `not_boolean` / `missing` / `duplicated` / `unparseable` (it answered, the answer was not a JSON boolean, and the turn was ALLOWED by the fail-open contract), `call_failed` (the call raised). ABSENT when the guard asked nothing; the core removes a stale value on those paths, like `scope_prompt_sha`, and a carrier must not hold it between turns. A closed alphabet, safe to persist (0.1.3) |
+| `scope_repairs` (`mk.SCOPE_REPAIRS`) | core writes, PER TURN | what the scope guard had to repair in the classifier's reply this turn — a list of marks from `cogno_anima.repairs.VALID_SCOPE_REPAIRS` (`fence_or_think_stripped`, `salvaged_object`, `default:refusal_message`, `null_field:refusal_message`, `coerced:refusal_message`). It never repeats `scope_verdict_read`. Present, possibly `[]`, whenever the classifier was asked; ABSENT when the guard asked nothing — the core removes a stale value on those paths, and a carrier must not hold it between turns. A closed alphabet, safe to persist (0.1.9) |
 | `source_reads` (`mk.SOURCE_READS`) | host may inject, PER TURN | the tool names the host's catalog DECLARES as source reads (a bare `str` is one name). `types.source_reads_not_called(ctx)` returns those that were offered and that no execution of the turn called — the input of cogno-soma's one extra executor pass over a rejected negative (#196). Absent / empty → `[]`, every consumer as before |
 
 Minimal threading between turns:

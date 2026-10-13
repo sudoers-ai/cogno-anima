@@ -458,6 +458,44 @@ Two are left as they were, because neither can lose its mention without being RE
 - the voice's review verdict: «Say ONLY what the Context above supports; when it supports
   nothing, say plainly that you do not have that information».
 
+### Repairs of a model's JSON reply (`cogno_anima/repairs.py`)
+
+Five stages ask a model for a JSON object and make the reply usable by hand: the NOUMENO, the
+NER, the scope guard, the judge and the scope-option selector. **`cogno_anima.repairs` counts
+what each of them had to repair (0.1.9). It decides nothing.**
+
+- **Where.** A `repairs` list on `NoumenoResult`, `IntentResult`, `ScopeCheckResult` (also
+  `ctx.metadata[mk.SCOPE_REPAIRS]`, because the orchestrator drops that result),
+  `SuperegoResult` (filled by `evaluate`, `[]` on `voice`) and `OptionSelection` (also in its
+  `record()`).
+- **What a mark is.** A constant, or `<family>:<field>` from a closed family and the NAME of a
+  field the stage reads. Never a byte of the reply, so the list is safe to persist.
+- **The alphabet is per stage and derived.** One table of `family -> fields` per stage, in the
+  module; `REPAIRS_BY_STAGE` is keyed by `StageMetrics.stage`. The module is the enumeration —
+  this section does not copy it. `RepairLog` drops a mark the stage's table does not name, and
+  `closed_repairs(raw, stage)` does the same for a reader on the far side of a carrier.
+- **`coerced` is the strict question**: would a closed enumeration have refused this value? A
+  lower-case or aliased member is a mark even though the stage recovers it.
+- **The guard and the judge do not repeat `verdict_read`.** How the verdict key was read is
+  that field's (`unparseable`, `string_bool`…). The list says what came off the reply around it
+  and what the text beside the verdict needed. `unparseable` is in ONE alphabet, the
+  selector's, and it is the verdict reader's own token.
+- **Not a repair**: what a stage decides from values it could read (grounding, the PII union,
+  the anaphora flip, the composite/sequential and drift reconciliations).
+- **The marking is a separate function per stage** (`_reply_repairs` in `stages/noumeno.py`,
+  `stages/ner.py`, `stages/scope_options.py`), fenced: if it raises, the turn continues and a
+  WARNING says so. The two NER fallbacks are marked at the branch that takes them.
+
+**The one read that changed.** A JSON `null` in the NOUMENO's `rewritten` or `context_turn`
+raised `AttributeError` and ended the turn. It now reads as the absent key always did, marked
+`null_field:<field>`. Everything else that ends a turn with something other than a
+`StageParseError` is listed in `CHANGELOG.md` (0.1.9, *Not in this release*) and was left alone.
+
+**Measured, no model.** `tests/unit/test_repairs_red_twins.py` is the defect per stage (7 red on
+`d15a6ea`); `tests/unit/test_repairs_are_counted.py` drives every mark of every alphabet and
+proves that switching the marking off changes nothing but the list. The RATE of repair per
+stage is a number only traffic gives.
+
 ### Prompts
 
 Prompt templates live under `cogno_anima/prompt_templates/<stage>/` (`noumeno/`, `ner/`) as plain text files, loaded via `cogno_anima.prompts.load_prompt(stage, prompt_name, prompts_dir=...)`. The loader strips YAML frontmatter (`---\n...\n---\n`) and any `TODO(docs)` lines. `IntentAnalyzer` can load an alternate system prompt via `system_prompt_name` (default `system.txt`); the default NER prompt is concise (~3.4k tokens) so it fits Ollama's default `num_ctx=8192` with room for input/output.
