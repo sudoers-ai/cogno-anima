@@ -90,6 +90,20 @@ No design moves. Each item names what changed, its twin and its control.
   supports; when it supports nothing, say plainly…», which cannot lose its first half without
   being reworded.
 
+### Docs
+
+- **The recipient of a held message: what the judge sees, and when a host aligns it.** Four
+  places said «the recipient is deliberately not judged: the host aligns it AFTER the judge»
+  (`CLAUDE.md`, `docs/ACT_CONFIRM_READONLY.md`, a comment in `superego.py`, a test docstring).
+  Both halves were out of date. No behaviour changed here; what the code does:
+  - criterion (e) and the rest of the held-message rule are about the TEXT. No criterion names
+    the recipient argument and the held-messages block does not render it;
+  - the judge still SEES the recipient, on the held call's argument line under
+    `# What the EGO executed`. A new test pins that it is there and in no other section;
+  - so a host that aligns the recipient does it BEFORE the judge reads the call. `cogno_soma`
+    fires no hook between the executor and the judge, and `cogno-host` wraps the EGO stage it
+    hands the pipeline (since its #1198). Read on that host's `origin/main` at `42f644b3`.
+
 ## 0.1.5 — 2026-10-07 — the executor's prompt leaves a record: which parts, how long, a digest, the path — never the text
 
 ### Added

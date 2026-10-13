@@ -4,9 +4,11 @@ The executor reads only the canonical-English rewrite, so a held message can com
 for a contact who writes in Portuguese — and the judge of the held message, which judged what the
 text SAYS, approved it: the recipient reads those exact words. The language is the one the host
 ALREADY declares for the turn, ``ctx.force_language`` (the tenant/session language the NOUMENO
-reads first); nothing new is declared. The recipient is deliberately NOT judged here: the host
-aligns it deterministically AFTER the judge runs, so a judge shown the executor's recipient would
-reject names about to be repaired.
+reads first); nothing new is declared. The rule is about the TEXT: no criterion names the
+recipient argument and the held-messages block does not render it. The judge still sees it on
+the held call's argument line, so a host that aligns the recipient does it BEFORE the judge reads
+the call (a downstream host wraps the EGO stage for that; the last test of this file pins what
+this library renders).
 
 Proven in both worlds:
 
@@ -153,12 +155,39 @@ def test_the_twin_criterion_e_renders_in_the_held_rule_naming_the_language():
 
 
 def test_criterion_e_is_about_the_TEXT_and_never_the_recipient():
-    """The recipient is aligned by the host AFTER the judge; the rule must not reach it, and the
-    block must not show one."""
+    """Aligning the recipient is the host's, and it is done before the judge reads the call; the
+    rule must not reach it, and the held-messages block must not show one."""
     rule = _held_message_rule("pt-BR")
     assert "language of the message TEXT alone" in rule
     assert "unless the request itself asks for that language" in rule
     assert "held_recipient" not in _prompt(_ctx_with([_held(EN)], TXT, "pt-BR"))
+
+
+def test_the_judge_sees_the_recipient_on_the_argument_line_and_nowhere_else():
+    """What this library RENDERS, pinned because the prose about it was wrong once: it said the
+    recipient was not shown to the judge. It is — on the held call's own argument line under
+    `# What the EGO executed` — and it is in no other section: not in the held-messages block
+    (which carries the text), not in the rule. So the name the judge reads is whatever the
+    call's arguments hold when `evaluate` runs: the executor's, or the host's if the host
+    rewrote the held call before the judge."""
+    prompt = _prompt(_ctx_with([_held(EN)], TXT, "pt-BR"))
+    name = EN["target"]
+    assert prompt.count(name) == 1
+    executed = SuperegoStage.judge_prompt_inventory(prompt)
+    at = prompt.index(name)
+    start = 0
+    for row in executed:
+        if start <= at < start + row["chars"]:
+            assert row["block"] == "executed", row
+            break
+        start += row["chars"]
+    else:
+        raise AssertionError("the recipient is outside every known section")
+    line = prompt[prompt.rfind("\n", 0, at) + 1:prompt.index("\n", at)]
+    assert line.startswith("- notify_user({") and '"target"' in line
+    # The control: a host that rewrote the held call before the judge is what the judge reads.
+    aligned = _ctx_with([_held({**EN, "target": "Bloco 17 Docentes"})], TXT, "pt-BR")
+    assert "Bloco 17 Docentes" in _prompt(aligned) and name not in _prompt(aligned)
 
 
 def test_the_rule_adds_no_row_to_the_inventory_and_does_not_touch_the_system_message():

@@ -1127,10 +1127,15 @@ _HELD_ASKING_IS_THE_HOSTS = _held_asking_is_the_hosts("(a)-(d)")
 # turn (`ctx.force_language`, the tenant/session language the NOUMENO reads first) — no new
 # declaration, and no guess from the text: `noumeno.language` is a detection and may be the
 # langdetect fallback. CONDITIONAL on that declaration: with none (or one that is not a language
-# tag) the rule is `_HELD_MESSAGE_RULE`, byte for byte. It is about the TEXT only — the RECIPIENT
-# is the host's to align, deterministically, and it does so AFTER this judgement (the orchestrator
-# fires `after_ego` once the judge has run), so a judge shown the executor's recipient would
-# reject names the host is about to repair and spend the one correction on them.
+# tag) the rule is `_HELD_MESSAGE_RULE`, byte for byte. It is about the TEXT only: no criterion
+# names the RECIPIENT argument, and the held-messages block does not render it. The judge still
+# SEES it, on the held call's own argument line under `# What the EGO executed`, so which name is
+# there when the judge reads is the HOST's doing. A host that aligns the recipient
+# deterministically has to do it BEFORE this judgement, and the orchestrator fires no hook
+# between the executor and the judge (`after_ego` fires once the loop is over): the host wraps
+# the EGO stage it hands the pipeline. `cogno-host` does so (its #1198). Until then it aligned
+# from `after_ego`, and this comment said so and called it harmless — it was not: the judge read
+# the executor's own rendering of the name, rejected it, and the turn spent its correction.
 def _held_language_criterion(language: str) -> str:
     return (
         f"; (e) is NOT WRITTEN in the language the user writes in, «{language}» — its text "
