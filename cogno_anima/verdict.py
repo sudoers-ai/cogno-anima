@@ -56,6 +56,7 @@ __all__ = [
     "VALID_VERDICT_READS",
     "VerdictRead",
     "parse_object",
+    "read_boolean",
     "read_verdict",
 ]
 
@@ -153,6 +154,33 @@ def parse_object(raw: str) -> "tuple[Optional[dict[str, Any]], frozenset[str]]":
     return data, repeated[-1] if repeated else frozenset()
 
 
+def read_boolean(data: "dict[str, Any]", key: str) -> VerdictRead:
+    """Read the boolean ``key`` out of an object ALREADY decoded. Pure; never raises.
+
+    The value half of :func:`read_verdict`, which is expressed over it — so "only a JSON boolean
+    is a boolean" has one definition whichever door the reply came in by. For a stage whose own
+    parser has already decoded the reply (the NOUMENO reads six fields out of one object, and
+    ``changed`` is the only boolean among them).
+
+    It answers :data:`VERDICT_BOOLEAN`, :data:`VERDICT_MISSING`, :data:`VERDICT_STRING_BOOL` or
+    :data:`VERDICT_NOT_BOOLEAN` (and :data:`VERDICT_UNPARSEABLE` for a ``data`` that is not an
+    object). It cannot answer :data:`VERDICT_DUPLICATED`: a decoded object
+    has already kept the last value of a repeated key, in silence. A caller for whom that
+    matters — a verdict that DECIDES — reads the raw reply with :func:`read_verdict`.
+    """
+    if not isinstance(data, dict):       # not an object at all: there was nothing to read from
+        return VerdictRead(None, VERDICT_UNPARSEABLE)
+    if key not in data:
+        return VerdictRead(None, VERDICT_MISSING, data)
+    value = data[key]
+    # ``bool`` first and by TYPE: ``True == 1`` in Python, and a model's ``1`` is not a verdict.
+    if isinstance(value, bool):
+        return VerdictRead(value, VERDICT_BOOLEAN, data)
+    if isinstance(value, str) and value.strip().casefold() in _BOOLEAN_SPELLINGS:
+        return VerdictRead(None, VERDICT_STRING_BOOL, data)
+    return VerdictRead(None, VERDICT_NOT_BOOLEAN, data)
+
+
 def read_verdict(raw: str, key: str) -> VerdictRead:
     """Read the boolean ``key`` out of a model's reply. Pure; never raises.
 
@@ -165,12 +193,4 @@ def read_verdict(raw: str, key: str) -> VerdictRead:
         return VerdictRead(None, VERDICT_UNPARSEABLE)
     if key in repeated:
         return VerdictRead(None, VERDICT_DUPLICATED, data)
-    if key not in data:
-        return VerdictRead(None, VERDICT_MISSING, data)
-    value = data[key]
-    # ``bool`` first and by TYPE: ``True == 1`` in Python, and a model's ``1`` is not a verdict.
-    if isinstance(value, bool):
-        return VerdictRead(value, VERDICT_BOOLEAN, data)
-    if isinstance(value, str) and value.strip().casefold() in _BOOLEAN_SPELLINGS:
-        return VerdictRead(None, VERDICT_STRING_BOOL, data)
-    return VerdictRead(None, VERDICT_NOT_BOOLEAN, data)
+    return read_boolean(data, key)

@@ -16,6 +16,7 @@ from cogno_anima.prompts import load_prompt, prompt_digest
 from cogno_anima.errors import StageParseError
 from cogno_anima.preserved import filter_preserved_terms
 from cogno_anima.vocab import DRIFT_TAG_UNKNOWN, EMBED_UNAVAILABLE, PRESERVED_NOT_IN_INPUT
+from cogno_anima.verdict import VERDICT_MISSING, read_boolean
 
 logger = logging.getLogger("cogno_anima.noumeno")
 
@@ -315,7 +316,21 @@ class Noumeno:
 
         context_turn = data.get("context_turn", "").strip()
         confidence = float(data.get("confidence", DEFAULT_CONFIDENCE))
-        changed = bool(data.get("changed", False))
+        # Only a JSON boolean is a boolean — the ONE strict reader, the judge's and the guard's
+        # (`cogno_anima.verdict`). This was `bool(data.get("changed", False))`, and a non-empty
+        # string is truthy: `"changed": "false"` read True. What an UNREADABLE value does is
+        # this stage's own contract, and it is the value an ABSENT key always had — False.
+        # `changed` is the rewriter's claim that it altered the text; a field nobody could read
+        # is not that claim, and recording True would assert it. Nothing is lost by the False:
+        # the drift MEASURED below overrides it (a drift above 0.50 forces True), and that
+        # measurement, not the model's word, is what the tag is built from. It leaves a
+        # WARNING with the read (the closed `VALID_VERDICT_READS`, never the value); a missing
+        # key stays silent, as it always was.
+        changed_read = read_boolean(data, "changed")
+        if changed_read.value is None and changed_read.read != VERDICT_MISSING:
+            logger.warning("stage=noumeno event=changed_unreadable read=%s — recorded as "
+                           "False; the measured drift still decides the tag", changed_read.read)
+        changed = changed_read.value is True
         # A preserved E-MAIL/URL the contact never typed is the MODEL's, not the contact's, and
         # it is dropped HERE — before the judge demands its exact reproduction (criterion #4)
         # and before the voice can repeat it. Measured 3/3 on the onboarding cassette (host

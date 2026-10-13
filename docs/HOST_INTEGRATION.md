@@ -165,6 +165,10 @@ Key points:
   - Count the values of `cogno_anima.verdict.VALID_VERDICT_READS` per stage and
     per model: a model that spells booleans as strings is rejected by the judge
     on every turn and never blocks at the guard.
+  - `noumeno.changed` follows the same rule since 0.1.6 (`verdict.read_boolean`):
+    a string `"false"` used to read `True`. An unreadable value is `False`, like an
+    absent one, and a drift measured above 0.50 still forces `True`. Nothing is
+    recorded beside it but a `WARNING` (`event=changed_unreadable read=<read>`).
 
 ---
 

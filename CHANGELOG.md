@@ -33,6 +33,24 @@ No design moves. Each item names what changed, its twin and its control.
   by the table), matched by prefix like `# Context (authoritative` and the criteria rows. **No
   prompt moved by a byte.** The reserved set goes from 36 headers to 37; without the new one it
   is the 36 of before, by digest. A host that stores the judge's inventory sees one new slug.
+- **The NOUMENO's `changed` is read by the strict reader.** It was
+  `bool(data.get("changed", False))`, so a string `"false"` read `True`. It now reads through
+  `verdict.read_boolean(data, key)`, the value half of `read_verdict` for an object a stage
+  already decoded; `read_verdict` is expressed over it, so the rule has one definition.
+  - `true` and `false` as JSON booleans read as before. An absent key is `False`, as before.
+  - **An unreadable value is `False`**: a string in any spelling, a number, `null`, a list, an
+    object. `changed` is the rewriter's claim that it altered the text, and a field nobody
+    could read is not that claim. The measured drift still overrides it (above 0.50 forces
+    `True`), so a real change is not lost.
+  - It leaves a `WARNING` (`stage=noumeno event=changed_unreadable read=<read>`, the closed
+    `VALID_VERDICT_READS`, never the value). `NoumenoResult` gains no field: `changed` stays a
+    `bool`, so "unreadable" and "the rewriter said no" are the same value on the result.
+  - What moved for a caller: `"true"` as a string and the number `1` used to read `True` and
+    now read `False`.
+  - `read_boolean` cannot see a key written twice (a decoded object kept the last value). A
+    verdict that decides reads the raw reply with `read_verdict`.
+  - The walk for `bool(<x>.get("<literal>"))` over the stages now expects no hit, with a
+    control that the walk still sees the line it looks for.
 
 ## 0.1.5 — 2026-10-07 — the executor's prompt leaves a record: which parts, how long, a digest, the path — never the text
 
