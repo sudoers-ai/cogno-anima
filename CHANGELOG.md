@@ -89,6 +89,20 @@ No design moves. Each item names what changed, its twin and its control.
   was NOT measured.** Not covered: the review verdict's «Say ONLY what the Context above
   supports; when it supports nothing, say plainly…», which cannot lose its first half without
   being reworded.
+- **`cogno_anima.__version__` is the version of the code, written once.** It was
+  `importlib.metadata.version("cogno-anima")`, the version of whatever distribution is
+  INSTALLED. Imported from a source tree (an editable install older than a bump, a checkout on
+  `PYTHONPATH`) the code reported the old number. Measured on a development box, on the tree
+  before this change: `pyproject.toml` declared 0.1.5 and `cogno_anima.__version__` answered
+  0.1.0.
+  - The number lives in `cogno_anima/_version.py`. `cogno_anima.__version__` is that constant.
+  - `pyproject.toml` declares none: `dynamic = ["version"]`, read from the same line by
+    `[tool.setuptools.dynamic]`. A release bumps that one file.
+  - `tests/unit/test_version_has_one_source.py` fails when the package, the build
+    configuration or the first heading of this file says something else, and the wheel test
+    already in the suite now checks the version of the wheel it builds.
+  - The fallback `0.0.0` for a tree with no installed distribution is gone: there is always a
+    number.
 
 ### Docs
 
