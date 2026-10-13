@@ -1,5 +1,127 @@
 # Changelog
 
+## 0.1.9 — 2026-10-13 — what a stage repairs in a model's JSON reply is counted
+
+### Added
+
+- **`cogno_anima.repairs`: the closed alphabet of what a stage had to REPAIR in a model's JSON
+  reply, and a `repairs` list on the result of each of the five stages that ask for one.**
+  The NOUMENO, the NER, the scope guard, the judge and the scope-option selector all tolerate a
+  reply that is not quite the object they asked for. Until now that tolerance left one log
+  line (`intent_class_fallback`), one DEBUG line (`domains_fallback`) and one WARNING
+  (`truncated_response`), so "how often does this stage repair what the model wrote?" had no
+  answer from anything a host persists.
+  - **It counts and decides nothing.** No prompt moves, no verdict moves, and no field of a
+    result moves except the new list. See *Changed* for the one read that is different.
+  - **A mark is never a byte of the reply.** It is a constant, or `<family>:<field>` built from
+    a closed family and the NAME of a field the stage reads. A list of marks is safe to persist
+    as it is.
+  - **The families.**
+
+    | mark | what happened |
+    |---|---|
+    | `default:<field>` | the key was absent (or the text a stage must have was empty) |
+    | `null_field:<field>` | JSON `null` where the contract asks for a value |
+    | `string_bool:<field>` | a boolean spelled as a string |
+    | `coerced:<field>` | another type, or a word outside the closed vocabulary |
+    | `cut:<field>` | longer than the contract allows, and cut |
+    | `fallback:<field>` | filled from OTHER fields by a heuristic (`intent_class` and `domains`, from the mandatory tags) |
+    | `fence_or_think_stripped` | a chain-of-thought block or a code fence came off before the read |
+    | `salvaged_object` | the object was dug out of a reply that was not ONE JSON object |
+    | `truncated_retry` | the reply arrived cut and the call was made again |
+    | `unparseable` | the SELECTOR's alone: no JSON object came back |
+
+  - **`coerced` is the strict question**: would a closed enumeration have refused this value?
+    A lower-case or aliased member (`"action_request"`, `"ECONOMICS"`, `"CPF"`) is a mark even
+    though the stage recovers it.
+  - **One form mark per field.** `default`, `null_field`, `string_bool` and `coerced` answer
+    one question, so a field carries at most one of them. `cut` and `fallback` may sit beside it.
+  - **Per stage, derived from one table each** (`NOUMENO_REPAIR_FIELDS`, `NER_REPAIR_FIELDS`,
+    `SCOPE_REPAIR_FIELDS`, `JUDGE_REPAIR_FIELDS`, `SELECT_REPAIR_FIELDS`). The alphabets are
+    `REPAIRS_BY_STAGE`, keyed by `StageMetrics.stage`: 19, 74, 5, 5 and 12 marks. A mark the
+    table does not name cannot be recorded (`RepairLog` drops it) and cannot be persisted
+    (`closed_repairs(raw, stage)` drops it).
+  - **What is NOT a repair, and is not counted**: what a stage decides from values it could
+    read. The grounding of a named person, the union with the PII detector, the anaphora flip,
+    the composite/sequential reconciliation, the drift reconciliation of `changed`.
+- **Where each list is.**
+  - `NoumenoResult.repairs` and `IntentResult.repairs`.
+  - `ScopeCheckResult.repairs`, and `ctx.metadata[mk.SCOPE_REPAIRS]` (`"scope_repairs"`),
+    because the orchestrator consumes that result and drops it. The key follows the rule of
+    `mk.SCOPE_VERDICT_READ`: stamped on every path that asked the classifier (`[]` when the
+    reply needed nothing), REMOVED on a bypass. A per-turn fact, never carry-over.
+  - `SuperegoResult.repairs`, filled by `evaluate` (the judge). `voice` leaves it `[]`: the
+    voice does not return JSON, and its envelope net keeps its own count (`voice:json_unwrapped`).
+  - `OptionSelection.repairs`, and in its `record()`.
+- **The guard's and the judge's lists never repeat `verdict_read`.** How the verdict KEY was
+  read is that field's, `unparseable` and `string_bool` included. The list says what came off
+  the reply around it (a fence, prose) and what the text BESIDE the verdict needed: the refusal
+  message on a block, the critique on a rejection. The two are read together.
+- **The selector's `error` is now three records.** `unparseable` (no JSON object),
+  `default:answers` + `default:maybe` or a `coerced:…` (an object without its lists), and no
+  mark at all (the call raised). An option off the closed list is still `discarded`, not a mark.
+- **Exported at the package root**: `REPAIRS_BY_STAGE`, `VALID_REPAIRS`, `closed_repairs`.
+- **CognoBench tallies the marks per dimension**, next to the score and never in it:
+  `DimensionResult.meta["repairs"]` (mark → count) with `repair_calls` (replies READ) and
+  `repaired_calls` as the denominator, for `noumeno`, `ner`, `superego_scope` and
+  `superego_judge`. One line per dimension in the report. Stub run, base and head: the same
+  150/219, and 0 of 9, 55, 7 and 16 replies repaired (the stub's replies are clean).
+
+### Changed
+
+- **A JSON `null` in `rewritten` or `context_turn` no longer ends the turn.**
+  `data.get(key, "").strip()` raised `AttributeError` on it. That is not a `StageParseError`,
+  and it took the turn over a reply every other field of which was usable. It now reads as the
+  absent key always did (the contact's own text for `rewritten`, `""` for `context_turn`) and
+  is marked `null_field:<field>`.
+  - This is the ONE read that changed. A value that is neither text nor `null` still raises,
+    and so does a `null` confidence. See *Not in this release*.
+- **`OptionSelection.record()` gains one key, `repairs`.** A reader that takes keys by name is
+  unaffected. One existing test pinned the whole dict and gained the key.
+- **`generate_json_resilient` takes an optional `repairs=`**, write-only. Its return value, its
+  retry rule and its exceptions are the same with it or without it.
+- **`Noumeno._parse_json` and `IntentAnalyzer._decode`/`_build` take an optional log.** Called
+  as before they answer as before. The caps `_build` cuts to are named constants now, read by
+  the cut and by its mark.
+
+### Tests
+
+- **`tests/unit/test_repairs_red_twins.py`** imports nothing this release added. One sentence
+  per stage: a reply the stage repaired left the same record as a reply it read as it came.
+  Two more for the dead turn. On `d15a6ea`: 7 failed, 1 passed.
+- **`tests/unit/test_repairs_are_counted.py`**:
+  - **Both directions, enumerated from the alphabet.** Every one of the 115 (stage, mark)
+    pairs is produced by a dirty reply, and the clean reply of each stage produces none. A test reads the fields
+    `_build` and `process` read from the SOURCE and compares them with the table.
+  - **The adverse half.** 39 more shapes of a coerced value, and 39 values that look unusual
+    and are what the contract allows (a value exactly at the cap, an empty list, a `null` the
+    prompt permits). None of the 39 marks.
+  - **The marks decide nothing.** With the marking function replaced by nothing, every result
+    of the table is the same except for the list; a control proves the switch took the marks
+    away. A property test does the same over arbitrary objects, exception type included.
+  - **Never the reply.** A canary written into every key and value of a reply reaches no mark.
+  - **A marking function that blows up costs no turn**: it is fenced, and leaves a WARNING.
+- **Across the two trees** (`d15a6ea` and this one): 1090 replies — clean, one field missing,
+  each field under 26 dirty values, eight wrappings — through the five stages and the voice.
+  Every decision is the same except the 2 that are the change above (`AttributeError` → a
+  result). 0 of the 1090 (system, prompt) pairs sent differ.
+- **Mutations**: 34, counted. 33 killed. The survivor copies the guard's list before stamping
+  it on the metadata; the result model copies the list it is given, so the two are equivalent.
+
+### Not in this release
+
+- **No model was run.** The rate of repair per stage is a number only traffic gives.
+- **What still ends a turn with something that is not a `StageParseError`**, measured on the
+  1090 replies and left exactly as it was:
+  - the NOUMENO: a text field that is neither text nor `null` (`AttributeError`), a
+    `confidence` that is `null` or not a number (`TypeError`, `ValueError`), a
+    `preserved_terms` or `rewrite_warnings` that is not a list of strings (`TypeError`, a
+    validation error). 63 of 171 dirty replies;
+  - the NER: a `mandatory_tags` or `pii` that is `null` or a number (`TypeError`). 14 of 603.
+- **A critique or a refusal message that is `null` is rendered as the text `"None"`.**
+  `str(None)` is truthy. It is marked (`null_field:critique`, `null_field:refusal_message`)
+  and not corrected here.
+- **The pre-judge** is already strict and already counted (`PRE_ERROR`); it has no list.
 ## 0.1.8 — 2026-10-13 — the four places that still carried the contact's text raw
 
 ### Fixed
