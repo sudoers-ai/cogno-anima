@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.6 — 2026-10-13 — seven small corrections
+
+No design moves. Each item names what changed, its twin and its control.
+
+### Fixed
+
+- **The executor's retry block passes the arguments of the committed calls through
+  `prompt_guard.defang_structure`.** `# ACTIONS ALREADY EXECUTED` lists the writes the previous
+  attempt committed, with their arguments, and the executor writes those arguments, often by
+  copying what a tool returned. They entered the retry prompt raw, so a `</tool_output>` or a
+  `</context_data>` in an e-mail body arrived whole. It is the call the judge already makes on
+  its own argument line, and it is identity on clean arguments.
+  - The twin: `actions_carry_a_fence` in `tests/unit/_ego_prompt_matrix.py`. Its digest was
+    `57d6975464d37946` on the tree before and is `017f9c87480dc94d` now.
+  - The control: the 47 digests taken on `1923c85` did not move, and neither does
+    `actions_with_a_clean_note`, a note that only names a header.
+  - A header inside an argument never started a line: the arguments are one JSON line. The test
+    counts the `# Correction requested` lines so a change of serialisation would say so.
+
 ## 0.1.5 — 2026-10-07 — the executor's prompt leaves a record: which parts, how long, a digest, the path — never the text
 
 ### Added

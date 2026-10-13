@@ -294,8 +294,9 @@ a tool result, a held message, the persona's rules, the contact's note, or the h
 - no line opens with a header the core renders (`defang_headers`, a backslash).
 
 `defang_structure` is the structural half alone (tags and headers), applied where the tool-call
-pass would rewrite legitimate text: `mk.EGO_CONTEXT` in all three prompts, and the judge's one-line
-JSON of each call's arguments.
+pass would rewrite legitimate text: `mk.EGO_CONTEXT` in all three prompts, and the one-line JSON
+of each call's arguments, in the judge's prompt and in the executor's own retry block
+(`# ACTIONS ALREADY EXECUTED`, since 0.1.6).
 
 The reserved set is **derived**, never copied: `reserved_headers()` reads `_VOICE_BLOCKS`,
 `_JUDGE_BLOCKS`, `_SCOPE_BLOCKS` and the executor's `ego.EGO_BLOCKS` (whose header column

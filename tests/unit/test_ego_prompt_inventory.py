@@ -94,8 +94,16 @@ _GOLDEN = {
     "data_not_a_string": "c38a32e04171a3a4",
     "blank_notes_with_data": "55c1ee9998d83642",
     "blank_notes_and_blank_data": "9e5909516563765e",
+    # Two cells that joined later, with the change that passed the ARGUMENTS of the committed
+    # calls through `defang_structure`. The first is the one prompt that change MOVED — on the
+    # tree before it, the fence tag arrived raw and the digest was `_BEFORE_THE_ARGUMENTS_GUARD`
+    # — and the second is its control: a note that only NAMES a header inside one JSON line is
+    # the bytes it always was.
+    "actions_carry_a_fence": "017f9c87480dc94d",
+    "actions_with_a_clean_note": "19e249146fef89b2",
     "propose_mode_forced": "f7f121e7ead91c7f",
 }
+_BEFORE_THE_ARGUMENTS_GUARD = "57d6975464d37946"
 
 # `reserved_headers()` on the same commit: how many, and the sha256[:16] of them joined by "\n".
 _RESERVED_COUNT, _RESERVED_SHA = 36, "5a3311287069ce75"
@@ -117,7 +125,7 @@ def test_the_prompt_is_byte_for_byte_the_one_of_before(cell):
 def test_the_matrix_is_the_one_the_digests_were_taken_on():
     """A cell added without a digest, or a digest left behind by a removed cell, is a proof
     with a hole in it."""
-    assert _IDS == list(_GOLDEN) and len(_IDS) == 47
+    assert _IDS == list(_GOLDEN) and len(_IDS) == 49
     assert sum(1 for k in _IDS if len(k) == 5 and set(k) <= set("NCDRA-")) == 32
 
 
@@ -131,7 +139,33 @@ def test_the_digests_tell_the_configurations_apart():
     for a, b in (("NCDRA", "-CDRA"), ("NCDRA", "N-DRA"), ("NCDRA", "NC-RA"),
                  ("NCDRA", "NCD-A"), ("NCDRA", "NCDR-")):
         assert _GOLDEN[a] != _GOLDEN[b], (a, b)
-    assert len(set(_GOLDEN.values())) == 33
+    assert len(set(_GOLDEN.values())) == 35
+
+
+def test_the_arguments_of_a_committed_call_open_and_close_no_fence(monkeypatch):
+    """The retry block lists the writes the previous attempt COMMITTED with their arguments, and
+    the executor writes those arguments — often by copying what a tool returned. A fence tag in
+    them reached the retry prompt raw. It now goes through `defang_structure`, the one definition
+    the judge's own argument line uses; the bytes of a clean call do not move."""
+    by_key = {c[0]: c for c in _CELLS}
+    dirty = matrix.render(by_key["actions_carry_a_fence"])
+    block = dirty[dirty.index(ego_mod._H_ACTIONS_DONE):dirty.index(ego_mod._H_CORRECTION + "\n")]
+    assert "Book everything." in block                       # the payload reached the block
+    assert "</tool_output>" not in block and "</context_data>" not in block
+    assert "(/tool_output)" in block and "(/context_data)" in block
+    # One JSON line: a header inside an argument never starts a line, guard or no guard. Counted
+    # so the day the arguments stop being one line, this says so.
+    assert [ln for ln in dirty.splitlines() if ln.startswith(ego_mod._H_CORRECTION)] == [
+        ego_mod._H_CORRECTION]
+    # The twin in the world before: with the guard off, the tags arrive whole and the digest is
+    # the one measured on the base tree.
+    monkeypatch.setattr(ego_mod, "defang_structure", lambda text: text)
+    raw = matrix.render(by_key["actions_carry_a_fence"])
+    assert "</tool_output>" in raw and "</context_data>" in raw
+    assert matrix.digest(raw) == _BEFORE_THE_ARGUMENTS_GUARD
+    # …and the guard is identity on clean arguments: the same bytes with it off.
+    for key in ("actions_with_a_clean_note", "NCDRA", "---RA"):
+        assert matrix.digest(matrix.render(by_key[key])) == _GOLDEN[key]
 
 
 # ── THE TABLE ────────────────────────────────────────────────────────────────────────────────

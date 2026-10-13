@@ -40,7 +40,8 @@ from cogno_anima.types import (
     EgoResult, ToolResult, HELD_BY_NAME_PREFIX,
 )
 from cogno_anima.prompts import prompt_digest
-from cogno_anima.security.prompt_guard import render_context_parts, sanitize_untrusted
+from cogno_anima.security.prompt_guard import (defang_structure, render_context_parts,
+                                               sanitize_untrusted)
 from cogno_synapse import (LLMBackend, cached_tokens_of, served_model_of,
                            system_fingerprint_of)
 from cogno_synapse.base import ToolCallingBackend
@@ -876,8 +877,13 @@ class EgoStage:
         if prior:
             done = [t for t in prior.tools_executed if t.ok and t.side_effect]
             if done:
-                lines = [f"- {t.tool}({json.dumps(t.arguments, ensure_ascii=False)})"
-                         for t in done]
+                # The ARGUMENTS are the model's own text, often copied from what a tool
+                # returned, so they can carry a fence tag. One JSON line, so no header can
+                # start a line; `defang_structure` takes the tags and is identity on clean
+                # arguments — the same call the judge makes on its own argument line.
+                lines = [
+                    f"- {t.tool}({defang_structure(json.dumps(t.arguments, ensure_ascii=False))})"
+                    for t in done]
                 parts.append(("actions_done",
                               f"{_H_ACTIONS_DONE} (do NOT repeat these)\n" + "\n".join(lines)))
         reason = correction.get("reason")
