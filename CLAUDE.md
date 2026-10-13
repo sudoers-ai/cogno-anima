@@ -362,11 +362,29 @@ delivered message, memories, the conversation, the earlier-session summary).
   conversation, pick up an earlier session) and the host's directives are still followed (the
   date, a pick, the language, a return address).
 
-**Six sentences name «the Context above» unconditionally**, so on a turn with NO context at all
-they point at a section that is not there (the judge's grounding enumeration when only the limits
-slot is present, the clock sentence, the voice's «use the context for background»…). That is
-older than this change and this change does not touch it; it is pinned in the same test file and
-left alone, because correcting it changes the prompt of every context-less turn.
+**Six sentences named «the Context above» unconditionally**, so on a turn with NO context at all
+they pointed at a section that is not there. The set is pinned in the same test file
+(`test_the_sentences_are_as_true_split_as_they_were_whole`). Three are the judge's and three the
+voice's. **Since 0.1.6 the judge's two that are a clause of their own travel with the section**,
+spliced by reference in the pattern of `_PRESERVED_CLAUSE`:
+- `superego._IN_THE_CONTEXT_ABOVE` — criterion #1 of the conversational branch («that is NOT in
+  the Context above, in the persona's limits, or in what the user said»);
+- `superego._CONTEXT_HAS_THE_CLOCK` — TRUST THE TOOLS («— the Context above carries the real
+  clock»).
+
+The condition is the `# Context` section `_build_judge_prompt` itself rendered, never a scan of
+the prompt. With a context the judge's prompt is byte for byte the one of before. Without one it
+changes by those words and nothing else: `tests/unit/_judge_context_clauses.py` puts them back,
+and the digests five older proofs hold for context-less prompts return.
+`tests/unit/test_judge_context_clauses_travel_with_the_context.py` pins the twin, the control and
+the delta. **The model half was not measured**: no model was run for this change.
+
+Left as they were, each for its reason:
+- the judge's grounding enumeration (`_GROUNDING_SOURCE_SET`) names «the '# Context' section» on
+  a turn that carries only the limits slot (and the limits on one that carries only a context).
+  Dropping a name needs the sentence reworded, and it was settled against a model twice;
+- the voice's three («Say ONLY what the Context above supports», «Use the context for
+  background.», «the context above is background»).
 
 ### Prompts
 

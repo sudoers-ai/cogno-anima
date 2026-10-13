@@ -31,6 +31,7 @@ from cogno_anima.stages.superego import (_HELD_ASKING_IS_THE_HOSTS, _HELD_MESSAG
                                          SuperegoStage, _held_message_rule,
                                          held_message_language)
 from cogno_anima.types import EgoResult, EgoStep, ToolExecution
+from tests.unit._judge_context_clauses import with_the_context_clauses
 from tests.unit.test_superego import _ctx, _m
 
 USER = "avisa os Docentes Bloco 17 que a reunião passou para quinta às 15h"
@@ -62,7 +63,10 @@ def _prompt(ctx) -> str:
 def _sha(ctx) -> str:
     """The digest of BOTH halves the judge sends: its system message and its prompt."""
     stage = SuperegoStage()
-    return hashlib.sha256((stage._judge_system(ctx) + "\x00" + _prompt(ctx)).encode()).hexdigest()
+    # No turn here carries a `# Context` section; the two clauses that named one are put back
+    # before hashing, so the digests stay the parent tree's (`_judge_context_clauses`).
+    return hashlib.sha256((stage._judge_system(ctx) + "\x00"
+                           + with_the_context_clauses(_prompt(ctx))).encode()).hexdigest()
 
 
 def _no_hold_turn():

@@ -48,8 +48,10 @@ import pytest
 from cogno_anima import metakeys as mk
 from cogno_anima.stages.superego import (
     JUDGE_CONVERSATIONAL_BRANCH, JUDGE_EXECUTION, JUDGE_READONLY,
+    _IN_THE_CONTEXT_ABOVE,
     SuperegoStage, _CONVERSATIONAL_CRITERIA, _GROUNDING_SOURCES)
 from cogno_anima.types import EgoResult, EgoStep, ToolExecution
+from tests.unit._judge_context_clauses import with_the_context_clauses
 from tests.unit.test_superego import _ctx, _m
 
 # A real tenant shape: business rules the host renders into the judge's `limits` slot, framed
@@ -213,7 +215,12 @@ def test_the_conversational_branch_is_untouched():
     so it must render byte-identically, without the new sentence bolted on beside it."""
     branch, prompt = _prompt(conversational=True)
     assert branch == JUDGE_CONVERSATIONAL_BRANCH
-    assert _CONVERSATIONAL_CRITERIA in prompt
+    # This turn carries no `# Context` section, so criterion #1 does not name one (0.1.6): the
+    # criteria are the constant minus that one clause, and with the clause put back they are
+    # the constant, byte for byte.
+    assert "# Context (" not in prompt
+    assert _CONVERSATIONAL_CRITERIA.replace(_IN_THE_CONTEXT_ABOVE, "") in prompt
+    assert _CONVERSATIONAL_CRITERIA in with_the_context_clauses(prompt)
     assert _GROUNDING_SOURCES not in prompt
     assert "in the persona's limits" in _grounding_clause(prompt)
 

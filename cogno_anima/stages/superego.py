@@ -820,6 +820,31 @@ _GROUNDING_SOURCE_SET_NONE = (
 
 _GROUNDING_SOURCES = _GROUNDING_SOURCE_SET + _DERIVED_FROM_EVIDENCE
 
+# ── …AND SO DO THE SENTENCES THAT SAY "THE CONTEXT ABOVE" ────────────────────────────────
+#
+# Two sentences of this prompt point at the `# Context` section by position, and both were said
+# on every turn, the section rendered or not: criterion #1 of the conversational branch lists
+# "the Context above" among the places a fact may come from, and the TRUST THE TOOLS paragraph
+# says "the Context above carries the real clock". The section renders only when the host
+# injected a context (`mk.EGO_CONTEXT` / `mk.EGO_CONTEXT_UNTRUSTED`), so on a turn without one
+# both pointed at a section this prompt does not carry — the defect `_GROUNDING_SOURCE_SET_NONE`
+# and `_PRESERVED_CLAUSE` were each written for: a criterion that names evidence the prompt does
+# not hold is an invitation to guess.
+#
+# Each is spliced BY REFERENCE and removed with the section — the pattern of `_PRESERVED_CLAUSE`,
+# for the reason written there: a `str.replace` over a hand-written copy that drifts matches
+# nothing and does not raise. With the section present the prompt is byte for byte what it was.
+# Without it the prompt CHANGES, by these words and by nothing else
+# (`test_judge_context_clauses_travel_with_the_context.py` restores them and gets the pinned
+# digests back). What a model does with the shorter sentence was NOT measured.
+#
+# NOT covered, and named so nobody reads this as the whole class: `_GROUNDING_SOURCE_SET` names
+# "the '# Context' section" (and "the '# Persona limits' section") on a turn that carries only
+# ONE of the two. Dropping a name there needs the sentence reworded ("ground" → "grounds",
+# "those sections", "NONE of the three"), and that sentence was settled against a model twice.
+_IN_THE_CONTEXT_ABOVE = "in the Context above, "
+_CONTEXT_HAS_THE_CLOCK = " — the Context above carries the real clock"
+
 # ── …AND IT NAMES THE BUSINESS RULES WHEN THEY ARE THERE ─────────────────────────────────
 #
 # When the host hands the rules to the judge (`mk.PERSONA_RULES`, rendered in the SYSTEM
@@ -841,9 +866,10 @@ _GROUNDING_SOURCE_SET_RULES = (
 _WITH_RULES: "tuple[tuple[str, str], ...]" = (
     (_GROUNDING_SOURCE_SET, _GROUNDING_SOURCE_SET_RULES),
     # conversational branch, criterion #1
-    ("that is NOT in the Context above, in the persona's limits, or in what the user said.",
-     "that is NOT in the Context above, in the persona's limits, in the business rules of the "
-     "system message, or in what the user said."),
+    ("that is NOT " + _IN_THE_CONTEXT_ABOVE + "in the persona's limits, or in what the user "
+     "said.",
+     "that is NOT " + _IN_THE_CONTEXT_ABOVE + "in the persona's limits, in the business rules "
+     "of the system message, or in what the user said."),
 )
 
 # EVERY phrasing #156 widened, paired with the original it widened FROM.
@@ -989,7 +1015,8 @@ _CONVERSATIONAL_CRITERIA = (
     "reject — a truthful, on-persona reply that moves the conversation forward is a PASS.\n"
     "REJECT only if one of these is TRUE:\n"
     "1. FABRICATION: the draft states a capability, price, integration, figure, case or fact "
-    "that is NOT in the Context above, in the persona's limits, or in what the user said. This "
+    "that is NOT " + _IN_THE_CONTEXT_ABOVE + "in the persona's limits, or in what the user "
+    "said. This "
     "is the one fatal error. A preserved term reproduced INCORRECTLY (a mangled figure, email "
     "or URL) counts as fabrication too.\n"
     "2. CONSTRAINTS: the draft ignores a restriction the user stated, or does what they "
@@ -2620,6 +2647,14 @@ class SuperegoStage:
         # the other two never did, so on them this replace is a no-op by construction.
         if not preserved:
             criteria = criteria.replace(_PRESERVED_CLAUSE, "")
+        # …and so do the two sentences that say "the Context above" (`_IN_THE_CONTEXT_ABOVE`,
+        # `_CONTEXT_HAS_THE_CLOCK`). `context` is the section rendered below — the same string,
+        # not a second reading of the metadata — so neither can be said over a prompt that does
+        # not carry the section. AFTER the rules substitution above, which matches the phrase
+        # with the clause still in it. Only the conversational branch carries the first.
+        if not context:
+            criteria = criteria.replace(_IN_THE_CONTEXT_ABOVE, "")
+        the_clock = _CONTEXT_HAS_THE_CLOCK if context else ""
         # THE ORDER IS THE PROVIDER'S PROMPT CACHE (F1.3, 2026-09-24). A provider reuses only an
         # IDENTICAL PREFIX (OpenAI: at least 1024 tokens), and the system message above carries
         # nothing of the turn — `_judge_system` is the fixed instruction plus, when declared, the
@@ -2665,7 +2700,7 @@ class SuperegoStage:
             "TRUST THE TOOLS: values a tool returned — resolved dates, ids, availability, "
             "figures — are AUTHORITATIVE. Do NOT re-derive them from your own reasoning or "
             "reject them as wrong (e.g. do not second-guess a resolved calendar date against "
-            "your own idea of today — the Context above carries the real clock). Judge only "
+            f"your own idea of today{the_clock}). Judge only "
             "whether the execution USED them correctly, not whether the tool was right.\n\n"
             "EXCEPTION — an honestly-relayed tool FAILURE is a VALID outcome: when a tool "
             "returned ERROR (a business refusal like a taken slot or a reached limit) and the "

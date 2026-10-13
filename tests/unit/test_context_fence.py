@@ -318,23 +318,34 @@ def test_the_sentences_are_as_true_split_as_they_were_whole():
     whole and split — and none, in both.
 
     With NO context at all the set is not empty, and that is not this change's doing: six
-    sentences name «the Context above» unconditionally, so on a context-less turn they point at
-    a section that is not there (the judge's grounding enumeration when only the limits slot is
-    present, TRUST THE TOOLS' clock, the voice's «use the context for background»…).
-    Pre-existing, pinned here so it is seen, and left alone: correcting it changes the prompt of
-    every context-less turn."""
+    sentences named «the Context above» unconditionally, so on a context-less turn they pointed
+    at a section that is not there. Pinned here so it is seen. Since 0.1.6 the JUDGE's two that
+    are a clause of their own — criterion #1 of the conversational branch and TRUST THE TOOLS'
+    clock — render only with the section (`_SAID_ONLY_WITH_THE_SECTION`, and
+    `test_judge_context_clauses_travel_with_the_context.py`). Four are left, and each is left
+    for a reason: the judge's grounding enumeration cannot lose a name without being reworded,
+    and the other three are the voice's."""
     whole = {k: _false_claims(v) for k, v in renderings().items()}
     split = {k: _false_claims(v) for k, v in renderings(notes=NOTES, data=DATA).items()}
     assert split == whole and all(v == [] for v in whole.values())
-    without = {n for v in renderings(notes=None).values() for n in _false_claims(v)}
+    bare = renderings(notes=None)
+    without = {n for v in bare.values() for n in _false_claims(v)}
     assert without == {
         "the '# Context' section (clock, memories, history) ground a statement",
-        "that is NOT in the Context above",
-        "the Context above carries the real clock",
         "Say ONLY what the Context above supports",
         "Use the context for background.",
         "the context above is background",
     }, sorted(without)
+    # The two that left: said by no context-less prompt, and still said — after the section —
+    # by the prompts that carry one. Both halves, so "absent" is not read off an empty matrix.
+    for needle in _SAID_ONLY_WITH_THE_SECTION:
+        assert not any(needle in v for v in bare.values()), needle
+        assert any(needle in v for v in renderings().values()), needle
+
+
+#: The sentences of `_NAMES_THE_CONTEXT` that render only when the section does (0.1.6).
+_SAID_ONLY_WITH_THE_SECTION = ("that is NOT in the Context above",
+                               "the Context above carries the real clock")
 
 
 def test_the_sentence_that_says_there_is_no_context_renders_only_without_one():

@@ -52,6 +52,32 @@ No design moves. Each item names what changed, its twin and its control.
   - The walk for `bool(<x>.get("<literal>"))` over the stages now expects no hit, with a
     control that the walk still sees the line it looks for.
 
+### Changed
+
+- **The judge says «the Context above» only when its prompt carries a `# Context` section.**
+  Two clauses pointed at that section by position and were said on every turn:
+  - criterion #1 of the conversational branch: a fact «that is NOT in the Context above, in the
+    persona's limits, or in what the user said»;
+  - TRUST THE TOOLS: «do not second-guess a resolved calendar date against your own idea of
+    today — the Context above carries the real clock».
+
+  The section renders only when the host injected a context. Without one, both named a section
+  the prompt did not carry. Each is now spliced by reference (`_IN_THE_CONTEXT_ABOVE`,
+  `_CONTEXT_HAS_THE_CLOCK`) and rendered with the section, in the pattern of
+  `_PRESERVED_CLAUSE`.
+  - **With a context: byte for byte.** 44 renderings (11 configurations × a limits slot or none
+    × business rules or none) have one combined digest on the tree before and on this one.
+  - **Without a context: the prompt changes, by those words and by nothing else.** 44 of 44
+    context-less renderings said «Context above» before and none does now. Put back by
+    `tests/unit/_judge_context_clauses.py`, every digest the older proofs pin for a
+    context-less prompt returns (`_ORIGIN_MAIN` and four more files).
+  - **The model half was NOT measured.** This is a prompt change on context-less turns and no
+    model was run. A host that always injects a context (a clock line is one) is not reached.
+  - Not covered: `_GROUNDING_SOURCE_SET` still names «the '# Context' section» on a turn that
+    carries only the limits slot. It cannot lose a name without being reworded, and that
+    sentence was settled against a model twice. The voice's three sentences of the same family
+    are listed in `CLAUDE.md`.
+
 ## 0.1.5 — 2026-10-07 — the executor's prompt leaves a record: which parts, how long, a digest, the path — never the text
 
 ### Added
