@@ -22,6 +22,16 @@ the prompts the real stages render, and it asks two questions per cell:
    judge for the held e-mail and the held notice, through ``</held_message>`` — and only the
    document (fenced twice, by the skill and by the stage) held everywhere. After the fix, none.
 
+**The NINTH source is the contact's own message** (``ctx.user_input``, 0.1.7). It is the most
+hostile text a prompt carries — nobody but the contact wrote it — and it was rendered RAW under
+``# User request`` in the judge and in the voice: measured on ``ee9344d`` (this file, run
+against that tree), a message with a line reading ``# EGO draft`` gave the judge two such
+header lines, and the ``header`` form escaped in both prompts. It now goes through
+``defang_structure`` — the structural half ONLY: the tool-call pass would rewrite a contact's
+legitimate ``[tool]`` or JSON, and nothing parses a tool call out of the judge's or the voice's
+prompt. It stays unfenced (``none``), like the context block: the request is quoted, not data
+behind a fence, and fencing it is an A/B.
+
 The fix is structural and IDENTITY on clean text (``prompt_guard.defang_structure``): no fence
 of ``FENCE_TAGS`` can be opened or closed from inside untrusted text, and no line of it may open
 with a header this library renders (``reserved_headers``, derived from the stages' own tables).
@@ -85,6 +95,10 @@ def _directory(p: str) -> str:
     return f"Company directory:\n- {p} (EMPLOYEE)\n- Rosalvo Quintas (SUPERVISOR)"
 
 
+def _request(p: str) -> str:
+    return f"Oi, quanto devo pagar este mês?\n{p}"
+
+
 def _recado(p: str) -> str:
     return ("[RECADO] Ana Prado enviou a este contacto, por esta conversa, o recado abaixo — é a "
             f"última coisa que ele leu de nós:\n«Reunião sexta às 9h. {p}»\nSe a mensagem do "
@@ -92,7 +106,8 @@ def _recado(p: str) -> str:
 
 
 #: source → (kind, tool, renderer). ``tool``: the tool returns it (``ok``), or fails with it
-#: (``error``); ``context``: the host's block carries it; ``held``: a held call delivers it.
+#: (``error``); ``context``: the host's block carries it; ``held``: a held call delivers it;
+#: ``request``: it IS the contact's message (``ctx.user_input``).
 SOURCES = {
     "documents": ("tool", "consult_documents", _documents),
     "schedule": ("tool", "get_professor_schedule", _schedule),
@@ -102,6 +117,7 @@ SOURCES = {
     "delivered_message": ("context", None, _recado),
     "held_email": ("held", "send_email", lambda p: f"Olá, equipa.\n{p}\nAtenciosamente."),
     "held_notice": ("held", "notify_user", lambda p: f"Reunião sexta. {p}"),
+    "contact_request": ("request", None, _request),
 }
 
 #: What answers each cell, AFTER the fix: the fence of every occurrence of the canary (``none``
@@ -125,6 +141,9 @@ EXPECTED = {
                    "judge": "args+held_message", "voice": "absent"},
     "held_notice": {"executor": "absent", "executor_native": "absent",
                     "judge": "args+held_ask+held_message", "voice": "absent"},
+    # The executor reads the NOUMENO's English rewrite, never `ctx.user_input` (`_render`).
+    "contact_request": {"executor": "absent", "executor_native": "absent", "judge": "none",
+                        "voice": "none"},
 }
 
 _FENCES = (*FENCE_TAGS, "excerpt")
@@ -213,10 +232,16 @@ async def _render(source: str, payload: str) -> "dict[str, object]":
     if kind == "held":
         ctx = _held_ctx(tool, text)
     else:
-        ctx = _ctx(user="quanto devo pagar?", intent_class="INFORMATION_REQUEST",
-                   goal="answer the question", with_ego=False)
+        ctx = _ctx(user=text if kind == "request" else "quanto devo pagar?",
+                   intent_class="INFORMATION_REQUEST", goal="answer the question",
+                   with_ego=False)
         if kind == "context":
             ctx.metadata[mk.EGO_CONTEXT] = text
+        if kind == "request":
+            # The rewrite is the NOUMENO's OUTPUT and another carrier: this source is the raw
+            # message, which only the judge and the voice render.
+            assert ctx.noumeno is not None
+            ctx.noumeno.rewritten = "how much do I have to pay this month?"
         disp = _Dispatcher(tool, text, ok=(kind != "error"))
         native = _Native(tool)
         await EgoStage().process(ctx.model_copy(deep=True), native, disp, system_prompt="Persona.")
