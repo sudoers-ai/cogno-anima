@@ -52,6 +52,7 @@ from typing import Any, Optional, Sequence
 from cogno_synapse import LLMBackend, cached_tokens_of, served_model_of, system_fingerprint_of
 
 from cogno_anima import metakeys as mk
+from cogno_anima.security.prompt_guard import defang_structure
 from cogno_anima.stages.superego import SuperegoStage
 from cogno_anima.types import PipelineContext, StageMetrics
 
@@ -314,8 +315,11 @@ def parse_selection(data: Any, options: Sequence[str], message: str,
 
 def _prompt(message: str, options: Sequence[str]) -> str:
     # The user half measured downstream, unchanged: the message, then the options as a list.
-    return ("Message: " + (message or "")[:MAX_MESSAGE_CHARS] + "\n\nOptions:\n"
-            + "\n".join(f"- {o}" for o in options))
+    # The message is the contact's, so it goes through the structural guard — the cut first,
+    # then the escape — and an ordinary message is the same bytes. ONLY here: `has_evidence`
+    # and `asked` compare with the message as it was written (`parse_selection`).
+    return ("Message: " + defang_structure((message or "")[:MAX_MESSAGE_CHARS])
+            + "\n\nOptions:\n" + "\n".join(f"- {o}" for o in options))
 
 
 async def select_options(message: str, options: Any, backend: LLMBackend) -> OptionSelection:

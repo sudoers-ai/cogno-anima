@@ -179,7 +179,19 @@ Key points:
     `SuperegoStage.voice_prompt_block(prompt, "user_request")` carry the escaped
     form on such a message. Compare them with
     `prompt_guard.defang_structure(ctx.user_input)`, not with the raw text.
-  - The scope guard's prompt still quotes the raw sentence.
+- **The same escape reaches four more places since 0.1.8**: the scope guard's quoted
+  sentence, the executor's task on the text path, the NER's goal (the judge's
+  `# Active goal` and the executor's `Goal:` line) and the options selector's message.
+  A text with no fence tag and no core header at a line start is the same bytes.
+  - `ScopeCheckResult.prompt_sha` and `ctx.metadata["scope_prompt_sha"]` are the
+    digest of the prompt as SENT. On a message that carries such structure they are
+    the digest of the escaped form, and `scope.prompt_blocks` no longer repeats a row.
+  - `ego_result.prompt_sha` on the text path is taken over the escaped task on such
+    a message. On native function calling the task is the API's `role=user` message
+    and is not touched, so that digest does not move there.
+  - `ctx.user_input`, `noumeno.rewritten` and `intent.goal` are never modified. The
+    selector's `asked` is compared with the message as written, and comes back in
+    the contact's own characters.
 
 ---
 

@@ -13,4 +13,4 @@ on ``PYTHONPATH`` — and then the code says the old number. Measured on a devel
 tree declared 0.1.5 and ``cogno_anima.__version__`` answered 0.1.0.
 """
 
-__version__ = "0.1.7"
+__version__ = "0.1.8"
