@@ -55,6 +55,7 @@ from cogno_anima import metakeys as mk
 from cogno_anima.stages import superego as _se
 from cogno_anima.stages.superego import SuperegoStage
 from cogno_anima.types import EgoResult, EgoStep, ToolExecution
+from tests.unit._voice_context_clauses import with_the_context_clauses
 from tests.unit.test_superego import ScriptedBackend, _ctx, _m
 
 # ── the fixture: turn 107, anonymised ─────────────────────────────────────────────────
@@ -421,7 +422,10 @@ def _controls() -> "dict[str, str]":
 
 
 def _digest(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()[:16]
+    """The digest of a prompt AS THE TREE BEFORE said it. A turn here that carries no
+    `# Context` section had two clauses naming one until 0.1.6; they are put back before
+    hashing (`_voice_context_clauses`). A turn that carries the section is hashed as it is."""
+    return hashlib.sha256(with_the_context_clauses(text).encode()).hexdigest()[:16]
 
 
 @pytest.mark.parametrize("label", sorted(_MAIN_PROMPTS))

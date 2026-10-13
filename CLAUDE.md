@@ -365,26 +365,32 @@ delivered message, memories, the conversation, the earlier-session summary).
 **Six sentences named «the Context above» unconditionally**, so on a turn with NO context at all
 they pointed at a section that is not there. The set is pinned in the same test file
 (`test_the_sentences_are_as_true_split_as_they_were_whole`). Three are the judge's and three the
-voice's. **Since 0.1.6 the judge's two that are a clause of their own travel with the section**,
-spliced by reference in the pattern of `_PRESERVED_CLAUSE`:
-- `superego._IN_THE_CONTEXT_ABOVE` — criterion #1 of the conversational branch («that is NOT in
-  the Context above, in the persona's limits, or in what the user said»);
-- `superego._CONTEXT_HAS_THE_CLOCK` — TRUST THE TOOLS («— the Context above carries the real
-  clock»).
+voice's. **Since 0.1.6 the four that are a clause of their own travel with the section**, spliced
+by reference in the pattern of `_PRESERVED_CLAUSE`:
+- `superego._IN_THE_CONTEXT_ABOVE` — the judge, criterion #1 of the conversational branch («that
+  is NOT in the Context above, in the persona's limits, or in what the user said»);
+- `superego._CONTEXT_HAS_THE_CLOCK` — the judge, TRUST THE TOOLS («— the Context above carries
+  the real clock»);
+- `superego._USE_THE_CONTEXT` — the voice's `# Task` («Use the context for background.»);
+- `superego._CONTEXT_IS_BACKGROUND` — the voice's approved-answer section («; the context above
+  is background»).
 
-The condition is the `# Context` section `_build_judge_prompt` itself rendered, never a scan of
-the prompt. With a context the judge's prompt is byte for byte the one of before. Without one it
-changes by those words and nothing else: `tests/unit/_judge_context_clauses.py` puts them back,
-and the digests five older proofs hold for context-less prompts return.
-`tests/unit/test_judge_context_clauses_travel_with_the_context.py` pins the twin, the control and
-the delta. **The model half was not measured**: no model was run for this change.
+The condition is the `# Context` section the builder itself rendered, never a scan of the prompt.
+With a context each prompt is byte for byte the one of before. Without one it changes by those
+words and nothing else: `tests/unit/_judge_context_clauses.py` and
+`tests/unit/_voice_context_clauses.py` put them back, and the digests eight older proofs hold for
+context-less prompts return. `test_judge_context_clauses_travel_with_the_context.py` and
+`test_voice_context_clauses_travel_with_the_context.py` pin the twin, the control and the delta.
+**The model half was not measured**: no model was run for this change. A host that injects a
+context on every turn (a clock line is one) renders the same bytes as before.
 
-Left as they were, each for its reason:
+Two are left as they were, because neither can lose its mention without being REWORDED:
 - the judge's grounding enumeration (`_GROUNDING_SOURCE_SET`) names «the '# Context' section» on
   a turn that carries only the limits slot (and the limits on one that carries only a context).
-  Dropping a name needs the sentence reworded, and it was settled against a model twice;
-- the voice's three («Say ONLY what the Context above supports», «Use the context for
-  background.», «the context above is background»).
+  The sentence would need «ground», «those sections» and «NONE of the three» changed, and it
+  was settled against a model twice;
+- the voice's review verdict: «Say ONLY what the Context above supports; when it supports
+  nothing, say plainly that you do not have that information».
 
 ### Prompts
 

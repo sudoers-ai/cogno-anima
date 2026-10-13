@@ -53,6 +53,7 @@ from cogno_anima import metakeys as mk
 from cogno_anima.stages import superego as _se
 from cogno_anima.stages.superego import SuperegoStage
 from cogno_anima.types import EgoResult, EgoStep, ToolExecution
+from tests.unit._voice_context_clauses import with_the_context_clauses
 from tests.unit.test_superego import ScriptedBackend, _ctx, _m
 
 USER = "Quais são os prazos que o professor precisa cumprir?"
@@ -168,7 +169,10 @@ def _listed(prompt: str) -> "list[str]":
 
 
 def _sha(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    """The digest of a prompt AS THE TREE BEFORE said it: none of these turns carries a
+    `# Context` section, and since 0.1.6 the clauses that named one are not rendered without
+    it — they are put back before hashing (`_voice_context_clauses`)."""
+    return hashlib.sha256(with_the_context_clauses(text).encode("utf-8")).hexdigest()
 
 
 # ── THE TWINS ─────────────────────────────────────────────────────────────────────────

@@ -844,6 +844,11 @@ _GROUNDING_SOURCES = _GROUNDING_SOURCE_SET + _DERIVED_FROM_EVIDENCE
 # "those sections", "NONE of the three"), and that sentence was settled against a model twice.
 _IN_THE_CONTEXT_ABOVE = "in the Context above, "
 _CONTEXT_HAS_THE_CLOCK = " — the Context above carries the real clock"
+# The VOICE's two of the same family, travelling with ITS `# Context (memories/history)` section
+# by the same rule: the `# Task` sentence that sends the voice to the context for background, and
+# the approved-answer section's "the context above is background".
+_USE_THE_CONTEXT = "Use the context for background. "
+_CONTEXT_IS_BACKGROUND = "; the context above is background"
 
 # ── …AND IT NAMES THE BUSINESS RULES WHEN THEY ARE THERE ─────────────────────────────────
 #
@@ -4002,11 +4007,11 @@ class SuperegoStage:
             f"{memo_section}"
             f"# Data gathered by the executor (ground figures/dates ONLY in this)\n{payload}\n\n"
             f"{traits_section}"
-            f"{self._draft_section(ctx, payload, rejection)}"
+            f"{self._draft_section(ctx, payload, rejection, context=bool(context_section))}"
             f"{rejection_section}"
             f"# Signals\n" + "\n".join(signals) + "\n\n"
             f"# Task\n{lang_rule}Write the final reply to the user in the persona's voice and "
-            "within its limits. Use the context for background. "
+            f"within its limits. {_USE_THE_CONTEXT if context_section else ''}"
             # The old wording here read "keep exact figures/dates verbatim from the
             # executor data" — a source set NARROWER than the one review approves
             # against, and the measured cost of that narrowness is turn 3 above. It is
@@ -4053,7 +4058,7 @@ class SuperegoStage:
 
     @staticmethod
     def _draft_section(ctx: PipelineContext, payload: str,
-                       rejection: "Optional[dict]") -> str:
+                       rejection: "Optional[dict]", *, context: bool = True) -> str:
         """The executor's own answer text, as its own clearly-subordinate section.
 
         EGO=executor, SUPEREGO=locutor: the draft is *what to say*, the tool results are *what
@@ -4120,7 +4125,7 @@ class SuperegoStage:
                 "rewrite it in the persona's voice)\n"
                 "Review compared this answer against the executor data and this persona's "
                 "limits and APPROVED it. It is this turn's answer and it is your PRIMARY "
-                "source for what to say; the context above is background.\n"
+                f"source for what to say{_CONTEXT_IS_BACKGROUND if context else ''}.\n"
                 f"{approved}\n"
                 "Two rules, and both are HARD. (1) You MUST NOT tell the user that you could "
                 "not find, do not have, or cannot access something this answer provides. That "

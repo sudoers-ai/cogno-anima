@@ -75,8 +75,20 @@ No design moves. Each item names what changed, its twin and its control.
     model was run. A host that always injects a context (a clock line is one) is not reached.
   - Not covered: `_GROUNDING_SOURCE_SET` still names «the '# Context' section» on a turn that
     carries only the limits slot. It cannot lose a name without being reworded, and that
-    sentence was settled against a model twice. The voice's three sentences of the same family
-    are listed in `CLAUDE.md`.
+    sentence was settled against a model twice.
+- **The voice is sent to «the context» only when its prompt carries a `# Context` section.**
+  The same rule, for the two voice sentences of the same family that are a clause of their own:
+  - `# Task`: «Use the context for background.» (`_USE_THE_CONTEXT`);
+  - the approved-answer section: «it is your PRIMARY source for what to say; the context above
+    is background» (`_CONTEXT_IS_BACKGROUND`).
+
+  With a context: byte for byte (27 renderings, one combined digest on both trees). Without:
+  9 of 9 context-less renderings carried the `# Task` sentence before and none does now; put
+  back by `tests/unit/_voice_context_clauses.py`, the digests three older proofs pin return.
+  `_draft_section` takes the condition as a keyword that defaults to `True`. **The model half
+  was NOT measured.** Not covered: the review verdict's «Say ONLY what the Context above
+  supports; when it supports nothing, say plainly…», which cannot lose its first half without
+  being reworded.
 
 ## 0.1.5 — 2026-10-07 — the executor's prompt leaves a record: which parts, how long, a digest, the path — never the text
 
