@@ -1061,6 +1061,13 @@ _OUT_OF_REACH = (
 # for byte as before.
 _HELD_MESSAGES_HEADER = ("# Messages HELD for the user's confirmation — each is SENT, word for "
                          "word, to another person once the user says yes")
+# The opening words of the CONSULT section's header (`_format_consulted`). The header goes on
+# with the persona's label and a sentence, on the same line, so `_JUDGE_BLOCKS` lists these
+# words and the section is found by PREFIX — the rule `# Context (authoritative` and the three
+# criteria rows already follow. Written once: the renderer and the table read this constant, so
+# the header cannot be rendered under one spelling and inventoried (and RESERVED, see
+# `prompt_guard.reserved_headers`) under another.
+_CONSULTED_HEADER = "# What the CONSULTED specialist executed"
 # WHO ASKS (2026-09-30). On a proposal turn the executor's loop STOPS at the hold, so its draft is
 # empty, and the question that shows the user the message and asks "shall I send it?" is written
 # by the HOST, after this judgement — never by the draft. Nothing here said so, and measured on a
@@ -1470,6 +1477,10 @@ class SuperegoStage:
     #
     # The criteria headers are the three BRANCHES, and each is matched by its opening words
     # only, because the branch constants continue in prose on the same line.
+    # The CONSULT section is matched the same way (`_CONSULTED_HEADER`): its header goes on
+    # with the persona's label. It was the one section of this prompt the table did not list,
+    # so its characters were filed under `executed` and — the half that mattered — its header
+    # was not reserved: a line forging it in the context block arrived unescaped.
     #
     # Listed in the order they are ASKED (system message first, then the prompt) — which the
     # scan does not need, since it sorts by position, but which a reader does. Since F1.3 the
@@ -1486,6 +1497,7 @@ class SuperegoStage:
         ("# NOT AVAILABLE this turn", "unavailable"),
         ("# Preserved terms", "preserved_terms"),
         ("# What the EGO executed", "executed"),
+        (_CONSULTED_HEADER, "consulted"),
         ("# Messages HELD for the user's confirmation", "held_messages"),
         ("# EGO draft", "draft"),
         ("# Judge the EXECUTION against these criteria", "criteria_execution"),
@@ -2833,7 +2845,7 @@ class SuperegoStage:
         rows = cls._format_calls(calls, names) or (
             "(the specialist was consulted and executed NO tool — this is evidence that the "
             "consult returned nothing, not evidence that no consult happened)")
-        return (f"# What the CONSULTED specialist executed ({who}) — this turn, on this "
+        return (f"{_CONSULTED_HEADER} ({who}) — this turn, on this "
                 f"contact's behalf. These calls are part of THIS turn's execution: judge the "
                 f"goal against them too, and treat their results as grounding exactly like the "
                 f"EGO's own.\n{rows}\n\n")

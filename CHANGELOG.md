@@ -18,6 +18,21 @@ No design moves. Each item names what changed, its twin and its control.
     `actions_with_a_clean_note`, a note that only names a header.
   - A header inside an argument never started a line: the arguments are one JSON line. The test
     counts the `# Correction requested` lines so a change of serialisation would say so.
+- **The judge's consult section is a row of `_JUDGE_BLOCKS` (slug `consulted`).**
+  `_format_consulted` rendered `# What the CONSULTED specialist executed (persona: …) — …` and
+  the table did not list it. Two effects:
+  - `prompt_guard.reserved_headers()` is derived from the tables, so that header was not
+    reserved. A line forging it in `mk.EGO_CONTEXT` reached the judge as a section it could not
+    tell from a second executor's evidence. It is now escaped, in the notes and in the fenced
+    third-party half.
+  - `judge_prompt_inventory` counted the section's characters under `executed`. A consulted turn
+    now has a `consulted` row right after it, and `executed` is as long as on a turn that
+    consulted nobody.
+
+  The row is the header's opening words (`superego._CONSULTED_HEADER`, read by the renderer and
+  by the table), matched by prefix like `# Context (authoritative` and the criteria rows. **No
+  prompt moved by a byte.** The reserved set goes from 36 headers to 37; without the new one it
+  is the 36 of before, by digest. A host that stores the judge's inventory sees one new slug.
 
 ## 0.1.5 — 2026-10-07 — the executor's prompt leaves a record: which parts, how long, a digest, the path — never the text
 

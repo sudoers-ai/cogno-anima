@@ -34,6 +34,7 @@ from cogno_anima.prompts import prompt_digest
 from cogno_anima.security.prompt_guard import (defang_structure, render_context,
                                                render_context_parts, reserved_headers)
 from cogno_anima.stages import ego as ego_mod
+from cogno_anima.stages import superego as superego_mod
 from cogno_anima.stages.ego import EGO_BLOCKS, PROMPT_HEADERS, EgoStage
 from cogno_anima.types import EgoResult
 from tests.unit import _ego_prompt_matrix as matrix
@@ -106,7 +107,10 @@ _GOLDEN = {
 _BEFORE_THE_ARGUMENTS_GUARD = "57d6975464d37946"
 
 # `reserved_headers()` on the same commit: how many, and the sha256[:16] of them joined by "\n".
+# ONE header joined since, on purpose: the judge's consult section, which `_JUDGE_BLOCKS` did not
+# list. `_RESERVED_NOW` is the set with it; the set WITHOUT it is still the one of that commit.
 _RESERVED_COUNT, _RESERVED_SHA = 36, "5a3311287069ce75"
+_RESERVED_NOW = (37, "e2e63f563009cb48")
 
 _CELLS = matrix.cells()
 _IDS = [c[0] for c in _CELLS]
@@ -231,11 +235,16 @@ def test_the_alphabet_and_the_headers_are_read_off_the_table():
 
 def test_the_reserved_headers_neither_gain_nor_lose_one():
     """`reserved_headers()` used to add `PROMPT_HEADERS` to the three tables; it now reads the
-    executor's TABLE. The set is the one of the base commit — by count and by digest — and it
-    holds the executor's five."""
+    executor's TABLE. The set is the one of the base commit — by count and by digest — plus the
+    ONE header the judge's table gained since (the consult section), and it holds the
+    executor's five."""
+    def sha(headers):
+        return hashlib.sha256("\n".join(headers).encode()).hexdigest()[:16]
+
     prompt_guard_headers = reserved_headers()
-    assert len(prompt_guard_headers) == _RESERVED_COUNT
-    assert hashlib.sha256("\n".join(prompt_guard_headers).encode()).hexdigest()[:16] == _RESERVED_SHA
+    assert (len(prompt_guard_headers), sha(prompt_guard_headers)) == _RESERVED_NOW
+    of_before = tuple(h for h in prompt_guard_headers if h != superego_mod._CONSULTED_HEADER)
+    assert (len(of_before), sha(of_before)) == (_RESERVED_COUNT, _RESERVED_SHA)
     assert set(PROMPT_HEADERS) <= set(prompt_guard_headers)
     assert "" not in prompt_guard_headers and all(h.startswith("#") for h in prompt_guard_headers)
 
