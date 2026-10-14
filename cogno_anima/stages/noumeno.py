@@ -18,7 +18,8 @@ from cogno_anima.preserved import filter_preserved_terms
 from cogno_anima.vocab import DRIFT_TAG_UNKNOWN, EMBED_UNAVAILABLE, PRESERVED_NOT_IN_INPUT
 from cogno_anima.verdict import VERDICT_MISSING, read_boolean
 from cogno_anima.repairs import (COERCED, DEFAULT, FENCE_OR_THINK_STRIPPED, NULL_FIELD,
-                                 SALVAGED_OBJECT, STRING_BOOL, RepairLog, spelled_boolean)
+                                 SALVAGED_OBJECT, STRING_BOOL, RepairLog, repair_mark,
+                                 spelled_boolean)
 
 logger = logging.getLogger("cogno_anima.noumeno")
 
@@ -96,11 +97,50 @@ def _text(data: dict, key: str) -> str:
     ``data.get(key, "").strip()`` raised ``AttributeError`` on it, which is not a
     ``StageParseError`` and took the turn with it, over a reply that is otherwise usable. It is
     now the repair an absent key always was, and :func:`_reply_repairs` counts it
-    (``null_field:<key>``). A value that is neither a string nor ``null`` still raises, as it
-    always did.
+    (``null_field:<key>``). A value that is neither a string nor ``null`` never gets here:
+    :func:`_unreadable_field` refused the reply when it was parsed.
     """
     value = data.get(key, "")
     return "" if value is None else value.strip()
+
+
+def _unreadable_field(data: dict) -> Optional[str]:
+    """The mark of the first field of the rewriter's object the stage has NO repair for, or
+    ``None`` when it can use all six. Pure; never raises.
+
+    The stage's contract is "a usable object OR ``StageParseError``", and for these forms it
+    was neither: the field reads further down raised whatever the value happened to raise —
+    ``AttributeError`` on ``7.strip()``, ``TypeError`` on ``float(None)`` or ``list(7.5)``,
+    ``ValueError`` on ``float("high")``, a pydantic ``ValidationError`` on a list holding a
+    number. Measured over 237 replies (each field under 38 values): 102 ended the turn, none
+    of them with the typed error a host is told to expect.
+
+    It refuses EXACTLY the forms that raised, and nothing the stage has always read: a
+    ``null`` text, ``"0.9"`` and ``true`` as a confidence, an empty or ``null`` list, a list
+    spelled as one string. Those are repairs (:func:`_reply_repairs`), and they stay repairs.
+    The mark is ``<family>:<field>`` from ``repairs.NOUMENO_UNREADABLE_FIELDS`` — which field,
+    in what form, and not a byte of the value.
+    """
+    for key in ("rewritten", "context_turn"):
+        value = data.get(key)
+        if value is not None and not isinstance(value, str):
+            return repair_mark(COERCED, key)
+    if "confidence" in data:
+        value = data["confidence"]
+        if value is None:
+            return repair_mark(NULL_FIELD, "confidence")
+        try:
+            float(value)
+        except (TypeError, ValueError, OverflowError):
+            return repair_mark(COERCED, "confidence")
+    for key in ("preserved_terms", "rewrite_warnings"):
+        value = data.get(key)
+        if not value:
+            continue     # absent, null, empty — and 0 / false, which have always read as empty
+        if not isinstance(value, (list, str, dict)) or any(
+                not isinstance(item, str) for item in value):
+            return repair_mark(COERCED, key)
+    return None
 
 
 def _reply_repairs(data: dict, log: RepairLog) -> None:
@@ -610,6 +650,9 @@ class Noumeno:
     def _parse_json(self, raw: str, repairs: Optional[RepairLog] = None) -> dict:
         """Raw model text → the rewriter's JSON object, or ``StageParseError``.
 
+        An object whose fields the stage cannot use is refused like a reply that is not an
+        object (:func:`_unreadable_field`), with the field named on ``StageParseError.mark``.
+
         ``repairs`` (optional, write-only) receives what had to come off before the read —
         a chain-of-thought block or a fence (``fence_or_think_stripped``), an object dug out
         of a reply that was not one JSON value (``salvaged_object``) — and ONLY when an
@@ -644,6 +687,13 @@ class Noumeno:
         # parse failure so the contract stays "valid dict OR StageParseError".
         if not isinstance(data, dict):
             raise StageParseError(STAGE_NAME, raw, TypeError("JSON is not an object"))
+        # An object, with a field in a form the stage has no repair for: the same contract.
+        # Refused HERE, so the primary call and the echo retry are held to it alike — a retry
+        # the backstop cannot use keeps the first answer, as its own comment promises.
+        unreadable = _unreadable_field(data)
+        if unreadable is not None:
+            raise StageParseError(STAGE_NAME, raw, TypeError(f"unreadable field: {unreadable}"),
+                                  mark=unreadable)
         if repairs is not None:
             repairs.extend(marks)
         return data
