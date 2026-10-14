@@ -75,6 +75,22 @@ from cogno_anima.repairs import RepairLog, note_text_field, reply_form_repairs
 
 logger = logging.getLogger("cogno_anima.superego")
 
+
+def _text_beside_verdict(data: dict, key: str) -> str:
+    """The text a reply carries BESIDE its verdict — the judge's critique, the guard's refusal
+    message — as a string; ``""`` when the key is absent or JSON ``null``.
+
+    ``str(data.get(key, ""))`` read a ``null`` as the four letters ``None``: a rejection whose
+    critique was the word "None" went to the executor's retry and to the voice as the reason,
+    and a refusal message "None" was what the contact would be told. A ``null`` is the model
+    saying it has no text, so it is read as the absent key always was — the judge falls back to
+    its own "execution rejected", the guard to no message — and it is still COUNTED:
+    ``note_text_field`` records ``null_field:<key>`` on the result's ``repairs``. Any other
+    value that is not a string is rendered as before and counted as ``coerced:<key>``.
+    """
+    value = data.get(key, "")
+    return "" if value is None else str(value)
+
 _COT_RE = re.compile(r"<think(?:ing)?>.*?</think(?:ing)?>", re.DOTALL | re.IGNORECASE)
 
 # The critique of a judge call whose VERDICT COULD NOT BE READ — it answered, and what it
@@ -2188,7 +2204,7 @@ class SuperegoStage:
                 return _result(False, "", ti, to, cached, prompt, fingerprint, served,
                                verdict.read, repairs.marks())
             blocked = verdict.value
-            msg = str(verdict.data.get("refusal_message", "")) if blocked else ""
+            msg = _text_beside_verdict(verdict.data, "refusal_message") if blocked else ""
             if blocked:
                 # The refusal text is read only on a block, so only then can it need a repair.
                 note_text_field(repairs, verdict.data, "refusal_message")
@@ -2433,7 +2449,8 @@ class SuperegoStage:
                                branch, fingerprint, served, verdict.read, repairs.marks())
             approved = verdict.value
             data = verdict.data
-            critique = None if approved else str(data.get("critique", "")) or "execution rejected"
+            critique = (None if approved
+                        else _text_beside_verdict(data, "critique") or "execution rejected")
             if not approved:
                 # The critique is read only on a rejection, so only then can it need a repair.
                 note_text_field(repairs, data, "critique")
