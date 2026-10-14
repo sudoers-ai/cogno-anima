@@ -196,7 +196,7 @@ class Noumeno:
         # inert backstop (custom prompt in a format the harvest misses) is visible.
         (self._system_sans_examples, self._example_rewrites,
          self._rule_rewrites) = _split_examples(self._system)
-        logger.info("stage=noumeno echo_backstop examples=%d rule_illustrations=%d",
+        logger.info("stage=noumeno event=echo_backstop examples=%d rule_illustrations=%d",
                     len(self._example_rewrites), len(self._rule_rewrites))
 
     async def process(self, ctx: PipelineContext, llm: LLMBackend) -> PipelineContext:
@@ -231,7 +231,8 @@ class Noumeno:
                 DetectorFactory.seed = 0
                 detected_lang = await asyncio.to_thread(detect, normalized_input)
             except Exception as le:
-                logger.warning("Failed to detect language, defaulting to 'und': %s", le)
+                logger.warning("stage=noumeno event=language_undetected error=%s — "
+                               "defaulting to 'und'", type(le).__name__)
 
         # 3. Subject Continuity Check (pre-LLM)
         last_rewritten = ctx.metadata.get(mk.LAST_REWRITTEN)
@@ -315,9 +316,10 @@ class Noumeno:
         echo_flagged = False
         if short_reply and self._matches_example(rewritten, normalized_input,
                                                  self._example_rewrites):
+            # The LENGTH, never the text: the rewrite is the contact's message in English.
             logger.warning(
-                "stage=noumeno event=few_shot_echo rewritten=%r — retrying without the "
-                "examples block", rewritten)
+                "stage=noumeno event=few_shot_echo rewritten_len=%d — retrying without the "
+                "examples block", len(rewritten))
             try:
                 data2, t2, o2, c2, fp2, sm2 = await generate_json_resilient(
                     llm, self._system_sans_examples, prompt, _parse,
@@ -349,8 +351,8 @@ class Noumeno:
                             or _echo_norm(retried) == _echo_norm(normalized_input)):
                         echo_flagged = True
                         logger.warning("stage=noumeno event=few_shot_echo_retry_degenerate "
-                                       "retried=%r — adopted (honest beats fabricated), "
-                                       "flagged", retried)
+                                       "retried_len=%d — adopted (honest beats fabricated), "
+                                       "flagged", len(retried))
                     elif _echo_norm(retried) == _echo_norm(rewritten):
                         logger.info("stage=noumeno event=few_shot_echo_genuine — "
                                     "reproduced without the examples in context")
@@ -358,8 +360,11 @@ class Noumeno:
                     rewritten = retried
             except Exception as exc:  # noqa: BLE001 — never kill a turn already served
                 echo_flagged = True
+                # The CLASS of the error: a `StageParseError` quotes the reply it could not
+                # read, and a provider's error may quote the request.
                 logger.warning("stage=noumeno event=few_shot_echo_retry_failed "
-                               "error=%s — keeping the first answer, flagged", exc)
+                               "error=%s — keeping the first answer, flagged",
+                               type(exc).__name__)
 
         # Rule-illustration echo (checked AFTER the retry so it also covers the retry's
         # answer): the copied string lives in the RULES, which the retry prompt keeps, so
@@ -376,8 +381,8 @@ class Noumeno:
                                          last_rewritten or "", last_context_turn or "")))):
             echo_flagged = True
             logger.warning("stage=noumeno event=few_shot_echo_rule_illustration "
-                           "rewritten=%r — unsupported by input/conversation, flagged",
-                           rewritten)
+                           "rewritten_len=%d — unsupported by input/conversation, flagged",
+                           len(rewritten))
 
         # The fields are marked on the object the stage ADOPTED (the retry's when it won), and
         # before the echo flag below rewrites `rewrite_warnings` on a copy of it.
@@ -525,7 +530,8 @@ class Noumeno:
         )
 
         logger.info(
-            "NOUMENO lang=%s drift=%s tag=%s changed=%s change_subject=%s degraded=%s",
+            "stage=noumeno event=done lang=%s drift=%s tag=%s changed=%s change_subject=%s "
+            "degraded=%s",
             detected_lang,
             "unknown" if drift_score is None else f"{drift_score:.2f}",
             drift_tag, changed, change_subject, ",".join(degradations) or "-",
@@ -593,9 +599,9 @@ class Noumeno:
             return sim, 0, 2
         except Exception as exc:  # noqa: BLE001 — any embedder failure degrades, see above
             logger.warning(
-                "stage=noumeno event=embed_unavailable error=%s: %s — drift is UNKNOWN "
+                "stage=noumeno event=embed_unavailable error=%s — drift is UNKNOWN "
                 "for this turn (not 0.0, not 1.0); the turn continues.",
-                type(exc).__name__, exc,
+                type(exc).__name__,
             )
             # The round trip HAPPENED (in the measured case it burned the full 120 s), so
             # it is counted as an attempt with 0 tokens rather than hidden from the trace.

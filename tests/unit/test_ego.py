@@ -368,8 +368,10 @@ async def test_unknown_tool_logs_warning(caplog):
     disp = StubDispatcher.with_tools("add_income")
     with caplog.at_level(logging.WARNING, logger="cogno_anima.ego"):
         await EgoStage().process(_ctx(), backend, disp, system_prompt=SYS)
-    assert any("event=unknown_tool" in r.message and "tool=drop_db" in r.message
+    # the LENGTH of the name the model wrote, not the name (it is on the trace)
+    assert any("event=unknown_tool" in r.message and "name_len=7" in r.message
                for r in caplog.records)
+    assert "drop_db" not in caplog.text
 
 
 @pytest.mark.asyncio

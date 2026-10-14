@@ -136,8 +136,9 @@ def test_the_rule_lets_the_judge_APPLY_the_nickname_without_calling_it_invented(
 
 @pytest.mark.asyncio
 async def test_evaluate_MASKS_the_note_out_of_the_critique_at_the_source():
-    """The critique travels to the EGO, to the voice, to the log line and to a host's trace; a
-    judge rejecting a leak tends to quote it. Masked once, where it is born."""
+    """The critique travels to the EGO, to the voice and to a host's trace (not to the log:
+    the rejection line carries its length); a judge rejecting a leak tends to quote it.
+    Masked once, where it is born."""
     critique = ("The draft calls the contact a \"cliente difícil\" and says he "
                 "reclama de tudo — that reveals the business note.")
     backend = _Judge('{"approved": false, "critique": ' + __import__("json").dumps(critique) + "}")

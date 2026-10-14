@@ -348,9 +348,10 @@ async def generate_json_resilient(
         except Exception:  # noqa: BLE001 — re-raised unless this is a retryable truncation
             if index + 1 >= max(1, attempts) or not looks_truncated(raw):
                 raise
+            # How long the cut reply was, never how it ended: its tail is the model's text.
             _logger.warning(
-                "stage=%s event=truncated_response attempt=%d/%d chars=%d retrying; tail=%r",
-                stage, index + 1, attempts, len(raw), raw[-60:],
+                "stage=%s event=truncated_response attempt=%d attempts=%d chars=%d — retrying",
+                stage, index + 1, attempts, len(raw),
             )
             if repairs is not None:
                 repairs.add(TRUNCATED_RETRY)

@@ -338,7 +338,7 @@ class IntentAnalyzer:
 
         ctx.intent = intent
         logger.info(
-            "NER intent=%s sentiment=%s pii_risk=%s domains=%s composite=%s",
+            "stage=ner event=done intent=%s sentiment=%s pii_risk=%s domains=%s composite=%s",
             intent.intent_class, intent.sentiment, intent.pii_risk,
             intent.domains, intent.is_composite,
         )
@@ -537,9 +537,12 @@ class IntentAnalyzer:
         # The LLM gave an invalid/absent intent_class and we coerced it from
         # tags/heuristics — a quality degradation worth surfacing (handled, not fatal).
         if llm_intent_class not in VALID_INTENTS or llm_intent_class == "UNKNOWN":
+            # WHAT the model wrote is not logged: outside the vocabulary it is free text of
+            # the model's. The line says which of the two cases this was, from two constants.
             logger.warning(
                 "stage=ner event=intent_class_fallback llm=%s coerced=%s",
-                llm_intent_class, intent_class,
+                "UNKNOWN" if llm_intent_class == "UNKNOWN" else "out_of_vocabulary",
+                intent_class,
             )
 
         # sentiment

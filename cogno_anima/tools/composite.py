@@ -46,7 +46,7 @@ class CompositeDispatcher:
                         continue  # un-callable without a name — drop it
                     if name in index:
                         logger.warning(
-                            "event=tool_name_collision name=%s (first source wins)", name)
+                            "event=tool_name_collision name=%s — first source wins", name)
                         continue
                     index[name] = src
                     schemas.append(schema)

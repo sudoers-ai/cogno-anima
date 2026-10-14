@@ -142,7 +142,8 @@ def _as_streak(value: object) -> int:
         return 0
     count = as_count(value)          # the repo's one counter policy (cogno_anima.utils)
     if count is None:
-        logger.warning("stage=ego event=circling_streak_unusable value=%r — hint skipped", value)
+        logger.warning("stage=ego event=circling_streak_unusable type=%s — hint skipped",
+                       type(value).__name__)
         return 0
     return count
 
@@ -252,7 +253,7 @@ class EgoStage:
         interrupt_reason: Optional[str] = None
 
         attempt_no = int(ctx.metadata.get(mk.EGO_CORRECTION, {}).get("attempt", 1))
-        logger.info("EGO start path=%s tools=%d max_steps=%d attempt=%d",
+        logger.info("stage=ego event=start path=%s tools=%d max_steps=%d attempt=%d",
                     path, len(tools), max_steps, attempt_no)
 
         # ── Confirmation completion (Fonte B, deterministic) ──────────────
@@ -273,7 +274,8 @@ class EgoStage:
                 # dropping a user-CONFIRMED action would lose it with no signal — record an error
                 # step so the trace, the SUPEREGO and metrics see it wasn't executed.
                 if name and not readonly:
-                    logger.warning("EGO confirmed-call dropped: tool=%s not in dispatcher", name)
+                    logger.warning("stage=ego event=confirmed_call_dropped tool=%s "
+                                   "reason=not_in_dispatcher", name)
                     steps.append(EgoStep(
                         index=len(steps), path=path, assistant_text="",
                         tool_calls=[ToolExecution(
@@ -362,7 +364,10 @@ class EgoStage:
             for tc in raw_calls:
                 name, args = self._name_args(tc)
                 if name not in valid_names:
-                    logger.warning("stage=ego event=unknown_tool step=%d tool=%s", i, name)
+                    # The LENGTH of the name, not the name: it is not in the catalogue, so
+                    # it is text the model wrote. The trace keeps it (`ToolExecution.tool`).
+                    logger.warning("stage=ego event=unknown_tool step=%d name_len=%d", i,
+                                   len(name) if isinstance(name, str) else 0)
                     execs.append(ToolExecution(tool=name, arguments=args, result="",
                                                ok=False, error=f"unknown tool {name!r}"))
                     continue
@@ -440,7 +445,8 @@ class EgoStage:
                     # IDENTICAL call again. Allow that one fresh retry; a call that fails
                     # again re-blocks, and max_steps + the duplicate cap still bound the loop.
                     failed_calls.clear()
-                logger.info("EGO step=%d tool=%s ok=%s side_effect=%s", i, name, r.ok, r.side_effect)
+                logger.info("stage=ego event=step step=%d tool=%s ok=%s side_effect=%s", i, name,
+                            r.ok, r.side_effect)
                 # ── Confirmation gate (Fonte C: the SKILL asked) ──────
                 # Gate B holds a tool by NAME, before it runs. This one is the skill saying,
                 # about THIS call and what it just read, "I did not commit — ask first". Same
@@ -526,7 +532,8 @@ class EgoStage:
             logger.warning("stage=ego event=done steps=%d tools=%d interrupted=true reason=%s",
                            len(steps), n_tools, interrupt_reason)
         else:
-            logger.info("EGO done steps=%d tools=%d interrupted=false", len(steps), n_tools)
+            logger.info("stage=ego event=done steps=%d tools=%d interrupted=false", len(steps),
+                        n_tools)
         return ctx
 
     # ── prompt assembly ──────────────────────────────────────────────
