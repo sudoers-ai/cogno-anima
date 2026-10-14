@@ -2,8 +2,8 @@
 
 ## `host_min.py` — a minimal runnable host
 
-A self-contained host that wires `cogno-anima` end-to-end, importing **only** from
-`cogno_anima` (never `cognobench`). It's the runnable companion to
+A self-contained host that wires `cogno-anima` end-to-end, importing only from `cogno_anima`
+and its transport lib `cogno_synapse` (never `cognobench`). It's the runnable companion to
 [`docs/HOST_INTEGRATION.md`](../docs/HOST_INTEGRATION.md).
 
 ```bash
@@ -29,6 +29,23 @@ Ollama is unreachable.
 
 ### Note on prompts
 
-The example runs from the source tree, where the NOUMENO/NER prompt templates
-live in `prompts/` at the repo root. (Packaging those into the wheel is a known
-follow-up so a plain `pip install` host can load them without the source tree.)
+The NOUMENO and NER prompt templates ship INSIDE the package
+(`cogno_anima/prompt_templates/<stage>/`, declared as package data), so the example runs the same
+from the source tree and from an installed wheel. The persona's own prompts — the executor's, the
+judge's limits, the voice — are the host's, and this example writes its own inline.
+
+## `quickstart_60s.py` — perception + routing in a minute
+
+The first three stages only (NOUMENO → NER → ID): no tools, no dispatcher, no database. It needs
+an `LLMBackend` and an `Embedder` and prints, for each sentence, the rewrite, the intent, the PII
+risk, the route and the tokens.
+
+```bash
+ollama pull mistral && ollama pull nomic-embed-text
+python3 examples/quickstart_60s.py
+
+# or any other backend spec that cogno-synapse's create_backend() understands:
+COGNO_BACKEND="groq:llama-3.3-70b-versatile" GROQ_API_KEY=... python3 examples/quickstart_60s.py
+```
+
+`COGNO_BACKEND` defaults to `mistral:latest`.
