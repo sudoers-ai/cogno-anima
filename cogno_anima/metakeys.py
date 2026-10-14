@@ -459,6 +459,27 @@ SCOPE_VERDICT_READ = "scope_verdict_read"
 # carry-over. Safe to persist as it is: a closed alphabet, with nothing of the reply in it.
 SCOPE_REPAIRS = "scope_repairs"
 
+# Which JSON stages are asked to send their backend a JSON SCHEMA this turn, and in which form:
+# a mapping ``{stage: "open" | "strict"}``, keyed by the ``StageMetrics.stage`` label of the
+# call (``noumeno``, ``ner``, ``superego_scope``, ``superego_judge`` — the keys of
+# ``cogno_anima.schemas.STAGE_SCHEMAS``) with a value from ``cogno_synapse.SCHEMA_FORMS``.
+#
+# **The HOST stamps it; this library never reads the environment.** Which tenants, which stages
+# and which form is a deployment decision (an env switch AND a tenant setting, on the host).
+#
+# **ABSENT is OFF, and so is anything else**: a value that is not a mapping, a stage with no row,
+# a form outside the two words (``True``, ``"STRICT"``, ``"on"``). OFF is byte for byte the
+# pipeline without this key — no schema is derived, no backend is probed, and each stage's call
+# is the ``backend.generate(system, prompt)`` it always made. ON never changes a byte of a
+# prompt: the schema travels beside it. Read through ``cogno_anima.structured.requested_form``.
+#
+# What a stage that WAS asked records is ``StageMetrics.schema_use``:
+# ``{"requested": <form>, "applied": <dialect> | "refused" | None}``.
+#
+# A PER-TURN key, like the scope keys above: a carrier that holds metadata between turns must
+# not hold this one over, or a turn the host switched off would still ask.
+STAGE_SCHEMA = "stage_schema"
+
 # What THIS ASSISTANT asked the contact for on the previous turn — the one fact the scope
 # guard needs and cannot have, because it reads the SENTENCE and never the conversation.
 #

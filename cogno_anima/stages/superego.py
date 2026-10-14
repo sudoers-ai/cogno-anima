@@ -72,6 +72,8 @@ from cogno_anima.security.redaction import (
 )
 from cogno_anima.verdict import VERDICT_BOOLEAN, VERDICT_CALL_FAILED, parse_object, read_verdict
 from cogno_anima.repairs import RepairLog, note_text_field, reply_form_repairs
+from cogno_anima.structured import schema_ask
+from cogno_anima.utils import call_json_stage
 
 logger = logging.getLogger("cogno_anima.superego")
 
@@ -2052,7 +2054,8 @@ class SuperegoStage:
                     cached: int = 0, prompt: str = "",
                     fingerprint: Optional[str] = None,
                     served: Optional[str] = None, read: str = "",
-                    repairs: "Optional[list[str]]" = None) -> ScopeCheckResult:
+                    repairs: "Optional[list[str]]" = None,
+                    schema_use: "Optional[dict[str, Optional[str]]]" = None) -> ScopeCheckResult:
             # What this call was actually ASKED. Built on every path that BUILT a prompt, the
             # fail-OPEN one included — the early bypasses below pass none because none was
             # built, and that is the distinction the empty list carries.
@@ -2107,6 +2110,10 @@ class SuperegoStage:
                                      # somebody else's call — the same rule as `cached`, and a
                                      # worse lie, since these values exist to be compared.
                                      system_fingerprint=fingerprint, served_model=served,
+                                     # The schema this call was asked to send and what its
+                                     # backend carried; `None` when it was not asked, and on
+                                     # the paths where no call completed.
+                                     schema_use=schema_use,
                                      model=model),
             )
 
@@ -2162,14 +2169,21 @@ class SuperegoStage:
         language = ctx.noumeno.language if ctx.noumeno else ""
         prompt = self._build_scope_prompt(scope_prompt, ctx.user_input, language,
                                           ctx.metadata.get(mk.SCOPE_PENDING_REQUEST))
+        # The host's per-turn switch (`metakeys.STAGE_SCHEMA`). OFF unless it names this stage:
+        # nothing is derived, nothing is probed, and the call below is the one it always was.
+        # The prompt is the same bytes either way — and so is the digest of it recorded above.
+        ask = schema_ask(ctx.metadata, "superego_scope")
         try:
-            raw, ti, to = await backend.generate(_SCOPE_SYSTEM, prompt)
+            raw, ti, to, applied = await call_json_stage(backend, _SCOPE_SYSTEM, prompt,
+                                                         **ask.kwargs())
             # Read with NO await in between — the contract of ``cached_tokens_of``. The
             # early-exit paths above pass no count on purpose: no call ran on them, and the
             # backend is shared, so reading it there would bill this turn for another's cache.
             cached = cached_tokens_of(backend)
             fingerprint = system_fingerprint_of(backend)
             served = served_model_of(backend)
+            ask.note(applied)
+            schema_use = ask.record()
             raw, cot_stripped = self.strip_cot(raw)
             # What had to come off the reply before it could be read — counted, never acted
             # on. How the VERDICT key itself was read is `verdict_read`'s, below.
@@ -2187,7 +2201,7 @@ class SuperegoStage:
                 logger.warning("stage=superego event=scope_verdict_unreadable read=%s "
                                "— allowing by default (fail-open)", verdict.read)
                 return _result(False, "", ti, to, cached, prompt, fingerprint, served,
-                               verdict.read, repairs.marks())
+                               verdict.read, repairs.marks(), schema_use)
             blocked = verdict.value
             msg = str(verdict.data.get("refusal_message", "")) if blocked else ""
             if blocked:
@@ -2195,7 +2209,7 @@ class SuperegoStage:
                 note_text_field(repairs, verdict.data, "refusal_message")
             logger.info("SUPEREGO scope blocked=%s", blocked)
             return _result(blocked, msg, ti, to, cached, prompt, fingerprint, served,
-                           VERDICT_BOOLEAN, repairs.marks())
+                           VERDICT_BOOLEAN, repairs.marks(), schema_use)
         except Exception as exc:  # noqa: BLE001 — fail-open: never refuse on error
             logger.warning("scope guard failed (%s) — allowing by default", exc)
             # The PROMPT is recorded (it was built: blocks and digest both) and the per-call
@@ -2365,7 +2379,8 @@ class SuperegoStage:
                     cached: int = 0, prompt: str = "", branch: str = "",
                     fingerprint: Optional[str] = None,
                     served: Optional[str] = None, read: str = "",
-                    repairs: "Optional[list[str]]" = None) -> SuperegoResult:
+                    repairs: "Optional[list[str]]" = None,
+                    schema_use: "Optional[dict[str, Optional[str]]]" = None) -> SuperegoResult:
             return SuperegoResult(
                 approved=approved, critique=critique,
                 # What had to be REPAIRED in the judge's reply (`cogno_anima.repairs`): a
@@ -2394,6 +2409,9 @@ class SuperegoStage:
                                      # the no-call and fail-CLOSED paths leave it `None`
                                      # rather than inherit the shared backend's last call.
                                      system_fingerprint=fingerprint, served_model=served,
+                                     # The schema this attempt was asked to send and what
+                                     # its backend carried; `None` when it was not asked.
+                                     schema_use=schema_use,
                                      model=model),
             )
 
@@ -2407,11 +2425,16 @@ class SuperegoStage:
         # With no rules the system carries no header and every row is what it always was.
         asked = prompt if system == _JUDGE_SYSTEM else f"{system}\n\n{prompt}"
         branch = self._judge_branch(ctx)
+        # The host's per-turn switch (`metakeys.STAGE_SCHEMA`). OFF unless it names this stage:
+        # nothing is derived, nothing is probed, and the call below is the one it always was.
+        ask = schema_ask(ctx.metadata, "superego_judge")
         try:
-            raw, ti, to = await backend.generate(system, prompt)
+            raw, ti, to, applied = await call_json_stage(backend, system, prompt, **ask.kwargs())
             cached = cached_tokens_of(backend)
             fingerprint = system_fingerprint_of(backend)
             served = served_model_of(backend)
+            ask.note(applied)
+            schema_use = ask.record()
             raw, cot_stripped = self.strip_cot(raw)
             # What had to come off the reply before it could be read — counted, never acted
             # on. How the VERDICT key itself was read is `verdict_read`'s, below.
@@ -2430,7 +2453,8 @@ class SuperegoStage:
                 logger.warning("stage=superego event=judge_verdict_unreadable read=%s branch=%s "
                                "— not approving (fail-closed)", verdict.read, branch)
                 return _result(False, UNREADABLE_VERDICT_CRITIQUE, ti, to, cached, asked,
-                               branch, fingerprint, served, verdict.read, repairs.marks())
+                               branch, fingerprint, served, verdict.read, repairs.marks(),
+                               schema_use)
             approved = verdict.value
             data = verdict.data
             critique = None if approved else str(data.get("critique", "")) or "execution rejected"
@@ -2455,7 +2479,7 @@ class SuperegoStage:
                 logger.warning("stage=superego event=judge approved=false branch=%s critique=%s",
                                branch, (critique or "")[:80])
             return _result(approved, critique, ti, to, cached, asked, branch,
-                           fingerprint, served, VERDICT_BOOLEAN, repairs.marks())
+                           fingerprint, served, VERDICT_BOOLEAN, repairs.marks(), schema_use)
         except Exception as exc:  # noqa: BLE001 — fail-CLOSED: don't pass unverified
             logger.warning("judge failed (%s) — not approving (fail-closed)", exc)
             return _result(False, "could not verify the execution; please retry",

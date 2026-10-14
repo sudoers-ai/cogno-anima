@@ -21,7 +21,8 @@ from cogno_anima.security.pii import (
 )
 from cogno_anima.repairs import (COERCED, CUT, DEFAULT, FALLBACK, FENCE_OR_THINK_STRIPPED,
                                  NER_REPAIR_FIELDS, NULL_FIELD, SALVAGED_OBJECT, STRING_BOOL,
-                                 RepairLog, spelled_boolean)
+                                 RepairLog, nulls_as_absent, spelled_boolean)
+from cogno_anima.structured import SchemaAsk, schema_ask
 from cogno_anima.security.detector import PiiDetector, default_detector
 from cogno_anima.errors import StageParseError
 
@@ -334,6 +335,10 @@ class IntentAnalyzer:
             active_domains=active_domains,
             turn_number=turn_number,
             llm=llm,
+            # The host's per-turn switch (`metakeys.STAGE_SCHEMA`). OFF unless it names this
+            # stage: nothing is derived, nothing is probed, and the call below is the one it
+            # always was.
+            ask=schema_ask(ctx.metadata, STAGE_NAME),
         )
 
         ctx.intent = intent
@@ -351,9 +356,14 @@ class IntentAnalyzer:
         active_domains: Optional[list[str]] = None,
         turn_number: Optional[int] = None,
         llm: Optional[LLMBackend] = None,
+        ask: Optional[SchemaAsk] = None,
     ) -> IntentResult:
         """
         Analyze the NoumenoResult and extract the structured IntentResult.
+
+        ``ask`` (optional) is the schema this call is asked to send beside the prompt
+        (``cogno_anima.structured``). ``None`` — the default — and an ask that is OFF are the
+        same call: ``backend.generate(system, prompt)``. The prompt is the same bytes either way.
 
         The IntentResult's language (`langue`) is ALWAYS inherited from
         `noumeno.language` — the NER never re-detects language nor uses the
@@ -410,8 +420,12 @@ class IntentAnalyzer:
         (data, tokens_in, tokens_out, cached_tokens,
          fingerprint, served_model) = await generate_json_resilient(
             backend, self._system, prompt, _decode_capturing, stage=STAGE_NAME,
-            repairs=repairs)
+            repairs=repairs, ask=ask)
         elapsed_ms = (time.perf_counter() - t0) * 1000
+        # A reply written under a schema that makes every key mandatory spells an optional key
+        # that does not apply as `null`. Read as the absent key it stands for — and ONLY under
+        # that receipt (`cogno_anima.repairs.nulls_as_absent`); otherwise this is `data` itself.
+        data = nulls_as_absent(data, STAGE_NAME, ask.applied if ask is not None else None)
 
         metrics = StageMetrics(
             stage=STAGE_NAME,
@@ -428,6 +442,9 @@ class IntentAnalyzer:
             # its own `attempt`. Computed once at construction — the templates are fixed per
             # instance — so a per-turn cost is not paid for a constant.
             prompt_sha=self._prompt_sha,
+            # The schema this call was asked to send and what its backend carried — `None`
+            # when the stage was not asked (`StageMetrics.schema_use`).
+            schema_use=ask.record() if ask is not None else None,
             model=backend.model,
         )
 

@@ -19,6 +19,7 @@ from cogno_anima.vocab import DRIFT_TAG_UNKNOWN, EMBED_UNAVAILABLE, PRESERVED_NO
 from cogno_anima.verdict import VERDICT_MISSING, read_boolean
 from cogno_anima.repairs import (COERCED, DEFAULT, FENCE_OR_THINK_STRIPPED, NULL_FIELD,
                                  SALVAGED_OBJECT, STRING_BOOL, RepairLog, spelled_boolean)
+from cogno_anima.structured import schema_ask
 
 logger = logging.getLogger("cogno_anima.noumeno")
 
@@ -289,13 +290,18 @@ class Noumeno:
         def _parse(raw: str) -> dict:
             return self._parse_json(raw, repairs)
 
+        # The host's per-turn switch (`metakeys.STAGE_SCHEMA`). OFF unless it names this stage:
+        # nothing is derived, nothing is probed, and both calls below are the ones they always
+        # were.
+        ask = schema_ask(ctx.metadata, STAGE_NAME)
+
         # 5. Call LLM  +  6. Parse JSON Response
         # A response cut mid-stream is transient and buys exactly one more attempt; anything
         # else still raises on the first. Tokens are summed across attempts so a retry shows
         # up in metering instead of being billed invisibly.
         (data, tokens_in, tokens_out, cached_tokens,
          fingerprint, served_model) = await generate_json_resilient(
-            llm, self._system, prompt, _parse, stage=STAGE_NAME, repairs=repairs)
+            llm, self._system, prompt, _parse, stage=STAGE_NAME, repairs=repairs, ask=ask)
         rewritten = _text(data, "rewritten") or user_input
 
         # ── Few-shot echo backstop ────────────────────────────────────
@@ -319,9 +325,14 @@ class Noumeno:
                 "stage=noumeno event=few_shot_echo rewritten=%r — retrying without the "
                 "examples block", rewritten)
             try:
+                # Its OWN ask, adopted below only where the retry's tokens and fingerprint are:
+                # on the failure branch nothing of the retry is kept, and the row goes on
+                # describing the one call it describes — its schema receipt included.
+                ask2 = schema_ask(ctx.metadata, STAGE_NAME)
                 data2, t2, o2, c2, fp2, sm2 = await generate_json_resilient(
                     llm, self._system_sans_examples, prompt, _parse,
-                    stage=STAGE_NAME, repairs=repairs)
+                    stage=STAGE_NAME, repairs=repairs, ask=ask2)
+                ask = ask2
                 tokens_in += t2
                 tokens_out += o2
                 cached_tokens += c2
@@ -454,6 +465,9 @@ class Noumeno:
             prompt_sha=self._prompt_sha,
             embedding_tokens=emb_tokens,
             embedding_calls=emb_calls,
+            # The schema this stage was asked to send and what its backend carried — `None`
+            # when it was not asked (`StageMetrics.schema_use`). Last call wins.
+            schema_use=ask.record(),
             model=llm.model,
         )
 

@@ -192,6 +192,24 @@ Key points:
   repairs as its marks PLUS its non-`boolean` verdict reads. `[]` means the reply was
   read as it came. An old result, or a stand-in stage, has no list: treat that as
   "not on record", never as zero.
+- **A JSON stage sends its schema only when you switch it on** (since 0.1.11). Stamp
+  `ctx.metadata["stage_schema"]` (`mk.STAGE_SCHEMA`) per turn with
+  `{stage: "open" | "strict"}`, keyed by the stage's `StageMetrics.stage` label
+  (`noumeno`, `ner`, `superego_scope`, `superego_judge`).
+  - **Off by default, and off is byte for byte.** With no key — or a value that is not
+    exactly one of the two words under that stage's label — nothing is derived, the
+    backend is not probed, and the call is `backend.generate(system, prompt)`.
+  - **On never changes a prompt.** The schema travels beside it. Whether it reaches a
+    provider depends on the backend that serves the call (`cogno_synapse`
+    `StructuredBackend`): a backend, wrapper or double without it is called exactly as
+    before.
+  - **Read what happened on `StageMetrics.schema_use`**: `None` when the stage was not
+    asked; else `{"requested": <form>, "applied": <dialect> | "refused" | None}`.
+    `applied: None` means the serving backend has no dialect for that form. Before you
+    persist it, close it with `cogno_anima.structured.closed_schema_record(raw)`.
+  - **Do not carry the key between turns.** It is per turn, like the scope keys.
+  - **Which stages, which tenants and which form is yours to decide.** The core reads no
+    environment variable. A schema is billed by the provider as input tokens.
 - **The contact's message is escaped in the judge's and the voice's prompt** (since
   0.1.7). `ctx.user_input` is rendered through `prompt_guard.defang_structure`: a
   fence tag of the core loses its angle brackets, and a line opening with one of the
@@ -261,6 +279,7 @@ the core reads/writes:
 | `held_recorded_ask` (`mk.HELD_RECORDED_ASK`) | host may inject, PER TURN | `{tool: argument}` naming the argument of the SAME held call that the host records on the recipient's side as what the message asks them to answer; read only for a tool `held_delivered_text` also declares, judged beside the message at the proposal (#198, `types.held_messages_with_asks`). Absent → the judge's prompt is unchanged |
 | `scope_verdict_read` (`mk.SCOPE_VERDICT_READ`) | core writes, PER TURN | how the scope guard's verdict was read this turn — one of `cogno_anima.verdict.VALID_VERDICT_READS`: `boolean` (the classifier's own answer), `string_bool` / `not_boolean` / `missing` / `duplicated` / `unparseable` (it answered, the answer was not a JSON boolean, and the turn was ALLOWED by the fail-open contract), `call_failed` (the call raised). ABSENT when the guard asked nothing; the core removes a stale value on those paths, like `scope_prompt_sha`, and a carrier must not hold it between turns. A closed alphabet, safe to persist (0.1.3) |
 | `scope_repairs` (`mk.SCOPE_REPAIRS`) | core writes, PER TURN | what the scope guard had to repair in the classifier's reply this turn — a list of marks from `cogno_anima.repairs.VALID_SCOPE_REPAIRS` (`fence_or_think_stripped`, `salvaged_object`, `default:refusal_message`, `null_field:refusal_message`, `coerced:refusal_message`). It never repeats `scope_verdict_read`. Present, possibly `[]`, whenever the classifier was asked; ABSENT when the guard asked nothing — the core removes a stale value on those paths, and a carrier must not hold it between turns. A closed alphabet, safe to persist (0.1.9) |
+| `stage_schema` (`mk.STAGE_SCHEMA`) | host may inject, PER TURN | which JSON stages send their backend a JSON Schema this turn, and in which form: `{stage: "open" \| "strict"}`, keyed by the `StageMetrics.stage` label (`noumeno`, `ner`, `superego_scope`, `superego_judge`). Absent, or any other value, is OFF — byte for byte the pipeline without the key. Never carried between turns. What happened is on `StageMetrics.schema_use` |
 | `source_reads` (`mk.SOURCE_READS`) | host may inject, PER TURN | the tool names the host's catalog DECLARES as source reads (a bare `str` is one name). `types.source_reads_not_called(ctx)` returns those that were offered and that no execution of the turn called — the input of cogno-soma's one extra executor pass over a rejected negative (#196). Absent / empty → `[]`, every consumer as before |
 
 Minimal threading between turns:
