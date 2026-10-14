@@ -88,7 +88,9 @@
 - **`test_logs_carry_no_third_party_text.py`**: every value has a class, no class is text, and
   the expression each key is given is pinned. Controls: `critique_len=%d` given the critique's
   first 80 characters fails; so do a new key, an exception passed as `error=`, a key classed
-  as text. No `print`, `warnings.warn` or stream write in the package.
+  as text. No `print`, `warnings.warn` or stream write in the package. A pin is compared as
+  the running interpreter writes it: `ast.unparse` spells one expression differently on 3.10
+  and on 3.11.
 - **`test_log_lines_carry_no_byte_of_the_turn.py`**: the fifteen lines at run time, each with
   a sentinel in the text it used to print. On `32803f5`: 16 failed, 2 passed (15 because the
   sentinel was in the log).

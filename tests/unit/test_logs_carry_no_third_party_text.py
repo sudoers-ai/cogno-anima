@@ -27,6 +27,7 @@ What the fifteen lines say at run time is the other file's:
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -45,7 +46,7 @@ CLASSES = VALUE_CLASSES + ("constant",)
 #: What each key is GIVEN — the source of the argument, as ``ast.unparse`` writes it. A class
 #: is a judgement about an expression, so the judgement is pinned to the expression it was
 #: about. ``"<key>@<logger>"`` is a key whose class differs in one logger.
-EXPRESSIONS: "dict[str, set[str]]" = {
+_PINNED: "dict[str, set[str]]" = {
     # ── count ──
     "at": {"hhmm"},
     "attempt": {"attempt_no", "self._attempt_of(ctx)", "index + 1"},
@@ -128,6 +129,19 @@ EXPRESSIONS: "dict[str, set[str]]" = {
     "persona": {"persona", "vocab._label(ctx.metadata.get(mk.ACTIVE_PERSONA_ID, '?'))"},
     "tool": {"name", "entry.tool"},
 }
+
+
+def _as_this_python_writes_it(source: str) -> str:
+    """``ast.unparse`` does not write an expression the same way on every Python: 3.10 gives
+    ``for (s, v) in present.items()`` where 3.11 gives ``for s, v in present.items()``. A pin
+    is the EXPRESSION, not one interpreter's spelling of it, so each is parsed and written back
+    by the interpreter that is running — the same one that wrote the reader's side."""
+    return ast.unparse(ast.parse(source, mode="eval"))
+
+
+EXPRESSIONS: "dict[str, set[str]]" = {
+    key: {_as_this_python_writes_it(source) for source in sources}
+    for key, sources in _PINNED.items()}
 
 
 def field_classes(text: str) -> "dict[str, str]":
@@ -224,7 +238,6 @@ def test_the_tracebacks_are_the_five_the_page_exempts():
 def test_the_package_has_no_other_way_to_write_a_line():
     """A ``print``, a ``warnings.warn``, a write to a standard stream or a hand-formatted
     traceback is a log line this reader would never see."""
-    import ast
     found = []
     for path in sorted(PACKAGE.rglob("*.py")):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
