@@ -1,4 +1,5 @@
-"""The schema of each stage's reply is DERIVED from the vocabularies — and nothing reads it yet.
+"""The schema of each stage's reply is DERIVED from the vocabularies — and has ONE reader, behind a
+switch that is off by default.
 
 ``cogno_anima.schemas`` holds one JSON Schema per JSON stage (NOUMENO, NER, scope guard, judge).
 This file holds it to three things:
@@ -13,7 +14,14 @@ This file holds it to three things:
   every field under 38 dirty values, through the real stages. The values it accepts and the
   stage still marks are the declared ones: the right type, the wrong CONTENT. For the NOUMENO
   and the NER the converse holds as well: what the stage reads without a form mark is accepted.
-* **inert.** No module of the package imports it, and the package root does not export it.
+* **one reader, off by default.** Exactly one module of the package imports it —
+  ``cogno_anima.structured``, inside the function that runs only when the host switched a stage
+  on — and the package root does not export it. With the switch off every stage's call is
+  ``generate(system, prompt)``; the switch itself is held in ``test_stage_schema_switch.py``.
+* **two forms.** ``schema_for(stage, "open")`` is the derived schema byte for byte (digests
+  pinned); ``"strict"`` adds the keys the stage's PROMPT asks for and the reader ignores, from a
+  table tied to the prompt's own examples in both directions. Both forms convert to every dialect
+  the transport has, and no enumeration is copied on the way.
 
 No model is involved anywhere: the schema is data, and the stages run over scripted replies.
 """
@@ -22,10 +30,12 @@ from __future__ import annotations
 
 import ast
 import copy
+import hashlib
 import json
 from pathlib import Path
 
 import pytest
+from cogno_synapse import SCHEMA_DIALECTS, SCHEMA_FORMS, schema_digest, to_dialect
 
 import cogno_anima
 from cogno_anima import repairs as rp
@@ -102,9 +112,13 @@ def test_the_validator_itself_refuses_what_it_should():
 
 def test_one_schema_per_json_stage_and_none_for_the_selector():
     assert set(schemas.STAGE_SCHEMAS) == set(rp.REPAIRS_BY_STAGE) - {"superego_select"}
-    assert schemas.schema_for("superego_select") is None
-    for stage in ("voice", "ego", "", None, 7):
-        assert schemas.schema_for(stage) is None
+    for form in SCHEMA_FORMS:
+        assert schemas.schema_for("superego_select", form) is None
+        for stage in ("voice", "ego", "", None, 7):
+            assert schemas.schema_for(stage, form) is None
+    for form in ("", "OPEN", "Strict", "closed", None, True, 1, ["open"]):
+        assert schemas.schema_for("ner", form) is None, form
+    assert schemas.schema_for("ner", "open") is not None                  # control
 
 
 @pytest.mark.parametrize("stage,table,verdict_key", [
@@ -235,12 +249,156 @@ def test_no_keyword_outside_the_plain_subset():
             assert set(node) <= _KEYWORDS, set(node) - _KEYWORDS
 
 
-def test_schema_for_hands_out_a_copy():
-    mine = schemas.schema_for("ner")
+@pytest.mark.parametrize("form", SCHEMA_FORMS)
+def test_schema_for_hands_out_a_copy(form):
+    mine = schemas.schema_for("ner", form)
     mine["properties"]["intent_class"]["enum"].append("MINE")
+    mine["properties"]["entities"]["properties"]["people"]["items"]["type"] = "number"
     mine["required"].clear()
-    assert schemas.schema_for("ner") == schemas.STAGE_SCHEMAS["ner"]
+    assert schemas.schema_for("ner", "open") == schemas.STAGE_SCHEMAS["ner"]
     assert "MINE" not in json.dumps(schemas.STAGE_SCHEMAS)
+    assert "MINE" not in json.dumps(schemas.schema_for("ner", form))
+
+
+# ── the two forms ───────────────────────────────────────────────────────────────────────────
+
+#: The derived schemas as they were before any form existed (``cogno-anima`` 0.1.10), named two
+#: ways: the canonical digest a log line carries, and a digest of the object in the order it is
+#: built — the "byte for byte" of the open form. A vocabulary that gains a word moves both, on
+#: purpose; an edit to this module that moves them by accident is what this catches.
+_OPEN_DIGESTS = {
+    "noumeno": ("3b646bea34b4", "8e05543ef3c11d63"),
+    "ner": ("04108d4bcbc9", "8a23cf917797b76a"),
+    "superego_scope": ("7669feae8814", "3bf32b4cd6da7d74"),
+    "superego_judge": ("230d8b4e0dbd", "fc4a1b9a761e2f57"),
+}
+
+
+def _built(schema: dict) -> str:
+    return hashlib.sha256(json.dumps(schema).encode()).hexdigest()[:16]
+
+
+def test_the_open_form_is_the_derived_schema_byte_for_byte():
+    assert set(_OPEN_DIGESTS) == set(schemas.STAGE_SCHEMAS)
+    for stage, (canonical, built) in _OPEN_DIGESTS.items():
+        schema = schemas.schema_for(stage, "open")
+        assert schema == schemas.STAGE_SCHEMAS[stage]
+        assert (schema_digest(schema), _built(schema)) == (canonical, built), stage
+    # the control: the digest does move when a schema does
+    moved = schemas.schema_for("ner", "open")
+    moved["properties"]["goal"]["type"] = "string"
+    assert schema_digest(moved) != _OPEN_DIGESTS["ner"][0]
+
+
+def test_the_strict_form_adds_only_permitted_keys_and_only_to_the_ner():
+    for stage in schemas.STAGE_SCHEMAS:
+        opened, strict = schemas.schema_for(stage, "open"), schemas.schema_for(stage, "strict")
+        if stage != "ner":
+            assert strict == opened, stage
+            continue
+        added = set(strict["properties"]) - set(opened["properties"])
+        assert added == set(schemas.NER_PROMPT_ONLY_KEYS) and len(added) == 6
+        added_entities = (set(strict["properties"]["entities"]["properties"])
+                          - set(opened["properties"]["entities"]["properties"]))
+        assert added_entities == set(schemas.NER_PROMPT_ONLY_ENTITY_KEYS) and len(added_entities) == 2
+        # PERMITTED, never required: nothing the stage reads became optional or mandatory here
+        assert strict["required"] == opened["required"]
+        assert "required" not in strict["properties"]["entities"]
+        # …and everything that was there is there, unchanged
+        for name, prop in opened["properties"].items():
+            if name != "entities":
+                assert strict["properties"][name] == prop, name
+        for name, prop in opened["properties"]["entities"]["properties"].items():
+            assert strict["properties"]["entities"]["properties"][name] == prop, name
+        # this module closes nothing: that is the provider's rule and the transport's job
+        assert "additionalProperties" not in strict
+        assert "additionalProperties" not in strict["properties"]["entities"]
+
+
+def _prompt_examples() -> "list[dict]":
+    """Every example object in the NER's system prompt — what the model is SHOWN to write."""
+    text = (PACKAGE / "prompt_templates" / "ner" / "system.txt").read_text(encoding="utf-8")
+    decoder, found, at = json.JSONDecoder(), [], 0
+    while True:
+        at = text.find("Output:\n{", at)
+        if at < 0:
+            return found
+        obj, end = decoder.raw_decode(text[at + len("Output:\n"):])
+        found.append(obj)
+        at += len("Output:\n") + end
+
+
+def test_the_prompt_only_keys_are_the_ones_the_prompt_asks_for_and_the_reader_ignores():
+    """Tied to the prompt's own text in BOTH directions: a key of the table that leaves the
+    prompt fails, and so does a key the prompt starts asking for that the table does not hold
+    (under a closed schema the model could no longer write it)."""
+    examples = _prompt_examples()
+    assert len(examples) >= 3, "the examples were not found — the test would agree with anything"
+    read = set(rp.NER_REPAIR_FIELDS[rp.DEFAULT])
+    read_entities = set(schemas._ENTITY_KEYS)
+    for example in examples:
+        assert set(example) - read == set(schemas.NER_PROMPT_ONLY_KEYS)
+        assert set(example["entities"]) - read_entities == set(schemas.NER_PROMPT_ONLY_ENTITY_KEYS)
+        # the declared type is the one the prompt shows
+        for name, kind in {**schemas.NER_PROMPT_ONLY_KEYS,
+                           **{f"entities.{k}": v
+                              for k, v in schemas.NER_PROMPT_ONLY_ENTITY_KEYS.items()}}.items():
+            value = example["entities"][name.split(".")[1]] if "." in name else example[name]
+            assert isinstance(value, list if kind == "array" else str), name
+    # no key is in both tables: a key the reader reads is not "prompt only"
+    assert not set(schemas.NER_PROMPT_ONLY_KEYS) & read
+    assert not set(schemas.NER_PROMPT_ONLY_ENTITY_KEYS) & read_entities
+    # `langue` is deliberately out: the prompt tells the model to omit it and no example has it
+    assert "langue" not in schemas.NER_PROMPT_ONLY_KEYS
+    assert not any("langue" in example for example in examples)
+
+
+def test_the_strict_form_accepts_what_the_prompt_shows():
+    """The examples the prompt itself gives are replies the converted strict schema must be able
+    to take once every key is written — or the prompt and the schema ask for different things."""
+    strict = to_dialect(schemas.schema_for("ner", "strict"), "openai_strict")
+
+    def filled(value, schema):
+        if isinstance(value, dict) and "properties" in schema:
+            return {key: filled(value.get(key), sub) for key, sub in schema["properties"].items()}
+        return value
+
+    examples = _prompt_examples()
+    for example in examples:
+        assert accepts(strict, filled(example, strict))
+        # the control: as written (keys left out) the closed, all-required schema refuses it
+        assert not accepts(strict, example)
+    # and the OPEN form, sent open, takes the examples as written
+    opened = schemas.schema_for("ner", "open")
+    assert all(accepts(opened, example) for example in examples)
+
+
+@pytest.mark.parametrize("stage", sorted(schemas.STAGE_SCHEMAS))
+@pytest.mark.parametrize("form", SCHEMA_FORMS)
+@pytest.mark.parametrize("dialect", sorted(SCHEMA_DIALECTS))
+def test_every_form_converts_to_every_dialect_and_no_enumeration_is_copied(stage, form, dialect):
+    """The transport converts what this module hands over, without a ``ValueError``, and every
+    ``enum`` that comes out is a vocabulary of the package — plus ``null`` only where the strict
+    dialect widened a key. Equality by enumeration, against the objects, not against a list."""
+    converted = to_dialect(schemas.schema_for(stage, form), dialect)
+    vocabularies = [sorted(v) for v in (
+        *(vocabulary for vocabulary, _ in ner_stage._ENUM_FIELDS.values()),
+        *schemas.NER_LIST_VOCABULARIES.values())]
+    seen = 0
+    for node in _nodes(converted):
+        assert set(node) <= _KEYWORDS, set(node) - _KEYWORDS
+        if "enum" in node:
+            seen += 1
+            words = [w for w in node["enum"] if w is not None]
+            assert words in vocabularies, words
+    assert seen == (10 if stage == "ner" else 0)
+    if dialect == "openai_strict":
+        for node in _nodes(converted):
+            if node.get("type") == "object" or "properties" in node:
+                assert node["additionalProperties"] is False
+                assert node["required"] == list(node["properties"])
+    else:
+        assert converted == schemas.schema_for(stage, form)
 
 
 # ── the bridge: what the schema accepts needs no form repair ────────────────────────────────
@@ -442,7 +600,7 @@ def test_every_form_mark_of_a_verdict_stage_is_a_reply_the_schema_refuses(stage,
             assert not accepts(schemas.STAGE_SCHEMAS[stage], json.loads(reply)), mark
 
 
-# ── INERT: nothing reads it ─────────────────────────────────────────────────────────────────
+# ── ONE reader, behind the switch ───────────────────────────────────────────────────────────
 
 def _imports(path: Path) -> "set[str]":
     found: "set[str]" = set()
@@ -455,11 +613,20 @@ def _imports(path: Path) -> "set[str]":
     return found
 
 
-def test_no_module_of_the_package_imports_the_schemas():
-    """Inert by construction: the schema has no reader, so no call a stage makes can carry it."""
+def test_exactly_one_module_of_the_package_imports_the_schemas_and_not_at_import_time():
+    """One reader: ``structured.schema_ask``. And the import sits INSIDE that function — the
+    schemas module imports the stages, so a stage could not import it at module level, and a
+    turn with the switch off has no business importing it at all."""
     readers = [path.relative_to(PACKAGE).as_posix() for path in sorted(PACKAGE.rglob("*.py"))
                if path.name != "schemas.py" and "cogno_anima.schemas" in _imports(path)]
-    assert readers == []
+    assert readers == ["structured.py"]
+    tree = ast.parse((PACKAGE / "structured.py").read_text(encoding="utf-8"))
+    top_level = {node.module for node in tree.body if isinstance(node, ast.ImportFrom)}
+    assert "cogno_anima.schemas" not in top_level
+    inside = [fn.name for fn in ast.walk(tree) if isinstance(fn, ast.FunctionDef)
+              and any(isinstance(n, ast.ImportFrom) and n.module == "cogno_anima.schemas"
+                      for n in ast.walk(fn))]
+    assert inside == ["schema_ask"]
     # the control: the same walk does see an import that exists
     assert "cogno_anima.repairs" in _imports(PACKAGE / "stages" / "ner.py")
     assert "cogno_anima.repairs" in _imports(PACKAGE / "schemas.py")
@@ -471,8 +638,9 @@ def test_the_package_root_does_not_export_it():
 
 
 async def test_no_stage_hands_a_backend_anything_but_the_two_arguments():
-    """What "inert" means at the wire: every call is ``generate(system, prompt)`` — two
-    positional strings, no keyword — whatever this module holds."""
+    """What "off by default" means at the wire: with no switch stamped, every call is
+    ``generate(system, prompt)`` — two positional strings, no keyword — whatever this module
+    holds."""
     calls = []
 
     class Recording:

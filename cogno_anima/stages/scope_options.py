@@ -58,6 +58,7 @@ from cogno_anima.security.prompt_guard import defang_structure
 from cogno_anima.stages.superego import SuperegoStage
 from cogno_anima.verdict import parse_object
 from cogno_anima.types import PipelineContext, StageMetrics
+from cogno_anima.utils import call_json_stage
 
 __all__ = [
     "OptionSelection",
@@ -371,7 +372,11 @@ async def select_options(message: str, options: Any, backend: LLMBackend) -> Opt
     served: Optional[str] = None
     repairs: "list[str]" = []
     try:
-        raw, ti, to = await backend.generate(_SYSTEM, _prompt(message, offered))
+        # Through the ONE funnel a JSON stage calls a model by. This stage has no schema
+        # (`cogno_anima.schemas`: whether it gains from one is a measurement nobody has made),
+        # so it asks for none — and the call is the `generate(system, prompt)` it always was.
+        raw, ti, to, _ = await call_json_stage(backend, _SYSTEM, _prompt(message, offered),
+                                               schema=None, name=SELECT_STAGE, form=None)
         # Read with NO await in between — the contract of ``cached_tokens_of``.
         cached = cached_tokens_of(backend)
         fingerprint = system_fingerprint_of(backend)

@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.1.11 — 2026-10-14 — a JSON stage can send its schema; off by default, and off is byte for byte
+
+Needs `cogno-synapse` 0.1.3 (`StructuredBackend`, `schema_dialect_of`, `schema_applied_of`).
+
+### Added
+
+- **The switch: `ctx.metadata[mk.STAGE_SCHEMA]`**, `{stage: "open" | "strict"}`, stamped by the
+  HOST per turn and keyed by the `StageMetrics.stage` label (`noumeno`, `ner`,
+  `superego_scope`, `superego_judge`). This library reads no environment variable.
+  - **Absent is OFF, and so is anything else** — a value that is not a mapping, another
+    stage's row, `True`, `"STRICT"`, `"on"`.
+  - **OFF is byte for byte**: no schema is derived, no backend is probed, and every call is
+    `backend.generate(system, prompt)`.
+  - **ON never changes a byte of a prompt**: the schema travels beside it.
+- **`utils.call_json_stage(backend, system, prompt, *, schema, name, form)`** — the ONE place
+  a JSON stage calls a model: it probes the backend, calls, reads the schema receipt and
+  returns it. The three keywords have no default. A backend that announces no dialect for the
+  form is called through the two-argument `generate`, as before.
+- **`schema_for(stage, form)`** — `form` is new and has no default.
+  - `"open"` is the derived schema of 0.1.10, byte for byte (digests pinned).
+  - `"strict"` adds the keys the stage's PROMPT asks for and the reader ignores, as permitted
+    properties. Only the NER has any: `abstract_tags`, `comparatives`, `pii_risk`,
+    `raw_intent_class`, `raw_domains`, `raw_goal`, and `pronouns` / `possessives` under
+    `entities`. They are declared once (`NER_PROMPT_ONLY_KEYS`,
+    `NER_PROMPT_ONLY_ENTITY_KEYS`) and a test ties them to the prompt's examples in both
+    directions. The reader ignores them with no repair mark, as it always did.
+  - Closing the objects and requiring every key is `cogno_synapse.schema.to_dialect`'s, at the
+    leaf backend. This package does not know a provider exists.
+- **`StageMetrics.schema_use`** — `None` when the stage was not asked for a schema; else
+  `{"requested": <form>, "applied": <dialect> | "refused" | None}`. `applied` is the receipt of
+  the backend that SERVED the call. `None` there means that backend has no dialect for the
+  form: a strict request is never recorded as an open one. Several calls on one row: the last
+  call wins. `cogno_anima.structured.closed_schema_record` closes it for a reader that
+  persists it.
+- **`repairs.nulls_as_absent`** — a reply written under the receipt `openai_strict` spells an
+  optional key that does not apply as `null`. Under that receipt, and only then, the NER reads
+  a `null` sub-key of `entities` and of `aristotelian` as the absent key. Without the rule each
+  strict reply would carry `coerced:entities` / `coerced:aristotelian`. The stage's decisions
+  are the same with the rule and without it; only the marks differ.
+
+### Changed
+
+- The five JSON stages reach their model through the funnel: `generate_json_resilient` (NOUMENO,
+  NER), the scope guard, the judge, the scope-option selector and the pre-judge. The last two
+  have no schema and ask for none. With the switch off the request each stage makes is
+  unchanged: over 1 090 scripted replies (1 091 calls) swept through the stages, 0 calls and
+  0 decisions differ from 0.1.10.
+- `schema_for(stage)` is now `schema_for(stage, form)`. The module had no reader before this
+  release.
+
+### Not in this release
+
+- No measurement with a model. Whether a schema reduces repairs, and at what cost in tokens, is
+  measured downstream.
+- No schema for the selector or the pre-judge, and none for the voice or the executor.
+
 ## Unreleased — docs sweep: every sentence checked against the code (docs only, 2026-10-14)
 
 No code, test or prompt changes. Each sentence added or corrected was read in the code that

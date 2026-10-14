@@ -59,6 +59,7 @@ from cogno_anima.tools.pre_judge import (
     Proposal,
 )
 from cogno_anima.types import StageMetrics
+from cogno_anima.utils import call_json_stage
 from cogno_anima.verdict import read_verdict
 
 __all__ = ["ProposalJudge", "PersonaCard", "estimate_prompt_tokens"]
@@ -324,7 +325,11 @@ class ProposalJudge:
             except Exception:                    # noqa: BLE001
                 pass
         try:
-            raw, ti, to = await self._backend.generate(system, prompt)
+            # Through the ONE funnel a JSON stage calls a model by. The pre-judge has no schema
+            # (it is already strict about its one boolean), so it asks for none — and the call
+            # is the `generate(system, prompt)` it always was.
+            raw, ti, to, _ = await call_json_stage(self._backend, system, prompt,
+                                                   schema=None, name=JUDGE_PRE_STAGE, form=None)
         except asyncio.CancelledError:
             raise
         except Exception:                        # noqa: BLE001 — the backend spent nothing we can see

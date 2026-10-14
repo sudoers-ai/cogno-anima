@@ -2,9 +2,10 @@ import logging
 import re
 import math
 import string
-from typing import Optional, Any, Callable, Iterable
+from typing import Optional, Any, Callable, Iterable, Mapping
 
-from cogno_synapse import cached_tokens_of, served_model_of, system_fingerprint_of
+from cogno_synapse import (SCHEMA_FORMS, cached_tokens_of, schema_applied_of, schema_dialect_of,
+                           served_model_of, system_fingerprint_of)
 
 from cogno_anima.repairs import TRUNCATED_RETRY
 
@@ -281,6 +282,55 @@ def looks_truncated(raw: str) -> bool:
     return in_string or depth > 0
 
 
+async def call_json_stage(
+    backend: "Any",
+    system: str,
+    prompt: str,
+    *,
+    schema: "Optional[Mapping[str, Any]]",
+    name: str,
+    form: "Optional[str]",
+) -> "tuple[str, int, int, Optional[str]]":
+    """THE one place a JSON stage calls a model: probe, call, read the receipt, hand it back.
+
+    Returns ``(text, tokens_in, tokens_out, applied)``. ``applied`` is the RECEIPT of the schema
+    (``cogno_synapse.schema_applied_of``): a dialect when the schema travelled, ``"refused"`` when
+    it was asked for and did not, ``None`` when the call carried none.
+
+    **OFF is the call it always was.** With ``schema`` ``None``, or ``form`` anything but a member
+    of ``cogno_synapse.SCHEMA_FORMS`` (``None`` included), nothing is probed and the call is
+    ``backend.generate(system, prompt)`` — two positional strings, no keyword, which is what
+    every backend, wrapper and test double has always been handed.
+
+    **ON never touches the prompt.** ``system`` and ``prompt`` go out as they came in on both
+    paths; the schema travels beside them. A backend that does not announce a dialect for
+    ``form`` (``cogno_synapse.schema_dialect_of``: a plain ``LLMBackend``, a provider with no
+    structured mode, a strict form asked of a backend that only has an open one) serves the call
+    through the same two-argument ``generate`` and ``applied`` is ``None`` — never a demotion to
+    another form.
+
+    The three keywords have NO default: a caller that forgets the form fails here, at the call,
+    instead of getting one chosen for it. ``schema`` is the canonical schema of the reply
+    (``cogno_anima.schemas.schema_for``); converting it to a provider's dialect is the leaf
+    backend's, not this function's and not a stage's.
+
+    Nothing awaits between the backend's ``await`` and the read of the receipt, and nothing
+    awaits between that read and the caller's next statement — so the caller may still read
+    ``cached_tokens_of`` / ``system_fingerprint_of`` on the line after ``await call_json_stage``,
+    exactly as it did after ``await backend.generate``.
+
+    ``tests/unit/test_json_stages_call_through_the_funnel.py`` holds the rule by AST: no module of
+    this package calls ``.generate(`` or ``.generate_structured(`` on a backend outside this
+    function, except the two calls that do not ask for JSON (listed there, with the reason).
+    """
+    if schema is None or form not in SCHEMA_FORMS or schema_dialect_of(backend, form) is None:
+        text, tokens_in, tokens_out = await backend.generate(system, prompt)
+        return text, tokens_in, tokens_out, None
+    text, tokens_in, tokens_out = await backend.generate_structured(
+        system, prompt, schema=schema, name=name, form=form)
+    return text, tokens_in, tokens_out, schema_applied_of(backend)
+
+
 async def generate_json_resilient(
     llm: "Any",
     system: str,
@@ -290,8 +340,14 @@ async def generate_json_resilient(
     stage: str,
     attempts: int = 2,
     repairs: "Optional[Any]" = None,
+    ask: "Optional[Any]" = None,
 ) -> "tuple[dict, int, int, int, Optional[str], Optional[str]]":
     """``llm.generate`` + parse, retrying ONLY a response that arrived truncated.
+
+    ``ask`` is the caller's :class:`cogno_anima.structured.SchemaAsk`, when the stage was asked
+    to send a schema: every attempt goes through :func:`call_json_stage` with it, and the ask
+    keeps the receipt of the LAST attempt (``ask.note``). Optional — with ``None``, or an ask
+    that is OFF, every attempt is the ``llm.generate(system, prompt)`` it always was.
 
     ``repairs`` is the caller's :class:`cogno_anima.repairs.RepairLog`, when it keeps one: a
     retry records ``truncated_retry`` on it, so the repair that used to leave only a log line
@@ -332,10 +388,16 @@ async def generate_json_resilient(
     fingerprint: Optional[str] = None
     served: Optional[str] = None
     for index in range(max(1, attempts)):
-        raw, tokens_in, tokens_out = await llm.generate(system, prompt)
+        raw, tokens_in, tokens_out, applied = await call_json_stage(
+            llm, system, prompt,
+            schema=ask.schema if ask is not None else None, name=stage,
+            form=ask.form if ask is not None else None)
         # Read with NO await in between — that is the contract of ``cached_tokens_of``, and it
         # is what makes a per-instance value safe on a backend shared between concurrent turns.
+        # (``call_json_stage`` returns with no suspension after the backend's own ``await``.)
         total_cached += cached_tokens_of(llm)
+        if ask is not None:
+            ask.note(applied)
         # Assigned, never accumulated: this attempt's answer REPLACES the previous one, so a
         # second attempt that reports nothing leaves ``None`` behind rather than the first
         # attempt's fingerprint.

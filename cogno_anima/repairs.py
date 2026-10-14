@@ -93,9 +93,12 @@ __all__ = [
     "VALID_SELECT_REPAIRS",
     "REPAIRS_BY_STAGE",
     "VALID_REPAIRS",
+    "NULL_IS_ABSENT_RECEIPTS",
+    "OPTIONAL_KEY_FIELDS",
     "RepairLog",
     "repair_mark",
     "closed_repairs",
+    "nulls_as_absent",
     "reply_form_repairs",
     "note_text_field",
     "spelled_boolean",
@@ -225,6 +228,26 @@ REPAIRS_BY_STAGE: "dict[str, frozenset[str]]" = {
 #: Every mark of every stage — for a reader that only needs "is this a repair mark at all".
 VALID_REPAIRS: "frozenset[str]" = frozenset().union(*REPAIRS_BY_STAGE.values())
 
+# ── a reply written under a schema that makes every key mandatory ────────────────────────
+#: The schema RECEIPTS (``cogno_synapse.schema_applied_of``) under which a provider makes the
+#: model emit EVERY key of the schema, so a key the stage treats as optional arrives as ``null``
+#: instead of being left out. ``tests/unit/test_strict_null_is_absent.py`` ties this set to the
+#: transport: it is exactly the dialects whose conversion turns an optional key into a required,
+#: nullable one.
+NULL_IS_ABSENT_RECEIPTS: "frozenset[str]" = frozenset({"openai_strict"})
+
+#: Per stage, the fields that are OBJECTS whose keys the stage reads as optional — the only
+#: place a mandatory-keys schema changes what a well-formed reply looks like. Under a receipt of
+#: :data:`NULL_IS_ABSENT_RECEIPTS`, a ``null`` under one of those keys is the model saying "this
+#: key does not apply", which is what leaving the key out says without the schema; read as it
+#: stands it would be a ``coerced`` mark on every such reply, and a comparison of a schema'd
+#: reply with an unschema'd one would count the schema's own spelling as its defect. The same
+#: test ties this table to the schemas: a field is here exactly when its canonical schema is an
+#: object with a key that is not required. The NOUMENO, the guard and the judge have none.
+OPTIONAL_KEY_FIELDS: "dict[str, tuple[str, ...]]" = {
+    "ner": ("entities", "aristotelian"),
+}
+
 
 class RepairLog:
     """The marks ONE stage call recorded, in the order it recorded them.
@@ -285,6 +308,34 @@ def closed_repairs(raw: Any, stage: str) -> "list[str]":
         if isinstance(item, str) and item in alphabet and item not in out:
             out.append(item)
     return out
+
+
+def nulls_as_absent(data: Any, stage: str, applied: Any) -> Any:
+    """``data`` with the ``null``-valued keys of ``stage``'s optional-key fields LEFT OUT — when,
+    and only when, the reply was written under a receipt of :data:`NULL_IS_ABSENT_RECEIPTS`.
+
+    The rule for reading a reply a mandatory-keys schema shaped: there, ``null`` under an
+    optional key IS the absent key. Dropping it before the stage reads means the stage, and the
+    marks, see exactly the object the model would have written without the schema — so the
+    stage's decisions cannot differ, and no mark is recorded for the schema's own spelling.
+
+    With any other receipt (``None`` — no schema travelled —, an open dialect, ``"refused"``)
+    ``data`` is returned AS IS, the same object: a ``null`` there is still what it always was.
+    A ``null`` at the TOP level is never touched (every top-level key is required in every
+    form, so a top-level ``null`` means what it says). Pure — the input is never mutated —
+    and it never raises.
+    """
+    if applied not in NULL_IS_ABSENT_RECEIPTS or not isinstance(data, dict):
+        return data
+    fields = OPTIONAL_KEY_FIELDS.get(stage, ()) if isinstance(stage, str) else ()
+    out = None
+    for name in fields:
+        value = data.get(name)
+        if isinstance(value, dict) and any(item is None for item in value.values()):
+            if out is None:
+                out = dict(data)
+            out[name] = {key: item for key, item in value.items() if item is not None}
+    return data if out is None else out
 
 
 def spelled_boolean(value: Any) -> bool:

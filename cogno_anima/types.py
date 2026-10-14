@@ -88,6 +88,23 @@ class StageMetrics(BaseModel):
     # that exists only to be compared must not have.
     system_fingerprint: Optional[str] = None
     served_model: Optional[str] = None
+    # ── the JSON Schema this call was asked to carry, and what its backend carried ──────────
+    # ``None`` = the stage was NOT asked for a schema (the default: the per-turn switch
+    # ``metakeys.STAGE_SCHEMA`` is off, or the stage has none), or no call completed. Otherwise
+    # ``{"requested": <form>, "applied": <receipt>}``, both of closed alphabets:
+    # ``requested`` is ``"open"`` or ``"strict"`` (``cogno_synapse.SCHEMA_FORMS``, what the host
+    # asked for); ``applied`` is what the backend that SERVED the call says travelled
+    # (``cogno_synapse.schema_applied_of``): a dialect, ``"refused"`` (asked for, did not
+    # travel), or ``None`` (that backend has no dialect for the form — the call went as it
+    # always did). Both sides are recorded because they can differ, and a comparison of two
+    # forms is only a comparison where ``applied`` says so. Built by
+    # ``cogno_anima.structured.SchemaAsk.record``; a reader on the far side of a carrier closes
+    # it with ``cogno_anima.structured.closed_schema_record``.
+    #
+    # Not a count, not in ``tokens_total``. SEVERAL CALLS, ONE ROW → LAST CALL WINS, like the
+    # two fields above. Named ``schema_use`` and not ``schema``: a pydantic model already has an
+    # attribute of that name, and a field that shadows it warns at import on every host.
+    schema_use: Optional[dict[str, Optional[str]]] = None
     tokens_total: int = 0
     model: str
 

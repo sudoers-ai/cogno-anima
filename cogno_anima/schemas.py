@@ -7,10 +7,13 @@ accepts a schema with the request can refuse most of what that validation repair
 outside the vocabulary, a key left out, a ``null`` where a value belongs, a boolean spelled as a
 string. This module is that schema, one per stage.
 
-**INERT. Nothing in this package reads it.** No stage passes a schema to a backend, no prompt
-mentions one and no result changes: with this module present or absent, every call a stage makes
-is the same ``backend.generate(system, prompt)``. It exists so that the day a transport can carry
-a schema, the schema it carries is not a second copy of the vocabularies.
+**OFF BY DEFAULT. One reader, behind a switch.** :func:`cogno_anima.structured.schema_ask` is the
+only thing in this package that reads this module, and only on a turn whose host stamped
+``metakeys.STAGE_SCHEMA`` for the stage. Without that key no stage passes a schema to a backend,
+no prompt mentions one and no result changes: every call a stage makes is the same
+``backend.generate(system, prompt)``. With it, the schema travels BESIDE the prompt — the prompt
+is the same bytes either way. The schema a transport carries is therefore never a second copy of
+the vocabularies.
 
 **Derived, never copied.** Every ``enum`` here is built FROM the object the stage validates
 against — ``vocab.VALID_INTENTS``, ``vocab.NER_KNOWLEDGE_DOMAINS``, ``security.pii.VALID_PII_TYPES``
@@ -35,14 +38,25 @@ are tested with. What the schema does NOT refuse, by design:
 * the two fallbacks (``fallback:<field>``) and the reply's envelope (a fence, prose around the
   object), which are not properties of the object at all.
 
-**It is NOT yet the request a strict provider takes.** The objects here are as open as the
-stages are: the NER ignores keys it does not read (the prompt itself asks for three more), its
-``entities`` and ``aristotelian`` maps may leave a key out, and a field the prompt lets the model
-answer with ``null`` is a union with ``null``. A provider whose strict mode wants every object
-closed and every key required needs that applied on top — a mechanical step, and one that
-changes what the model is asked to emit, which is why it belongs with the measurement and not
-here. The one object that IS closed is ``aristotelian``: its keys are the closed
-``VALID_ARISTOTELIAN``, and a key outside it is a repair today.
+**Two forms, and the difference between them is what THIS package knows.** :func:`schema_for`
+takes the form the host asked for (``cogno_synapse.SCHEMA_FORMS``):
+
+* ``"open"`` — the schema above, as open as the stages are: the NER ignores keys it does not
+  read, its ``entities`` and ``aristotelian`` maps may leave a key out, and a field the prompt
+  lets the model answer with ``null`` is a union with ``null``. The one object that IS closed is
+  ``aristotelian``: its keys are the closed ``VALID_ARISTOTELIAN``, and a key outside it is a
+  repair today.
+* ``"strict"`` — the same schema with the keys the stage's PROMPT asks the model for and the
+  reader ignores added as PERMITTED (optional). A provider's strict mode closes every object, so
+  a key the prompt asks for and the schema does not hold is a key the model can no longer write
+  — and the prompt does not change. Only this package knows what a stage's prompt asks for:
+  :data:`NER_PROMPT_ONLY_KEYS` and :data:`NER_PROMPT_ONLY_ENTITY_KEYS`, each declared ONCE and
+  tied to the prompt's own examples by a test (a key that leaves the prompt, or a new one the
+  prompt starts asking for, fails it). The reader goes on ignoring them, with no repair mark.
+
+**The provider's mechanics are NOT here.** Closing every object, requiring every key and
+widening a key that was optional to ``type | null`` is ``cogno_synapse.schema.to_dialect``'s, per
+dialect, at the leaf backend. This module does not know a provider exists.
 
 For the NOUMENO and the NER the converse holds too: a reply the stage reads without a form
 repair is accepted. For the guard and the judge it does not, and cannot with a schema this plain:
@@ -59,6 +73,8 @@ from __future__ import annotations
 import copy
 from typing import Any, Iterable, Optional
 
+from cogno_synapse import SCHEMA_FORMS
+
 from cogno_anima.repairs import (DEFAULT, JUDGE_REPAIR_FIELDS, NER_REPAIR_FIELDS,
                                  NOUMENO_REPAIR_FIELDS, SCOPE_REPAIR_FIELDS)
 from cogno_anima.security.pii import VALID_PII_TYPES
@@ -69,6 +85,8 @@ __all__ = [
     "JUDGE_VERDICT_KEY",
     "SCOPE_VERDICT_KEY",
     "NER_LIST_VOCABULARIES",
+    "NER_PROMPT_ONLY_KEYS",
+    "NER_PROMPT_ONLY_ENTITY_KEYS",
     "STAGE_SCHEMAS",
     "build_stage_schemas",
     "schema_for",
@@ -92,8 +110,34 @@ NER_LIST_VOCABULARIES: "dict[str, set[str]]" = {
 _ENTITY_KEYS: "tuple[str, ...]" = ("people", "objects", "concepts")
 
 
+#: The top-level keys the NER's PROMPT asks the model for and ``IntentAnalyzer._build`` never
+#: reads — every example object in the prompt carries them. ``"array"`` is an array of strings.
+#: In the ``"strict"`` form they are PERMITTED (optional properties); in the ``"open"`` form they
+#: need no mention, the object being open. Declared once, here; ``langue`` is not among them (the
+#: prompt tells the model to omit it, and no example carries it).
+NER_PROMPT_ONLY_KEYS: "dict[str, str]" = {
+    "abstract_tags": "array",
+    "comparatives": "array",
+    "pii_risk": "string",
+    "raw_intent_class": "string",
+    "raw_domains": "array",
+    "raw_goal": "string",
+}
+
+#: The same, for the sub-keys of ``entities``.
+NER_PROMPT_ONLY_ENTITY_KEYS: "dict[str, str]" = {
+    "pronouns": "array",
+    "possessives": "array",
+}
+
+
 def _string() -> "dict[str, Any]":
     return {"type": "string"}
+
+
+def _permitted(kind: str) -> "dict[str, Any]":
+    """The type of a key the prompt asks for and nobody reads: the plainest one that fits."""
+    return _array(_string()) if kind == "array" else _string()
 
 
 def _nullable(schema: "dict[str, Any]") -> "dict[str, Any]":
@@ -188,8 +232,33 @@ def build_stage_schemas() -> "dict[str, dict[str, Any]]":
 STAGE_SCHEMAS: "dict[str, dict[str, Any]]" = build_stage_schemas()
 
 
-def schema_for(stage: str) -> "Optional[dict[str, Any]]":
-    """A COPY of the schema of ``stage``'s reply, or ``None`` for a stage that has none (the
-    selector, the voice, the executor, an unknown label). Never raises."""
+def _strict_form(stage: str, schema: "dict[str, Any]") -> "dict[str, Any]":
+    """``schema`` (a copy) with the keys ``stage``'s prompt asks for and the reader ignores added
+    as PERMITTED: properties that are not required. Nothing is closed, required or made nullable
+    here — that is the provider's rule and the transport's job."""
+    if stage == "ner":
+        for name, kind in NER_PROMPT_ONLY_KEYS.items():
+            schema["properties"][name] = _permitted(kind)
+        for name, kind in NER_PROMPT_ONLY_ENTITY_KEYS.items():
+            schema["properties"]["entities"]["properties"][name] = _permitted(kind)
+    return schema
+
+
+def schema_for(stage: str, form: str) -> "Optional[dict[str, Any]]":
+    """A COPY of the schema of ``stage``'s reply in the ``form`` asked for, or ``None``.
+
+    ``form`` has no default — it is ``"open"`` or ``"strict"`` (``cogno_synapse.SCHEMA_FORMS``),
+    and a caller that forgets it fails here rather than get one chosen for it:
+
+    * ``"open"`` — :data:`STAGE_SCHEMAS` as derived, byte for byte;
+    * ``"strict"`` — the same, plus the keys the stage's prompt asks for and the reader ignores
+      (see the module docstring). Today only the NER has any.
+
+    ``None`` for a stage that has no schema (the selector, the voice, the executor, an unknown
+    label) and for a form outside the two words. Never raises.
+    """
     schema = STAGE_SCHEMAS.get(stage) if isinstance(stage, str) else None
-    return copy.deepcopy(schema) if schema is not None else None
+    if schema is None or not isinstance(form, str) or form not in SCHEMA_FORMS:
+        return None
+    mine = copy.deepcopy(schema)
+    return _strict_form(stage, mine) if form == "strict" else mine

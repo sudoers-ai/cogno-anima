@@ -496,27 +496,63 @@ raised `AttributeError` and ended the turn. It now reads as the absent key alway
 proves that switching the marking off changes nothing but the list. The RATE of repair per
 stage is a number only traffic gives.
 
-### The schema of a JSON stage's reply (`cogno_anima/schemas.py`) — inert
+### The schema of a JSON stage's reply (`cogno_anima/schemas.py`) — sent only when the host switches it on
 
 One JSON Schema per JSON stage (NOUMENO, NER, scope guard, judge), **derived** from the closed
 vocabularies the stages validate against and from the field tables of `cogno_anima.repairs`
-(0.1.10). **Nothing reads it**: no module imports it, no stage passes it to a backend, no prompt
-mentions it.
+(0.1.10). Since 0.1.11 a stage can ask its backend to carry it. **Off by default.**
 
-- **Derived in both directions.** A vocabulary is the `enum` of its field, and every `enum` is a
-  vocabulary the package declares. `build_stage_schemas()` rebuilds from the vocabularies as
-  they are; a test adds a word and reads it back.
-- **The bridge to the repair marks.** A reply the schema accepts needs no form mark (`default`,
-  `null_field`, `string_bool`, `coerced`) and never ends the turn. Declared exceptions: the
-  right type with the wrong content (a range, a blank string, a duplicate).
-- **Not the request a strict provider takes.** The objects are as open as the stages are.
-  Closing them and requiring every key is a provider's rule, and it changes what the model is
-  asked to emit.
-- **No switch and no transport.** Sending a schema needs a protocol a backend can announce, a
-  rule for the wrappers a host stacks around a backend, and a provider's confirmed shape. None
-  of the three is decided. See `CHANGELOG.md` (0.1.10, *Not in this release*).
+- **The switch is per turn and the host's.** `ctx.metadata[mk.STAGE_SCHEMA]` is
+  `{stage: "open" | "strict"}`, keyed by the `StageMetrics.stage` label. This library never
+  reads the environment. Absent, or anything that is not exactly one of the two words under the
+  stage's own label, is OFF (`structured.requested_form`).
+- **OFF is byte for byte.** No schema is derived (`schema_for` is not called), no backend is
+  probed, and the call is `backend.generate(system, prompt)`.
+- **ON never changes a byte of a prompt.** The schema travels beside `system` and `prompt`.
+  The guard's `prompt_sha` is the same label with the switch off and on.
+- **One funnel.** `utils.call_json_stage(backend, system, prompt, *, schema, name, form)` is the
+  only place a JSON stage calls a model: it probes (`cogno_synapse.schema_dialect_of`), calls,
+  reads the receipt and returns it. The three keywords have no default.
+  `test_json_stages_call_through_the_funnel.py` finds every `.generate(` and
+  `.generate_structured(` in the package by AST; the two calls outside the funnel (the
+  executor's text fallback, the voice) are listed there with the reason.
+- **Two forms, and what differs is what this package knows** (`schema_for(stage, form)`, no
+  default):
+  - `"open"` is the derived schema, byte for byte (digests pinned);
+  - `"strict"` adds the keys the stage's PROMPT asks for and the reader ignores, as permitted.
+    Today only the NER has any: six top-level keys and two under `entities`
+    (`NER_PROMPT_ONLY_KEYS`, `NER_PROMPT_ONLY_ENTITY_KEYS`), tied to the prompt's own examples
+    in both directions by a test. The reader goes on ignoring them, with no mark.
+  Closing the objects, requiring every key and widening an optional key to `type | null` is the
+  provider's rule: `cogno_synapse.schema.to_dialect` does it at the leaf backend, never here.
+- **The record says both sides.** `StageMetrics.schema_use` is `None` when the stage was not
+  asked, else `{"requested": <form>, "applied": <dialect> | "refused" | None}`. `applied` is the
+  receipt of the backend that SERVED the call; `None` means it has no dialect for that form (a
+  strict request is never served by an open dialect). Last call wins. The field is not named
+  `schema` because a pydantic model already has an attribute of that name.
+  `structured.closed_schema_record` closes it for a reader on the far side of a carrier.
+- **A strict reply spells an optional key as `null`, and the stage reads it as absent.** Under
+  the receipt `openai_strict` every key is mandatory, so the sub-keys of the NER's `entities`
+  and `aristotelian` that do not apply arrive as `null`. `repairs.nulls_as_absent` leaves them
+  out before the stage reads, ONLY under that receipt. Without it each such reply would carry
+  `coerced:entities` / `coerced:aristotelian`, and a comparison of the two forms would count
+  the schema's own spelling as its defect. `test_strict_null_is_absent.py` ties the two tables
+  (`NULL_IS_ABSENT_RECEIPTS`, `OPTIONAL_KEY_FIELDS`) to the transport and to the schemas, and
+  runs the twin through the real stage in both worlds: the marks differ, the decisions do not.
+- **The bridge to the repair marks** is unchanged: a reply the open schema accepts needs no form
+  mark and never ends the turn; declared exceptions are the right type with the wrong content.
+- **Not measured here.** Whether a schema reduces repairs, and at what cost, is a model
+  measurement this repo does not make. A capability probe downstream (2026-10-14, n=1 per cell:
+  signals, not rates) found both OpenAI dialects accepted for the four stages on three models;
+  the open form does not bind (2 of 12 open replies did not fit the schema sent, both the NER's;
+  12 of 12 strict ones did); and the schema is billed as INPUT (about 650–680 tokens per NER
+  call, 40–90 on the other stages). The probe used the NER's open schema, before the strict
+  form existed.
+- **Out of scope.** The selector and the pre-judge have no schema; they go through the funnel
+  asking for none. The voice and the executor do not return JSON.
 
-`tests/unit/test_schemas_are_derived.py` holds all of it, the validator included.
+`tests/unit/test_schemas_are_derived.py`, `test_stage_schema_switch.py`,
+`test_strict_null_is_absent.py` and `test_json_stages_call_through_the_funnel.py` hold it.
 
 ### Prompts
 
