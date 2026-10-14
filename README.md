@@ -27,11 +27,14 @@ NOUMENO  →  NER  →  ID  →  EGO  →  SUPEREGO        (+ Drift, woven throu
 - **NER** — semantic analysis: intent, sentiment, entities, PII (detected deterministically, never trusted from the LLM), domains — all coerced to a closed vocabulary.
 - **ID** — strategic router & continuity (heuristic, no LLM): goal lifecycle, BDI intentions, attention, safety gate, drift.
 - **EGO** — executor: runs an agent loop and dispatches tools (native function calling *or* a `<TOOL_CALL>` text fallback). It gathers data; it does **not** write the reply.
+  Its prompt leaves a record on the result — which parts it carried and how long each was (`EgoResult.prompt_blocks`, the closed `EGO_PROMPT_BLOCKS`), never the text (0.1.5).
 - **SUPEREGO** — locutor: scope guard + judge (three branches — goal↔execution, truth, grounding — chosen per turn) + **writes** the final response in the persona's voice, grounded in the EGO's data.
   On a turn the scope guard refused, an optional strict selector over a host-built closed list (`cogno_anima.stages.scope_options`) either proves the refusal false or offers a closed "did you mean…?" (#200). A message the executor HOLDS for the contact's yes is judged before it is sent: the text the recipient will read (#183), the ask it records for them (#198), with the confirmation question left to the host (#199) and, when the host declares `ctx.force_language`, the language it is written in (#204).
   Only a JSON boolean is a verdict (`cogno_anima.verdict`, 0.1.3): a judge answering `"approved": "false"` in a string does not approve (fail-closed), a guard answering `"blocked": "false"` does not block (fail-open), and each result says how its verdict was read (`verdict_read`).
   What each JSON stage had to repair in the model's reply — a key left out, a value outside the vocabulary, a fence stripped — is counted on its result (`repairs`, a closed alphabet per stage in `cogno_anima.repairs`, 0.1.9); the count decides nothing.
   The JSON Schema of each of those replies is derived from the same vocabularies (`cogno_anima.schemas`, 0.1.10). Nothing reads it yet: no stage sends a schema.
+- **Untrusted text** — a tool result, a held message, the persona's rules, the contact's note and the contact's own message are made inert before they reach the executor, the judge or the voice: no tool-call trigger survives, no fence can be opened or closed from inside, no line opens with a header the core renders (`cogno_anima.security.prompt_guard`: `sanitize_untrusted`, `defang_structure`). What other people wrote in the turn's context travels on a carrier of its own (`mk.EGO_CONTEXT_UNTRUSTED`) and is rendered inside a fence. This is structural: it does not change what a model does with an instruction it reads.
+- **Tool-dispatch adapters** (`cogno_anima.tools`) — the wrappers a host stacks around its dispatcher: `CompositeDispatcher` (many sources, one table), the commit sink, the confirm-argument recorder, id provenance, idempotency, and `PreJudgeDispatcher`, which has the judge read a WRITE before it goes out — in shadow by default, enforced per tool only where the host asks (`cogno_anima.stages.ProposalJudge` is the callback this package ships).
 - **Drift** — pure, no I/O: epistemological → ontological → situational → execution → synthesis → cumulative, emitting a `drift_action` signal.
 
 ## Philosophy: the core signals, the host decides
@@ -77,15 +80,19 @@ python examples/secretary_demo.py --trace     # --trace shows each cognitive sta
 ## Install
 
 ```bash
-pip install -e .                      # core (pydantic, langdetect, httpx)
+pip install -e .                      # core (pydantic, langdetect, cogno-synapse — which brings httpx)
 pip install -e ".[dev]"               # + test/lint/type-check tooling
 
-# Optional cloud backends (SDKs are lazy-imported — install only what you use):
-pip install "cogno-anima[openai]"      # also: anthropic | groq | gemini | bedrock | llm (all)
+# Optional cloud backends. The SDKs belong to cogno-synapse and are lazy-imported — install only
+# what you use. This package has ONE extra for them, `llm`, which pulls every provider:
+pip install "cogno-anima[llm]"         # all of: openai | anthropic | groq | gemini | bedrock
+pip install "cogno-synapse[openai]"    # or a single provider, from the lib that owns it
 ```
 
-Local inference uses [Ollama](https://ollama.com) (`mistral:latest` for the
-cognitive stages, `nomic-embed-text:latest` for embeddings) by default.
+Local inference uses [Ollama](https://ollama.com). The library itself has no default model: a
+backend is built with the model you name. What the rest of the repository names is `qwen3:8b`
+for CognoBench and the integration suites, `mistral:latest` in the two scripts under `examples/`,
+and `nomic-embed-text` for embeddings.
 
 ## Quickstart (perception + routing)
 
@@ -160,6 +167,49 @@ invariants are enforced; model-dependent "soft" checks are recalibratable with
 
 **Consolidated scoreboard — quality per cognitive function × model, and where
 small models break: [BENCHMARKS.md](BENCHMARKS.md).**
+
+## Documentation
+
+Every `.md` of this repository, by what it is for.
+
+- [`docs/HOST_INTEGRATION.md`](docs/HOST_INTEGRATION.md) — how to wire the core into a host: the
+  stages in order, what the host injects, the metakeys, the correction loop, the tool adapters.
+- [`docs/ACT_CONFIRM_READONLY.md`](docs/ACT_CONFIRM_READONLY.md) — the three confirmation gates
+  of the EGO (the read-only mask, the confirmation gate, the skill that asks), what a hold is and
+  how long it lives, and the pre-judge's enforcement.
+- [`docs/NETWORK_PERSONA_CHANNEL.md`](docs/NETWORK_PERSONA_CHANNEL.md) — the contract for the
+  three things this library does NOT own: the persona, the channel and the network between
+  personas. Each section ends with who decides.
+- [`CLAUDE.md`](CLAUDE.md) — the full map of the pipeline, stage by stage, with the measurement
+  behind each rule. Long, and the place where a boundary is argued.
+- [`LOGGING.md`](LOGGING.md) — what the library logs and what it never logs.
+- [`BENCHMARKS.md`](BENCHMARKS.md) — the consolidated scoreboard, and how to read a number from
+  this bench. Per-dimension result notes, each one run and dated, live beside the bench:
+  [`NER`](cognobench/NER_BENCH_RESULTS.md), [`ID`](cognobench/ID_BENCH_RESULTS.md),
+  [`EGO`](cognobench/EGO_BENCH_RESULTS.md), [`SUPEREGO`](cognobench/SUPEREGO_BENCH_RESULTS.md),
+  [`conversations`](cognobench/CONVERSATION_BENCH_RESULTS.md) and
+  [`bookkeeper`](cognobench/BOOKKEEPER_BENCH_RESULTS.md). [`cognobench/CLAUDE.md`](cognobench/CLAUDE.md)
+  is the bench's own design note, and
+  [`cognobench/results/quarantine/README.md`](cognobench/results/quarantine/README.md) says what
+  the quarantined runs are.
+- [`examples/README.md`](examples/README.md) — the two runnable examples: a 60-second quickstart
+  and a minimal host.
+- [`PYPI_SETUP.md`](PYPI_SETUP.md) — publishing the ecosystem to PyPI.
+- [`CHANGELOG.md`](CHANGELOG.md) — every change, newest first.
+
+## Environment
+
+The library reads **no environment variable**: every setting is an argument, and provider keys
+are read by `cogno-synapse` when it builds a backend. What the rest of the repository reads:
+
+| name | read by | what |
+| --- | --- | --- |
+| `COGNO_TEST_MODEL` | `tests/integration/backends.py` | the `provider:model` the integration suites run on (default: Ollama `qwen3:8b`) |
+| `COGNO_NER_MODEL` | `tests/integration/backends.py` | the same for the NER suite, read first |
+| `COGNO_TEST_EMBED_MODEL` | `tests/integration/backends.py` | the embedder of the integration suites (default: Ollama `nomic-embed-text:latest`) |
+| `COGNO_OLLAMA_TIMEOUT` | `cogno-synapse` | the per-call timeout of the Ollama client; the nightly CI job sets it, because its runner has no GPU |
+| `COGNO_BACKEND` | `examples/quickstart_60s.py` | the backend spec of the quickstart (default `mistral:latest`) |
+| `OLLAMA_BASE_URL` / `COGNO_OLLAMA_URL` / `OLLAMA_HOST` | `tests/unit/_ollama_gate.py` | read only to know which address the unit suite must REFUSE to connect to |
 
 ## The Cogno ecosystem
 

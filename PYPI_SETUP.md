@@ -7,9 +7,11 @@ name. This guide covers the one-time setup and the two publishing paths.
 
 - **First release (bootstrap):** run `scripts/publish_all.sh` locally with a PyPI
   API token — it builds and uploads every lib **in dependency order**.
-- **Every release after that:** cut a **GitHub Release** in a repo and its
-  `.github/workflows/publish.yml` publishes that package via **Trusted
-  Publishing** (OIDC, no stored token).
+- **Every release after that:** push a `vX.Y.Z` tag in a repo and its release
+  workflow publishes that package via **Trusted Publishing** (OIDC, no stored
+  token). In this repository that workflow is `.github/workflows/release.yml`
+  (an older `publish.yml` was deleted); it can also be re-run by hand
+  (`workflow_dispatch`), picking the tag as the ref.
 
 ## Why order matters
 
@@ -36,7 +38,8 @@ already encodes a safe total order.
    each package:
    - PyPI Project Name: e.g. `cogno-anima`
    - Owner: `sudoers-ai`  ·  Repository: e.g. `cogno-anima`
-   - Workflow name: `publish.yml`  ·  Environment: `pypi`
+   - Workflow name: the repo's release workflow file — `release.yml` here; check
+     the name in each repo, PyPI matches it exactly  ·  Environment: `pypi`
 4. In each GitHub repo, create an **Environment** named `pypi`
    (Settings → Environments) — the workflow references it.
 
@@ -63,8 +66,9 @@ Once the packages exist and Trusted Publishing is configured:
 1. Bump `version` in that repo's `pyproject.toml`. In `cogno-anima` the number is written once,
    in `cogno_anima/_version.py`; its `pyproject.toml` reads it from there and declares none.
    Add the `CHANGELOG.md` entry in the same change (a unit test compares the two).
-2. Tag and cut a GitHub Release (`vX.Y.Z`).
-3. `publish.yml` builds and publishes automatically via OIDC.
+2. Push the tag `vX.Y.Z`.
+3. The release workflow (`release.yml` here) builds the sdist and the wheel and publishes
+   them via OIDC.
 
 ## Notes
 

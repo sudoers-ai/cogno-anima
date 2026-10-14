@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased — docs sweep: every sentence checked against the code (docs only, 2026-10-14)
+
+No code, test or prompt changes. Each sentence added or corrected was read in the code that
+proves it.
+
+- **False sentences corrected** (the doc said X, the code does Y):
+  - `README.md` — `pip install "cogno-anima[openai]"` named an extra this package does not have
+    (its extras are `dev` and `llm`; the per-provider ones are `cogno-synapse`'s). The core's
+    dependencies were listed as «pydantic, langdetect, httpx»; they are pydantic, langdetect and
+    cogno-synapse. «Ollama (`mistral:latest`…) by default» — the library has no default model;
+    CognoBench and the integration suites default to `qwen3:8b`.
+  - `examples/README.md` — «the prompt templates live in `prompts/` at the repo root; packaging
+    them into the wheel is a known follow-up». They live in `cogno_anima/prompt_templates/` and
+    ship in the wheel as package data. `host_min.py` «imports only from `cogno_anima`»: it also
+    imports `cogno_synapse`. The second example, `quickstart_60s.py`, had no entry.
+  - `PYPI_SETUP.md` — the workflow is `release.yml`, triggered by a `vX.Y.Z` tag push; the page
+    named a `publish.yml` that was deleted and a GitHub Release as the trigger.
+  - `LOGGING.md` — was in Portuguese in an English-language repository; it pointed at a file of
+    another codebase as the host reference; and its levels did not match the code (it placed the
+    NOUMENO's drift, the NER's PII risk and each EGO step at DEBUG, and described INFO as rare:
+    all three are INFO lines, one per stage per turn, and the step line carries no arguments).
+    Rewritten in English from the log calls as they are.
+- **`README.md` gains** an index of every `.md` in the repository; an «Environment» table (the
+  library reads NO environment variable; the table lists what the tests, the examples and the
+  CI read); and three lines the stage list lacked — the executor's prompt record (0.1.5), the
+  untrusted-text guard (`security/prompt_guard.py`) and the tool-dispatch adapters with the
+  pre-judge (`cogno_anima.tools`).
+
 ## 0.1.10 — 2026-10-13 — the schema of each JSON stage's reply, derived from the vocabularies; nothing reads it yet
 
 ### Added
