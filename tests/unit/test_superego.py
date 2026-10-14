@@ -233,9 +233,11 @@ def test_persona_traits_logs_what_it_drops(caplog):
     ctx.metadata[mk.ACTIVE_PERSONA_ID] = f"P-{uuid.uuid4()}\nFORGED"     # newline: no 2nd line
     with caplog.at_level(logging.WARNING, logger="cogno_anima.superego"):
         assert SuperegoStage.persona_traits(ctx) == []
-    assert "voice_traits_dropped" in caplog.text and "sassy" in caplog.text
+    # HOW MANY were dropped, never which: a dropped value is whatever the tenant typed
+    assert "voice_traits_dropped" in caplog.text and "dropped=3 kept=0" in caplog.text
+    assert "sassy" not in caplog.text
     assert "persona=" in caplog.text and "\nFORGED" not in caplog.text
-    assert "reserved" in caplog.text and "warm" in caplog.text     # the contradicting pair too
+    assert "reserved" not in caplog.text and "warm" not in caplog.text   # the pair too
     # ...and a SECOND persona with the same bad row is logged too (the key has the persona)
     caplog.clear()
     ctx.metadata[mk.ACTIVE_PERSONA_ID] = f"Q-{uuid.uuid4()}"

@@ -18,7 +18,8 @@ from cogno_anima.preserved import filter_preserved_terms
 from cogno_anima.vocab import DRIFT_TAG_UNKNOWN, EMBED_UNAVAILABLE, PRESERVED_NOT_IN_INPUT
 from cogno_anima.verdict import VERDICT_MISSING, read_boolean
 from cogno_anima.repairs import (COERCED, DEFAULT, FENCE_OR_THINK_STRIPPED, NULL_FIELD,
-                                 SALVAGED_OBJECT, STRING_BOOL, RepairLog, spelled_boolean)
+                                 SALVAGED_OBJECT, STRING_BOOL, RepairLog, repair_mark,
+                                 spelled_boolean)
 
 logger = logging.getLogger("cogno_anima.noumeno")
 
@@ -96,11 +97,50 @@ def _text(data: dict, key: str) -> str:
     ``data.get(key, "").strip()`` raised ``AttributeError`` on it, which is not a
     ``StageParseError`` and took the turn with it, over a reply that is otherwise usable. It is
     now the repair an absent key always was, and :func:`_reply_repairs` counts it
-    (``null_field:<key>``). A value that is neither a string nor ``null`` still raises, as it
-    always did.
+    (``null_field:<key>``). A value that is neither a string nor ``null`` never gets here:
+    :func:`_unreadable_field` refused the reply when it was parsed.
     """
     value = data.get(key, "")
     return "" if value is None else value.strip()
+
+
+def _unreadable_field(data: dict) -> Optional[str]:
+    """The mark of the first field of the rewriter's object the stage has NO repair for, or
+    ``None`` when it can use all six. Pure; never raises.
+
+    The stage's contract is "a usable object OR ``StageParseError``", and for these forms it
+    was neither: the field reads further down raised whatever the value happened to raise —
+    ``AttributeError`` on ``7.strip()``, ``TypeError`` on ``float(None)`` or ``list(7.5)``,
+    ``ValueError`` on ``float("high")``, a pydantic ``ValidationError`` on a list holding a
+    number. Measured over 237 replies (each field under 38 values): 102 ended the turn, none
+    of them with the typed error a host is told to expect.
+
+    It refuses EXACTLY the forms that raised, and nothing the stage has always read: a
+    ``null`` text, ``"0.9"`` and ``true`` as a confidence, an empty or ``null`` list, a list
+    spelled as one string. Those are repairs (:func:`_reply_repairs`), and they stay repairs.
+    The mark is ``<family>:<field>`` from ``repairs.NOUMENO_UNREADABLE_FIELDS`` — which field,
+    in what form, and not a byte of the value.
+    """
+    for key in ("rewritten", "context_turn"):
+        value = data.get(key)
+        if value is not None and not isinstance(value, str):
+            return repair_mark(COERCED, key)
+    if "confidence" in data:
+        value = data["confidence"]
+        if value is None:
+            return repair_mark(NULL_FIELD, "confidence")
+        try:
+            float(value)
+        except (TypeError, ValueError, OverflowError):
+            return repair_mark(COERCED, "confidence")
+    for key in ("preserved_terms", "rewrite_warnings"):
+        value = data.get(key)
+        if not value:
+            continue     # absent, null, empty — and 0 / false, which have always read as empty
+        if not isinstance(value, (list, str, dict)) or any(
+                not isinstance(item, str) for item in value):
+            return repair_mark(COERCED, key)
+    return None
 
 
 def _reply_repairs(data: dict, log: RepairLog) -> None:
@@ -196,7 +236,7 @@ class Noumeno:
         # inert backstop (custom prompt in a format the harvest misses) is visible.
         (self._system_sans_examples, self._example_rewrites,
          self._rule_rewrites) = _split_examples(self._system)
-        logger.info("stage=noumeno echo_backstop examples=%d rule_illustrations=%d",
+        logger.info("stage=noumeno event=echo_backstop examples=%d rule_illustrations=%d",
                     len(self._example_rewrites), len(self._rule_rewrites))
 
     async def process(self, ctx: PipelineContext, llm: LLMBackend) -> PipelineContext:
@@ -231,7 +271,8 @@ class Noumeno:
                 DetectorFactory.seed = 0
                 detected_lang = await asyncio.to_thread(detect, normalized_input)
             except Exception as le:
-                logger.warning("Failed to detect language, defaulting to 'und': %s", le)
+                logger.warning("stage=noumeno event=language_undetected error=%s — "
+                               "defaulting to 'und'", type(le).__name__)
 
         # 3. Subject Continuity Check (pre-LLM)
         last_rewritten = ctx.metadata.get(mk.LAST_REWRITTEN)
@@ -315,9 +356,10 @@ class Noumeno:
         echo_flagged = False
         if short_reply and self._matches_example(rewritten, normalized_input,
                                                  self._example_rewrites):
+            # The LENGTH, never the text: the rewrite is the contact's message in English.
             logger.warning(
-                "stage=noumeno event=few_shot_echo rewritten=%r — retrying without the "
-                "examples block", rewritten)
+                "stage=noumeno event=few_shot_echo rewritten_len=%d — retrying without the "
+                "examples block", len(rewritten))
             try:
                 data2, t2, o2, c2, fp2, sm2 = await generate_json_resilient(
                     llm, self._system_sans_examples, prompt, _parse,
@@ -349,8 +391,8 @@ class Noumeno:
                             or _echo_norm(retried) == _echo_norm(normalized_input)):
                         echo_flagged = True
                         logger.warning("stage=noumeno event=few_shot_echo_retry_degenerate "
-                                       "retried=%r — adopted (honest beats fabricated), "
-                                       "flagged", retried)
+                                       "retried_len=%d — adopted (honest beats fabricated), "
+                                       "flagged", len(retried))
                     elif _echo_norm(retried) == _echo_norm(rewritten):
                         logger.info("stage=noumeno event=few_shot_echo_genuine — "
                                     "reproduced without the examples in context")
@@ -358,8 +400,11 @@ class Noumeno:
                     rewritten = retried
             except Exception as exc:  # noqa: BLE001 — never kill a turn already served
                 echo_flagged = True
+                # The CLASS of the error: a `StageParseError` quotes the reply it could not
+                # read, and a provider's error may quote the request.
                 logger.warning("stage=noumeno event=few_shot_echo_retry_failed "
-                               "error=%s — keeping the first answer, flagged", exc)
+                               "error=%s — keeping the first answer, flagged",
+                               type(exc).__name__)
 
         # Rule-illustration echo (checked AFTER the retry so it also covers the retry's
         # answer): the copied string lives in the RULES, which the retry prompt keeps, so
@@ -376,8 +421,8 @@ class Noumeno:
                                          last_rewritten or "", last_context_turn or "")))):
             echo_flagged = True
             logger.warning("stage=noumeno event=few_shot_echo_rule_illustration "
-                           "rewritten=%r — unsupported by input/conversation, flagged",
-                           rewritten)
+                           "rewritten_len=%d — unsupported by input/conversation, flagged",
+                           len(rewritten))
 
         # The fields are marked on the object the stage ADOPTED (the retry's when it won), and
         # before the echo flag below rewrites `rewrite_warnings` on a copy of it.
@@ -525,7 +570,8 @@ class Noumeno:
         )
 
         logger.info(
-            "NOUMENO lang=%s drift=%s tag=%s changed=%s change_subject=%s degraded=%s",
+            "stage=noumeno event=done lang=%s drift=%s tag=%s changed=%s change_subject=%s "
+            "degraded=%s",
             detected_lang,
             "unknown" if drift_score is None else f"{drift_score:.2f}",
             drift_tag, changed, change_subject, ",".join(degradations) or "-",
@@ -593,9 +639,9 @@ class Noumeno:
             return sim, 0, 2
         except Exception as exc:  # noqa: BLE001 — any embedder failure degrades, see above
             logger.warning(
-                "stage=noumeno event=embed_unavailable error=%s: %s — drift is UNKNOWN "
+                "stage=noumeno event=embed_unavailable error=%s — drift is UNKNOWN "
                 "for this turn (not 0.0, not 1.0); the turn continues.",
-                type(exc).__name__, exc,
+                type(exc).__name__,
             )
             # The round trip HAPPENED (in the measured case it burned the full 120 s), so
             # it is counted as an attempt with 0 tokens rather than hidden from the trace.
@@ -603,6 +649,9 @@ class Noumeno:
 
     def _parse_json(self, raw: str, repairs: Optional[RepairLog] = None) -> dict:
         """Raw model text → the rewriter's JSON object, or ``StageParseError``.
+
+        An object whose fields the stage cannot use is refused like a reply that is not an
+        object (:func:`_unreadable_field`), with the field named on ``StageParseError.mark``.
 
         ``repairs`` (optional, write-only) receives what had to come off before the read —
         a chain-of-thought block or a fence (``fence_or_think_stripped``), an object dug out
@@ -638,6 +687,13 @@ class Noumeno:
         # parse failure so the contract stays "valid dict OR StageParseError".
         if not isinstance(data, dict):
             raise StageParseError(STAGE_NAME, raw, TypeError("JSON is not an object"))
+        # An object, with a field in a form the stage has no repair for: the same contract.
+        # Refused HERE, so the primary call and the echo retry are held to it alike — a retry
+        # the backstop cannot use keeps the first answer, as its own comment promises.
+        unreadable = _unreadable_field(data)
+        if unreadable is not None:
+            raise StageParseError(STAGE_NAME, raw, TypeError(f"unreadable field: {unreadable}"),
+                                  mark=unreadable)
         if repairs is not None:
             repairs.extend(marks)
         return data

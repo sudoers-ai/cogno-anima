@@ -26,13 +26,24 @@ class StageParseError(CognoError, ValueError):
 
     Subclasses ValueError so existing `except ValueError` handlers still catch it.
     The original decoding exception is chained as ``__cause__`` and the raw text
-    is kept on ``raw`` for logging/diagnostics.
+    is kept on ``raw`` for diagnostics.
+
+    ``mark`` says WHICH field the stage could not use, and in what form, when the reply was
+    one JSON object and a field of it was the problem: ``<family>:<field>`` from the stage's
+    closed table (``cogno_anima.repairs.NOUMENO_UNREADABLE_FIELDS``), never a byte of the
+    value. ``None`` when the reply was not an object at all.
+
+    The MESSAGE quotes the reply (its first 120 characters), and ``raw`` is the whole of it:
+    both are text the model wrote about a contact's turn. A caller that logs this exception
+    logs that; ``stage`` and ``mark`` are the two fields that are safe anywhere.
     """
 
-    def __init__(self, stage: str, raw: str, original: Exception) -> None:
+    def __init__(self, stage: str, raw: str, original: Exception, *,
+                 mark: "str | None" = None) -> None:
         self.stage = stage
         self.raw = raw
         self.original = original
+        self.mark = mark
         preview = (raw or "").strip().replace("\n", " ")[:120]
         super().__init__(
             f"{stage}: could not parse LLM JSON response ({original}); got: {preview!r}"

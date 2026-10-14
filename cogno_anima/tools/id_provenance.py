@@ -77,7 +77,10 @@ class IdProvenanceDispatcher:
             wanted = str(arguments.get(arg, "") or "").strip()
             if wanted and not any(wanted in r for r in self._seen):
                 self.refusals += 1
-                logger.warning("event=id_provenance_refused tool=%s %s=%s", name, arg, wanted)
+                # The argument's NAME (the caller's catalogue) and the id's LENGTH — the id
+                # itself is a value the model wrote into a call.
+                logger.warning("event=id_provenance_refused tool=%s arg=%s id_len=%d", name,
+                               arg, len(wanted))
                 return ToolResult(output="", ok=False, error=(
                     f"'{arg}={wanted}' was not returned by any read in THIS turn — the id may "
                     f"be stale (from memory or an earlier conversation). Call "

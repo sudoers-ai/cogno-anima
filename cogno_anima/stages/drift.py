@@ -371,9 +371,9 @@ class DriftCalculator:
             drift.drift_action = "none"
 
         logger.info(
-            "drift cumulative=%.3f action=%s over %d stage(s) [%s]",
+            "stage=drift event=cumulative cumulative=%.3f action=%s stages=%d scores=%s",
             drift.cumulative_drift, drift.drift_action, len(present),
-            " ".join(f"{s}={v:.2f}" for s, v in present.items()),
+            ",".join(f"{s}:{v:.2f}" for s, v in present.items()) or "-",
         )
 
     # ---------------------------------------------------------------------

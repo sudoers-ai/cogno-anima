@@ -75,6 +75,22 @@ from cogno_anima.repairs import RepairLog, note_text_field, reply_form_repairs
 
 logger = logging.getLogger("cogno_anima.superego")
 
+
+def _text_beside_verdict(data: dict, key: str) -> str:
+    """The text a reply carries BESIDE its verdict — the judge's critique, the guard's refusal
+    message — as a string; ``""`` when the key is absent or JSON ``null``.
+
+    ``str(data.get(key, ""))`` read a ``null`` as the four letters ``None``: a rejection whose
+    critique was the word "None" went to the executor's retry and to the voice as the reason,
+    and a refusal message "None" was what the contact would be told. A ``null`` is the model
+    saying it has no text, so it is read as the absent key always was — the judge falls back to
+    its own "execution rejected", the guard to no message — and it is still COUNTED:
+    ``note_text_field`` records ``null_field:<key>`` on the result's ``repairs``. Any other
+    value that is not a string is rendered as before and counted as ``coerced:<key>``.
+    """
+    value = data.get(key, "")
+    return "" if value is None else str(value)
+
 _COT_RE = re.compile(r"<think(?:ing)?>.*?</think(?:ing)?>", re.DOTALL | re.IGNORECASE)
 
 # The critique of a judge call whose VERDICT COULD NOT BE READ — it answered, and what it
@@ -1405,7 +1421,7 @@ class SuperegoStage:
         # measured across `cogno_soma.pipeline` and the host: neither has a fallback for one.
         # Unwrapping here would trade VISIBLE garbage for unhandled SILENCE, which is a
         # different bug, not a fix. The voicer produced nothing; that is its own failure and
-        # the existing `SUPEREGO voice len=0` log is where it shows.
+        # the existing `event=voice len=0` log is where it shows.
         if not value.strip():
             return None
         return value
@@ -1693,9 +1709,9 @@ class SuperegoStage:
         Never trust the carrier: the value is host-stamped from a stored configuration, and
         "the dashboard saved it" is not "the core can render it". The rule is
         :func:`cogno_anima.vocab.sanitize_voice_traits` (pure); this is where the drops get
-        LOGGED (values truncated by the sanitizer), so a trait that "does not work" is
-        diagnosable from the log instead of from the reply. Anything unusable degrades to
-        ``[]`` — a voice hint must never abort a turn.
+        LOGGED — how many, never which: a dropped value is whatever the tenant typed, and
+        the same function returns the values to a host that wants to show them. Anything
+        unusable degrades to ``[]`` — a voice hint must never abort a turn.
         """
         kept, dropped = vocab.sanitize_voice_traits(ctx.metadata.get(mk.VOICE_TRAITS))
         if dropped:
@@ -1707,11 +1723,10 @@ class SuperegoStage:
             key = (vocab._label(ctx.metadata.get(mk.ACTIVE_PERSONA_ID, "?")),
                    tuple(kept), tuple(dropped))
             if _WARNED_TRAITS.first(key):
-                # bounded line (a report of distinct values, capped) + the persona it belongs to
-                shown = dropped[:8] + ([f"(+{len(dropped) - 8})"] if len(dropped) > 8 else [])
-                logger.warning("stage=superego event=voice_traits_dropped persona=%s dropped=%s "
-                               "kept=%s", vocab._label(ctx.metadata.get(mk.ACTIVE_PERSONA_ID, "?")),
-                               shown, kept)
+                # two counts + the persona they belong to
+                logger.warning("stage=superego event=voice_traits_dropped persona=%s dropped=%d "
+                               "kept=%d", vocab._label(ctx.metadata.get(mk.ACTIVE_PERSONA_ID, "?")),
+                               len(dropped), len(kept))
         return kept
 
     @staticmethod
@@ -2189,15 +2204,16 @@ class SuperegoStage:
                 return _result(False, "", ti, to, cached, prompt, fingerprint, served,
                                verdict.read, repairs.marks())
             blocked = verdict.value
-            msg = str(verdict.data.get("refusal_message", "")) if blocked else ""
+            msg = _text_beside_verdict(verdict.data, "refusal_message") if blocked else ""
             if blocked:
                 # The refusal text is read only on a block, so only then can it need a repair.
                 note_text_field(repairs, verdict.data, "refusal_message")
-            logger.info("SUPEREGO scope blocked=%s", blocked)
+            logger.info("stage=superego event=scope blocked=%s", blocked)
             return _result(blocked, msg, ti, to, cached, prompt, fingerprint, served,
                            VERDICT_BOOLEAN, repairs.marks())
         except Exception as exc:  # noqa: BLE001 — fail-open: never refuse on error
-            logger.warning("scope guard failed (%s) — allowing by default", exc)
+            logger.warning("stage=superego event=scope_failed error=%s — allowing by default "
+                           "(fail-open)", type(exc).__name__)
             # The PROMPT is recorded (it was built: blocks and digest both) and the per-call
             # numbers are not — no fingerprint, no tokens — because this path cannot say which
             # of them, if any, describe a completed call. Same trade the token counts have
@@ -2433,14 +2449,16 @@ class SuperegoStage:
                                branch, fingerprint, served, verdict.read, repairs.marks())
             approved = verdict.value
             data = verdict.data
-            critique = None if approved else str(data.get("critique", "")) or "execution rejected"
+            critique = (None if approved
+                        else _text_beside_verdict(data, "critique") or "execution rejected")
             if not approved:
                 # The critique is read only on a rejection, so only then can it need a repair.
                 note_text_field(repairs, data, "critique")
-            # The critique travels — to the EGO's retry, to the voice on exhaustion, to the log
-            # line below and to the trace a host persists — and a judge rejecting a LEAK of the
-            # contact's note tends to quote the leaked words. Masked at the SOURCE, so none of
-            # those readers has to remember to. Byte-for-byte when there is no note.
+            # The critique travels — to the EGO's retry, to the voice on exhaustion and to the
+            # trace a host persists — and a judge rejecting a LEAK of the contact's note tends
+            # to quote the leaked words. Masked at the SOURCE, so none of those readers has to
+            # remember to. Byte-for-byte when there is no note. It does NOT travel to the log:
+            # see the rejection line below.
             if critique:
                 critique = mask_contact_memo(critique, self._contact_memo(ctx))
             # The BRANCH is logged beside the verdict AND returned on the result. The log
@@ -2451,15 +2469,35 @@ class SuperegoStage:
             if approved:
                 logger.info("stage=superego event=judge approved=true branch=%s", branch)
             else:
-                # A rejection feeds the EGO↔SUPEREGO correction loop — surface it.
-                logger.warning("stage=superego event=judge approved=false branch=%s critique=%s",
-                               branch, (critique or "")[:80])
+                # A rejection feeds the EGO↔SUPEREGO correction loop — surface it, one line
+                # per rejection. The line says HOW the judge rejected and never WHAT it wrote:
+                # a critique is model-written text that quotes the turn (a name, a figure, the
+                # contact's own sentence), and this line used to carry its first 80 characters
+                # into a transport that outlives the turn and is read by whoever tails it. What
+                # is left is closed or a number — the branch of the criteria, how the verdict
+                # was read, the attempt, the critique's LENGTH and what the reply needed
+                # repaired (`default:critique` is "the judge gave no reason"). The words are on
+                # `SuperegoResult.critique`, for the host that decides where they may go.
+                logger.warning("stage=superego event=judge approved=false branch=%s read=%s "
+                               "attempt=%d critique_len=%d repairs=%s", branch, VERDICT_BOOLEAN,
+                               self._attempt_of(ctx), len(critique or ""),
+                               ",".join(repairs.marks()) or "-")
             return _result(approved, critique, ti, to, cached, asked, branch,
                            fingerprint, served, VERDICT_BOOLEAN, repairs.marks())
         except Exception as exc:  # noqa: BLE001 — fail-CLOSED: don't pass unverified
-            logger.warning("judge failed (%s) — not approving (fail-closed)", exc)
+            logger.warning("stage=superego event=judge_failed error=%s — not approving "
+                           "(fail-closed)", type(exc).__name__)
             return _result(False, "could not verify the execution; please retry",
                            prompt=asked, branch=branch, read=VERDICT_CALL_FAILED)
+
+    @staticmethod
+    def _attempt_of(ctx: PipelineContext) -> int:
+        """The correction attempt the judged execution belongs to (``EgoResult.attempt``), for
+        the log line — ``0`` when it cannot be read. Never raises: it is called inside the
+        judge's fail-CLOSED block, where an exception turns a verdict into "could not verify",
+        and a log field must not cost a verdict."""
+        attempt = getattr(getattr(ctx, "ego_result", None), "attempt", 0)
+        return attempt if isinstance(attempt, int) and not isinstance(attempt, bool) else 0
 
     @staticmethod
     def _is_readonly_turn(ctx: PipelineContext) -> bool:
@@ -3610,11 +3648,15 @@ class SuperegoStage:
         response = outcome.text
         adjustments += self._pii_adjustments(outcome)
         if outcome.withheld:
-            logger.warning("stage=superego event=%s count=%d types=%s",
-                           "pii_redacted_in_output" if outcome.enforced
-                           else "pii_would_redact_in_output",
-                           len(outcome.withheld),
-                           sorted({f.pii_type for f in outcome.withheld}))
+            # Two literal messages, not one with the event in a placeholder: the mode is in
+            # the TOKEN, and an event name a page can list is one a reader can count.
+            withheld_types = ",".join(sorted({f.pii_type for f in outcome.withheld}))
+            if outcome.enforced:
+                logger.warning("stage=superego event=pii_redacted_in_output count=%d types=%s",
+                               len(outcome.withheld), withheld_types)
+            else:
+                logger.warning("stage=superego event=pii_would_redact_in_output count=%d "
+                               "types=%s", len(outcome.withheld), withheld_types)
 
         # Feed synthesis drift (lexical grounding of response vs tool data) — measured on the
         # VOICED text, not the masked one. Drift asks whether the voicer grounded its answer in
@@ -3625,8 +3667,8 @@ class SuperegoStage:
             self._drift.compute_synthesis(ctx.drift, payload, voiced)
             self._drift.compute_cumulative(ctx.drift)
 
-        logger.info("SUPEREGO voice len=%d cot_stripped=%s adjustments=%s",
-                    len(response), cot_stripped, adjustments)
+        logger.info("stage=superego event=voice len=%d cot_stripped=%s adjustments=%s",
+                    len(response), cot_stripped, ",".join(adjustments) or "-")
 
         return SuperegoResult(
             response=response, approved=True, adjustments=adjustments,

@@ -1,5 +1,117 @@
 # Changelog
 
+## 0.1.12 — 2026-10-14 — no log line carries text somebody else wrote; the NOUMENO refuses with the typed error; a `null` beside a verdict is absent
+
+### Fixed
+
+- **The judge's rejection no longer logs its critique.** `event=judge approved=false` carried
+  the first 80 characters of the critique, and a critique is text the model wrote about the
+  turn: it quotes a name, a figure, the contact's own sentence. The line now carries the
+  branch of the criteria, how the verdict was read, the attempt, the critique's LENGTH and the
+  repair marks of the reply: `branch=… read=boolean attempt=… critique_len=… repairs=…`. One
+  line per rejection, as before. The words are on `SuperegoResult.critique`.
+- **The same class, swept by AST over every log call of the package.** 15 of the 76 calls
+  formatted text somebody else wrote. Each now logs a length, a count, a closed token or a
+  class name:
+
+  | whose text | the lines | what they log now |
+  |---|---|---|
+  | the model's | `judge` (rejection); `few_shot_echo`, `few_shot_echo_rule_illustration`, `few_shot_echo_retry_degenerate` (the rewrite); `truncated_response` (the reply's last 60 characters); `intent_class_fallback` (the value outside the vocabulary); `unknown_tool` (the name it invented) | `critique_len`; `rewritten_len` / `retried_len`; `chars`; `llm=UNKNOWN\|out_of_vocabulary`; `name_len` |
+  | a value the model put in a call | `id_provenance_refused` (the id) | `arg` (the argument's NAME) and `id_len` |
+  | an exception's message | `few_shot_echo_retry_failed`, `embed_unavailable`, the language detector, the scope guard's and the judge's failed call | `error=<class name>` |
+  | the tenant's | `voice_traits_dropped` (the values the vocabulary does not have) | `dropped=<how many> kept=<how many>` |
+  | a host carrier | `circling_streak_unusable` (its `repr`) | `type=<class name>` |
+
+  The exception lines mattered more than they look: a `StageParseError` quotes 120 characters
+  of the reply it could not read, so `few_shot_echo_retry_failed` printed the rewrite.
+
+### Changed
+
+- **Every log message is in one grammar**: `[stage=<word> ]event=<name>( <key>=<value>)*[ — <prose>]`,
+  every placeholder directly behind its `key=`. 16 calls had no event name and have one now:
+
+  | was | is |
+  |---|---|
+  | `NOUMENO lang=…` / `NER intent=…` / `ID turn=…` | `stage=noumeno event=done …` / `stage=ner event=done …` / `stage=id event=done …` |
+  | `EGO start …` / `EGO step=…` / `EGO done …` | `stage=ego event=start …` / `event=step step=…` / `event=done …` |
+  | `EGO confirmed-call dropped: tool=… not in dispatcher` | `stage=ego event=confirmed_call_dropped tool=… reason=not_in_dispatcher` |
+  | `drift cumulative=… action=… over N stage(s) [a=0.10 b=0.20]` | `stage=drift event=cumulative cumulative=… action=… stages=N scores=a:0.10,b:0.20` |
+  | `stage=noumeno echo_backstop …` | `stage=noumeno event=echo_backstop …` |
+  | `Failed to detect language, defaulting to 'und': <message>` | `stage=noumeno event=language_undetected error=<class>` |
+  | `SUPEREGO scope blocked=…` / `SUPEREGO voice len=…` | `stage=superego event=scope blocked=…` / `event=voice len=…` |
+  | `scope guard failed (<message>)` / `judge failed (<message>)` | `stage=superego event=scope_failed error=<class>` / `event=judge_failed error=<class>` |
+  | `SUPEREGO scope options outcome=…` / `scope option selector failed (<class>)` | `stage=superego event=scope_options outcome=…` / `event=scope_options_failed error=<class>` |
+
+  Smaller changes on lines that already had a name: `truncated_response` says
+  `attempt=1 attempts=2` (was `attempt=1/2`); the outgoing-PII line is two literal messages
+  (`pii_redacted_in_output`, `pii_would_redact_in_output`) with `types=` comma-joined;
+  `voice` writes `adjustments=` comma-joined. Logger names and levels did not move.
+  **A reader that matched the old text needs the table in `LOGGING.md`.**
+- **`LOGGING.md` is the code's list.** It named 10 events and called the judge's rejection "the
+  one line here that carries model-written text". It now has a row for every event (76 rows for
+  77 calls: logger, event, level, fields, traceback), the modules that log nothing, how many
+  calls each level has, and the class of every field: `count`, `closed`, `type`, `name`,
+  `constant`. There is no class for text. Two things the library does not close are written
+  down there with their reason: the names the HOST declared (a tool, an argument's name, a
+  persona label, a language tag) and five tracebacks in `tools/pre_judge.py`.
+- **The NOUMENO refuses a reply it cannot use with `StageParseError`.** An object with a field
+  in a form the stage has no repair for ended the turn with whatever the value raised. Over
+  237 replies (each of the six fields under 38 values) that was 102 turns: `AttributeError`
+  (50), `TypeError` (31), a pydantic `ValidationError` (12), a bare `ValueError` (9), and no
+  `StageParseError`. They are now refused where the reply is parsed, the primary call and the
+  echo retry alike. The forms: a `rewritten` or `context_turn` that is neither a string nor
+  `null`; a `confidence` that is `null` or does not spell a number; a `preserved_terms` or
+  `rewrite_warnings` that is a number or `true`, or a list holding something that is not a
+  string. The other 135 replies give the same result as before.
+- **A `null` critique or refusal message is read as absent.** `str(data.get(key, ""))` read a
+  JSON `null` as the text `"None"`. The judge now falls back to its own `"execution rejected"`
+  and the guard to an empty message, as they do for a missing key. `null_field:<field>` is
+  still recorded. Over 78 replies these two results are the only ones that change.
+
+### Added
+
+- **`StageParseError.mark`**: which field the stage could not use and in what form
+  (`coerced:rewritten`, `null_field:confidence`, …), or `None` when the reply was not a JSON
+  object. From `repairs.NOUMENO_UNREADABLE_FIELDS` / `VALID_NOUMENO_UNREADABLE`, the closed
+  table of what the NOUMENO refuses. A mark on the error is a refusal, not a repair, and is
+  never on a result's `repairs` list.
+
+### Tests
+
+- **`tests/unit/_log_calls.py`** reads every log call by AST. It finds a call by the logger it
+  is made ON (the bindings of `logging.getLogger`), not by the variable's name: the package
+  uses `logger`, `log` and `_logger`. It refuses a message outside the grammar and reports any
+  other `.warning(…)`-like call as a stranger (the package has none).
+- **`test_logging_md_lists_what_the_code_emits.py`**: the events table against the code, both
+  directions, with controls (a planted call, a planted row, nine shapes the reader refuses,
+  the page as it was).
+- **`test_logs_carry_no_third_party_text.py`**: every value has a class, no class is text, and
+  the expression each key is given is pinned. Controls: `critique_len=%d` given the critique's
+  first 80 characters fails; so do a new key, an exception passed as `error=`, a key classed
+  as text. No `print`, `warnings.warn` or stream write in the package. A pin is compared as
+  the running interpreter writes it: `ast.unparse` spells one expression differently on 3.10
+  and on 3.11.
+- **`test_log_lines_carry_no_byte_of_the_turn.py`**: the fifteen lines at run time, each with
+  a sentinel in the text it used to print. On `32803f5`: 16 failed, 2 passed (15 because the
+  sentinel was in the log).
+- **`test_noumeno_refuses_what_it_cannot_read.py`**: 52 refused forms, 17 forms still read, the
+  table in both directions, the echo retry. On `32803f5`: 56 failed, 18 passed.
+- **`test_a_null_text_beside_a_verdict_is_absent.py`**. On `32803f5`: 2 failed, 10 passed.
+- Three tests pinned the old behaviour and were turned around:
+  `test_noumeno_what_still_raises_still_raises` (it asserted the `AttributeError` and the
+  `TypeError`), `test_persona_traits_logs_what_it_drops` (it asserted the dropped values in the
+  log) and `test_unknown_tool_logs_warning` (it asserted the invented name in the log).
+
+### Not in this release
+
+- **`StageParseError` still quotes the reply**: 120 characters in its message, all of it on
+  `.raw`. The library no longer logs it. A host that logs the exception logs that.
+- **The NER still ends the turn with a raw error** on a `mandatory_tags` or `pii` that is
+  `null` or a number (14 of 603 in the 0.1.9 sweep).
+- **A critique or a refusal message that is a number, a list or a boolean** is still rendered
+  with `str()` (`"0"`, `"['a']"`, `"False"`) and counted as `coerced:<field>`.
+- **No model was run.** Nothing a model decides changes.
+
 ## Unreleased — docs sweep: every sentence checked against the code (docs only, 2026-10-14)
 
 No code, test or prompt changes. Each sentence added or corrected was read in the code that

@@ -33,6 +33,8 @@ NOUMENO  →  NER  →  ID  →  EGO  →  SUPEREGO        (+ Drift, woven throu
   Only a JSON boolean is a verdict (`cogno_anima.verdict`, 0.1.3): a judge answering `"approved": "false"` in a string does not approve (fail-closed), a guard answering `"blocked": "false"` does not block (fail-open), and each result says how its verdict was read (`verdict_read`).
   What each JSON stage had to repair in the model's reply — a key left out, a value outside the vocabulary, a fence stripped — is counted on its result (`repairs`, a closed alphabet per stage in `cogno_anima.repairs`, 0.1.9); the count decides nothing.
   The JSON Schema of each of those replies is derived from the same vocabularies (`cogno_anima.schemas`, 0.1.10). Nothing reads it yet: no stage sends a schema.
+  A reply the NOUMENO cannot use ends the turn with `StageParseError`, and `exc.mark` names the field (0.1.12); it used to be whatever the value raised.
+- **Logs** — no line carries text somebody else wrote: not the judge's critique, not the rewrite, not a tool argument, not an exception's message (0.1.12). Every event and every field is listed in [`LOGGING.md`](LOGGING.md), and tests hold that page to the code.
 - **Untrusted text** — a tool result, a held message, the persona's rules, the contact's note and the contact's own message are made inert before they reach the executor, the judge or the voice: no tool-call trigger survives, no fence can be opened or closed from inside, no line opens with a header the core renders (`cogno_anima.security.prompt_guard`: `sanitize_untrusted`, `defang_structure`). What other people wrote in the turn's context travels on a carrier of its own (`mk.EGO_CONTEXT_UNTRUSTED`) and is rendered inside a fence. This is structural: it does not change what a model does with an instruction it reads.
 - **Tool-dispatch adapters** (`cogno_anima.tools`) — the wrappers a host stacks around its dispatcher: `CompositeDispatcher` (many sources, one table), the commit sink, the confirm-argument recorder, id provenance, idempotency, and `PreJudgeDispatcher`, which has the judge read a WRITE before it goes out — in shadow by default, enforced per tool only where the host asks (`cogno_anima.stages.ProposalJudge` is the callback this package ships).
 - **Drift** — pure, no I/O: epistemological → ontological → situational → execution → synthesis → cumulative, emitting a `drift_action` signal.
@@ -182,7 +184,7 @@ Every `.md` of this repository, by what it is for.
   personas. Each section ends with who decides.
 - [`CLAUDE.md`](CLAUDE.md) — the full map of the pipeline, stage by stage, with the measurement
   behind each rule. Long, and the place where a boundary is argued.
-- [`LOGGING.md`](LOGGING.md) — what the library logs and what it never logs.
+- [`LOGGING.md`](LOGGING.md) — every log event the library emits, the class of every value a line carries, and what is never logged.
 - [`BENCHMARKS.md`](BENCHMARKS.md) — the consolidated scoreboard, and how to read a number from
   this bench. Per-dimension result notes, each one run and dated, live beside the bench:
   [`NER`](cognobench/NER_BENCH_RESULTS.md), [`ID`](cognobench/ID_BENCH_RESULTS.md),

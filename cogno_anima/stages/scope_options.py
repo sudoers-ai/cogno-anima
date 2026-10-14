@@ -383,14 +383,14 @@ async def select_options(message: str, options: Any, backend: LLMBackend) -> Opt
     except asyncio.CancelledError:
         raise
     except Exception as exc:  # noqa: BLE001 — a courtesy on a refused turn never costs a reply
-        logger.warning("scope option selector failed (%s) — the refusal stands",
-                       type(exc).__name__)
+        logger.warning("stage=superego event=scope_options_failed error=%s — the refusal "
+                       "stands", type(exc).__name__)
         outcome, covered, suggested, asked, discarded, unsupported = (
             OUTCOME_ERROR, (), (), "", 0, 0)
     metrics = StageMetrics(stage=SELECT_STAGE, elapsed_ms=(time.perf_counter() - t0) * 1000,
                            tokens_in=ti, tokens_out=to, cached_tokens=cached,
                            system_fingerprint=fingerprint, served_model=served, model=model)
-    logger.info("SUPEREGO scope options outcome=%s offered=%d discarded=%d "
+    logger.info("stage=superego event=scope_options outcome=%s offered=%d discarded=%d "
                 "covered_unsupported=%d", outcome, len(offered), discarded, unsupported)
     return OptionSelection(outcome=outcome, covered=covered, suggested=suggested, asked=asked,
                            offered=len(offered), discarded=discarded,

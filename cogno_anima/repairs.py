@@ -87,6 +87,8 @@ __all__ = [
     "JUDGE_REPAIR_FIELDS",
     "SELECT_REPAIR_FIELDS",
     "VALID_NOUMENO_REPAIRS",
+    "NOUMENO_UNREADABLE_FIELDS",
+    "VALID_NOUMENO_UNREADABLE",
     "VALID_NER_REPAIRS",
     "VALID_SCOPE_REPAIRS",
     "VALID_JUDGE_REPAIRS",
@@ -139,7 +141,7 @@ def _alphabet(singles: "Iterable[str]",
 
 # ── NOUMENO ──────────────────────────────────────────────────────────────────────────────
 # The six keys of the rewriter's JSON. ``confidence`` has no ``null_field`` row because a
-# ``null`` there has never been repaired: ``float(None)`` raises and the turn ends.
+# ``null`` there has never been repaired: the stage refuses the reply (below).
 NOUMENO_REPAIR_FIELDS: "dict[str, tuple[str, ...]]" = {
     DEFAULT: ("rewritten", "context_turn", "confidence", "changed", "preserved_terms",
               "rewrite_warnings"),
@@ -149,6 +151,21 @@ NOUMENO_REPAIR_FIELDS: "dict[str, tuple[str, ...]]" = {
 }
 VALID_NOUMENO_REPAIRS: "frozenset[str]" = _alphabet(
     (SALVAGED_OBJECT, FENCE_OR_THINK_STRIPPED, TRUNCATED_RETRY), NOUMENO_REPAIR_FIELDS)
+
+# What the NOUMENO REFUSES — the other side of the table above. A field in a form the stage has
+# no repair for ends the turn with a ``StageParseError``, and the error says which one in the
+# same two halves a repair mark has (``StageParseError.mark``). A mark here is NOT a repair and
+# is never on a result's ``repairs`` list: ``coerced:confidence`` on a result is ``"0.9"`` read
+# as 0.9, and on the error it is a value ``float()`` cannot read.
+#   * ``rewritten`` / ``context_turn``: a value that is neither a string nor ``null``;
+#   * ``confidence``: ``null``, or a value that is not a number and does not spell one;
+#   * ``preserved_terms`` / ``rewrite_warnings``: a number or ``true``, or a list holding
+#     something that is not a string.
+NOUMENO_UNREADABLE_FIELDS: "dict[str, tuple[str, ...]]" = {
+    NULL_FIELD: ("confidence",),
+    COERCED: ("rewritten", "context_turn", "confidence", "preserved_terms", "rewrite_warnings"),
+}
+VALID_NOUMENO_UNREADABLE: "frozenset[str]" = _alphabet((), NOUMENO_UNREADABLE_FIELDS)
 
 # ── NER ──────────────────────────────────────────────────────────────────────────────────
 # Every key ``IntentAnalyzer._build`` reads. ``langue``, ``abstract_tags`` and ``pii_risk`` are

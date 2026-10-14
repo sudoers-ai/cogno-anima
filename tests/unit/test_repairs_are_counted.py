@@ -339,15 +339,18 @@ async def test_noumeno_a_reply_that_raises_recorded_nothing_on_the_way():
     assert log.marks() == []
 
 
-async def test_noumeno_what_still_raises_still_raises():
-    """The one read that changed is ``null`` in a TEXT field. A value that is neither text nor
-    ``null``, and a ``null`` confidence, end the turn exactly as before."""
-    with pytest.raises(AttributeError):
-        await _noumeno(dict(_REWRITE, rewritten=5))
-    with pytest.raises(AttributeError):
-        await _noumeno(dict(_REWRITE, context_turn=["x"]))
-    with pytest.raises(TypeError):
-        await _noumeno(dict(_REWRITE, confidence=None))
+async def test_noumeno_what_it_cannot_repair_is_refused_with_the_typed_error():
+    """A ``null`` in a TEXT field is a repair. A value that is neither text nor ``null``, and
+    a ``null`` confidence, are not: they still end the turn — with ``StageParseError`` and the
+    field named on it, where 0.1.9 let an ``AttributeError`` or a ``TypeError`` through (this
+    test pinned those two classes then; ``test_noumeno_refuses_what_it_cannot_read.py`` is
+    the whole table)."""
+    for reply, mark in ((dict(_REWRITE, rewritten=5), "coerced:rewritten"),
+                        (dict(_REWRITE, context_turn=["x"]), "coerced:context_turn"),
+                        (dict(_REWRITE, confidence=None), "null_field:confidence")):
+        with pytest.raises(StageParseError) as caught:
+            await _noumeno(reply)
+        assert caught.value.mark == mark
 
 
 def test_noumeno_parse_json_is_callable_as_it_always_was():

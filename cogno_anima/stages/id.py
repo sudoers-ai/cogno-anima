@@ -209,7 +209,7 @@ class IDStage:
             metrics=metrics,
         )
         logger.info(
-            "ID turn=%d route=%s goal_status=%s blocked=%s complexity=%s sim=%.2f",
+            "stage=id event=done turn=%d route=%s goal_status=%s blocked=%s complexity=%s sim=%.2f",
             turn, triad_route, goal_status, blocked, complexity, goal_similarity,
         )
         return ctx
