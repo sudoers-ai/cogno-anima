@@ -488,13 +488,65 @@ what each of them had to repair (0.1.9). It decides nothing.**
 
 **The one read that changed.** A JSON `null` in the NOUMENO's `rewritten` or `context_turn`
 raised `AttributeError` and ended the turn. It now reads as the absent key always did, marked
-`null_field:<field>`. Everything else that ends a turn with something other than a
-`StageParseError` is listed in `CHANGELOG.md` (0.1.9, *Not in this release*) and was left alone.
+`null_field:<field>`.
+
+**What a stage REFUSES is typed, and named (0.1.12).** The NOUMENO's contract is "a usable
+object OR `StageParseError`". For an object with a field in a form the stage has no repair for,
+it was neither.
+- Measured over 237 replies (each of the six fields under 38 values): 102 ended the turn, with
+  `AttributeError` (50), `TypeError` (31), a pydantic `ValidationError` (12) or a bare
+  `ValueError` (9). None with `StageParseError`.
+- `_unreadable_field` (`stages/noumeno.py`) now refuses those replies where they are parsed.
+  `StageParseError.mark` says which field in what form, from the closed table
+  `repairs.NOUMENO_UNREADABLE_FIELDS`. It is the two halves of a repair mark and never a value.
+- A mark on the error is a refusal, not a repair. It is never on a result's `repairs` list.
+- The primary call and the echo retry are held to it alike. A retry the stage cannot use keeps
+  the first answer, flagged, where it used to be adopted and then end the turn.
+- What the stage has always read is still read: the other 135 replies give the same result.
+- **Left alone:** the NER still ends the turn with a raw error on a `mandatory_tags` or `pii`
+  that is `null` or a number (14 of 603 in the 0.1.9 sweep).
+
+**A `null` beside a verdict is absent (0.1.12).** The judge's `critique` and the guard's
+`refusal_message` were read with `str(data.get(key, ""))`, so a JSON `null` became the text
+`"None"`: the reason handed to the executor's retry, or what a contact would be told.
+`_text_beside_verdict` (`stages/superego.py`) reads a `null` as the absent key always was. The
+mark `null_field:<field>` stays on `repairs`. Any other non-string value is rendered as before
+and counted as `coerced:<field>`.
 
 **Measured, no model.** `tests/unit/test_repairs_red_twins.py` is the defect per stage (7 red on
 `d15a6ea`); `tests/unit/test_repairs_are_counted.py` drives every mark of every alphabet and
 proves that switching the marking off changes nothing but the list. The RATE of repair per
 stage is a number only traffic gives.
+
+### What the library logs (`LOGGING.md`) — no line carries somebody else's text
+
+`LOGGING.md` is the list of the log events, and the code is held to it (0.1.12).
+
+- **The defect.** The judge's rejection logged the first 80 characters of its critique, and a
+  critique quotes the turn. Read by AST, 15 of the package's 76 log calls formatted text
+  somebody else wrote: the model's (the critique, the rewrite, the tail of a cut reply, an
+  out-of-vocabulary `intent_class`, an invented tool name), an id the model put in a call, an
+  exception's message, trait values the tenant typed, the `repr` of a host carrier.
+- **The rule.** A line says how much and which kind: a length, a count, a member of a closed
+  vocabulary, a class name. At every level, DEBUG included. The text stays on the result.
+- **One grammar**: `[stage=<word> ]event=<name>( <key>=<value>)*[ — <prose>]`. Every placeholder
+  sits behind its `key=`, so every value has a name. 16 calls had no event name; all have one.
+- **One class per key** (`count`, `closed`, `type`, `name`, `constant`), in the fields table of
+  `LOGGING.md`. There is no class for text. `name` is what the HOST declared (a tool, an
+  argument's name, a persona label, a language tag): the one class the library does not close.
+- **Five tracebacks** are the written exemption, all in `tools/pre_judge.py`, all from the
+  host's own callbacks or the wrapper's bookkeeping.
+- **Three test files hold it**, over a reader that finds a log call by the logger it is called
+  on, not by the variable's name (`tests/unit/_log_calls.py`):
+  - `test_logging_md_lists_what_the_code_emits.py`: the events table, both directions (logger,
+    event, level, fields, traceback), the modules that log nothing, the count per level;
+  - `test_logs_carry_no_third_party_text.py`: every value has a class, and the expression each
+    key is given is pinned, so `critique_len=%d` given the critique's first 80 characters fails;
+  - `test_log_lines_carry_no_byte_of_the_turn.py`: each of the fifteen lines, driven with a
+    sentinel in the text it used to print.
+- **`StageParseError` still quotes the reply** (120 characters in its message, all of it on
+  `.raw`). The library never logs it. A host that logs the exception logs that; `stage` and
+  `mark` are the fields that are safe anywhere.
 
 ### The schema of a JSON stage's reply (`cogno_anima/schemas.py`) — inert
 

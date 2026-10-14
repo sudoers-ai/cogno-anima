@@ -192,6 +192,23 @@ Key points:
   repairs as its marks PLUS its non-`boolean` verdict reads. `[]` means the reply was
   read as it came. An old result, or a stand-in stage, has no list: treat that as
   "not on record", never as zero.
+- **`StageParseError` names the field it could not use** (since 0.1.12).
+  `exc.mark` is `<family>:<field>` from `cogno_anima.repairs.VALID_NOUMENO_UNREADABLE`
+  when the NOUMENO's reply was a JSON object and a field of it was the problem
+  (`coerced:rewritten`, `null_field:confidence`, …), and `None` when the reply was
+  not an object at all. Before 0.1.12 those replies ended the turn with an
+  `AttributeError`, a `TypeError`, a bare `ValueError` or a pydantic
+  `ValidationError`; a handler that catches `StageParseError` now catches them.
+  `str(exc)` quotes the first 120 characters of the model's reply and `exc.raw` is all
+  of it: log `exc.stage` and `exc.mark`, and treat the rest as contact data.
+- **The library's log lines carry no text of the turn** (since 0.1.12). Not the judge's
+  critique, not the rewrite, not a tool argument, not an exception's message: a length,
+  a count, a closed token or a class name. The critique is on
+  `SuperegoResult.critique`; where it may go is yours to decide. 16 lines gained an
+  `event=` name and some fields were renamed (`critique=` is `critique_len=`), so a
+  reader that matched the old text needs the table in [`LOGGING.md`](../LOGGING.md).
+- **A `null` critique or refusal message is absent** (since 0.1.12): the judge's own
+  `"execution rejected"`, the guard's empty message, never the text `"None"`.
 - **The contact's message is escaped in the judge's and the voice's prompt** (since
   0.1.7). `ctx.user_input` is rendered through `prompt_guard.defang_structure`: a
   fence tag of the core loses its angle brackets, and a line opening with one of the
