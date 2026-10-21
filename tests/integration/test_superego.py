@@ -231,10 +231,12 @@ async def test_judge_approves_a_truthful_empty_read():
 @pytest.mark.xfail(
     strict=False,
     reason=(
-        "Unstable on the local qwen3:8b runner (2026-10-06): the SAME red on main 02e18509's nightly "
-        "(run 37459138949) and on PR #209 twice, so it is not introduced by a change; the assertion stays "
-        "valid and this goes back to pass when the model meets it. Re-measured n=3 on a cloud judge as a "
-        "queued item, together with the runner's `bind: address already in use`."
+        "Unstable on the qwen3:8b runner — the MODEL, not the runner: over the six nightlies "
+        "2026-10-15 → 10-20 on main 6c90f67 it passed 3 and failed 3, and the runner's `bind: "
+        "address already in use` (a second `ollama serve` beside the installer's service, fixed in "
+        "the workflow in 0.1.14) does not decide it — with the bind error it passed 2 of 3, without "
+        "it 1 of 3. The assertion stays valid and this goes back to pass when the model meets it. "
+        "The n=3 cloud-judge measurement stays a queued item."
     ),
 )
 @pytest.mark.asyncio
@@ -681,3 +683,48 @@ async def test_voice_revoice_keeps_the_values_the_data_holds():
     assert {3.0, 10.0} <= values, (
         f"the document holds the grades deadline and the invoice day and the reply dropped "
         f"one: {r.response!r}")
+
+
+# ── a person's NAME is a value too (model half) ───────────────────────────────────────
+# The deterministic half — the rule renders only when the request named somebody, and a prompt
+# with no name is sent the bytes of before — is `tests/unit/test_judge_person_name_is_a_value.py`.
+# These two are a PAIR: the first says the judge stops rejecting the name the USER used for the
+# person the execution acted on; the second says it did not become a licence to name somebody
+# else. Cloud-only: unmeasured on qwen3:8b.
+_BOOKED = "Booked: Dr. Ruivo Tavares (Cardiologia), 2026-10-22 09:00, appointment id A-1."
+
+
+def _booking_ctx(draft: str):
+    ctx = _ctx("marca amanhã às 9 com o Dr. Ruivo", intent_class="ACTION_REQUEST",
+               goal="book a consultation tomorrow at 09:00 with Dr. Ruivo",
+               tool="book_appointment",
+               args={"host_id": "dr_ruivo", "date": "2026-10-22", "time": "09:00"},
+               result=_BOOKED, side_effect=True, draft=draft)
+    ctx.intent.entities_people = ["Dr. Ruivo"]
+    return ctx
+
+
+def _skip_on_ollama():
+    spec = backends.model_spec()
+    if backends.is_ollama(spec):
+        pytest.skip(f"{spec}: unmeasured on qwen3:8b. Point COGNO_TEST_MODEL at a cloud spec to "
+                    "run it.")
+
+
+@pytest.mark.asyncio
+async def test_judge_approves_the_name_the_user_used_for_the_same_person():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    ctx = _booking_ctx("Booked your consultation with Dr. Ruivo tomorrow (22/10) at 09:00.")
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
+@pytest.mark.asyncio
+async def test_judge_still_rejects_a_name_of_another_person():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    ctx = _booking_ctx("Booked your consultation with Dr. Bento tomorrow (22/10) at 09:00.")
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
+    assert r.approved is False, "a name the evidence ties to nobody is not the booked person"
+    assert r.critique

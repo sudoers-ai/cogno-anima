@@ -228,7 +228,16 @@ jobs:
       - name: Install Ollama + pull the models
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
-          ollama serve &
+          # The installer starts Ollama as a SERVICE where systemd runs, and this runner has it:
+          # a second `ollama serve` then died on `bind: address already in use` (3 of the 6
+          # nightlies 2026-10-15 → 10-20). Wait for the installer's server first, and start one
+          # only when nothing answers on the port.
+          for i in $(seq 1 15); do curl -sf http://localhost:11434/api/tags >/dev/null && break || sleep 1; done
+          if curl -sf http://localhost:11434/api/tags >/dev/null; then
+            echo "ollama: already serving (the installer's service) — not starting a second one"
+          else
+            ollama serve &
+          fi
           for i in $(seq 1 30); do curl -sf http://localhost:11434/api/tags && break || sleep 1; done
           ollama pull "${{ github.event.inputs.model || 'qwen3:8b' }}"
           ollama pull nomic-embed-text:latest

@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.1.14 — 2026-10-21 — a person's name is a value too in the judge; the nightly starts Ollama once
+
+### Fixed
+
+- **The judge no longer rejects the name the USER used for the person the execution acted on.**
+  Measured downstream on a reference host's booking benches: 17 of 94 judge rejections in 8 runs
+  were the judge being strict about a NAME — the contact used a short name, the executor acted on
+  the right professional, the tool answered with the full record, and the draft's use of the
+  contact's name for the SAME person was called a grounding failure. The family of the preserved
+  term the judge read as a spelling instead of a value (`_PRESERVED_IS_A_VALUE`, 2026-09-18).
+  - `_PERSON_NAME_IS_A_VALUE`, a paragraph after the criteria (beside `_MEMO_RULE`): a name is
+    judged by WHO it designates; the name the user used, or a shorter or fuller form of it, for
+    the person the execution acted on is correct; a name the evidence ties to a DIFFERENT person
+    is still a rejection.
+  - It renders only when the NER read a person in the request (`SuperegoStage._people_named`:
+    `intent.entities_people` with a non-blank entry) and renders no name — the request is already
+    in the prompt. No header: `_JUDGE_BLOCKS` and the inventory do not move.
+  - **No person named → the bytes of before.** `tests/unit/test_judge_person_name_is_a_value.py`
+    pins 24 digests of what the judge is sent (system + prompt) taken on the base (#225,
+    `b714083`): the three branches × no name / a blank name × with and without limits × with and
+    without a context — 12 distinct values, the blank-name cells equal to the no-name ones. The
+    twins (the rule present once in each branch, and the only difference) were red on the base.
+  - The model half: a cloud-only PAIR in `tests/integration/test_superego.py` — the user's name
+    for the same person approved; another person's name rejected. Written, not run here: the
+    bytes it sends differ between base and branch (5586 → 6043 characters on both cells,
+    recorded offline), so it measures; unmeasured on qwen3:8b, it skips on an Ollama spec.
+- **The nightly starts Ollama once.** The installer starts Ollama as a service where systemd runs,
+  and the `ollama serve &` after it died on `bind: address already in use` (3 of the 6 nightlies
+  2026-10-15 → 10-20). The step waits for the installer's server and starts one only when nothing
+  answers on the port.
+
+### Not changed, measured
+
+- **`test_judge_still_rejects_a_read_whose_draft_invents` stays `xfail`.** Its reason named the
+  runner's `bind` error beside the model's instability; the six nightlies above say the model
+  decides it — 3 passed, 3 failed — and the bind error does not (with it 2 of 3 passed, without
+  it 1 of 3). The reason now says so; the n=3 cloud-judge measurement stays queued.
+- A neighbour, described and not fixed: `test_judge_still_rejects_a_draft_that_MANGLES_a_preserved_figure`
+  (not `xfail`) failed in 2 of those 6 nightlies (10-18 and 10-20).
+
 ## 0.1.13 — 2026-10-21 — the NER's free texts and the executor's markers cannot pass for the prompt; a `null` list in the NER no longer ends the turn
 
 ### Fixed
