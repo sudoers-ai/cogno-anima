@@ -331,8 +331,10 @@ def test_ner_what_the_schema_accepts_needs_no_form_repair_and_ends_no_turn():
             declared += 1
     # 859 replies (the clean one, and each of 22 fields missing or under 38 dirty values). The
     # numbers are pinned so that a change in either module is SEEN: 91 accepted, 9 of them with
-    # a declared content-shaped mark; and of the 768 refused, 16 end the turn today.
-    assert (accepted, declared, refused_and_raised) == (91, 9, 16)
+    # a declared content-shaped mark; and of the 768 refused, none ends the turn. Until 0.1.13
+    # 16 did: `mandatory_tags` and `pii` under the 8 values JSON cannot iterate (`null`, five
+    # numbers, `true`, `false`), which now read as the absent key, marked.
+    assert (accepted, declared, refused_and_raised) == (91, 9, 0)
 
 
 async def test_noumeno_what_the_schema_accepts_needs_no_form_repair_and_ends_no_turn():
