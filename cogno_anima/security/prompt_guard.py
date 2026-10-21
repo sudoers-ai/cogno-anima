@@ -28,7 +28,12 @@ measured on the rendered prompts (``tests/unit/test_injection_by_tool_data.py``)
   :func:`defang_headers` escapes, with a CommonMark backslash, every line that opens with a
   header this library RENDERS (:func:`reserved_headers`, derived from the stages' own tables,
   never copied). A header nobody here renders — a document's ``## Section`` line, a tenant's
-  ``# MATERIAL`` — is left alone, so clean data renders byte for byte as before.
+  ``# MATERIAL`` — is left alone, so clean data renders byte for byte as before;
+* **a forged marker** (0.1.13). The executor's text path writes three plain-text markers
+  outside every fence — ``[TOOL RESULTS]`` before a round of results, ``[ALREADY EXECUTED]`` /
+  ``[EXECUTION FAILED]`` before a confirmed call's — and they are neither a header nor a fence
+  tag. :func:`reserved_markers` (derived from ``ego.EGO_MARKERS``) loses its brackets wherever
+  it appears in untrusted text, as a fence tag does.
 """
 
 from __future__ import annotations
@@ -88,6 +93,41 @@ def reserved_headers() -> "tuple[str, ...]":
 
 
 @functools.lru_cache(maxsize=1)
+def reserved_markers() -> "tuple[str, ...]":
+    """Every plain-text MARKER the executor's text path writes outside a fence — DERIVED.
+
+    Read off :data:`cogno_anima.stages.ego.EGO_MARKERS` (``[TOOL RESULTS]``, ``[ALREADY
+    EXECUTED]``, ``[EXECUTION FAILED]``), pinned to the rendered prompt by a sync test. A marker
+    is neither a header nor a fence tag, so until 0.1.13 untrusted text could write one whole.
+    Imported lazily, like :func:`reserved_headers`.
+    """
+    from cogno_anima.stages.ego import EGO_MARKERS
+
+    return tuple(sorted(set(EGO_MARKERS)))
+
+
+@functools.lru_cache(maxsize=1)
+def _marker_re() -> "re.Pattern[str]":
+    # The words of each marker, between its brackets, with any run of blanks between them and
+    # around them: `[ ALREADY  EXECUTED ]` is the same marker to a model. Case-insensitive,
+    # like the fence tags — a lower-case `[tool results]` reads as the line the stage writes.
+    alts = "|".join(r"\s+".join(re.escape(w) for w in m.strip("[]").split())
+                    for m in sorted(reserved_markers(), key=len, reverse=True))
+    return re.compile(rf"(?i)\[\s*(?:{alts})\s*\]")
+
+
+def _break_markers(text: str) -> str:
+    """Every reserved marker with its brackets turned into parentheses, ANYWHERE in the text.
+
+    ``[ALREADY EXECUTED]`` becomes ``(ALREADY EXECUTED)``: the words stay, and the bytes the
+    stage writes after a call it really ran are no longer among them. Anywhere and not only at
+    a line start, because a marker is a token like a fence tag, not a markdown structure like a
+    header. A bracket that is not one of these markers (``[TODO]``, ``[RESULTS]``, an unclosed
+    ``[TOOL RESULTS``) is left alone."""
+    return _marker_re().sub(lambda m: "(" + m.group(0)[1:-1] + ")", text)
+
+
+@functools.lru_cache(maxsize=1)
 def _reserved_line_re() -> "re.Pattern[str]":
     alts = "|".join(re.escape(h) for h in sorted(reserved_headers(), key=len, reverse=True))
     # The header must END where the prompt's own does: `# Task` escapes `# Task` and `# Task:`,
@@ -110,7 +150,8 @@ def defang_headers(text: str) -> str:
 
 
 def defang_structure(text: str) -> str:
-    """The structural half alone — no fence tag of :data:`FENCE_TAGS`, no reserved header.
+    """The structural half alone — no fence tag of :data:`FENCE_TAGS`, no reserved marker
+    (:func:`reserved_markers`), no reserved header.
 
     For untrusted text whose tool-call triggers are not the risk: the host's context block
     (``mk.EGO_CONTEXT``), rendered into the executor, the judge and the voice. Running the
@@ -119,14 +160,15 @@ def defang_structure(text: str) -> str:
     """
     if not text:
         return ""
-    return defang_headers(_break_fence_tags(text))
+    return defang_headers(_break_markers(_break_fence_tags(text)))
 
 
 def _defang_once(text: str, names: str) -> str:
     """One readable pass: remove the tag blocks, break the JSON key, unwrap the brackets."""
     # A result must not break out of the fence that wraps it — nor out of any other fence this
-    # library renders, since the same text reaches several prompts (:data:`FENCE_TAGS`).
-    text = _break_fence_tags(text)
+    # library renders, since the same text reaches several prompts (:data:`FENCE_TAGS`) — nor
+    # write a marker the executor's text path writes after a call it ran.
+    text = _break_markers(_break_fence_tags(text))
     # Format 1: a <TOOL_CALL> block is never legitimate tool output — drop it WHOLE (stripping
     # only the tags would leave the inner JSON as a live Format-2 call).
     text = re.sub(r"(?is)<TOOL_CALL>.*?</TOOL_CALL>", " ", text)
@@ -166,7 +208,8 @@ def sanitize_untrusted(text: str, tool_names: "Iterable[str]") -> str:
     Guarantee: ``parses_as_tool_call(sanitize_untrusted(x, names), names)`` is False.
 
     Also structural (:func:`defang_structure`'s half): no fence of :data:`FENCE_TAGS` can be
-    opened or closed from inside, and no line opens with a :func:`reserved_headers` header.
+    opened or closed from inside, no :func:`reserved_markers` marker survives, and no line
+    opens with a :func:`reserved_headers` header.
     """
     if not text:
         return ""

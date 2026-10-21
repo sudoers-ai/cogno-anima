@@ -232,6 +232,22 @@ Key points:
   - `ctx.user_input`, `noumeno.rewritten` and `intent.goal` are never modified. The
     selector's `asked` is compared with the message as written, and comes back in
     the contact's own characters.
+- **The NER's other phrases and the executor's markers are escaped too** (since 0.1.13).
+  `intent.entities_objects`, `constraints`, `negation` and `causal_chain` go through
+  `defang_structure` where the executor's `# Task context` and the judge's
+  `# User constraints` render them. And `[TOOL RESULTS]`, `[ALREADY EXECUTED]` and
+  `[EXECUTION FAILED]` — the lines the executor's text path writes outside every fence —
+  lose their brackets (`(ALREADY EXECUTED)`) wherever they appear in a text the core
+  guards: the task, the context notes, a tool result, a phrase. A text with none of them
+  is the same bytes.
+  - The phrases are in the executor's SYSTEM prompt, so `ego_result.prompt_sha` and
+    `prompt_text` follow the escaped form on such a phrase on both paths.
+  - `intent.*` is never modified.
+- **A `null` or a number in the NER's `mandatory_tags` or `pii` no longer ends the turn**
+  (since 0.1.13). It reads as the absent key (`NER.UNKNOWN`; the deterministic detector
+  alone for PII) and is marked `null_field:mandatory_tags` / `null_field:pii` (two new
+  marks of the NER's alphabet) or `coerced:<field>`. `closed_repairs` already keeps them;
+  a copy of the alphabet kept elsewhere needs the two.
 
 ---
 

@@ -5,7 +5,7 @@ import time
 import json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from cogno_anima import metakeys as mk
 from cogno_anima.types import PipelineContext, NoumenoResult, IntentResult, StageMetrics
@@ -145,6 +145,19 @@ _PHRASE_LISTS: "dict[str, tuple[int, int]]" = {
     "verbs": (_MAX_VERBS, _MAX_PHRASE_CHARS),
 }
 _FLAGS = ("context_dependent", "is_composite", "is_sequential")
+
+
+def _iterable_or_absent(value: Any) -> Any:
+    """``value`` as the stage iterates it — ``[]`` for a JSON value that cannot be iterated.
+
+    JSON has four such values: ``null``, a number, ``true`` and ``false``. In ``mandatory_tags``
+    and ``pii`` they ended the turn with a ``TypeError`` (``for t in None``) — not a
+    ``StageParseError``, and over a reply whose other fields were usable (14 of 603 replies in
+    the 0.1.9 sweep). They now read as the absent key always did. The marks say which:
+    ``null_field:<field>`` for a ``null``, ``coerced:<field>`` for the others
+    (:func:`_reply_repairs`). A string or an object is returned as it was: what the stage made
+    of those before, it still makes."""
+    return [] if value is None or isinstance(value, (bool, int, float)) else value
 
 
 def _usable_phrase(item: object) -> bool:
@@ -523,7 +536,9 @@ class IntentAnalyzer:
 
         # Structural safeguard coercion
         if intent_class == "UNKNOWN":
-            raw_tags = [str(t).upper().split(".")[-1] for t in data.get("mandatory_tags", []) if isinstance(t, str)]
+            raw_tags = [str(t).upper().split(".")[-1]
+                        for t in _iterable_or_absent(data.get("mandatory_tags"))
+                        if isinstance(t, str)]
             if {"MATH", "SYSTEM"} & set(raw_tags):
                 intent_class = "ACTION_REQUEST"
             elif {"CREATIVE"} & set(raw_tags):
@@ -616,7 +631,7 @@ class IntentAnalyzer:
 
         # mandatory_tags
         mandatory = []
-        for t in data.get("mandatory_tags", []):
+        for t in _iterable_or_absent(data.get("mandatory_tags")):
             if not isinstance(t, str):
                 continue
             short = t.upper().split(".")[-1]
@@ -758,7 +773,7 @@ class IntentAnalyzer:
 
         # pii & pii_risk — union of the LLM's list with the deterministic detector
         # (run on the ORIGINAL text). pii_risk is always recomputed in-core.
-        pii_llm = normalize_pii_types(data.get("pii", []))
+        pii_llm = normalize_pii_types(_iterable_or_absent(data.get("pii")))
         pii_regex = self._pii_detector.detect(original) if original else []
         # Checksum veto: a type whose shape appears in the text but fails its checksum
         # (invalid CPF/CNPJ, non-Luhn card) is POSITIVELY not that document — drop the

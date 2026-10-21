@@ -171,16 +171,18 @@ VALID_NOUMENO_UNREADABLE: "frozenset[str]" = _alphabet((), NOUMENO_UNREADABLE_FI
 # Every key ``IntentAnalyzer._build`` reads. ``langue``, ``abstract_tags`` and ``pii_risk`` are
 # not here: the stage ignores what the model writes for them. ``location``, ``goal``,
 # ``parole``, ``modality`` and ``speech_act`` have no ``null_field`` row because the prompt
-# ALLOWS ``null`` there; ``mandatory_tags`` and ``pii`` have none because a ``null`` there has
-# never been repaired (the stage iterates the value and raises).
+# ALLOWS ``null`` there. ``mandatory_tags`` and ``pii`` gained theirs in 0.1.13: until then a
+# ``null`` (or a number, or a boolean) there was iterated and ended the turn; it now reads as
+# the absent key, so a ``null`` is a repair like any other.
 NER_REPAIR_FIELDS: "dict[str, tuple[str, ...]]" = {
     DEFAULT: ("intent_class", "sentiment", "confidence", "temporal_class", "triad_signal",
               "entities", "location", "mandatory_tags", "aristotelian", "domains", "goal",
               "causal_chain", "parole", "negation", "constraints", "modality", "speech_act",
               "verbs", "context_dependent", "is_composite", "is_sequential", "pii"),
     NULL_FIELD: ("intent_class", "sentiment", "confidence", "temporal_class", "triad_signal",
-                 "entities", "aristotelian", "domains", "causal_chain", "negation",
-                 "constraints", "verbs", "context_dependent", "is_composite", "is_sequential"),
+                 "entities", "mandatory_tags", "aristotelian", "domains", "causal_chain",
+                 "negation", "constraints", "verbs", "context_dependent", "is_composite",
+                 "is_sequential", "pii"),
     STRING_BOOL: ("context_dependent", "is_composite", "is_sequential"),
     COERCED: ("intent_class", "sentiment", "confidence", "temporal_class", "triad_signal",
               "entities", "location", "mandatory_tags", "aristotelian", "domains", "goal",
