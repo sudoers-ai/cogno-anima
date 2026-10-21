@@ -1278,6 +1278,27 @@ _MEMO_RULE = (
 )
 
 
+# A PERSON'S NAME IS A VALUE TOO (2026-10-21) — the family of `_PRESERVED_IS_A_VALUE`. Measured
+# downstream on a reference host's booking benches: 17 of 94 judge rejections in 8 runs were the
+# judge being STRICT about a name — the contact booked with a professional by the name THEY use,
+# the executor acted on the right one, the tool answered with the full record, the draft used the
+# contact's name for the same person, and the judge called it a grounding failure. A name is
+# judged by WHO it designates, never by its form; a name the evidence ties to ANOTHER person is
+# still a rejection, so this is not a licence to swap people.
+#
+# It travels with its evidence: rendered only when the NER read a person in the request
+# (`_people_named`), and it renders no name — the request is already in the prompt under
+# `# User request`. A turn with no person named is sent the prompt of before, byte for byte
+# (`tests/unit/test_judge_person_name_is_a_value.py`, digests taken on the base).
+_PERSON_NAME_IS_A_VALUE = (
+    "A PERSON'S NAME IS A VALUE TOO: the user named someone in this request. When the draft "
+    "calls the person the execution acted on by the name the USER used — or by a shorter or "
+    "fuller form of that same name (a first name, a surname, a title) — that is CORRECT and "
+    "never a grounding failure, even when a tool result writes the name in full or another "
+    "way. REJECT a name only when the evidence ties it to a DIFFERENT person than the one the "
+    "execution acted on.\n\n"
+)
+
 # The READ-ONLY branch. A turn that ran, whose every call SUCCEEDED and whose every call was a
 # READ, has no mutation to verify — so criteria #1 (GOAL<->EXECUTION) and #3 (COMPLETENESS)
 # have nothing to bind to and decay into "does the reply satisfy the user", which is a
@@ -2812,6 +2833,7 @@ class SuperegoStage:
             f"{_held_message_rule(held_message_language(ctx), self._proposed_tools(ctx)) if held_messages else ''}"
             f"{self._held_ask_rule(ctx) if held_messages else ''}"
             f"{_MEMO_RULE if memo_block else ''}"
+            f"{_PERSON_NAME_IS_A_VALUE if self._people_named(ctx) else ''}"
             "TRUST THE TOOLS: values a tool returned — resolved dates, ids, availability, "
             "figures — are AUTHORITATIVE. Do NOT re-derive them from your own reasoning or "
             "reject them as wrong (e.g. do not second-guess a resolved calendar date against "
@@ -3125,6 +3147,15 @@ class SuperegoStage:
         what it is FOR and how it is fenced is :mod:`cogno_anima.security.contact_memo`'s, one
         definition for every prompt it reaches."""
         return sanitize_contact_memo((getattr(ctx, "metadata", None) or {}).get(mk.CONTACT_MEMO))
+
+    @staticmethod
+    def _people_named(ctx: PipelineContext) -> bool:
+        """Did the NER read a PERSON in the contact's request (``intent.entities_people``, at
+        least one non-blank entry)? The one condition of ``_PERSON_NAME_IS_A_VALUE``. A missing
+        or malformed reading is no person — the prompt of before."""
+        people = getattr(getattr(ctx, "intent", None), "entities_people", None)
+        return isinstance(people, list) and any(isinstance(p, str) and p.strip()
+                                                for p in people)
 
     @classmethod
     def _judge_system(cls, ctx: PipelineContext) -> str:
