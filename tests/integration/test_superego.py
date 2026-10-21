@@ -691,16 +691,26 @@ async def test_voice_revoice_keeps_the_values_the_data_holds():
 # These two are a PAIR: the first says the judge stops rejecting the name the USER used for the
 # person the execution acted on; the second says it did not become a licence to name somebody
 # else. Cloud-only: unmeasured on qwen3:8b.
+#
+# The NAME is the only axis. The clock is fixed in the context and every date is absolute and
+# the same one: the request, the goal, the call, the tool's answer and the draft all say
+# 2026-10-22. The first version said «amanhã» with no clock, and its first cloud run
+# (gpt-4o-mini) rejected the approve twin on the DATE, not the name: "booked an appointment
+# for 2026-10-22 instead of the requested date of tomorrow (2026-10-21)". Both drafts are
+# `_DRAFT` with a different name, so the two prompts differ in that name and nothing else.
+_TODAY = "[TODAY] 2026-10-21 (Wednesday)"
 _BOOKED = "Booked: Dr. Ruivo Tavares (Cardiologia), 2026-10-22 09:00, appointment id A-1."
+_DRAFT = "Booked your consultation with {name} on 2026-10-22 at 09:00."
 
 
 def _booking_ctx(draft: str):
-    ctx = _ctx("marca amanhã às 9 com o Dr. Ruivo", intent_class="ACTION_REQUEST",
-               goal="book a consultation tomorrow at 09:00 with Dr. Ruivo",
+    ctx = _ctx("marca dia 22/10 às 9 com o Dr. Ruivo", intent_class="ACTION_REQUEST",
+               goal="book a consultation on 2026-10-22 at 09:00 with Dr. Ruivo",
                tool="book_appointment",
                args={"host_id": "dr_ruivo", "date": "2026-10-22", "time": "09:00"},
                result=_BOOKED, side_effect=True, draft=draft)
     ctx.intent.entities_people = ["Dr. Ruivo"]
+    ctx.metadata[mk.EGO_CONTEXT] = _TODAY
     return ctx
 
 
@@ -715,7 +725,7 @@ def _skip_on_ollama():
 async def test_judge_approves_the_name_the_user_used_for_the_same_person():
     _skip_on_ollama()
     await backends.skip_unless_available()
-    ctx = _booking_ctx("Booked your consultation with Dr. Ruivo tomorrow (22/10) at 09:00.")
+    ctx = _booking_ctx(_DRAFT.format(name="Dr. Ruivo"))
     r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
     assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
 
@@ -724,7 +734,7 @@ async def test_judge_approves_the_name_the_user_used_for_the_same_person():
 async def test_judge_still_rejects_a_name_of_another_person():
     _skip_on_ollama()
     await backends.skip_unless_available()
-    ctx = _booking_ctx("Booked your consultation with Dr. Bento tomorrow (22/10) at 09:00.")
+    ctx = _booking_ctx(_DRAFT.format(name="Dr. Bento"))
     r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
     assert r.approved is False, "a name the evidence ties to nobody is not the booked person"
     assert r.critique

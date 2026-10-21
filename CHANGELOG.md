@@ -23,9 +23,14 @@
     without a context — 12 distinct values, the blank-name cells equal to the no-name ones. The
     twins (the rule present once in each branch, and the only difference) were red on the base.
   - The model half: a cloud-only PAIR in `tests/integration/test_superego.py` — the user's name
-    for the same person approved; another person's name rejected. Written, not run here: the
-    bytes it sends differ between base and branch (5586 → 6043 characters on both cells,
-    recorded offline), so it measures; unmeasured on qwen3:8b, it skips on an Ollama spec.
+    for the same person approved; another person's name rejected. The NAME is its only axis: the
+    clock is fixed in `mk.EGO_CONTEXT` (`[TODAY] 2026-10-21`) and the request, the goal, the
+    call, the tool's answer and the draft all name the same absolute date, so the two prompts
+    differ in that name and nothing else (recorded offline). Its first version said «amanhã»
+    with no clock, and its first cloud run (gpt-4o-mini, n=1) rejected the approve twin on the
+    DATE, not the name. The bytes it sends differ between base and branch (5804 → 6261
+    characters on both cells, recorded offline), so it measures; unmeasured on qwen3:8b, it
+    skips on an Ollama spec.
 - **The nightly starts Ollama once.** The installer starts Ollama as a service where systemd runs,
   and the `ollama serve &` after it died on `bind: address already in use` (3 of the 6 nightlies
   2026-10-15 → 10-20). The step waits for the installer's server and starts one only when nothing
