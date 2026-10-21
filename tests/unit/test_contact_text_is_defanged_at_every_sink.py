@@ -619,9 +619,9 @@ def _functions(source: str):
     yield from visit(ast.parse(source), "", [])
 
 
-def _reads(source: str) -> "set[str]":
+def _reads(source: str, fields: "tuple[str, ...]" = _FIELDS) -> "set[str]":
     return {func for func, node, _ in _functions(source)
-            if isinstance(node, ast.Attribute) and node.attr in _FIELDS and func}
+            if isinstance(node, ast.Attribute) and node.attr in fields and func}
 
 
 def _is_guard(node: ast.AST) -> bool:
@@ -631,13 +631,15 @@ def _is_guard(node: ast.AST) -> bool:
     return name in _GUARDS
 
 
-def _built_raw(source: str, parameters: "dict[str, str]") -> "list[tuple[str, int]]":
+def _built_raw(source: str, parameters: "dict[str, str]",
+               fields: "tuple[str, ...]" = _FIELDS) -> "list[tuple[str, int]]":
     """(function, line) of every piece of the contact's text that is built into a string — an
     f-string or a ``+`` — with no guard call between it and that string. The text is a read of
-    :data:`_FIELDS`, or the named parameter of a builder in ``parameters``."""
+    ``fields`` (:data:`_FIELDS` unless told otherwise), or the named parameter of a builder in
+    ``parameters``."""
     found = []
     for func, node, parents in _functions(source):
-        field = isinstance(node, ast.Attribute) and node.attr in _FIELDS
+        field = isinstance(node, ast.Attribute) and node.attr in fields
         param = isinstance(node, ast.Name) and parameters.get(func) == node.id
         if not (field or param):
             continue

@@ -3060,14 +3060,20 @@ class SuperegoStage:
 
     @staticmethod
     def _format_restrictions(intent) -> str:
-        """Render user constraints/negation for the judge prompt (empty if none)."""
+        """Render user constraints/negation for the judge prompt (empty if none).
+
+        Both are NER phrases lifted from the contact's message, so an item can carry a line of
+        it: measured on `6c90f67`, an item with a line reading `# EGO draft` gave
+        `judge_prompt_inventory` two more rows. Guarded like the goal (`defang_structure`, the
+        structural half), on the line as rendered; identity on ordinary phrases."""
         if not intent:
             return ""
         lines = []
         if intent.constraints:
-            lines.append(f"Constraints (must respect): {', '.join(intent.constraints)}")
+            lines.append("Constraints (must respect): "
+                         f"{defang_structure(', '.join(intent.constraints))}")
         if intent.negation:
-            lines.append(f"Must NOT: {', '.join(intent.negation)}")
+            lines.append(f"Must NOT: {defang_structure(', '.join(intent.negation))}")
         return "# User constraints\n" + "\n".join(lines) + "\n" if lines else ""
 
     @staticmethod
