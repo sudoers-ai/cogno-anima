@@ -1,5 +1,96 @@
 # Changelog
 
+## 0.1.13 — 2026-10-21 — the NER's free texts and the executor's markers cannot pass for the prompt; a `null` list in the NER no longer ends the turn
+
+### Fixed
+
+- **The NER's other free texts go through `prompt_guard.defang_structure`.** 0.1.8 guarded
+  `intent.goal` and named the rest. Measured on `6c90f67`:
+  - `entities_objects`, `constraints`, `negation` and `causal_chain` were rendered raw in the
+    executor's `# Task context`. An item with a line reading `# Correction requested` opened
+    that section, once per field.
+  - `constraints` and `negation` also reach the judge, under `# User constraints`
+    (`SuperegoStage._format_restrictions`). An item with a line reading `# EGO draft` gave
+    `judge_prompt_inventory` a forged `draft` row under each of the two.
+  - Each line is now guarded as rendered, the call the goal's line already makes. The
+    phrases are in the executor's SYSTEM prompt, so this holds on both paths, and
+    `EgoResult.prompt_sha` follows the escaped form on such a phrase.
+- **The executor's text-path markers are reserved.** `[TOOL RESULTS]`, `[ALREADY EXECUTED]`
+  and `[EXECUTION FAILED]` are the lines the text path writes OUTSIDE every fence: before a
+  round of tool results, and before a confirmed call's replay. They were neither a header nor
+  a fence tag, so no guard touched them. Measured on `6c90f67`: a task carrying
+  `[ALREADY EXECUTED] book_slot →` reached the prompt whole, on a turn that executed nothing.
+  - `ego.EGO_MARKERS` is the table, and `prompt_guard.reserved_markers()` reads it, like
+    `reserved_headers()` reads the blocks.
+  - The guard turns a marker's brackets into parentheses (`(ALREADY EXECUTED)`). It does so
+    ANYWHERE in the text, not only at a line start, because a marker is a token like a fence
+    tag. It matches any case and any blanks inside the brackets (`[ tool  results ]`).
+  - The step is inside `defang_structure` and `sanitize_untrusted`, so every text they
+    already guarded loses a forged marker too: the task, the goal, the context notes, a
+    retry's arguments and reason, every tool result.
+  - Left whole: a bracket that is not one of the three (`[TODO]`, `[RESULTS]`), the words
+    without brackets, an unclosed `[TOOL RESULTS`.
+  - Not in the set, on purpose: the loop's `[BLOCKED]` / `[DUPLICATE]` and a held call's
+    `[PENDING CONFIRMATION]`. They are a call's result and travel inside its
+    `<tool_output>` fence, which untrusted text cannot open or close.
+- **A `null`, a number or a boolean in the NER's `mandatory_tags` or `pii` reads as absent.**
+  Both fields were iterated as found, so the JSON values that cannot be iterated ended the
+  turn with a raw `TypeError`: not a `StageParseError`, over a reply whose other fields were
+  usable. 14 of 603 replies in the 0.1.9 sweep, 16 in the 0.1.10 schema sweep (8 values ×
+  2 fields).
+  - `ner._iterable_or_absent` returns `[]` for those four kinds of value. The tags then read
+    `NER.UNKNOWN` and the PII is the deterministic detector's alone, as for an absent key.
+  - The mark: `null_field:<field>` for a `null`, `coerced:<field>` for the others.
+    `NER_REPAIR_FIELDS[NULL_FIELD]` gains `mandatory_tags` and `pii`, so the NER's alphabet
+    has two more marks.
+  - A string or an object is read as it was.
+
+### Tests
+
+- **`tests/unit/test_ner_free_text_is_defanged.py`**, in the mould of 0.1.8's file. The
+  renderings live in `tests/unit/_ner_free_text_renderings.py`, written against APIs the tree
+  before already had, and its digests were computed by running that module on `6c90f67`.
+  - **Clean text is the bytes of before**: 192 digests. 16 texts that only LOOK structural
+    (the 12 of 0.1.7, plus 4 near-markers) × 12 renderings of the real stages. The renderings
+    are the four fields one at a time, all four on native, the two `prompt_sha`, the judge,
+    and the task after a call and on a confirmed replay (ok, refused, native).
+  - **The hostile text is not**: its 12 digests on that tree are pinned. The 11 guarded
+    renderings differ now; the native task does not. Two controls rebuild the tree before
+    exactly: the stage modules' guard as the identity for the NER sinks, and the guard
+    without its marker step for the task.
+  - **No forged section, row or marker**: no `# Correction requested` line per field (1
+    each with the guard off); the judge's rows equal a clean phrase's (2 more with the guard
+    off); the markers in the prompt are the ones the stage wrote (one more of each per
+    prompt the task opens, with the step off).
+  - **The marker step itself**: anywhere, any case, any blanks; the near-markers whole, by
+    both guards; a marker inside tool data loses its brackets and the parser oracle holds.
+  - **The table, both ways**: `reserved_markers()` is `EGO_MARKERS`, and `EGO_MARKERS` is
+    every marker the text path opens a line with outside a fence, and only those.
+  - **The sinks, by AST**: every read of the four fields in the three stage modules is
+    classified (two functions), no direct interpolation of them is unguarded, and every
+    value the two builders interpolate without the guard has a written class. The last one
+    sees the indirect read through `plan`, which the 0.1.8 detector cannot follow; a control
+    shows both.
+  - On `6c90f67`: 26 failed, 230 passed.
+- **`tests/unit/test_ner_reads_a_null_list_as_absent.py`**: the 16 replies as the twin. Each
+  is decided exactly as the absent key is, with one mark; the tag fallback reads the same
+  way; through `analyze` the turn goes on; a `null` PII keeps the detector's finding. The
+  adverse half: a list, a string, an object and `[]` are read as before. A control with the
+  helper as the identity gives the 16 `TypeError`s back. On `6c90f67`: 30 failed, 4 passed.
+- **`tests/unit/test_contact_text_is_defanged_at_every_sink.py`**: its two AST detectors take
+  the fields to look for as a parameter. The default is unchanged.
+- **`tests/unit/test_schemas_are_derived.py`**: the NER sweep's pinned count of refused
+  replies that end the turn goes from 16 to 0.
+
+### Not in this release
+
+- **No model was run.** What a model does with a phrase that carries structure is not
+  measured; the change is structural. The cloud canaries
+  (`tests/integration/test_injection_by_tool_data.py`, `tests/integration/test_context_fence.py`)
+  were not run here.
+- **The native task** is the API's `role=user` message, as 0.1.8 decided: a forged marker
+  there is left as the contact wrote it.
+
 ## 0.1.12 — 2026-10-14 — no log line carries text somebody else wrote; the NOUMENO refuses with the typed error; a `null` beside a verdict is absent
 
 ### Fixed

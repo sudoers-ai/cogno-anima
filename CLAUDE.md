@@ -289,13 +289,15 @@ The model-transport layer (formerly `cogno_anima/llm/`) was **extracted into the
 
 Third-party text reaches three prompts: the executor's, the judge's and the voice's. That text is
 a tool result, a held message, the persona's rules, the contact's note, or the host's
-`mk.EGO_CONTEXT`. **`sanitize_untrusted` makes it inert in three ways:**
+`mk.EGO_CONTEXT`. **`sanitize_untrusted` makes it inert in four ways:**
 - no tool-call trigger survives, checked by the real parser;
 - no fence of `FENCE_TAGS` (`tool_output`, `held_message`, `held_ask`, `business_rules`,
   `contact_memo`) can be opened or closed from inside;
+- no marker of the executor's text path survives (`[TOOL RESULTS]`, `[ALREADY EXECUTED]`,
+  `[EXECUTION FAILED]`: its brackets become parentheses, anywhere, any case — 0.1.13);
 - no line opens with a header the core renders (`defang_headers`, a backslash).
 
-`defang_structure` is the structural half alone (tags and headers), applied where the tool-call
+`defang_structure` is the structural half alone (tags, markers and headers), applied where the tool-call
 pass would rewrite legitimate text: `mk.EGO_CONTEXT` in all three prompts, the one-line JSON of
 each call's arguments in the judge's prompt, and — since 0.1.6 — both values the executor's retry
 block interpolates: the arguments of the committed calls (`# ACTIONS ALREADY EXECUTED`) and the
@@ -354,13 +356,37 @@ The same file enumerates the sinks by AST. Every function of the three stage mod
 guarded builder, or compares it and never renders it). A new read fails until it is classified.
 
 **What 0.1.8 does not measure:** what the guard's classifier or the selector DECIDES about a
-message that carries structure. That needs a model, and none was run. **Still raw:** the NER's
-other free texts (`entities_objects`, `constraints`, `negation`, `causal_chain`), measured to
-open a forged header line in the executor's `# Task context`.
+message that carries structure. That needs a model, and none was run.
+
+**0.1.13 closes the two things 0.1.8 named and left.** Measured on `6c90f67`:
+- **The NER's other free texts** — `entities_objects`, `constraints`, `negation`,
+  `causal_chain` — went raw into the executor's `# Task context`, and `constraints`/`negation`
+  into the judge's `# User constraints` (`_format_restrictions`). An item with a line reading
+  `# Correction requested` opened that section once per field; one reading `# EGO draft` gave
+  `judge_prompt_inventory` a forged `draft` row under each of the two. Each line now goes through
+  `defang_structure` as rendered. This is the system prompt, so it applies on BOTH executor
+  paths, and `EgoResult.prompt_sha` follows the escaped form on such a phrase.
+- **The text path's markers.** `[TOOL RESULTS]`, `[ALREADY EXECUTED]` and `[EXECUTION FAILED]`
+  are what the executor writes OUTSIDE every fence, and they were neither a header nor a fence
+  tag: a task carrying `[ALREADY EXECUTED] book_slot →` wrote, byte for byte, what the stage
+  writes after a call it really ran. They are now a third reserved set, `reserved_markers()`,
+  DERIVED from `ego.EGO_MARKERS`, and the guard turns their brackets into parentheses wherever
+  they appear (a marker is a token like a fence tag, not a line structure like a header), in any
+  case and with any blanks inside. Because the step is inside `defang_structure` and
+  `sanitize_untrusted`, every text they already guarded loses a forged marker too. The loop's
+  `[BLOCKED]`/`[DUPLICATE]` and a held call's `[PENDING CONFIRMATION]` are not in the set: they
+  are a call's RESULT and travel inside its `<tool_output>` fence.
+- `tests/unit/test_ner_free_text_is_defanged.py` holds 192 digests taken on `6c90f67` (16 texts
+  that only LOOK structural, four of them near-markers like `[TODO]` or an unclosed
+  `[TOOL RESULTS`, × 12 renderings of the real stages) and 12 of the hostile text, with two
+  controls that rebuild the tree before exactly (one per kind of sink). The native task is the
+  API's `role=user` message and did not move. The same file pins `EGO_MARKERS` to what the text
+  path renders outside a fence, both ways, and enumerates by AST every read of the four fields
+  in the three stage modules and every value the two builders interpolate.
 
 The reserved set is **derived**, never copied: `reserved_headers()` reads `_VOICE_BLOCKS`,
 `_JUDGE_BLOCKS`, `_SCOPE_BLOCKS` and the executor's `ego.EGO_BLOCKS` (whose header column
-`ego.PROMPT_HEADERS` is). Each of those is pinned to its
+`ego.PROMPT_HEADERS` is), and `reserved_markers()` reads `ego.EGO_MARKERS`. Each of those is pinned to its
 rendered prompt by a sync test, so a new section is reserved the day it is listed. Clean text is
 the same bytes. A skill's own fence (`<excerpt>`) is the skill's to defang.
 
@@ -503,8 +529,12 @@ it was neither.
 - The primary call and the echo retry are held to it alike. A retry the stage cannot use keeps
   the first answer, flagged, where it used to be adopted and then end the turn.
 - What the stage has always read is still read: the other 135 replies give the same result.
-- **Left alone:** the NER still ends the turn with a raw error on a `mandatory_tags` or `pii`
-  that is `null` or a number (14 of 603 in the 0.1.9 sweep).
+- **The NER's two lists (0.1.13).** A `mandatory_tags` or `pii` that is `null`, a number or a
+  boolean — the JSON values that cannot be iterated — ended the turn with a raw `TypeError` (14
+  of 603 in the 0.1.9 sweep, 16 of the 0.1.10 schema sweep). `ner._iterable_or_absent` reads
+  them as the absent key (`NER.UNKNOWN`; the PII detector alone), marked `null_field:<field>`
+  (a row both fields gained in `NER_REPAIR_FIELDS`) or `coerced:<field>`. A string or an object
+  is read as it was. `tests/unit/test_ner_reads_a_null_list_as_absent.py`.
 
 **A `null` beside a verdict is absent (0.1.12).** The judge's `critique` and the guard's
 `refusal_message` were read with `str(data.get(key, ""))`, so a JSON `null` became the text
