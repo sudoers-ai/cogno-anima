@@ -88,8 +88,13 @@ def _timeout_kwarg(spec: str) -> dict:
     asks ``default_timeout()``, i.e. ``$COGNO_OLLAMA_TIMEOUT`` or 120. The nightly
     CI job sets that variable to 600 *because* a CPU runner needs it, so silently
     swapping in a constant here would either re-break that job or hide the knob.
-    ``None`` asks the backend for its own default rather than restating it."""
-    return {"timeout": None} if is_ollama(spec) else {}
+    The backend's own default is ``cogno_synapse.ollama.default_timeout()``, asked here and
+    passed explicitly: since cogno-synapse 0.1.4 the factory reads ``timeout=None`` as its own
+    600 s for an Ollama backend, so ``None`` no longer reaches the backend's default."""
+    if not is_ollama(spec):
+        return {}
+    from cogno_synapse.ollama import default_timeout
+    return {"timeout": default_timeout()}
 
 
 def json_backend(spec: str | None = None) -> LLMBackend:
