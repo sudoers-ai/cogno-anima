@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — docs: who does what in the ecosystem (docs only, 2026-11-06)
+
+No code, test or prompt changes. Each responsibility was read in the code that implements it.
+
+- **New `docs/ARCHITECTURE.md`:** the three layers (public libraries, the reference orchestrator
+  `cogno-soma`, the host), each concern and its owner with the file to read, what this library
+  does alone and what it needs, one interaction end to end, and the planned evolution milestones
+  (marked as plans, not current behaviour).
+- **False sentences corrected** (the doc said X, the code does Y):
+  - `README.md` and `docs/HOST_INTEGRATION.md` gave the EGO ⇄ SUPEREGO correction loop and the
+    cross-turn state threading to the host. `cogno-soma` runs both (`Pipeline.run_turn`,
+    `SessionRunner`); the host sets the budget (`TurnConfig.max_corrections`), persists the
+    state and decides which conversation a message belongs to. `CLAUDE.md` said the same in two
+    places and now points to the map.
+  - `README.md` named `cognobench/pipeline.py: ReferencePipeline` as the reference orchestrator;
+    it is the benchmark's own glue and is not in the wheel. The shipped one is `cogno-soma`.
+  - `README.md` said the PyPI packages were «coming»; every package of the demo chain is on PyPI.
+
 ## 0.1.14 — 2026-10-21 — a person's name is a value too in the judge; the nightly starts Ollama once
 
 ### Fixed
