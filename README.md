@@ -50,11 +50,22 @@ built on a few hard contracts:
 - **Stateless across turns** — all cross-turn state rides in `ctx.metadata` (e.g. `id_state`), a serializable dict the host persists — safe for multi-worker setups.
 - **Errors propagate** — backends raise on transport/auth failure instead of degrading silently; a `FallbackBackend` is how you opt into failover.
 
-What stays in the **host**: persona/MCP binding, RBAC, model ladders, the
-retry/correction *loop*, session splitting, the real human handoff, billing,
-semantic cache, and persistence. See **[docs/HOST_INTEGRATION.md](docs/HOST_INTEGRATION.md)**
-for how to wire the core into a host, `CLAUDE.md` for the full boundary map, and
-`cognobench/pipeline.py` (`ReferencePipeline`) for a reference orchestrator.
+What the core does **not** do, and who does it:
+
+- **Running a whole turn** — ordering the stages, the PII/scope/handoff gates and the EGO ⇄
+  SUPEREGO correction *loop* — is [`cogno-soma`](https://github.com/sudoers-ai/cogno-soma)'s job
+  (`Pipeline.run_turn`). The host only sets the loop's budget (`TurnConfig.max_corrections`). You
+  can also write that glue yourself: `docs/HOST_INTEGRATION.md` explains every seam.
+- **Carrying state between turns** — `cogno-soma`'s `SessionRunner` threads it and exports it as a
+  plain dict; the **host** persists it and decides which conversation a message belongs to.
+- **Everything that is a product decision stays in the host**: persona selection and the tenant's
+  own rules, persona↔tool binding, RBAC, model ladders, the real human handoff, billing, semantic
+  cache, and persistence.
+
+**[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** has the full map — which repository owns each
+concern, one interaction end to end, and the planned evolution. See
+**[docs/HOST_INTEGRATION.md](docs/HOST_INTEGRATION.md)** for how to wire the core yourself and
+`CLAUDE.md` for the per-stage contract.
 
 ## Try it — a complete agent in 15 minutes
 
@@ -77,7 +88,8 @@ pip install -e .
 python examples/secretary_demo.py --trace     # --trace shows each cognitive stage live
 ```
 
-(PyPI packages are coming; the git chain above is the interim install.)
+(Every package in this chain is on PyPI as well — `pip install cogno-anima cogno-soma` — the git
+chain installs the latest sources, which the demo follows.)
 
 ## Install
 
@@ -128,8 +140,9 @@ asyncio.run(main())
 
 To run the **full** pipeline (EGO tool dispatch + SUPEREGO voicing + the
 correction loop), you provide a `ToolDispatcher`, persona prompts, and the
-orchestration glue. A complete, runnable reference lives in
-`cognobench/pipeline.py: ReferencePipeline`.
+orchestration glue. The glue ships as [`cogno-soma`](https://github.com/sudoers-ai/cogno-soma)
+(`Pipeline`, `SessionRunner`); `examples/host_min.py` wires the stages by hand instead, and
+`cognobench/pipeline.py: ReferencePipeline` is the benchmark's own glue (not in the wheel).
 
 ## LLM & embedder backends
 
@@ -174,6 +187,9 @@ small models break: [BENCHMARKS.md](BENCHMARKS.md).**
 
 Every `.md` of this repository, by what it is for.
 
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — who does what in the ecosystem: the three
+  layers (public libraries, reference orchestrator, host), each concern and its owner, one
+  interaction end to end, and the planned evolution milestones.
 - [`docs/HOST_INTEGRATION.md`](docs/HOST_INTEGRATION.md) — how to wire the core into a host: the
   stages in order, what the host injects, the metakeys, the correction loop, the tool adapters.
 - [`docs/ACT_CONFIRM_READONLY.md`](docs/ACT_CONFIRM_READONLY.md) — the three confirmation gates
@@ -222,11 +238,13 @@ infra-agnostic; a **host** assembles them into a running agent:
 
 ![The Cogno ecosystem](docs/assets/cogno-ecosystem.svg)
 
-The open-source libraries are the organs; the **host is the body** that joins
-them. Our reference host — `cogno-host`, with its `cogno-ui` dashboard — is the
+The open-source libraries are the organs; [`cogno-soma`](https://github.com/sudoers-ai/cogno-soma)
+is the reference orchestrator that runs a turn over them; the **host is the body** that joins
+them for a business. Our reference host — `cogno-host`, with its `cogno-ui` dashboard — is the
 private product layer, but it holds no special powers: everything it does rides
 on the public seams documented in each library's `docs/HOST_INTEGRATION.md`, so
-you can assemble a body of your own.
+you can assemble a body of your own. Which repository owns each concern, and where the split is
+heading, is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Testing
 

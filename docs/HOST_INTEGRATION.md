@@ -1,14 +1,18 @@
 # Host Integration Guide
 
 How to wire `cogno-anima` into a real application (the "host" — e.g. the Cogno
-SaaS runtime). The library ships the **cognition**; the host owns
-**orchestration and infrastructure**. This guide is the human-facing companion to
-`cognobench/pipeline.py: ReferencePipeline`, which is the *executable* reference
-for everything below.
+SaaS runtime). The library ships the **cognition**. The **orchestration** of a turn
+ships separately as [`cogno-soma`](https://github.com/sudoers-ai/cogno-soma)
+(`Pipeline.run_turn`, `SessionRunner`), and the host owns the **infrastructure** and the
+product decisions. This guide describes the seams as if you wired the stages yourself — which
+is what `cogno-soma` does for you, and what `examples/host_min.py` and the benchmark's
+`cognobench/pipeline.py: ReferencePipeline` (not in the wheel) do by hand. The map of the whole
+ecosystem is [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
-> TL;DR — the core is a set of stateless stages over a `PipelineContext`. The
-> host decides the control flow, persists cross-turn state, provides backends +
-> tools + prompts, and turns the core's **signals** into actions.
+> TL;DR — the core is a set of stateless stages over a `PipelineContext`. Something decides the
+> control flow and runs the correction loop (`cogno-soma`, or your own glue); the host persists
+> cross-turn state, provides backends + tools + prompts, and turns the core's **signals** into
+> actions.
 
 ---
 
@@ -18,13 +22,15 @@ for everything below.
 | --- | --- |
 | Stage logic (NOUMENO/NER/ID/EGO/SUPEREGO/Drift) | **core** |
 | Vocabularies, PII detection, drift math, routing heuristics | **core** |
-| Orchestration order, the EGO⇄SUPEREGO correction *loop* | **host** |
-| Tool execution (DB/MCP/API) via `ToolDispatcher` | **host** |
-| Persistence of cross-turn state, sessions/turns/memories | **host** |
+| Orchestration order, the gates, the EGO⇄SUPEREGO correction *loop* | **orchestrator** — `cogno-soma` (`Pipeline.run_turn`), or your own glue |
+| Carrying cross-turn state from turn to turn | **orchestrator** — `cogno-soma` (`SessionRunner`), or your own glue |
+| Tool execution (DB/MCP/API) via `ToolDispatcher` | **host** (sources: `cogno-cortex`, `cogno-mcp`, `cogno-praxis`) |
+| Persistence of cross-turn state, sessions/turns/memories | **host** (stores: `cogno-engram`) |
+| Which conversation a message belongs to (the thread key) | **host** |
 | Transactions, rollback, outbox, atomicity | **host** |
-| Persona prompts (scope/ego/limits/voice), persona↔MCP binding | **host** |
-| Model selection / ladders / key rotation | **host** |
-| Retry budget, human handoff, billing, semantic cache | **host** |
+| Persona prompts (scope/ego/limits/voice), persona↔tool binding | **host** (declarations: `cogno-persona`, ready-made personas: `cogno-praxis`) |
+| Model selection / ladders / key rotation | **host** (backends: `cogno-synapse`) |
+| Retry budget (`max_corrections`), human handoff, billing, semantic cache | **host** |
 
 The core never imports a DB, a queue, or an SDK eagerly. It emits **signals**;
 the host acts on them.
@@ -122,9 +128,10 @@ Key points:
 
 - **EGO = executor, SUPEREGO = locutor.** The EGO gathers data and never writes
   the user reply; `superego.voice(...)` writes `ctx.superego_result.response`.
-- **The correction loop is the host's.** The core gives you the judge's
-  `critique`; you decide how many retries (`max_corrections`) and feed the
-  critique back via `ctx.metadata["ego_correction"]`.
+- **The correction loop is the orchestrator's.** The core gives you the judge's
+  `critique`; the loop feeds it back via `ctx.metadata["ego_correction"]` and stops at the
+  budget (`max_corrections`). `cogno-soma` runs this loop and takes the budget from the host in
+  `TurnConfig`; the snippet above shows what it does, for a host that wires the stages itself.
 - Both `ACTION_REQUEST` and `INFORMATION_REQUEST` route to EGO (the tool
   gateway). Pure social/creative turns skip EGO and go straight to voice.
 - **The executor's prompt leaves a record** (since 0.1.5). Every `ego.process` fills
