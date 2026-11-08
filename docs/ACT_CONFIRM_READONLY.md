@@ -5,7 +5,7 @@ validated end-to-end in CognoBench as HARD invariants (EGO 100%, see
 `cognobench/EGO_BENCH_RESULTS.md`), C raised by the SKILL itself. This note records the
 rationale + the decisions taken on the original open points. It was written when there were two
 and the third arrived later; §"Fonte A vs Fonte B vs Fonte C" below is the current list, and
-`CLAUDE.md` is the shorter statement of the same three.
+`docs/stages/EGO.md` is the shorter statement of the same three.
 
 ## Problem
 
