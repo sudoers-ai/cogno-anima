@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased — docs: `CLAUDE.md` becomes a short guide; each contract has its own file (docs only, 2026-11-08)
+
+No code, test or prompt changes. The text moved; the only sentences rewritten are the three
+pointers that sent a reader to `CLAUDE.md` for the per-stage contract (`README.md`,
+`docs/HOST_INTEGRATION.md`, `docs/ACT_CONFIRM_READONLY.md`), which now point at `docs/stages/`.
+
+- **`CLAUDE.md` went from 632 lines (~154,000 characters) to 149 (~11,500).** It is read in full
+  by a coding agent on every request, so its size was paid on every step of every session, and
+  the rules that matter were diluted in the history of each one. It now holds the commands, one
+  paragraph per stage, the rules that hold for every change, and a table of where each contract
+  lives.
+- **The rest moved verbatim** to `docs/stages/` (one file per stage; the SUPEREGO has four: the
+  stage, the scope guard, the judge, the voice) and to `docs/TOOLS.md`, `docs/PROMPT_GUARD.md`,
+  `docs/PROMPTS.md`, `docs/TYPES.md`, `docs/REPAIRS.md`, `docs/SCHEMAS.md`,
+  `docs/LOGGING_POLICY.md`, `docs/TRANSPORT.md` and `docs/DEVELOPMENT.md`. Each file opens with a
+  note saying so. A script checked that every non-blank line of the old file (550) is a whole
+  line of one of the new ones; only the common leading indentation of a moved block was removed,
+  so that Markdown does not render it as code.
+- **The rule for later changes:** a pull request that changes a stage or one of these areas
+  updates that area's file, as it used to update `CLAUDE.md`. The `README.md` documentation list
+  names every new file.
+
 ## Unreleased — docs: who does what in the ecosystem (docs only, 2026-11-06)
 
 No code, test or prompt changes. Each responsibility was read in the code that implements it.

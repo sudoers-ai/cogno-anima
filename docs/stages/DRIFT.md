@@ -1,0 +1,10 @@
+# Drift
+
+Moved verbatim from `CLAUDE.md` on 2026-11-08: the contract did not change. `CLAUDE.md` keeps a short summary and points here. Update this file in the same pull request as any change to the drift calculator, as `CLAUDE.md` used to be updated.
+
+6. **Drift** (`cogno_anima/stages/drift.py`, class `DriftCalculator`) — pure, no I/O:
+   - `compute()` seeds `DriftMetrics` from `noumeno.drift_score` (epistemological drift) plus word-count/compression stats. A `None` there means the NOUMENO could not MEASURE it (embedder unreachable) and survives as `None` — coercing it to 0.0 would be the silent optimism the whole `Optional` convention exists to avoid.
+   - `compute_ontological()`, `compute_situational()`, `compute_execution()`, `compute_synthesis()` fill in drift for the other pipeline stages (NER/ID/EGO/SUPEREGO) — callers invoke these incrementally as those stages complete (the ID stage calls `compute_situational` itself)
+   - `compute_cumulative()` applies weights (`DEFAULT_CUMULATIVE_WEIGHTS`, injectable via `DriftCalculator(weights=..., thresholds=...)`) across the 5 stages and sets `drift_action` (`none|warn|ask_user|self_correct`) based on `DriftThresholds` (default `0.50/0.70/0.85`). Weights are **relative** — cumulative is renormalized over the stages actually computed, so the "sum to 1.0" invariant is relaxed (5 keys, non-negative, positive sum); a host can plug a risk profile per-instance (multi-tenant safe).
+   - `downgrade_for_intentional_shift(drift, goal_status)` softens `ask_user`→`warn` on a deliberate topic change (NEW/ABANDONED); `compute_cumulative` stays goal-agnostic and the ID invokes this explicitly.
+   - `DriftMetrics.to_tags()` turns scores into diagnostic tags (`NOUMENO.DRIFT`, `NOUMENO.PASS_THROUGH`, `DRIFT.ASK_USER`, `NOUMENO.DRIFT_UNKNOWN`, etc.). `drift_action` is a vote over the components that were MEASURED, so when everything is `None` it says `none` over an empty vote — a caller that must tell "clean" from "unmeasured" reads the components or the tags, never the action alone.

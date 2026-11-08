@@ -65,7 +65,7 @@ What the core does **not** do, and who does it:
 **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** has the full map — which repository owns each
 concern, one interaction end to end, and the planned evolution. See
 **[docs/HOST_INTEGRATION.md](docs/HOST_INTEGRATION.md)** for how to wire the core yourself and
-`CLAUDE.md` for the per-stage contract.
+[`docs/stages/`](docs/stages/) for the per-stage contract (`CLAUDE.md` is the short guide).
 
 ## Try it — a complete agent in 15 minutes
 
@@ -198,8 +198,24 @@ Every `.md` of this repository, by what it is for.
 - [`docs/NETWORK_PERSONA_CHANNEL.md`](docs/NETWORK_PERSONA_CHANNEL.md) — the contract for the
   three things this library does NOT own: the persona, the channel and the network between
   personas. Each section ends with who decides.
-- [`CLAUDE.md`](CLAUDE.md) — the full map of the pipeline, stage by stage, with the measurement
-  behind each rule. Long, and the place where a boundary is argued.
+- [`CLAUDE.md`](CLAUDE.md) — the short guide for whoever changes the code (people and coding
+  agents): the commands, one paragraph per stage, the rules that hold for every change, and
+  where each contract lives.
+- [`docs/stages/`](docs/stages/) — the full contract of each stage, with the measurement behind
+  each rule: [`NOUMENO`](docs/stages/NOUMENO.md), [`NER`](docs/stages/NER.md),
+  [`ID`](docs/stages/ID.md), [`EGO`](docs/stages/EGO.md), the SUPEREGO
+  ([the stage](docs/stages/SUPEREGO.md), [the scope guard](docs/stages/SUPEREGO_SCOPE.md),
+  [the judge](docs/stages/SUPEREGO_JUDGE.md), [the voice](docs/stages/SUPEREGO_VOICE.md)) and
+  [`Drift`](docs/stages/DRIFT.md).
+- The cross-cutting contracts: [`docs/TOOLS.md`](docs/TOOLS.md) (the tool dispatch adapters),
+  [`docs/PROMPT_GUARD.md`](docs/PROMPT_GUARD.md) (untrusted text in prompts),
+  [`docs/PROMPTS.md`](docs/PROMPTS.md) (prompt order and the provider's cache),
+  [`docs/TYPES.md`](docs/TYPES.md) (the turn predicates and the models),
+  [`docs/REPAIRS.md`](docs/REPAIRS.md) and [`docs/SCHEMAS.md`](docs/SCHEMAS.md) (a model's JSON
+  reply), [`docs/LOGGING_POLICY.md`](docs/LOGGING_POLICY.md) (what a log line may carry),
+  [`docs/TRANSPORT.md`](docs/TRANSPORT.md) (the model transport, `cogno-synapse`) and
+  [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) (the integration suites, the bench defaults, the
+  version).
 - [`LOGGING.md`](LOGGING.md) — every log event the library emits, the class of every value a line carries, and what is never logged.
 - [`BENCHMARKS.md`](BENCHMARKS.md) — the consolidated scoreboard, and how to read a number from
   this bench. Per-dimension result notes, each one run and dated, live beside the bench:

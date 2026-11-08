@@ -480,4 +480,4 @@ Together, Fireworks) work through `OpenAIBackend`'s `base_url` automatically.
   correction loop, exhaustion→handoff, multi-turn state).
 - `tests/integration/test_e2e_pipeline.py` — the full pipeline against a real
   model.
-- `CLAUDE.md` — the exhaustive per-stage contract and core↔host boundary map.
+- `docs/stages/` — the exhaustive per-stage contract (`CLAUDE.md` is the short guide; `docs/ARCHITECTURE.md` the boundary map).
