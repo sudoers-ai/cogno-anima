@@ -24,8 +24,8 @@
     are rendered in our own format (`HH:MM`, `DD/MM`); no byte of the argument or the message.
   - **No computed mismatch → the prompt of before, byte for byte.** No header, so `_JUDGE_BLOCKS`,
     the inventory and the reserved headers do not move. `tests/unit/test_judge_write_values.py`
-    pins 20 digests of what the judge is sent, taken on the base (`f9f10d7`): the same hour, the
-    same hour in ISO, two hours in the request, no hour, the hour on a READ, a write with no hour,
+    pins 22 digests of what the judge is sent, taken on the base (`f9f10d7`): the same hour, the
+    same hour in ISO, two hours in the request (whichever is used), no hour, the hour on a READ, a write with no hour,
     a message text with the same hour, the same date, a conversational turn, a context — each with
     and without limits. The four twins were red on the base by assertion.
   - A PERSON is not compared: the contact's name for someone and the record's name legitimately

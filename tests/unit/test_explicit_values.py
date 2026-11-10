@@ -108,6 +108,7 @@ def test_the_measured_mismatch():
     ("pode ser às 15", {"time": "15:00"}),                    # the same hour
     ("às 3", {"time": "15:00"}),                              # an ambiguous hour, one reading
     ("muda das 14 para as 15", {"time": "14:00"}),            # two hours: the model's
+    ("muda das 14 para as 15", {"time": "15:00"}),            # ...whichever of them is used
     ("marca amanhã", {"time": "14:00"}),                      # no hour stated
     ("às 15", {"old": "14:00", "new": "15:00"}),              # the stated one is among them
     ("às 15", {"amount": "50"}),                              # a write with no hour
