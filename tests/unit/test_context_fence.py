@@ -48,6 +48,7 @@ import pytest
 from cogno_anima import metakeys as mk
 from cogno_anima.stages.ego import EgoStage
 from cogno_anima.stages.superego import SuperegoStage
+from tests.unit._judge_0115 import as_0114
 from cogno_anima.tools.base import ToolResult
 from tests.unit import test_judge_blocks_sync as judge_sync
 from tests.unit import test_voice_blocks_sync as voice_sync
@@ -99,8 +100,10 @@ def _with(ctx, notes, data=_UNSET):
 
 
 def _judge(ctx) -> str:
-    return (SuperegoStage._judge_system(ctx) + "\n"
-            + SuperegoStage()._build_judge_prompt(ctx, _LIMITS))
+    """0.1.15's deliberate changes undone (`_judge_0115.as_0114`): this file's proofs are about
+    the context fence, taken on a tree before them."""
+    return as_0114(SuperegoStage._judge_system(ctx) + "\n"
+                   + SuperegoStage()._build_judge_prompt(ctx, _LIMITS))
 
 
 def _voice(ctx) -> str:

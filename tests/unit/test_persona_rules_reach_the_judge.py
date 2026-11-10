@@ -33,6 +33,7 @@ from cogno_anima.stages.superego import (_CONVERSATIONAL_CRITERIA, _EXECUTION_CR
                                          _WITH_RULES, SuperegoStage)
 from cogno_anima.types import EgoResult, EgoStep, ToolExecution
 from tests.conftest import StubBackend
+from tests.unit._judge_0115 import as_0114
 from tests.unit.test_superego import _ctx, _m
 
 RULES = ("Aluguel da sala: R$ 10,00 por dia.\n"
@@ -69,7 +70,8 @@ def _asked(ctx, limits=LIMITS) -> "tuple[str, str]":
 # ── 1. whole, fenced, in the system message ─────────────────────────────────────────────────
 def test_the_rules_are_in_the_system_message_whole_and_fenced():
     system, prompt = _asked(_turn(RULES))
-    assert system.startswith(_JUDGE_SYSTEM)
+    # The stance first — since 0.1.15 the read-only branch's (`_judge_0115.as_0114` undoes it).
+    assert as_0114(system).startswith(_JUDGE_SYSTEM)
     assert _RULES_HEADER in system
     body = system.split("<business_rules>\n", 1)[1].split("\n</business_rules>", 1)[0]
     assert body == RULES                                  # WHOLE: values, names, policies
@@ -99,6 +101,19 @@ def test_two_turns_of_the_same_persona_and_role_share_the_whole_system_message()
     for turn_bytes in ("quanto é o aluguel?", "e aos sábados?", "2026-10-05", "Ana", "Bia"):
         assert turn_bytes not in sa
     assert pa != pb
+
+
+def test_with_the_stance_switch_on_the_two_branches_differ_by_the_stance_alone():
+    """`mk.JUDGE_STANCE_FOLLOWS_BRANCH` (0.1.15, off by default): a read-only turn and an
+    execution turn then differ by the stance sentence and by nothing else — two stable
+    prefixes per (persona, role)."""
+    a = _turn(RULES, user="quanto é o aluguel?")
+    b = _turn(RULES, user="e aos sábados?", readonly=False)
+    for t in (a, b):
+        t.metadata[mk.JUDGE_STANCE_FOLLOWS_BRANCH] = True
+    sa, _ = _asked(a)
+    sb, _ = _asked(b)
+    assert sa != sb and as_0114(sa) == sb
 
 
 # ── 3. the criteria name the rules ──────────────────────────────────────────────────────────
@@ -136,7 +151,7 @@ def test_every_substitution_row_actually_matches_what_it_is_applied_to():
 def test_no_rules_is_the_judge_request_byte_for_byte(empty):
     base_s, base_p = _asked(_turn())
     s, p = _asked(_turn(empty))
-    assert s == _JUDGE_SYSTEM
+    assert as_0114(s) == _JUDGE_SYSTEM          # the read-only stance since 0.1.15, undone
     assert _sha(s + "\x00" + p) == _sha(base_s + "\x00" + base_p)
 
 
@@ -172,7 +187,7 @@ async def test_evaluate_without_rules_sends_the_old_system_and_the_old_rows():
     backend = _Recording()
     res = await SuperegoStage().evaluate(_turn(), backend, limits_prompt=LIMITS)
     system, prompt = backend.seen[-1]
-    assert system == _JUDGE_SYSTEM
+    assert as_0114(system) == _JUDGE_SYSTEM     # the read-only stance since 0.1.15, undone
     assert [r["block"] for r in res.prompt_blocks] == [
         r["block"] for r in SuperegoStage.judge_prompt_inventory(prompt)]
     assert "persona_rules" not in [r["block"] for r in res.prompt_blocks]

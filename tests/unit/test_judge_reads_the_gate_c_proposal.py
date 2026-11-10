@@ -29,6 +29,8 @@ import hashlib
 
 from cogno_anima import is_skill_proposal
 from cogno_anima import metakeys as mk
+from cogno_anima.stages.superego import HELD_STATUS
+from tests.unit._judge_0115 import as_0114
 from cogno_anima.stages.superego import PROPOSED_STATUS, SuperegoStage
 from cogno_anima.types import (HELD_BY_NAME_PREFIX, EgoResult, EgoStep, ToolExecution,
                                committed_this_turn, write_attempted_this_turn)
@@ -121,10 +123,13 @@ def test_control_a_real_failure_still_renders_ERROR_and_widens_nothing():
     assert "marked PROPOSED above" not in p
 
 
-def test_control_a_call_held_by_NAME_renders_as_before():
+def test_control_a_call_held_by_NAME_is_HELD_and_never_PROPOSED():
+    """A gate-B hold is not a proposal: it never ran, so it has no output to read, and nothing
+    widens for it. Since 0.1.15 it renders `HELD_STATUS` instead of `ERROR` — the same lesson
+    as the pair above, for the gate that holds by name (`test_judge_stance_follows_the_branch`)."""
     held = _held_by_name()
     p = _prompt(_turn(held, held=[held], declared={"notify_user": "message"}))
-    assert "→ ERROR:" in p and PROPOSED_STATUS not in p
+    assert f"→ {HELD_STATUS}:" in p and "→ ERROR:" not in p and PROPOSED_STATUS not in p
     assert "marked PROPOSED above" not in p
 
 
@@ -161,13 +166,14 @@ def test_a_proposal_tells_the_judge_the_call_is_held_and_the_asking_is_the_hosts
     assert f"→ {PROPOSED_STATUS}:" in p and "→ ERROR" not in p
     assert "ADDED BY THE HOST, AFTER this judgement" in p and draft in p
     import cogno_anima.stages.superego as sg
-    real = sg.is_skill_proposal
+    real, real_held = sg.is_skill_proposal, sg._is_held
     try:
         sg.is_skill_proposal = lambda call: False          # the main's rendering of the call
+        sg._is_held = lambda call: False                   # (and 0.1.14's: no HELD status)
         before = _prompt(_turn(_proposal(), held=[_proposal()],
                                declared={"send_email": "rendered"}, draft=draft))
     finally:
-        sg.is_skill_proposal = real
+        sg.is_skill_proposal, sg._is_held = real, real_held
     assert "→ ERROR:" in before and PROPOSED_STATUS not in before
     assert "ADDED BY THE HOST, AFTER this judgement" in before and draft in before
 
@@ -177,7 +183,9 @@ def test_a_proposal_tells_the_judge_the_call_is_held_and_the_asking_is_the_hosts
 def _digest(ctx) -> str:
     # No turn here carries a `# Context` section; the two clauses that named one are put back
     # before hashing, so the digests stay the base tree's (`_judge_context_clauses`).
-    return hashlib.sha256(with_the_context_clauses(_prompt(ctx)).encode("utf-8")).hexdigest()
+    # …and 0.1.15's deliberate changes undone (`_judge_0115.as_0114`: the gate-B hold below
+    # rendered `ERROR`, and the held rule's (d) and last sentence).
+    return hashlib.sha256(with_the_context_clauses(as_0114(_prompt(ctx))).encode("utf-8")).hexdigest()
 
 
 def _fixtures():

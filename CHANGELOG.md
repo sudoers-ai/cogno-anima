@@ -1,5 +1,110 @@
 # Changelog
 
+## 0.1.15 — 2026-11-10 — the judge is shown a write made with another value than the one stated and reads a hold as a hold, its stance can follow the branch behind a switch; the voice lists no time nobody read
+
+### Fixed
+
+- **A write made with another hour or date than the ONE the user stated is put in front of the
+  judge as such.** Measured on a scheduling demo: the contact answered «às 15» after the hour had
+  moved twice, the executor called `book_appointment(time="14:00")` — the hour of an earlier turn
+  — and the judge APPROVED. Criterion #1 asks "did it do exactly what was asked (X, not Y)", and
+  nothing in the prompt put the two values side by side; the draft reported 14:00, so it was
+  truthful about the wrong action.
+  - `cogno_anima.explicit_values` (new, pure): the explicit clock times and calendar dates of a
+    text, narrow on purpose (a bare number is a price, a quantity or a duration: «dura 1h»,
+    «1h antes», «as 3 opções» are not times; an ISO zone is not a time), and
+    `write_value_mismatches(request, calls)`: the contact's message names exactly one time (or
+    one date), a WRITE of the turn (`side_effect` or `tool_mutating`, failed ones included)
+    carries that kind of value in its arguments, and none of them is it.
+  - The CODE computes the comparison and the MODEL decides: `_write_value_paragraph`, after the
+    criteria (beside `_PERSON_NAME_IS_A_VALUE`), names the write, the value stated and the value
+    used, and says such a write (another time or date; a person is not compared) is the wrong action — unless the request's own words ask for the
+    written value (they refuse the stated one, move it, or derive the written one: «1h antes da
+    consulta das 15»). Deterministic rejection was refused for exactly those two shapes. Values
+    are rendered in our own format (`HH:MM`, `DD/MM`); no byte of the argument or the message.
+  - **No computed mismatch → the prompt of before, byte for byte.** No header, so `_JUDGE_BLOCKS`,
+    the inventory and the reserved headers do not move. `tests/unit/test_judge_write_values.py`
+    pins 22 digests of what the judge is sent, taken on the base (`f9f10d7`): the same hour, the
+    same hour in ISO, two hours in the request (whichever is used), no hour, the hour on a READ, a write with no hour,
+    a message text with the same hour, the same date, a conversational turn, a context — each with
+    and without limits. The four twins were red on the base by assertion.
+  - A PERSON is not compared: the contact's name for someone and the record's name legitimately
+    differ (`_PERSON_NAME_IS_A_VALUE`). A write made on the turn of a bare «sim» (a confirmed
+    replay) carries no stated value in that turn's message, so the paragraph does not render
+    there; the deterministic net for the same defect belongs to the host, at dispatch.
+- **The voice lists no clock time nobody read.** Measured on the same demo: `check_availability`
+  FAILED, the judge exhausted, and the reply offered times no call had returned. The executor
+  data already said "relay THIS, do NOT invent alternatives", and the critique quoted in the
+  verdict section NAMED the invented times.
+  - A deterministic net in `voice()` (`_unread_times`): on a turn where tools ran and NO
+    successful call returned a time, every time the reply states must be one the evidence states
+    — the contact's message and its rewrite, the arguments of every call, a failed read's error,
+    the executor data, the host's context, the persona's prompt and rules, the declared values.
+    Never the critique, never the rejected draft.
+  - A time that is not: ONE re-voice, told which times and why (`_unread_times_correction`,
+    appended after `# Task`, no header). If the second reply still states one, the code takes out
+    the statements carrying it (a list line whole, a sentence in prose, a list header whose items
+    all went); when nothing would be left, the times are masked (`[…]`). Unlike the divergence
+    net, keeping the first reply is not an option: it is the defect.
+  - Marks, closed: `voice:unread_times`, `voice:revoiced_unread_times`,
+    `voice:unread_times_removed`, `voice:unread_times_masked`. Two WARNING events
+    (`voice_unread_times`, `voice_unread_times_floor`), counts and a closed field only.
+  - A turn with no tool call is left alone (a conversing persona may propose a time; another
+    class), and so is a turn where a successful call returned times (a reply working within what
+    was read is the judge's to weigh). Times only: dates have the host's net.
+  - **The first voice prompt is the base's, byte for byte** (9 digests, `f9f10d7`).
+    `tests/unit/test_voice_lists_no_time_nobody_read.py`: the five twins were red on the base by
+    assertion; the controls (a read that returned times, a time the contact named, a time the
+    executor asked about, a duration, the persona's own hours, the host's clock, no tool at all)
+    are one voice call and the reply untouched.
+- **The judge's stance can follow the branch — behind a host switch, OFF by default.** Its system
+  message is the same on every branch — "Default to NOT approving when you cannot verify the
+  criteria" — while the READ-ONLY and CONVERSATIONAL criteria, in the user half, open with
+  "APPROVE BY DEFAULT … This overrides the general 'do not approve what you cannot verify'
+  stance". The stance they override sits in the system message, which an instruction-tuned model
+  ranks above the user half. Measured downstream over 30 days: of the 31 turns that ended with the
+  judge exhausted, 14 were read-only with every call a successful read and 4 were conversational.
+  - With `mk.JUDGE_STANCE_FOLLOWS_BRANCH` set to `True` (strictly; anything else is off),
+    `_judge_system` gives the read-only and conversational branches `_JUDGE_SYSTEM_ANSWER`: it
+    judges a REPLY, approves unless a listed violation is present, and names an unsupported
+    statement as one of them. The EXECUTION branch keeps `_JUDGE_SYSTEM` byte for byte either
+    way, and so does a carrier the branch cannot be read off (`_judge_system` never raises).
+  - **Why off:** on the production judge model the controlled pairs did not discriminate (the
+    base already approved them), and a replay over 15 real exhausted read-only turns (n=3; the
+    persona limits, rules and history are not in what the trace keeps) approved 4/45 on the base
+    and 1/45 with the stance — neither proof nor disproof. A host runs it in shadow first.
+- **A held call renders `HELD`, not `ERROR`.** Every call held for the user's confirmation (the
+  hold's own code, `needs_confirmation`: gate B, or a skill's ask with no output) rendered `→
+  ERROR` under `# What the EGO executed`, and the judge read the hold as a failed send. Measured
+  downstream: «pode enviar» with no live proposal, the executor re-issued the message, the gate
+  held it, and the judge rejected because "the message was not sent". The gate-C proposal had
+  already been measured on the same word (5/5 rejected with `ERROR`, 5/5 approved with
+  `PROPOSED_STATUS`). A call that RAN and failed still renders `ERROR`.
+- **The held-message rule.** Criterion (d) was an exclusive list ("anything the request and the
+  successful tool results above do not support"), narrower than the GROUNDING criterion of the
+  same prompt. Measured downstream: a held message the owner called perfect was rejected twice,
+  for values dictated earlier in the conversation and for a total the message showed its parts
+  for. (d) now points at the GROUNDING criterion's own sources (`_HELD_NOT_GROUNDED`), and
+  `_HELD_IS_THE_OUTCOME` says a held call is the turn's correct outcome and an affirmative does
+  not make it wrong. **(d) says nothing about totals, on a measurement:** a sentence saying a
+  total of listed parts needs no written operation made the correct summary pass 5/5 (base 4/5)
+  and the WRONG total pass 4/5 (base 3/5) — the model does not check sums. It was reverted; a
+  total that is not the sum of a held message's listed parts is a deterministic net's to refuse,
+  a follow-up.
+- **What did not move:** the execution branch's whole request (16 digests on `f9f10d7`), the user
+  half of the read-only and conversational branches (6) and, with the switch off or garbled, their
+  whole request (3 digests × 6 values of the switch), a failed call's `ERROR` line.
+  `tests/unit/test_judge_stance_follows_the_branch.py`; its 7 twins were red on the base by
+  assertion. The older digest proofs keep their digests and hash `tests/unit/_judge_0115.py`'s
+  `as_0114` of the rendering, which undoes exactly these three changes and is the identity on the
+  execution branch with no held call.
+- The model half of all of it is in `tests/integration/test_superego.py` (cloud-only, unmeasured
+  on qwen3:8b): the wrong hour rejected / the right hour approved / a derived and a moved hour
+  still approved; a read that asks before acting approved; a conversational reply the limits
+  support approved / one that invents rejected; a held message grounded in the conversation
+  approved / one with a value in no source rejected / one on a bare «pode enviar» approved; the
+  voice after the failed read states no time.
+
 ## Unreleased — docs: `CLAUDE.md` becomes a short guide; each contract has its own file (docs only, 2026-11-08)
 
 No code, test or prompt changes. The text moved; the only sentences rewritten are the three

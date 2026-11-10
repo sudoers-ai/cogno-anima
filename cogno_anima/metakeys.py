@@ -157,6 +157,12 @@ CIRCLING_STREAK = "circling_streak"
 # ── SUPEREGO (locutor) — soma/host write, voice reads ────────────────────────
 VOICE_CORRECTION = "voice_correction"          # judge's final rejection: {reason}
 JUDGE_CONVERSATIONAL = "judge_conversational"  # host: this turn has NO tool to execute
+# host: the judge's SYSTEM message follows the branch (0.1.15) — read strictly `is True`; absent
+# or anything else is the stance of before on every branch. OFF by default because the change it
+# switches on is NOT proven: the read-only and conversational branches' system message drops
+# "Default to NOT approving", which their own criteria override from the user half, but a replay
+# over real exhausted turns did not show it approving more. A host runs it in SHADOW first.
+JUDGE_STANCE_FOLLOWS_BRANCH = "judge_stance_follows_branch"
 # THE DUTY, computed: which capabilities this turn could NOT perform, and why.
 #
 # A JOIN whose two sides already existed and which nobody computed — `EgoResult.tools_offered`

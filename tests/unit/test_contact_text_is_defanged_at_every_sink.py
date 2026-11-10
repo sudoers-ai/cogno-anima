@@ -595,6 +595,7 @@ READS = {
     ("superego", "_build_judge_prompt"): "the NER's goal, inside the guard",
     ("superego", "_figures_from_the_critique"): "compared, never rendered: the figure net",
     ("superego", "_redact_output"): "compared, never rendered: the contact's own PII digests",
+    ("superego", "_unread_times"): "compared, never rendered: the times the contact named (0.1.15)",
     ("superego", "voice"): "compared, never rendered: the draft divergence check",
     ("ego", "_task_text"): "the executor's task: guarded on the text path, the API's on native",
     ("ego", "_task_context"): "the NER's goal, inside the guard",

@@ -211,6 +211,9 @@ async def test_voice_writes_grounded_response():
 # shipping a rubber stamp.
 
 
+_EMPTY_READ_TODAY = "[TODAY] 2026-09-15 (terça-feira)"
+
+
 @pytest.mark.asyncio
 async def test_judge_approves_a_truthful_empty_read():
     """The measured defect: the read succeeded, returned nothing, and the draft said so.
@@ -223,6 +226,10 @@ async def test_judge_approves_a_truthful_empty_read():
                goal="list the classes scheduled for next month",
                tool="get_schedule", args={"month": "2026-10"}, result="No classes found.",
                draft="I found no classes scheduled for next month (October 2026).")
+    # The CLOCK is fixed: «next month» is October only if today is in September. Without it the
+    # judge reads the real date and rejects a correct draft for querying the wrong month — the
+    # fixture, not the judge (measured on the production judge model: every rejection said so).
+    ctx.metadata[mk.EGO_CONTEXT] = _EMPTY_READ_TODAY
     await backends.skip_unless_available()
     r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
     assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
@@ -251,6 +258,7 @@ async def test_judge_still_rejects_a_read_whose_draft_invents():
                goal="list the classes scheduled for next month",
                tool="get_schedule", args={"month": "2026-10"}, result="No classes found.",
                draft="You have Algebra on 5 October at 09:00 and Physics on 12 October at 14:00.")
+    ctx.metadata[mk.EGO_CONTEXT] = _EMPTY_READ_TODAY      # the same clock as its twin
     await backends.skip_unless_available()
     r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
     assert r.approved is False, "an empty read grounds a negative answer, never a listing"
@@ -738,3 +746,339 @@ async def test_judge_still_rejects_a_name_of_another_person():
     r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
     assert r.approved is False, "a name the evidence ties to nobody is not the booked person"
     assert r.critique
+
+
+# ── a WRITE made with another value than the one the user stated (0.1.15) ───────────────
+#
+# The deterministic half — the comparison is computed and rendered only on a mismatch, every
+# other prompt the bytes of before — is `tests/unit/test_judge_write_values.py`. These four are
+# the model half, and they are TWO PAIRS on the same booking:
+#   * the wrong hour is rejected / the right hour is approved;
+#   * the paragraph does not become a reflex: a value the request's own words DERIVE («1h antes
+#     da consulta das 15») or MOVE TO («às 15 não dá, marca o primeiro livre depois») is still
+#     approved, though the paragraph renders on both.
+# The shape is the measured demo: the hour had moved before («e às 14?» → «às 14h está livre»),
+# the contact answered «pode ser às 15» and the executor booked the earlier hour. The clock is
+# fixed in the context and every date is absolute. Cloud-only: unmeasured on qwen3:8b.
+_WV_TODAY = ("[TODAY] 2026-11-10 (terça-feira)\n[HISTORY]\nuser: e às 14?\n"
+             "assistant: Às 14h o Dr. Quostral está livre amanhã, 11/11. Quer marcar?")
+
+
+def _write_value_ctx(user, calls, draft, goal):
+    ctx = _ctx(user, intent_class="ACTION_REQUEST", goal=goal)
+    ctx.ego_result = EgoResult(steps=[EgoStep(index=0, path="native", tool_calls=list(calls)),
+                                      EgoStep(index=1, path="native", assistant_text=draft)],
+                               metrics=_m("ego"))
+    ctx.intent.entities_people = ["Dr. Quostral"]
+    ctx.metadata[mk.EGO_CONTEXT] = _WV_TODAY
+    return ctx
+
+
+def _booked(hour):
+    return ToolExecution(tool="book_appointment",
+                         arguments={"host_id": "dr_quostral", "date": "2026-11-11",
+                                    "time": f"{hour}:00"},
+                         result=f"Booked: Dr. Quostral, 2026-11-11 {hour}:00, appointment id A-7.",
+                         ok=True, side_effect=True)
+
+
+_WV_GOAL = "book the appointment with Dr. Quostral tomorrow at the time the user chose"
+
+
+@pytest.mark.asyncio
+async def test_judge_rejects_a_booking_at_another_hour_than_the_one_stated():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    ctx = _write_value_ctx("pode ser às 15", [_booked(14)],
+                           "Prontinho! Sua consulta com o Dr. Quostral está marcada para "
+                           "amanhã, 11/11, às 14h.", _WV_GOAL)
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
+    assert r.approved is False, "the user said 15:00 and the booking is at 14:00"
+    assert r.critique and "15" in r.critique
+
+
+@pytest.mark.asyncio
+async def test_judge_approves_the_booking_at_the_hour_stated():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    ctx = _write_value_ctx("pode ser às 15", [_booked(15)],
+                           "Prontinho! Sua consulta com o Dr. Quostral está marcada para "
+                           "amanhã, 11/11, às 15h.", _WV_GOAL)
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
+@pytest.mark.asyncio
+async def test_judge_approves_a_value_the_request_itself_derives():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    remind = ToolExecution(tool="remind_me",
+                           arguments={"at": "2026-11-11T14:00:00-03:00",
+                                      "note": "consulta com o Dr. Quostral"},
+                           result="Reminder set for 2026-11-11 14:00.", ok=True,
+                           side_effect=True)
+    ctx = _write_value_ctx("me lembra 1h antes da consulta das 15 amanhã", [remind],
+                           "Combinado! Vou te lembrar amanhã às 14h, uma hora antes da "
+                           "consulta das 15h.",
+                           "set a reminder one hour before tomorrow's 15:00 appointment")
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
+@pytest.mark.asyncio
+async def test_judge_approves_a_value_the_request_moves_to():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    free = ToolExecution(tool="check_availability",
+                         arguments={"host_id": "dr_quostral", "date": "2026-11-11"},
+                         result="Free on 2026-11-11: 16:00, 17:00.", ok=True, side_effect=False)
+    ctx = _write_value_ctx("às 15 não dá pra mim, marca o primeiro horário livre depois disso",
+                           [free, _booked(16)],
+                           "Feito! Marquei sua consulta com o Dr. Quostral para amanhã, 11/11, "
+                           "às 16h — o primeiro horário livre depois das 15h.",
+                           "book the first free slot after 15:00 tomorrow with Dr. Quostral")
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
+# ── NOTHING listed without a read: the voice after a failed availability read (0.1.15) ──
+#
+# The deterministic half is `tests/unit/test_voice_lists_no_time_nobody_read.py`: whatever the
+# model writes, no time nobody read reaches the contact. This is the model half — does the ONE
+# re-voice, told which times and why, obey, so the floor that takes statements out is not what
+# shipped? The guarantee is asserted; the floor is reported, not failed on. Cloud-only.
+_VOICE_SECRETARY = ("Você é a secretária da Clínica Vendrim. Responda em português do Brasil, "
+                    "com frases curtas e cordiais.")
+
+
+@pytest.mark.asyncio
+async def test_voice_lists_no_time_after_the_availability_read_failed():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    from cogno_anima.explicit_values import clock_times
+    failed = ToolExecution(tool="check_availability", arguments={"host_id": "1",
+                                                                 "date": "2026-11-11"},
+                           result="", error="unknown host_id", ok=False, side_effect=False)
+    date = ToolExecution(tool="resolve_date", arguments={"text": "amanhã"},
+                         result="2026-11-11 (quarta-feira)", ok=True, side_effect=False)
+    user = "quais horários o Dr. Quostral tem amanhã?"
+    ctx = _ctx(user, intent_class="INFORMATION_REQUEST",
+               goal="list Dr. Quostral's free times tomorrow")
+    ctx.ego_result = EgoResult(steps=[
+        EgoStep(index=0, path="native", tool_calls=[failed, date]),
+        EgoStep(index=1, path="native",
+                assistant_text="Tomorrow Dr. Quostral has 09:00, 10:30 and 14:00 free.")],
+        metrics=_m("ego"))
+    ctx.turn_executions = [failed, date]
+    ctx.metadata[mk.EGO_CONTEXT] = "[TODAY] 2026-11-10 (terça-feira)"
+    ctx.metadata[mk.VOICE_CORRECTION] = {
+        "reason": "check_availability failed (unknown host_id) and the draft lists 09:00, 10:30 "
+                  "and 14:00, which no successful call returned.",
+        "kind": "not_executed"}
+    ctx.metadata[mk.JUDGE_VERDICT] = {"approved": False, "attempts": 1}
+    r = await SuperegoStage().voice(ctx, _text_backend(), voice_prompt=_VOICE_SECRETARY)
+    assert clock_times(r.response) == [], (r.response, r.adjustments)
+
+
+# ── the stance follows the branch; a hold is HELD (0.1.15) ──────────────────────────────
+#
+# The deterministic half — the read-only and conversational system messages no longer say
+# "Default to NOT approving", the execution branch is the base's bytes, a held call renders HELD,
+# criterion (d) points at the GROUNDING criterion — is
+# `tests/unit/test_judge_stance_follows_the_branch.py`. These are the model half, in PAIRS: the
+# correct reply approved, the invented one still rejected. The read-only pair is the one above
+# (`test_judge_approves_a_truthful_empty_read` / `..._whose_draft_invents`). Cloud-only.
+
+@pytest.mark.asyncio
+async def test_judge_approves_a_read_that_asks_before_acting():
+    """An ACTION request, a turn that only READ the availability, a draft that offers the slot
+    and asks before booking: the read-only branch, MID-FLOW, nothing claimed done."""
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    ctx = _ctx("marca amanhã às 15 com o Dr. Quostral", intent_class="ACTION_REQUEST",
+               goal="book an appointment with Dr. Quostral tomorrow at 15:00",
+               tool="check_availability", args={"host_id": "dr_quostral", "date": "2026-11-11"},
+               result="Free on 2026-11-11: 15:00, 16:00.",
+               draft="Amanhã, 11/11, às 15h o Dr. Quostral está livre. Quer que eu marque?")
+    ctx.metadata[mk.EGO_CONTEXT] = "[TODAY] 2026-11-10 (terça-feira)"
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
+    assert r.judge_branch == "readonly"
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
+_CONV_LIMITS = ("You are the reception of Clínica Vendrim. Opening hours: Monday to Friday, "
+                "08:00-18:00. Closed on weekends.")
+
+
+def _conversational_ctx(draft):
+    ctx = _ctx("vocês abrem no sábado?", intent_class="INFORMATION_REQUEST",
+               goal="know whether the clinic opens on Saturday")
+    ctx.ego_result = EgoResult(steps=[EgoStep(index=0, path="native", assistant_text=draft)],
+                               metrics=_m("ego"))
+    ctx.metadata[mk.JUDGE_CONVERSATIONAL] = True
+    return ctx
+
+
+@pytest.mark.asyncio
+async def test_judge_approves_a_conversational_reply_the_limits_support():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    ctx = _conversational_ctx("Não abrimos aos sábados: atendemos de segunda a sexta, das 8h às 18h.")
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt=_CONV_LIMITS)
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
+@pytest.mark.asyncio
+async def test_judge_still_rejects_a_conversational_reply_that_invents():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    ctx = _conversational_ctx("Sim! No sábado abrimos das 9h às 13h.")
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt=_CONV_LIMITS)
+    assert r.approved is False, "the limits say closed on weekends"
+
+
+# The held message, judged before it is sent: values the ADMIN gave earlier in the conversation
+# (the `# Context` history) and a total whose parts the message shows are grounded; a value in no
+# source is not; and an affirmative with the message HELD is not "the message was not sent".
+_HELD_HISTORY = ("[TODAY] 2026-11-10 (terça-feira)\n[HISTORY]\n"
+                 "user: o workshop da Belmira Quostral Vendrim é dia 20/11, às 19h, na sala 4\n"
+                 "assistant: Anotado.\n"
+                 "user: são 2 turmas e cada uma paga R$ 50,00\n"
+                 "assistant: Certo.")
+
+
+def _held_ctx(message, user="manda para a Belmira o resumo do workshop"):
+    ctx = _ctx(user, intent_class="ACTION_REQUEST",
+               goal="send Belmira the workshop summary the user dictated")
+    held = ToolExecution(tool="notify_user",
+                         arguments={"to": "Belmira Quostral Vendrim", "message": message},
+                         ok=False, error="needs_confirmation", tool_mutating=True,
+                         result=("[PENDING CONFIRMATION] 'notify_user' is destructive and was "
+                                 "NOT executed; it needs explicit user confirmation first."))
+    ctx.ego_result = EgoResult(steps=[EgoStep(index=0, path="native", assistant_text="",
+                                              tool_calls=[held])],
+                               pending_confirmation=[held], metrics=_m("ego"))
+    ctx.metadata[mk.HELD_DELIVERED_TEXT] = {"notify_user": "message"}
+    ctx.metadata[mk.EGO_CONTEXT] = _HELD_HISTORY
+    ctx.force_language = "pt-BR"
+    return ctx
+
+
+_HELD_RIGHT = ("Olá, Belmira! Seu workshop é no dia 20/11, às 19h, na sala 4. São 2 turmas de "
+               "R$ 50,00 cada: 2 x R$ 50,00 = R$ 100,00 no total.")
+
+
+@pytest.mark.asyncio
+async def test_judge_approves_a_held_message_grounded_in_the_conversation():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    r = await SuperegoStage().evaluate(_held_ctx(_HELD_RIGHT), _json_backend(), limits_prompt="")
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
+@pytest.mark.asyncio
+async def test_judge_still_rejects_a_held_message_with_a_value_in_no_source():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    wrong = _HELD_RIGHT.replace("sala 4", "sala 9")
+    r = await SuperegoStage().evaluate(_held_ctx(wrong), _json_backend(), limits_prompt="")
+    assert r.approved is False, "the room the user dictated is 4"
+
+
+@pytest.mark.asyncio
+async def test_judge_approves_a_held_message_on_a_bare_affirmative():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    r = await SuperegoStage().evaluate(_held_ctx(_HELD_RIGHT, user="pode enviar"),
+                                       _json_backend(), limits_prompt="")
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
+# The read-only shape that dominates the exhausted turns downstream: the reads came back with
+# data, the reply is right, and what the judge asked for was a confirmation or a detail the turn
+# had no business doing — a read-only turn asking before it writes is MID-FLOW. And the held
+# message in the shape it was rejected in: several values the user dictated over earlier turns
+# (in the Context history, none from a tool this turn) and a total of parts the message shows —
+# with its twin, the same message whose total does not come out.
+_APPOINTMENT = ("Appointment A-7: Dr. Quostral, 2026-11-11 09:00, status PENDING.")
+
+
+def _appointment_ctx(user, draft, goal, intent_class):
+    ctx = _ctx(user, intent_class=intent_class, goal=goal, tool="list_appointments",
+               args={"date": "2026-11-11"}, result=_APPOINTMENT, draft=draft)
+    ctx.metadata[mk.EGO_CONTEXT] = "[TODAY] 2026-11-10 (terça-feira)"
+    return ctx
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("user,draft,goal,intent_class", [
+    ("quero confirmar minha consulta de amanhã",
+     "Encontrei sua consulta com o Dr. Quostral amanhã, 11/11, às 9h — ainda pendente. Quer que "
+     "eu a confirme?", "confirm tomorrow's appointment", "ACTION_REQUEST"),
+    ("cancela minha consulta de amanhã",
+     "Encontrei sua consulta com o Dr. Quostral amanhã, 11/11, às 9h. Confirma que quer cancelar?",
+     "cancel tomorrow's appointment", "ACTION_REQUEST"),
+    ("minha consulta de amanhã já está confirmada?",
+     "Ainda não: sua consulta com o Dr. Quostral amanhã, 11/11, às 9h está pendente de "
+     "confirmação.", "know whether tomorrow's appointment is confirmed", "INFORMATION_REQUEST"),
+], ids=["confirm_asks_first", "cancel_asks_first", "status_answered"])
+async def test_judge_approves_a_read_with_data_whose_reply_is_right(user, draft, goal,
+                                                                    intent_class):
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    ctx = _appointment_ctx(user, draft, goal, intent_class)
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
+    assert r.judge_branch == "readonly"
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
+_DICTATED = ("[TODAY] 2026-11-10 (terça-feira)\n[HISTORY]\n"
+             "user: vamos organizar o workshop da Turma A\nassistant: Claro.\n"
+             "user: vai ser dia 20/11, às 19h\nassistant: Anotado.\n"
+             "user: na sala 4\nassistant: Certo.\n"
+             "user: a inscrição custa R$ 120,00\nassistant: Anotado.\n"
+             "user: o material sai R$ 80,00 e o certificado R$ 50,00\nassistant: Certo.")
+
+
+def _summary_ctx(total):
+    message = ("Olá, Belmira! Resumo do workshop: dia 20/11, às 19h, na sala 4. Inscrição: "
+               "R$ 120,00; material: R$ 80,00; certificado: R$ 50,00. Total por aluno: "
+               f"{total}.")
+    ctx = _held_ctx(message, user="manda para a Belmira o resumo do workshop com os valores")
+    read = ToolExecution(tool="list_classes", arguments={"term": "2026-2"},
+                         result="Turma A — Workshop de Abertura; Turma B — Oficina de Escrita.",
+                         ok=True, side_effect=False)
+    held = ctx.ego_result.pending_confirmation[0]
+    ctx.ego_result = EgoResult(steps=[EgoStep(index=0, path="native", assistant_text="",
+                                              tool_calls=[read, held])],
+                               pending_confirmation=[held], metrics=_m("ego"))
+    ctx.metadata[mk.EGO_CONTEXT] = _DICTATED
+    return ctx
+
+
+@pytest.mark.asyncio
+async def test_judge_approves_a_held_summary_of_dictated_values_and_their_sum():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    r = await SuperegoStage().evaluate(_summary_ctx("R$ 250,00"), _json_backend(),
+                                       limits_prompt="")
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
+@pytest.mark.xfail(
+    strict=False,
+    reason=(
+        "MEASURED on the production judge model (n=5): the wrong total is APPROVED 3/5 on the "
+        "base, 4/5 with a sentence telling the judge a total of listed parts needs no written "
+        "operation — the model does not check sums, and that sentence was reverted. A total that "
+        "is not the sum of the parts a held message lists is a deterministic net's to refuse (a "
+        "follow-up); until then this twin records the gap instead of hiding it."
+    ),
+)
+@pytest.mark.asyncio
+async def test_judge_still_rejects_a_held_summary_whose_sum_does_not_come_out():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    r = await SuperegoStage().evaluate(_summary_ctx("R$ 260,00"), _json_backend(),
+                                       limits_prompt="")
+    assert r.approved is False, "120 + 80 + 50 is 250"

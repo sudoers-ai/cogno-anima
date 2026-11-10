@@ -40,6 +40,7 @@ import pytest
 
 from cogno_anima import metakeys as mk
 from cogno_anima.stages.superego import _HELD_ASKING_IS_THE_HOSTS, _JUDGE_SYSTEM, SuperegoStage
+from tests.unit._judge_0115 import as_0114
 from tests.unit._judge_context_clauses import with_the_context_clauses
 from tests.unit.test_judge_blocks_sync import _configs
 from tests.unit.test_superego import _ctx
@@ -234,8 +235,11 @@ def _since_f13(prompt: str) -> str:
     change that has its own test pinning it; today two: `_HELD_ASKING_IS_THE_HOSTS` (2026-09-30,
     rendered only on a turn with a declared held message — the `held` configuration here), and
     the two "the Context above" clauses, which since 0.1.6 render only with the `# Context`
-    section and are put BACK here on the configurations that have none (ten of the eleven)."""
-    return with_the_context_clauses(prompt.replace(_HELD_ASKING_IS_THE_HOSTS, ""))
+    section and are put BACK here on the configurations that have none (ten of the eleven).
+    And the three deliberate changes of 0.1.15 (`_judge_0115.as_0114`), which reach the `held`
+    configuration: a hold by name rendered `ERROR`, criterion (d) and the hold-is-the-outcome
+    sentence."""
+    return with_the_context_clauses(as_0114(prompt).replace(_HELD_ASKING_IS_THE_HOSTS, ""))
 
 
 _ORIGIN_MAIN = {

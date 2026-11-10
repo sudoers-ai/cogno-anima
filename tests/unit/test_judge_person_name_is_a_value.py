@@ -33,6 +33,7 @@ import pytest
 from cogno_anima import metakeys as mk
 from cogno_anima.stages import superego as sg
 from cogno_anima.stages.superego import SuperegoStage
+from tests.unit._judge_0115 import as_0114
 from cogno_anima.types import (EgoResult, EgoStep, IntentResult, PipelineContext, StageMetrics,
                                ToolExecution)
 
@@ -126,7 +127,9 @@ def _cell_id(cell) -> str:
 @pytest.mark.parametrize("cell", CELLS, ids=_cell_id)
 def test_CONTROL_with_no_person_named_the_judge_is_sent_the_bytes_of_before(cell):
     b, people, limits, context = cell
-    assert _digest(_sent(_ctx(b, people, context=context), limits)) == BASE[_cell_id(cell)]
+    # 0.1.15's deliberate changes undone (`_judge_0115.as_0114`): the read-only and
+    # conversational cells now carry another system message, and nothing else moved.
+    assert _digest(as_0114(_sent(_ctx(b, people, context=context), limits))) == BASE[_cell_id(cell)]
 
 
 def test_PAR_the_digests_tell_the_cells_apart():
