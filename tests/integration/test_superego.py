@@ -984,3 +984,83 @@ async def test_judge_approves_a_held_message_on_a_bare_affirmative():
     r = await SuperegoStage().evaluate(_held_ctx(_HELD_RIGHT, user="pode enviar"),
                                        _json_backend(), limits_prompt="")
     assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
+# The read-only shape that dominates the exhausted turns downstream: the reads came back with
+# data, the reply is right, and what the judge asked for was a confirmation or a detail the turn
+# had no business doing — a read-only turn asking before it writes is MID-FLOW. And the held
+# message in the shape it was rejected in: several values the user dictated over earlier turns
+# (in the Context history, none from a tool this turn) and a total of parts the message shows —
+# with its twin, the same message whose total does not come out.
+_APPOINTMENT = ("Appointment A-7: Dr. Quostral, 2026-11-11 09:00, status PENDING.")
+
+
+def _appointment_ctx(user, draft, goal, intent_class):
+    ctx = _ctx(user, intent_class=intent_class, goal=goal, tool="list_appointments",
+               args={"date": "2026-11-11"}, result=_APPOINTMENT, draft=draft)
+    ctx.metadata[mk.EGO_CONTEXT] = "[TODAY] 2026-11-10 (terça-feira)"
+    return ctx
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("user,draft,goal,intent_class", [
+    ("quero confirmar minha consulta de amanhã",
+     "Encontrei sua consulta com o Dr. Quostral amanhã, 11/11, às 9h — ainda pendente. Quer que "
+     "eu a confirme?", "confirm tomorrow's appointment", "ACTION_REQUEST"),
+    ("cancela minha consulta de amanhã",
+     "Encontrei sua consulta com o Dr. Quostral amanhã, 11/11, às 9h. Confirma que quer cancelar?",
+     "cancel tomorrow's appointment", "ACTION_REQUEST"),
+    ("minha consulta de amanhã já está confirmada?",
+     "Ainda não: sua consulta com o Dr. Quostral amanhã, 11/11, às 9h está pendente de "
+     "confirmação.", "know whether tomorrow's appointment is confirmed", "INFORMATION_REQUEST"),
+], ids=["confirm_asks_first", "cancel_asks_first", "status_answered"])
+async def test_judge_approves_a_read_with_data_whose_reply_is_right(user, draft, goal,
+                                                                    intent_class):
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    ctx = _appointment_ctx(user, draft, goal, intent_class)
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
+    assert r.judge_branch == "readonly"
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
+_DICTATED = ("[TODAY] 2026-11-10 (terça-feira)\n[HISTORY]\n"
+             "user: vamos organizar o workshop da Turma A\nassistant: Claro.\n"
+             "user: vai ser dia 20/11, às 19h\nassistant: Anotado.\n"
+             "user: na sala 4\nassistant: Certo.\n"
+             "user: a inscrição custa R$ 120,00\nassistant: Anotado.\n"
+             "user: o material sai R$ 80,00 e o certificado R$ 50,00\nassistant: Certo.")
+
+
+def _summary_ctx(total):
+    message = ("Olá, Belmira! Resumo do workshop: dia 20/11, às 19h, na sala 4. Inscrição: "
+               "R$ 120,00; material: R$ 80,00; certificado: R$ 50,00. Total por aluno: "
+               f"{total}.")
+    ctx = _held_ctx(message, user="manda para a Belmira o resumo do workshop com os valores")
+    read = ToolExecution(tool="list_classes", arguments={"term": "2026-2"},
+                         result="Turma A — Workshop de Abertura; Turma B — Oficina de Escrita.",
+                         ok=True, side_effect=False)
+    held = ctx.ego_result.pending_confirmation[0]
+    ctx.ego_result = EgoResult(steps=[EgoStep(index=0, path="native", assistant_text="",
+                                              tool_calls=[read, held])],
+                               pending_confirmation=[held], metrics=_m("ego"))
+    ctx.metadata[mk.EGO_CONTEXT] = _DICTATED
+    return ctx
+
+
+@pytest.mark.asyncio
+async def test_judge_approves_a_held_summary_of_dictated_values_and_their_sum():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    r = await SuperegoStage().evaluate(_summary_ctx("R$ 250,00"), _json_backend(),
+                                       limits_prompt="")
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
+@pytest.mark.asyncio
+async def test_judge_still_rejects_a_held_summary_whose_sum_does_not_come_out():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    r = await SuperegoStage().evaluate(_summary_ctx("R$ 260,00"), _json_backend(),
+                                       limits_prompt="")
+    assert r.approved is False, "120 + 80 + 50 is 250"
