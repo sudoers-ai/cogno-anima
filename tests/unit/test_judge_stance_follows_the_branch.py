@@ -107,9 +107,25 @@ def _sha(text: str) -> str:
 
 # ── the twins ─────────────────────────────────────────────────────────────────────────────
 
+#: The host's switch, by its VALUE — so the twins run on the base tree (which has no such
+#: metakey) and fail there by assertion. `test_the_switch_is_the_metakey` ties it to the name.
+_SWITCH = "judge_stance_follows_branch"
+
+
+def _switched(ctx, value=True):
+    ctx.metadata[_SWITCH] = value
+    return ctx
+
+
+def test_the_switch_is_the_metakey():
+    assert mk.JUDGE_STANCE_FOLLOWS_BRANCH == _SWITCH
+
+
 @pytest.mark.parametrize("ctx", [_ctx((_READ,)), _ctx(conversational=True)],
                          ids=["readonly", "conversational"])
 def test_the_branches_that_approve_by_default_are_not_told_the_opposite(ctx):
+    """With the host's switch ON (`mk.JUDGE_STANCE_FOLLOWS_BRANCH`)."""
+    _switched(ctx)
     system, user = _system(ctx), _user(ctx)
     assert "APPROVE BY DEFAULT" in user                    # the criteria are the same text
     assert _DEFAULT_NOT not in system
@@ -118,7 +134,7 @@ def test_the_branches_that_approve_by_default_are_not_told_the_opposite(ctx):
 
 
 def test_the_answer_stance_carries_the_business_rules_like_the_other():
-    system = _system(_ctx((_READ,), rules="- Abrimos às 8h."))
+    system = _system(_switched(_ctx((_READ,), rules="- Abrimos às 8h.")))
     assert _DEFAULT_NOT not in system and "<business_rules>" in system
 
 
@@ -129,12 +145,14 @@ def test_a_held_call_renders_HELD_never_ERROR(prefixed):
     assert "→ HELD for the user's confirmation" in line and "→ ERROR" not in line
 
 
-def test_criterion_d_points_at_the_grounding_criterion():
+def test_criterion_d_points_at_the_grounding_criterion_and_says_nothing_about_totals():
+    """Sources only. A sentence about totals was measured net-negative on the production judge
+    model (the wrong total passed MORE), so the DERIVED VALUES rule applies as before."""
     user = _user(_held_turn())
     assert "is not GROUNDED by the GROUNDING criterion above" in user
     assert "anything the request and the successful tool results above do not support" not in user
-    assert "needs NO written operation" in user              # a total of listed parts
-    assert "NOT the sum (or product) of the parts the message itself lists" in user
+    d = user[user.index("(d) states"):user.index("The MID-FLOW and confirmation allowances")]
+    assert "total" not in d and "sum" not in d
 
 
 def test_the_hold_is_the_outcome_sentence_renders_on_a_held_message_turn():
@@ -190,6 +208,11 @@ _BASE_ANSWER_USER: "dict[tuple[str, str], str]" = {
     ('readonly_with_rules', ''): '0921996193d48d89',
     ('readonly_with_rules', 'Nunca prometa descontos.'): '300229e2c462720f',
 }
+_BASE_ANSWER_WHOLE: "dict[str, str]" = {
+    'conversational': 'c8fec463852b3cce',
+    'readonly': 'be1ec6b483bb2caf',
+    'readonly_with_rules': '312e9fc89d6f1e5b',
+}
 _BASE_FAILED_LINE = 'ce50c0defd4584f3'
 
 
@@ -205,6 +228,20 @@ def test_the_execution_branch_is_the_base_tree_s_whole_request(name, limits):
 @pytest.mark.parametrize("limits", ["", "Nunca prometa descontos."])
 def test_the_answer_branches_moved_only_their_system_message(name, limits):
     assert _sha(_user(_ANSWER[name](), limits)) == _BASE_ANSWER_USER[(name, limits)]
+
+
+@pytest.mark.parametrize("value", [None, False, 1, "true", "yes", [True]],
+                         ids=["absent", "false", "one", "str_true", "yes", "list"])
+@pytest.mark.parametrize("name", sorted(_ANSWER))
+def test_without_the_switch_every_branch_is_told_what_it_was_told_before(name, value):
+    """OFF by default, and only a JSON `True` switches it on: absent, `False` or a truthy
+    non-boolean gives the read-only and conversational branches the execution stance — the
+    system message of before — so their WHOLE request is the base tree's."""
+    ctx = _ANSWER[name]()
+    if value is not None:
+        _switched(ctx, value)
+    assert _DEFAULT_NOT in _system(ctx)
+    assert _sha(_system(ctx) + "\n\x00\n" + _user(ctx)) == _BASE_ANSWER_WHOLE[name]
 
 
 def test_a_call_that_ran_and_failed_still_renders_ERROR():
@@ -223,7 +260,7 @@ def test_the_helper_is_the_identity_where_nothing_changed_and_undoes_the_rest():
         assert as_0114(text) == text
     held = _user(_held_turn())
     assert as_0114(held) != held and "→ ERROR:" in as_0114(held)
-    assert _DEFAULT_NOT in as_0114(_system(_ctx((_READ,))))
+    assert _DEFAULT_NOT in as_0114(_system(_switched(_ctx((_READ,)))))
 
 
 def test_a_carrier_with_metadata_alone_gets_the_execution_stance_and_never_raises():

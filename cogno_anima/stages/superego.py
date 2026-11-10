@@ -752,10 +752,17 @@ _JUDGE_SYSTEM = (
 # downstream over 30 days, 18 of the 31 turns that ended with the judge exhausted were on those
 # two branches (14 read-only, every call a successful read; 4 conversational).
 #
-# So the two branches that judge an ANSWER get a system message that says so, with fabrication
-# still named as a violation; the EXECUTION branch keeps `_JUDGE_SYSTEM` byte for byte. The
-# relaxation is not widened: the criteria that decide are the same text, only the sentence that
-# contradicted them is gone.
+# So the two branches that judge an ANSWER can get a system message that says so, with
+# fabrication still named as a violation; the EXECUTION branch keeps `_JUDGE_SYSTEM` byte for
+# byte. The relaxation is not widened: the criteria that decide are the same text, only the
+# sentence that contradicted them is gone.
+#
+# BEHIND A HOST SWITCH, OFF BY DEFAULT (`mk.JUDGE_STANCE_FOLLOWS_BRANCH`). Measured on the
+# production judge model, the controlled pairs did not discriminate (the base already approved
+# them) and a replay over 15 real exhausted read-only turns (n=3, the persona limits, rules and
+# history missing from what the trace keeps) approved 4/45 on the base and 1/45 with this stance:
+# neither proof nor disproof. So it ships as an instrument: a host runs it in shadow, and the
+# default is the bytes of before on every branch.
 _JUDGE_SYSTEM_ANSWER = (
     "You are a quality judge for an AI assistant's REPLY. Respond with JSON only. Nothing was "
     "written on this turn, so you are judging an answer, not an action: approve it unless one of "
@@ -1169,22 +1176,18 @@ _HELD_ASKING_IS_THE_HOSTS = _held_asking_is_the_hosts("(a)-(d)")
 # turns (in the `# Context` history) and for a total of parts the message itself showed. So (d)
 # points at that ONE definition instead of restating a narrower one.
 #
-# …AND A TOTAL OF PARTS THE MESSAGE LISTS NEEDS NO WRITTEN OPERATION. The first cut of this
-# clause said "a total … whose arithmetic does not come out (one that comes out is grounded)",
-# and measured on the production judge it did not hold: the held summary of five values the user
-# had dictated, with "Total por aluno: R$ 250,00" after its three listed parts, was approved 2/5
-# against the base's 4/5, every rejection saying the values were right and the total was DERIVED
-# without "the work" the DERIVED VALUES rule asks for (`_DERIVED_FROM_EVIDENCE`: "120 + 80 + 50 =
-# 250"). A message to a person lists the parts and states the total, and the parts on the page
-# ARE the work; so the clause says so, and keeps the rejection of a total that is NOT their sum.
+# WHAT IT DOES NOT SAY ABOUT TOTALS, measured. Two cuts tried to tell the judge how to read a
+# total in a held message ("one whose arithmetic comes out is grounded"; then "a total of parts
+# the message lists needs no written operation"). On the production judge model the second made
+# the correct dictated summary pass 5/5 (base 4/5) and the WRONG total pass 4/5 (base 3/5): the
+# model does not check sums, and an instruction is not a guarantee. So (d) says nothing about
+# totals — the DERIVED VALUES rule of the GROUNDING criterion applies as before — and a total that
+# is not the sum of the parts a message lists is a deterministic net's to refuse (a follow-up,
+# in the family of the voice's figure net), not a sentence's.
 _HELD_NOT_GROUNDED = (
     "(d) states a value or fact that is not GROUNDED by the GROUNDING criterion above — the "
     "SAME sources that criterion names on this turn, not only the request and the tool results "
-    "(when the conversation so far is shown, a value the user gave in it is grounded) — or a "
-    "total that is NOT the sum (or product) of the parts the message itself lists. A total of "
-    "parts the message lists needs NO written operation: in a message to a person, the parts on "
-    "the page are the work the DERIVED VALUES rule asks for, so a total that IS their sum is "
-    "grounded"
+    "(when the conversation so far is shown, a value the user gave in it is grounded)"
 )
 
 # …AND THE HOLD IS THE OUTCOME (0.1.15). A held call is this turn's intended state, and a short
@@ -3320,8 +3323,13 @@ class SuperegoStage:
         # function always returned, and the strict side. It must never raise — it builds half
         # of every judge request, and until the stance depended on the branch it read only the
         # metadata.
+        #
+        # And only when the HOST asked for it (`mk.JUDGE_STANCE_FOLLOWS_BRANCH`, strictly `True`):
+        # the change is not proven yet, so by default every branch gets the stance of before.
         try:
-            answer = cls._judge_branch(ctx) != JUDGE_EXECUTION
+            meta = getattr(ctx, "metadata", None) or {}
+            answer = (meta.get(mk.JUDGE_STANCE_FOLLOWS_BRANCH) is True
+                      and cls._judge_branch(ctx) != JUDGE_EXECUTION)
         except Exception:      # noqa: BLE001 — an unreadable carrier is not a licence
             answer = False
         stance = _JUDGE_SYSTEM_ANSWER if answer else _JUDGE_SYSTEM

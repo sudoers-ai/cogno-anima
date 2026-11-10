@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.15 — 2026-11-10 — the judge is shown a write made with another value than the one stated, stops contradicting itself on the branches that approve by default, and reads a hold as a hold; the voice lists no time nobody read
+## 0.1.15 — 2026-11-10 — the judge is shown a write made with another value than the one stated and reads a hold as a hold, its stance can follow the branch behind a switch; the voice lists no time nobody read
 
 ### Fixed
 
@@ -57,21 +57,22 @@
     assertion; the controls (a read that returned times, a time the contact named, a time the
     executor asked about, a duration, the persona's own hours, the host's clock, no tool at all)
     are one voice call and the reply untouched.
-- **The judge no longer tells the two approve-by-default branches the opposite.** Its system
-  message was the same on every branch — "Default to NOT approving when you cannot verify the
+- **The judge's stance can follow the branch — behind a host switch, OFF by default.** Its system
+  message is the same on every branch — "Default to NOT approving when you cannot verify the
   criteria" — while the READ-ONLY and CONVERSATIONAL criteria, in the user half, open with
   "APPROVE BY DEFAULT … This overrides the general 'do not approve what you cannot verify'
-  stance". The stance they override sat in the system message, which an instruction-tuned model
-  ranks above the user half. Measured downstream over 30 days: of the 31 turns that ended with
-  the judge exhausted, 14 were read-only with every call a successful read and 4 were
-  conversational.
-  - `_judge_system` picks the stance by branch: the EXECUTION branch keeps `_JUDGE_SYSTEM` byte
-    for byte; the read-only and conversational branches get `_JUDGE_SYSTEM_ANSWER`, which says it
+  stance". The stance they override sits in the system message, which an instruction-tuned model
+  ranks above the user half. Measured downstream over 30 days: of the 31 turns that ended with the
+  judge exhausted, 14 were read-only with every call a successful read and 4 were conversational.
+  - With `mk.JUDGE_STANCE_FOLLOWS_BRANCH` set to `True` (strictly; anything else is off),
+    `_judge_system` gives the read-only and conversational branches `_JUDGE_SYSTEM_ANSWER`: it
     judges a REPLY, approves unless a listed violation is present, and names an unsupported
-    statement as one of them. The criteria are the same text. The provider's cached prefix per
-    (persona, role) becomes two, one per stance. A carrier the branch cannot be read off (a
-    stand-in with metadata alone) gets the execution stance and never raises: `_judge_system`
-    read only the metadata before, and a downstream host's test double builds it that way.
+    statement as one of them. The EXECUTION branch keeps `_JUDGE_SYSTEM` byte for byte either
+    way, and so does a carrier the branch cannot be read off (`_judge_system` never raises).
+  - **Why off:** on the production judge model the controlled pairs did not discriminate (the
+    base already approved them), and a replay over 15 real exhausted read-only turns (n=3; the
+    persona limits, rules and history are not in what the trace keeps) approved 4/45 on the base
+    and 1/45 with the stance — neither proof nor disproof. A host runs it in shadow first.
 - **A held call renders `HELD`, not `ERROR`.** Every call held for the user's confirmation (the
   hold's own code, `needs_confirmation`: gate B, or a skill's ask with no output) rendered `→
   ERROR` under `# What the EGO executed`, and the judge read the hold as a failed send. Measured
@@ -83,12 +84,16 @@
   successful tool results above do not support"), narrower than the GROUNDING criterion of the
   same prompt. Measured downstream: a held message the owner called perfect was rejected twice,
   for values dictated earlier in the conversation and for a total the message showed its parts
-  for. (d) now points at the GROUNDING criterion's own sources (`_HELD_NOT_GROUNDED`), and a total of
-  parts the message itself lists needs no written operation (the parts on the page are the work)
-  while a total that is not their sum is still rejected; `_HELD_IS_THE_OUTCOME` says a held call is the turn's
-  correct outcome and an affirmative does not make it wrong.
+  for. (d) now points at the GROUNDING criterion's own sources (`_HELD_NOT_GROUNDED`), and
+  `_HELD_IS_THE_OUTCOME` says a held call is the turn's correct outcome and an affirmative does
+  not make it wrong. **(d) says nothing about totals, on a measurement:** a sentence saying a
+  total of listed parts needs no written operation made the correct summary pass 5/5 (base 4/5)
+  and the WRONG total pass 4/5 (base 3/5) — the model does not check sums. It was reverted; a
+  total that is not the sum of a held message's listed parts is a deterministic net's to refuse,
+  a follow-up.
 - **What did not move:** the execution branch's whole request (16 digests on `f9f10d7`), the user
-  half of the read-only and conversational branches (6), a failed call's `ERROR` line.
+  half of the read-only and conversational branches (6) and, with the switch off or garbled, their
+  whole request (3 digests × 6 values of the switch), a failed call's `ERROR` line.
   `tests/unit/test_judge_stance_follows_the_branch.py`; its 7 twins were red on the base by
   assertion. The older digest proofs keep their digests and hash `tests/unit/_judge_0115.py`'s
   `as_0114` of the rendering, which undoes exactly these three changes and is the identity on the

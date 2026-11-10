@@ -94,20 +94,26 @@ def test_two_turns_of_the_same_persona_and_role_share_the_whole_system_message()
     a = _turn(RULES, user="quanto é o aluguel?", context="[TODAY] 2026-10-05\nAna: oi")
     b = _turn(RULES, user="e aos sábados?", context="[TODAY] 2026-10-06\nBia: olá",
               readonly=False)
-    c = _turn(RULES, user="e o depósito?", context="[TODAY] 2026-10-07\nCaio: bom dia")
     sa, pa = _asked(a)
     sb, pb = _asked(b)
-    sc, _ = _asked(c)
-    # Two turns on the SAME branch share the whole system message. Since 0.1.15 the stance
-    # follows the branch, so a read-only turn (a) and an execution turn (b) differ by the
-    # stance sentence and by nothing else: two stable prefixes per (persona, role), not one.
-    assert sa == sc
-    assert sa != sb and as_0114(sa) == sb
-    # and nothing of any turn is in it
-    for turn_bytes in ("quanto é o aluguel?", "e aos sábados?", "e o depósito?", "2026-10-05",
-                       "Ana", "Bia", "Caio"):
-        assert turn_bytes not in sa and turn_bytes not in sb
+    assert sa == sb
+    # and nothing of either turn is in it
+    for turn_bytes in ("quanto é o aluguel?", "e aos sábados?", "2026-10-05", "Ana", "Bia"):
+        assert turn_bytes not in sa
     assert pa != pb
+
+
+def test_with_the_stance_switch_on_the_two_branches_differ_by_the_stance_alone():
+    """`mk.JUDGE_STANCE_FOLLOWS_BRANCH` (0.1.15, off by default): a read-only turn and an
+    execution turn then differ by the stance sentence and by nothing else — two stable
+    prefixes per (persona, role)."""
+    a = _turn(RULES, user="quanto é o aluguel?")
+    b = _turn(RULES, user="e aos sábados?", readonly=False)
+    for t in (a, b):
+        t.metadata[mk.JUDGE_STANCE_FOLLOWS_BRANCH] = True
+    sa, _ = _asked(a)
+    sb, _ = _asked(b)
+    assert sa != sb and as_0114(sa) == sb
 
 
 # ── 3. the criteria name the rules ──────────────────────────────────────────────────────────
