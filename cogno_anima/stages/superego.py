@@ -742,6 +742,27 @@ _JUDGE_SYSTEM = (
     "JSON only. Default to NOT approving when you cannot verify the criteria."
 )
 
+# THE STANCE FOLLOWS THE BRANCH (0.1.15). The sentence above is the EXECUTION branch's stance and
+# it is right there: a write nobody can verify must not be signed. But it was the system message
+# of EVERY branch, and the READ-ONLY and CONVERSATIONAL criteria — in the user half — open with
+# "APPROVE BY DEFAULT … This overrides the general 'do not approve what you cannot verify'
+# stance". The prompt contradicted itself, and the stance it tried to override sat in the SYSTEM
+# message, which an instruction-tuned model ranks ABOVE the user half: the id=1440 lesson (a
+# contradicted rule is resolved against the framing) from its strongest side. Measured
+# downstream over 30 days, 18 of the 31 turns that ended with the judge exhausted were on those
+# two branches (14 read-only, every call a successful read; 4 conversational).
+#
+# So the two branches that judge an ANSWER get a system message that says so, with fabrication
+# still named as a violation; the EXECUTION branch keeps `_JUDGE_SYSTEM` byte for byte. The
+# relaxation is not widened: the criteria that decide are the same text, only the sentence that
+# contradicted them is gone.
+_JUDGE_SYSTEM_ANSWER = (
+    "You are a quality judge for an AI assistant's REPLY. Respond with JSON only. Nothing was "
+    "written on this turn, so you are judging an answer, not an action: approve it unless one of "
+    "the violations the criteria list is present — and a statement that no evidence in the "
+    "prompt supports is one of them."
+)
+
 # WHERE GROUNDING COMES FROM — one sentence, every branch that judges it.
 #
 # The judge prompt has ALWAYS carried more ground truth than the tool results. Two of its
@@ -1139,6 +1160,35 @@ def _held_asking_is_the_hosts(criteria: str) -> str:
 
 _HELD_ASKING_IS_THE_HOSTS = _held_asking_is_the_hosts("(a)-(d)")
 
+# CRITERION (d) NAMES THE JUDGE'S OWN SOURCES (0.1.15). It said "anything the request and the
+# successful tool results above do not support" — an EXCLUSIVE list inside the REJECT criteria,
+# narrower than the GROUNDING criterion the same prompt states a few lines up (the persona
+# limits, the business rules and the `# Context` count as ground, and so does a value worked out
+# in the open). The id=1440 shape, on the held message: measured downstream, a held message the
+# owner called perfect was rejected twice for values the ADMIN had dictated over the previous
+# turns (in the `# Context` history) and for a total of parts the message itself showed. So (d)
+# points at that ONE definition instead of restating a narrower one.
+_HELD_NOT_GROUNDED = (
+    "(d) states a value or fact that is not GROUNDED by the GROUNDING criterion above — the "
+    "SAME sources that criterion names on this turn, not only the request and the tool results "
+    "(when the conversation so far is shown, a value the user gave in it is grounded) — or a "
+    "total the message works out from parts it shows whose arithmetic does not come out (one "
+    "that comes out is grounded)"
+)
+
+# …AND THE HOLD IS THE OUTCOME (0.1.15). A held call is this turn's intended state, and a short
+# affirmative in the request does not make it wrong: measured downstream, «pode enviar» with no
+# live proposal (it had expired), the executor re-issued the message, the gate held it as it
+# must, and the judge rejected "the message was not sent". Whether a held message goes out is
+# the host's confirmation to decide, on the next turn; the judge's question is the TEXT.
+_HELD_IS_THE_OUTCOME = (
+    "A call marked HELD or PROPOSED above is the CORRECT outcome of this turn, not a failed "
+    "execution: nothing was meant to be sent yet. An affirmative in the user's request ('pode "
+    "enviar', 'sim') does not change that — whether a held message goes out is decided by the "
+    "confirmation the host asks for next, never here — so never reject because a held message "
+    "was not sent. "
+)
+
 # CRITERION (e) — THE LANGUAGE OF THE MESSAGE (2026-09-30). The executor reads only the
 # canonical-English rewrite, so a held message can come out written in English for a contact who
 # writes in another language — and this rule, which judged what the text SAYS, approved it: the
@@ -1170,12 +1220,35 @@ def _held_language_criterion(language: str) -> str:
 #: Rendering it ``ERROR`` told the judge that read had failed, and the rules below read figures only
 #: off calls marked OK, so a held message quoting the proposal's own figures had no source at all.
 PROPOSED_STATUS = "PROPOSED (held for the user's confirmation; nothing executed)"
+#: How it names every OTHER held call — held by NAME (gate B: a destructive tool, never run
+#: without the user's yes, its result ``HELD_BY_NAME_PREFIX``) or a skill's ask with no output.
+#: It rendered ``ERROR`` until 0.1.14, and on a turn that holds a message the judge read the
+#: hold as a FAILED SEND — measured downstream: «pode enviar», no live proposal, the executor
+#: re-issued the message, the gate held it, and the judge rejected the turn because "the message
+#: was not sent". The same word cost the gate-C proposal 5/5 rejections before it got its own
+#: (`PROPOSED_STATUS`). A hold is the outcome this turn was meant to have; the rules below that
+#: read ``ERROR`` (an honestly relayed failure, no substitute data after one) are about calls
+#: that RAN and failed, which a held one did not.
+HELD_STATUS = "HELD for the user's confirmation (not executed yet; nothing failed)"
+
+
+def _is_held(call: Any) -> bool:
+    """A held call: ``ok`` False with the hold's own code, ``needs_confirmation`` — the code both
+    gates write (`EgoStage`, gate B and gate C). Never raises."""
+    try:
+        return (getattr(call, "ok", None) is False
+                and getattr(call, "error", None) == "needs_confirmation")
+    except Exception:      # noqa: BLE001 — an unreadable record is not a hold
+        return False
 
 
 def _status_of(call: Any) -> str:
-    """``OK`` / ``ERROR`` / :data:`PROPOSED_STATUS` — the word after the arrow of one call."""
+    """``OK`` / ``ERROR`` / :data:`PROPOSED_STATUS` / :data:`HELD_STATUS` — the word after the
+    arrow of one call."""
     if is_skill_proposal(call):
         return PROPOSED_STATUS
+    if _is_held(call):
+        return HELD_STATUS
     return "OK" if call.ok else "ERROR"
 
 
@@ -1207,13 +1280,14 @@ def _held_message_rule(language: str = "", proposed: "Sequence[str]" = ()) -> st
         "elsewhere ('see the details in your usual channel'); (b) is addressed to the WRONG "
         "person — a question the user asked the assistant, forwarded to the recipient; (c) "
         "contains an INSTRUCTION meant for whoever writes the message ('include the introduction "
-        "we agreed') instead of words meant for the recipient; (d) states anything the request "
-        "and the successful tool results above do not support"
+        "we agreed') instead of words meant for the recipient; "
+        f"{_HELD_NOT_GROUNDED}"
         f"{_held_language_criterion(language) if language else ''}. The MID-FLOW and "
         "confirmation allowances cover ASKING the user before sending; they never cover the "
         "content of the message being asked about. "
         f"{_proposal_reads_clause(proposed) if proposed else ''}"
         f"{_held_asking_is_the_hosts('(a)-(e)' if language else '(a)-(d)')}"
+        f"{_HELD_IS_THE_OUTCOME}"
         "Name in the critique what the message must say instead, so the retry can write it.\n\n"
     )
 
@@ -2502,7 +2576,8 @@ class SuperegoStage:
         system = self._judge_system(ctx)
         # The inventory reads BOTH halves, so the rules block (system) is a row like any other.
         # With no rules the system carries no header and every row is what it always was.
-        asked = prompt if system == _JUDGE_SYSTEM else f"{system}\n\n{prompt}"
+        asked = (prompt if system in (_JUDGE_SYSTEM, _JUDGE_SYSTEM_ANSWER)
+                 else f"{system}\n\n{prompt}")
         branch = self._judge_branch(ctx)
         try:
             raw, ti, to = await backend.generate(system, prompt)
@@ -3229,10 +3304,11 @@ class SuperegoStage:
         them — the business rules, fenced. Nothing of the turn is in here, so on two turns of
         the same (persona, role) the whole system message is the same bytes: the prefix a
         provider's prompt cache can serve. No rules → exactly ``_JUDGE_SYSTEM``."""
+        stance = _JUDGE_SYSTEM if cls._judge_branch(ctx) == JUDGE_EXECUTION else _JUDGE_SYSTEM_ANSWER
         rules = cls._persona_rules(ctx)
         if not rules:
-            return _JUDGE_SYSTEM
-        return (f"{_JUDGE_SYSTEM}\n\n{_RULES_HEADER} {_RULES_ARE_DATA}\n"
+            return stance
+        return (f"{stance}\n\n{_RULES_HEADER} {_RULES_ARE_DATA}\n"
                 f"<{_RULES_FENCE}>\n{rules}\n</{_RULES_FENCE}>")
 
     @staticmethod

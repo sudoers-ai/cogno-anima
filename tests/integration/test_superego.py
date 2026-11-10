@@ -870,3 +870,117 @@ async def test_voice_lists_no_time_after_the_availability_read_failed():
     ctx.metadata[mk.JUDGE_VERDICT] = {"approved": False, "attempts": 1}
     r = await SuperegoStage().voice(ctx, _text_backend(), voice_prompt=_VOICE_SECRETARY)
     assert clock_times(r.response) == [], (r.response, r.adjustments)
+
+
+# ── the stance follows the branch; a hold is HELD (0.1.15) ──────────────────────────────
+#
+# The deterministic half — the read-only and conversational system messages no longer say
+# "Default to NOT approving", the execution branch is the base's bytes, a held call renders HELD,
+# criterion (d) points at the GROUNDING criterion — is
+# `tests/unit/test_judge_stance_follows_the_branch.py`. These are the model half, in PAIRS: the
+# correct reply approved, the invented one still rejected. The read-only pair is the one above
+# (`test_judge_approves_a_truthful_empty_read` / `..._whose_draft_invents`). Cloud-only.
+
+@pytest.mark.asyncio
+async def test_judge_approves_a_read_that_asks_before_acting():
+    """An ACTION request, a turn that only READ the availability, a draft that offers the slot
+    and asks before booking: the read-only branch, MID-FLOW, nothing claimed done."""
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    ctx = _ctx("marca amanhã às 15 com o Dr. Quostral", intent_class="ACTION_REQUEST",
+               goal="book an appointment with Dr. Quostral tomorrow at 15:00",
+               tool="check_availability", args={"host_id": "dr_quostral", "date": "2026-11-11"},
+               result="Free on 2026-11-11: 15:00, 16:00.",
+               draft="Amanhã, 11/11, às 15h o Dr. Quostral está livre. Quer que eu marque?")
+    ctx.metadata[mk.EGO_CONTEXT] = "[TODAY] 2026-11-10 (terça-feira)"
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
+    assert r.judge_branch == "readonly"
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
+_CONV_LIMITS = ("You are the reception of Clínica Vendrim. Opening hours: Monday to Friday, "
+                "08:00-18:00. Closed on weekends.")
+
+
+def _conversational_ctx(draft):
+    ctx = _ctx("vocês abrem no sábado?", intent_class="INFORMATION_REQUEST",
+               goal="know whether the clinic opens on Saturday")
+    ctx.ego_result = EgoResult(steps=[EgoStep(index=0, path="native", assistant_text=draft)],
+                               metrics=_m("ego"))
+    ctx.metadata[mk.JUDGE_CONVERSATIONAL] = True
+    return ctx
+
+
+@pytest.mark.asyncio
+async def test_judge_approves_a_conversational_reply_the_limits_support():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    ctx = _conversational_ctx("Não abrimos aos sábados: atendemos de segunda a sexta, das 8h às 18h.")
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt=_CONV_LIMITS)
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
+@pytest.mark.asyncio
+async def test_judge_still_rejects_a_conversational_reply_that_invents():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    ctx = _conversational_ctx("Sim! No sábado abrimos das 9h às 13h.")
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt=_CONV_LIMITS)
+    assert r.approved is False, "the limits say closed on weekends"
+
+
+# The held message, judged before it is sent: values the ADMIN gave earlier in the conversation
+# (the `# Context` history) and a total whose parts the message shows are grounded; a value in no
+# source is not; and an affirmative with the message HELD is not "the message was not sent".
+_HELD_HISTORY = ("[TODAY] 2026-11-10 (terça-feira)\n[HISTORY]\n"
+                 "user: o workshop da Belmira Quostral Vendrim é dia 20/11, às 19h, na sala 4\n"
+                 "assistant: Anotado.\n"
+                 "user: são 2 turmas e cada uma paga R$ 50,00\n"
+                 "assistant: Certo.")
+
+
+def _held_ctx(message, user="manda para a Belmira o resumo do workshop"):
+    ctx = _ctx(user, intent_class="ACTION_REQUEST",
+               goal="send Belmira the workshop summary the user dictated")
+    held = ToolExecution(tool="notify_user",
+                         arguments={"to": "Belmira Quostral Vendrim", "message": message},
+                         ok=False, error="needs_confirmation", tool_mutating=True,
+                         result=("[PENDING CONFIRMATION] 'notify_user' is destructive and was "
+                                 "NOT executed; it needs explicit user confirmation first."))
+    ctx.ego_result = EgoResult(steps=[EgoStep(index=0, path="native", assistant_text="",
+                                              tool_calls=[held])],
+                               pending_confirmation=[held], metrics=_m("ego"))
+    ctx.metadata[mk.HELD_DELIVERED_TEXT] = {"notify_user": "message"}
+    ctx.metadata[mk.EGO_CONTEXT] = _HELD_HISTORY
+    ctx.force_language = "pt-BR"
+    return ctx
+
+
+_HELD_RIGHT = ("Olá, Belmira! Seu workshop é no dia 20/11, às 19h, na sala 4. São 2 turmas de "
+               "R$ 50,00 cada: 2 x R$ 50,00 = R$ 100,00 no total.")
+
+
+@pytest.mark.asyncio
+async def test_judge_approves_a_held_message_grounded_in_the_conversation():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    r = await SuperegoStage().evaluate(_held_ctx(_HELD_RIGHT), _json_backend(), limits_prompt="")
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
+@pytest.mark.asyncio
+async def test_judge_still_rejects_a_held_message_with_a_value_in_no_source():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    wrong = _HELD_RIGHT.replace("sala 4", "sala 9")
+    r = await SuperegoStage().evaluate(_held_ctx(wrong), _json_backend(), limits_prompt="")
+    assert r.approved is False, "the room the user dictated is 4"
+
+
+@pytest.mark.asyncio
+async def test_judge_approves_a_held_message_on_a_bare_affirmative():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    r = await SuperegoStage().evaluate(_held_ctx(_HELD_RIGHT, user="pode enviar"),
+                                       _json_backend(), limits_prompt="")
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"

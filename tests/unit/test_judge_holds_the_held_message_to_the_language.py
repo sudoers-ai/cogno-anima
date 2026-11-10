@@ -29,6 +29,7 @@ import hashlib
 import pytest
 
 from cogno_anima import metakeys as mk
+from tests.unit._judge_0115 import as_0114
 from cogno_anima.stages.superego import (_HELD_ASKING_IS_THE_HOSTS, _HELD_MESSAGE_RULE,
                                          SuperegoStage, _held_message_rule,
                                          held_message_language)
@@ -67,8 +68,9 @@ def _sha(ctx) -> str:
     stage = SuperegoStage()
     # No turn here carries a `# Context` section; the two clauses that named one are put back
     # before hashing, so the digests stay the parent tree's (`_judge_context_clauses`).
-    return hashlib.sha256((stage._judge_system(ctx) + "\x00"
-                           + with_the_context_clauses(_prompt(ctx))).encode()).hexdigest()
+    # …and 0.1.15's three deliberate changes undone (`_judge_0115.as_0114`).
+    return hashlib.sha256(as_0114(stage._judge_system(ctx) + "\x00"
+                                  + with_the_context_clauses(_prompt(ctx))).encode()).hexdigest()
 
 
 def _no_hold_turn():

@@ -46,6 +46,7 @@ import pytest
 from cogno_anima import metakeys as mk
 from cogno_anima.security.prompt_guard import defang_structure, sanitize_untrusted
 from cogno_anima.stages import superego as superego_mod
+from tests.unit._judge_0115 import as_0114
 from cogno_anima.stages.superego import SuperegoStage
 from cogno_anima.types import EgoResult
 from tests.unit.test_superego import _ctx, _m
@@ -90,7 +91,9 @@ class _Rec:
 def _judge(ctx) -> str:
     rec = _Rec('{"approved": true}')
     asyncio.run(SuperegoStage().evaluate(ctx, rec, limits_prompt="Nunca prometa descontos."))
-    return rec.sent
+    # 0.1.15's deliberate changes undone (`_judge_0115.as_0114`): this file's proofs are about
+    # the contact's request, taken on a tree before them.
+    return as_0114(rec.sent)
 
 
 def _voice(ctx) -> str:

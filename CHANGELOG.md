@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.15 — 2026-11-10 — the judge is shown a write made with another value than the one stated; the voice lists no time nobody read
+## 0.1.15 — 2026-11-10 — the judge is shown a write made with another value than the one stated, stops contradicting itself on the branches that approve by default, and reads a hold as a hold; the voice lists no time nobody read
 
 ### Fixed
 
@@ -57,9 +57,45 @@
     assertion; the controls (a read that returned times, a time the contact named, a time the
     executor asked about, a duration, the persona's own hours, the host's clock, no tool at all)
     are one voice call and the reply untouched.
-- The model half of both is in `tests/integration/test_superego.py` (cloud-only, unmeasured on
-  qwen3:8b): the wrong hour rejected / the right hour approved / a derived and a moved hour still
-  approved; the voice after the failed read states no time.
+- **The judge no longer tells the two approve-by-default branches the opposite.** Its system
+  message was the same on every branch — "Default to NOT approving when you cannot verify the
+  criteria" — while the READ-ONLY and CONVERSATIONAL criteria, in the user half, open with
+  "APPROVE BY DEFAULT … This overrides the general 'do not approve what you cannot verify'
+  stance". The stance they override sat in the system message, which an instruction-tuned model
+  ranks above the user half. Measured downstream over 30 days: of the 31 turns that ended with
+  the judge exhausted, 14 were read-only with every call a successful read and 4 were
+  conversational.
+  - `_judge_system` picks the stance by branch: the EXECUTION branch keeps `_JUDGE_SYSTEM` byte
+    for byte; the read-only and conversational branches get `_JUDGE_SYSTEM_ANSWER`, which says it
+    judges a REPLY, approves unless a listed violation is present, and names an unsupported
+    statement as one of them. The criteria are the same text. The provider's cached prefix per
+    (persona, role) becomes two, one per stance.
+- **A held call renders `HELD`, not `ERROR`.** Every call held for the user's confirmation (the
+  hold's own code, `needs_confirmation`: gate B, or a skill's ask with no output) rendered `→
+  ERROR` under `# What the EGO executed`, and the judge read the hold as a failed send. Measured
+  downstream: «pode enviar» with no live proposal, the executor re-issued the message, the gate
+  held it, and the judge rejected because "the message was not sent". The gate-C proposal had
+  already been measured on the same word (5/5 rejected with `ERROR`, 5/5 approved with
+  `PROPOSED_STATUS`). A call that RAN and failed still renders `ERROR`.
+- **The held-message rule.** Criterion (d) was an exclusive list ("anything the request and the
+  successful tool results above do not support"), narrower than the GROUNDING criterion of the
+  same prompt. Measured downstream: a held message the owner called perfect was rejected twice,
+  for values dictated earlier in the conversation and for a total the message showed its parts
+  for. (d) now points at the GROUNDING criterion's own sources (`_HELD_NOT_GROUNDED`) and admits a
+  total whose shown arithmetic comes out; `_HELD_IS_THE_OUTCOME` says a held call is the turn's
+  correct outcome and an affirmative does not make it wrong.
+- **What did not move:** the execution branch's whole request (16 digests on `f9f10d7`), the user
+  half of the read-only and conversational branches (6), a failed call's `ERROR` line.
+  `tests/unit/test_judge_stance_follows_the_branch.py`; its 7 twins were red on the base by
+  assertion. The older digest proofs keep their digests and hash `tests/unit/_judge_0115.py`'s
+  `as_0114` of the rendering, which undoes exactly these three changes and is the identity on the
+  execution branch with no held call.
+- The model half of all of it is in `tests/integration/test_superego.py` (cloud-only, unmeasured
+  on qwen3:8b): the wrong hour rejected / the right hour approved / a derived and a moved hour
+  still approved; a read that asks before acting approved; a conversational reply the limits
+  support approved / one that invents rejected; a held message grounded in the conversation
+  approved / one with a value in no source rejected / one on a bare «pode enviar» approved; the
+  voice after the failed read states no time.
 
 ## Unreleased — docs: `CLAUDE.md` becomes a short guide; each contract has its own file (docs only, 2026-11-08)
 

@@ -24,6 +24,7 @@ import hashlib
 
 from cogno_anima import held_delivered_texts, held_messages_with_asks
 from cogno_anima import metakeys as mk
+from tests.unit._judge_0115 import as_0114
 from cogno_anima.stages.superego import (_HELD_ASK_LEAD, _HELD_ASK_RULE,
                                          _HELD_ASKING_IS_THE_HOSTS, _HELD_MESSAGE_RULE,
                                          _HELD_MESSAGES_HEADER, SuperegoStage)
@@ -64,7 +65,8 @@ def _sha(text: str) -> str:
     """The digest of a prompt AS THE TREE BEFORE said it: none of these turns carries a
     `# Context` section, and since 0.1.6 the two clauses that named one are not rendered
     without it — they are put back before hashing (`_judge_context_clauses`)."""
-    return hashlib.sha256(with_the_context_clauses(text).encode()).hexdigest()
+    # …and 0.1.15's three deliberate changes undone (`_judge_0115.as_0114`).
+    return hashlib.sha256(with_the_context_clauses(as_0114(text)).encode()).hexdigest()
 
 
 _DECL = {"notify_user": "message"}

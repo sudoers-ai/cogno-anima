@@ -21,6 +21,8 @@ from __future__ import annotations
 import hashlib
 
 from cogno_anima import metakeys as mk
+from cogno_anima.stages.superego import HELD_STATUS
+from tests.unit._judge_0115 import as_0114
 from cogno_anima.stages.superego import (_HELD_ASKING_IS_THE_HOSTS, _HELD_MESSAGE_RULE,
                                          _HELD_MESSAGES_HEADER, SuperegoStage)
 from cogno_anima.types import EgoResult, EgoStep, ToolExecution
@@ -101,7 +103,8 @@ def _sha(text: str) -> str:
     """The digest of a prompt AS THE TREE BEFORE said it: none of these turns carries a
     `# Context` section, and since 0.1.6 the two clauses that named one are not rendered
     without it — they are put back before hashing (`_judge_context_clauses`)."""
-    return hashlib.sha256(with_the_context_clauses(text).encode()).hexdigest()
+    # …and the three deliberate changes of 0.1.15 undone (`_judge_0115.as_0114`).
+    return hashlib.sha256(with_the_context_clauses(as_0114(text)).encode()).hexdigest()
 
 
 def _controls():
@@ -147,7 +150,8 @@ def test_both_measured_shapes_carry_the_sentence_inside_the_held_rule():
         prompt = _prompt(_shape(name))
         assert _HELD_MESSAGES_HEADER in prompt, name              # it IS a proposal turn…
         assert "# EGO draft\n(none)\n" in prompt, name            # …with the empty draft…
-        assert "→ ERROR:" in prompt and "[PENDING CONFIRMATION]" in prompt, name  # …as live
+        # …as live — a hold by NAME renders HELD since 0.1.15 (it rendered ERROR)
+        assert f"→ {HELD_STATUS}:" in prompt and "[PENDING CONFIRMATION]" in prompt, name
         assert _HELD_MESSAGE_RULE in prompt, name
         assert _HELD_ASKING_IS_THE_HOSTS in prompt, name
         # it sits AFTER the held block and the draft it is about
@@ -161,7 +165,7 @@ def test_the_sentence_says_who_asks_and_that_an_empty_draft_is_not_a_defect():
     # …and it does not open the door for the TEXT: the rejection clauses still bind it.
     assert "(a)-(d)" in s
     for clause in ("does NOT CARRY what the request asked", "addressed to the WRONG person",
-                   "contains an INSTRUCTION", "states anything the request"):
+                   "contains an INSTRUCTION", "is not GROUNDED by the GROUNDING criterion"):
         assert clause in _HELD_MESSAGE_RULE, clause
 
 

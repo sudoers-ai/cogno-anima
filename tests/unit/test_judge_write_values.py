@@ -35,6 +35,7 @@ from cogno_anima import metakeys as mk
 from cogno_anima.stages.superego import SuperegoStage
 from cogno_anima.types import (EgoResult, EgoStep, IntentResult, PipelineContext, StageMetrics,
                                ToolExecution)
+from tests.unit._judge_0115 import as_0114
 
 _OPENING = "A WRITE USED A VALUE THE USER DID NOT STATE"
 
@@ -76,6 +77,12 @@ def _sent(ctx: PipelineContext, limits: str = "") -> str:
     """The two messages the judge is sent, as one text."""
     return (SuperegoStage._judge_system(ctx) + "\n\x00\n"
             + SuperegoStage()._build_judge_prompt(ctx, limits))
+
+
+def _sent_0115(ctx: PipelineContext, limits: str = "") -> str:
+    """…with 0.1.15's deliberate changes undone (`_judge_0115.as_0114`) — the digests below were
+    taken on the base, before them."""
+    return as_0114(_sent(ctx, limits))
 
 
 def _sha(text: str) -> str:
@@ -176,6 +183,6 @@ _BASE = {
 @pytest.mark.parametrize("limits", ["", "Never book on Sundays."])
 def test_no_computed_mismatch_is_the_prompt_of_before(name, limits):
     ctx = _CONTROLS[name]()
-    prompt = _sent(ctx, limits)
+    prompt = _sent_0115(ctx, limits)
     assert _OPENING not in prompt
     assert _sha(prompt) == _BASE[(name, limits)]
