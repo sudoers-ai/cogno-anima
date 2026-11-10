@@ -2851,6 +2851,11 @@ class SuperegoStage:
         if not context:
             criteria = criteria.replace(_IN_THE_CONTEXT_ABOVE, "")
         the_clock = _CONTEXT_HAS_THE_CLOCK if context else ""
+        # The computed comparison of a write's values with the ONE the contact stated. Read from
+        # the contact's own message, never rendered from it: what enters the prompt is labels in
+        # our format (`_write_value_paragraph`). `""` on every turn without a mismatch.
+        write_values = _write_value_paragraph(
+            ctx.user_input, [*ego.tools_executed, *(consulted_calls or ())])
         # THE ORDER IS THE PROVIDER'S PROMPT CACHE (F1.3, 2026-09-24). A provider reuses only an
         # IDENTICAL PREFIX (OpenAI: at least 1024 tokens), and the system message above carries
         # nothing of the turn — `_judge_system` is the fixed instruction plus, when declared, the
@@ -2894,7 +2899,7 @@ class SuperegoStage:
             f"{self._held_ask_rule(ctx) if held_messages else ''}"
             f"{_MEMO_RULE if memo_block else ''}"
             f"{_PERSON_NAME_IS_A_VALUE if self._people_named(ctx) else ''}"
-            f"{_write_value_paragraph(self._contact_request(ctx), [*ego.tools_executed, *(consulted_calls or ())])}"
+            f"{write_values}"
             "TRUST THE TOOLS: values a tool returned — resolved dates, ids, availability, "
             "figures — are AUTHORITATIVE. Do NOT re-derive them from your own reasoning or "
             "reject them as wrong (e.g. do not second-guess a resolved calendar date against "
