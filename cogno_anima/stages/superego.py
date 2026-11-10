@@ -1168,12 +1168,23 @@ _HELD_ASKING_IS_THE_HOSTS = _held_asking_is_the_hosts("(a)-(d)")
 # owner called perfect was rejected twice for values the ADMIN had dictated over the previous
 # turns (in the `# Context` history) and for a total of parts the message itself showed. So (d)
 # points at that ONE definition instead of restating a narrower one.
+#
+# …AND A TOTAL OF PARTS THE MESSAGE LISTS NEEDS NO WRITTEN OPERATION. The first cut of this
+# clause said "a total … whose arithmetic does not come out (one that comes out is grounded)",
+# and measured on the production judge it did not hold: the held summary of five values the user
+# had dictated, with "Total por aluno: R$ 250,00" after its three listed parts, was approved 2/5
+# against the base's 4/5, every rejection saying the values were right and the total was DERIVED
+# without "the work" the DERIVED VALUES rule asks for (`_DERIVED_FROM_EVIDENCE`: "120 + 80 + 50 =
+# 250"). A message to a person lists the parts and states the total, and the parts on the page
+# ARE the work; so the clause says so, and keeps the rejection of a total that is NOT their sum.
 _HELD_NOT_GROUNDED = (
     "(d) states a value or fact that is not GROUNDED by the GROUNDING criterion above — the "
     "SAME sources that criterion names on this turn, not only the request and the tool results "
     "(when the conversation so far is shown, a value the user gave in it is grounded) — or a "
-    "total the message works out from parts it shows whose arithmetic does not come out (one "
-    "that comes out is grounded)"
+    "total that is NOT the sum (or product) of the parts the message itself lists. A total of "
+    "parts the message lists needs NO written operation: in a message to a person, the parts on "
+    "the page are the work the DERIVED VALUES rule asks for, so a total that IS their sum is "
+    "grounded"
 )
 
 # …AND THE HOLD IS THE OUTCOME (0.1.15). A held call is this turn's intended state, and a short

@@ -211,6 +211,9 @@ async def test_voice_writes_grounded_response():
 # shipping a rubber stamp.
 
 
+_EMPTY_READ_TODAY = "[TODAY] 2026-09-15 (terça-feira)"
+
+
 @pytest.mark.asyncio
 async def test_judge_approves_a_truthful_empty_read():
     """The measured defect: the read succeeded, returned nothing, and the draft said so.
@@ -223,6 +226,10 @@ async def test_judge_approves_a_truthful_empty_read():
                goal="list the classes scheduled for next month",
                tool="get_schedule", args={"month": "2026-10"}, result="No classes found.",
                draft="I found no classes scheduled for next month (October 2026).")
+    # The CLOCK is fixed: «next month» is October only if today is in September. Without it the
+    # judge reads the real date and rejects a correct draft for querying the wrong month — the
+    # fixture, not the judge (measured on the production judge model: every rejection said so).
+    ctx.metadata[mk.EGO_CONTEXT] = _EMPTY_READ_TODAY
     await backends.skip_unless_available()
     r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
     assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
@@ -251,6 +258,7 @@ async def test_judge_still_rejects_a_read_whose_draft_invents():
                goal="list the classes scheduled for next month",
                tool="get_schedule", args={"month": "2026-10"}, result="No classes found.",
                draft="You have Algebra on 5 October at 09:00 and Physics on 12 October at 14:00.")
+    ctx.metadata[mk.EGO_CONTEXT] = _EMPTY_READ_TODAY      # the same clock as its twin
     await backends.skip_unless_available()
     r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
     assert r.approved is False, "an empty read grounds a negative answer, never a listing"

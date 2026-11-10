@@ -83,8 +83,9 @@
   successful tool results above do not support"), narrower than the GROUNDING criterion of the
   same prompt. Measured downstream: a held message the owner called perfect was rejected twice,
   for values dictated earlier in the conversation and for a total the message showed its parts
-  for. (d) now points at the GROUNDING criterion's own sources (`_HELD_NOT_GROUNDED`) and admits a
-  total whose shown arithmetic comes out; `_HELD_IS_THE_OUTCOME` says a held call is the turn's
+  for. (d) now points at the GROUNDING criterion's own sources (`_HELD_NOT_GROUNDED`), and a total of
+  parts the message itself lists needs no written operation (the parts on the page are the work)
+  while a total that is not their sum is still rejected; `_HELD_IS_THE_OUTCOME` says a held call is the turn's
   correct outcome and an affirmative does not make it wrong.
 - **What did not move:** the execution branch's whole request (16 digests on `f9f10d7`), the user
   half of the read-only and conversational branches (6), a failed call's `ERROR` line.

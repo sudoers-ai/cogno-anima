@@ -133,7 +133,8 @@ def test_criterion_d_points_at_the_grounding_criterion():
     user = _user(_held_turn())
     assert "is not GROUNDED by the GROUNDING criterion above" in user
     assert "anything the request and the successful tool results above do not support" not in user
-    assert "one that comes out is grounded" in user          # the shown total
+    assert "needs NO written operation" in user              # a total of listed parts
+    assert "NOT the sum (or product) of the parts the message itself lists" in user
 
 
 def test_the_hold_is_the_outcome_sentence_renders_on_a_held_message_turn():
