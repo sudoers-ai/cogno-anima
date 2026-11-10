@@ -18,7 +18,7 @@
     carries that kind of value in its arguments, and none of them is it.
   - The CODE computes the comparison and the MODEL decides: `_write_value_paragraph`, after the
     criteria (beside `_PERSON_NAME_IS_A_VALUE`), names the write, the value stated and the value
-    used, and says such a write is the wrong action — unless the request's own words ask for the
+    used, and says such a write (another time or date; a person is not compared) is the wrong action — unless the request's own words ask for the
     written value (they refuse the stated one, move it, or derive the written one: «1h antes da
     consulta das 15»). Deterministic rejection was refused for exactly those two shapes. Values
     are rendered in our own format (`HH:MM`, `DD/MM`); no byte of the argument or the message.

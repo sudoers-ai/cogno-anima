@@ -100,7 +100,11 @@ def test_the_demo_shape_puts_the_two_hours_side_by_side():
     # After the criteria and before TRUST THE TOOLS: it is a rule about the criteria.
     assert prompt.index("# Judge the EXECUTION") < prompt.index(_OPENING) \
         < prompt.index("TRUST THE TOOLS")
-    assert "REJECT it" in prompt[prompt.index(_OPENING):prompt.index("TRUST THE TOOLS")]
+    rule = prompt[prompt.index(_OPENING):prompt.index("TRUST THE TOOLS")]
+    assert "REJECT it" in rule
+    # A PERSON is not compared, so the rule names none: a name's FORM is the 0.1.14 rule's
+    # (`_PERSON_NAME_IS_A_VALUE`), and "or person" here would invite a rejection by it.
+    assert "person" not in rule.lower()
 
 
 def test_a_failed_write_with_the_other_hour_is_shown_too():

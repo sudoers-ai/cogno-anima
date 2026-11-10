@@ -1417,8 +1417,8 @@ _WRITE_VALUE_OPENING = (
     "the times and dates the user's own message names with the arguments of each write above.\n"
 )
 _WRITE_VALUE_RULE = (
-    "Under GOAL↔EXECUTION a write made with another time, date or person than the one the user "
-    "stated is the WRONG action, not a partial one, whatever the draft says about it — a draft "
+    "Under GOAL↔EXECUTION a write made with another time or date than the one the user stated "
+    "is the WRONG action, not a partial one, whatever the draft says about it — a draft "
     "that reports the value the write used is truthful about the wrong action. REJECT it, and "
     "name in the critique the value the user stated. The ONE exception: the request's own words "
     "ask for the written value — they refuse the stated one ('15:00 doesn't work for me'), move "
