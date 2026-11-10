@@ -3304,7 +3304,16 @@ class SuperegoStage:
         them — the business rules, fenced. Nothing of the turn is in here, so on two turns of
         the same (persona, role) the whole system message is the same bytes: the prefix a
         provider's prompt cache can serve. No rules → exactly ``_JUDGE_SYSTEM``."""
-        stance = _JUDGE_SYSTEM if cls._judge_branch(ctx) == JUDGE_EXECUTION else _JUDGE_SYSTEM_ANSWER
+        # The stance follows the branch. A carrier the branch cannot be read off (a partial
+        # stand-in with metadata and nothing else) gets the EXECUTION stance: the bytes this
+        # function always returned, and the strict side. It must never raise — it builds half
+        # of every judge request, and until the stance depended on the branch it read only the
+        # metadata.
+        try:
+            answer = cls._judge_branch(ctx) != JUDGE_EXECUTION
+        except Exception:      # noqa: BLE001 — an unreadable carrier is not a licence
+            answer = False
+        stance = _JUDGE_SYSTEM_ANSWER if answer else _JUDGE_SYSTEM
         rules = cls._persona_rules(ctx)
         if not rules:
             return stance

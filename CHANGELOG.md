@@ -69,7 +69,9 @@
     for byte; the read-only and conversational branches get `_JUDGE_SYSTEM_ANSWER`, which says it
     judges a REPLY, approves unless a listed violation is present, and names an unsupported
     statement as one of them. The criteria are the same text. The provider's cached prefix per
-    (persona, role) becomes two, one per stance.
+    (persona, role) becomes two, one per stance. A carrier the branch cannot be read off (a
+    stand-in with metadata alone) gets the execution stance and never raises: `_judge_system`
+    read only the metadata before, and a downstream host's test double builds it that way.
 - **A held call renders `HELD`, not `ERROR`.** Every call held for the user's confirmation (the
   hold's own code, `needs_confirmation`: gate B, or a skill's ask with no output) rendered `→
   ERROR` under `# What the EGO executed`, and the judge read the hold as a failed send. Measured

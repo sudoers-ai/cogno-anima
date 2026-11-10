@@ -223,3 +223,17 @@ def test_the_helper_is_the_identity_where_nothing_changed_and_undoes_the_rest():
     held = _user(_held_turn())
     assert as_0114(held) != held and "→ ERROR:" in as_0114(held)
     assert _DEFAULT_NOT in as_0114(_system(_ctx((_READ,))))
+
+
+def test_a_carrier_with_metadata_alone_gets_the_execution_stance_and_never_raises():
+    """`_judge_system` read only the metadata until the stance followed the branch, and callers
+    build it over a stand-in that carries nothing else (a downstream host's test double does).
+    Such a carrier gets the bytes it always got. Green on the base; red on the first cut of this
+    change, which raised `AttributeError` from the branch's read of `ego_result`."""
+    from types import SimpleNamespace
+    assert _DEFAULT_NOT in SuperegoStage._judge_system(SimpleNamespace(metadata={}))
+    with_rules = SuperegoStage._judge_system(
+        SimpleNamespace(metadata={mk.PERSONA_RULES: "- Abrimos às 8h."}))
+    assert with_rules.startswith(SuperegoStage._judge_system(SimpleNamespace(metadata={})))
+    assert "<business_rules>" in with_rules
+
