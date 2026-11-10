@@ -53,6 +53,8 @@ from cogno_anima.types import (
 from cogno_synapse import (LLMBackend, cached_tokens_of, served_model_of,
                            system_fingerprint_of)
 from cogno_anima.preserved import CRITICAL_TERM_RE
+from cogno_anima.explicit_values import (ClockTime, argument_texts, clock_time_spans, clock_times,
+                                         same_time, unread_times, write_value_mismatches)
 from cogno_anima.prompts import prompt_digest
 from cogno_anima.utils import WarnOnce
 from cogno_anima.security.prompt_guard import (defang_structure, render_context,
@@ -1298,6 +1300,64 @@ _PERSON_NAME_IS_A_VALUE = (
     "way. REJECT a name only when the evidence ties it to a DIFFERENT person than the one the "
     "execution acted on.\n\n"
 )
+
+# A WRITE MADE WITH ANOTHER VALUE THAN THE ONE THE USER STATED (0.1.15). Criterion #1 asks "did it
+# do exactly what was asked (X, not Y)", and on a write X and Y are VALUES: the hour, the date.
+# Measured on a scheduling demo: the contact answered «às 15», the executor called
+# `book_appointment(time="14:00")` — the hour from an earlier turn — and the judge APPROVED. The
+# generic criterion never put the two values side by side, and the draft ("booked for 14:00")
+# was truthful about the wrong action, so nothing else in the prompt looked wrong.
+#
+# The CODE puts them side by side (`cogno_anima.explicit_values.write_value_mismatches`: the
+# contact's own message names exactly ONE time or ONE date, a write's arguments carry that kind
+# of value and none of them is it), and the MODEL decides. Deterministic rejection was refused on
+# purpose: «às 15 não dá, pode ser outro?» and «me lembra 1 h antes da consulta das 15» are a
+# request whose own words ask for the other value, and a rejection that cannot read them would
+# send the executor to undo a correct write. The deterministic net for the same defect is the
+# host's, at dispatch, before anything commits; this is the model's, and both stay.
+#
+# It travels with its evidence, like `_PERSON_NAME_IS_A_VALUE`: rendered only when a mismatch was
+# COMPUTED, and every other turn is sent the prompt of before, byte for byte
+# (`tests/unit/test_judge_write_values.py`, digests taken on the base). No header, so
+# `_JUDGE_BLOCKS`, the inventory and the reserved headers do not move. What enters the prompt is
+# OUR rendering — a tool name flattened to one line and values as `HH:MM` / `DD/MM` — never a
+# byte of the argument or the message they were read from (both are already in the prompt, under
+# `# User request` and `# What the EGO executed`).
+#
+# A PERSON is not compared here: the contact's name for someone and the record's name for the
+# same person legitimately differ (`_PERSON_NAME_IS_A_VALUE`), so a string comparison would be
+# the false rejection that rule was written against. That half stays the criteria's.
+_WRITE_VALUE_OPENING = (
+    "A WRITE USED A VALUE THE USER DID NOT STATE — computed by code, not a guess: it compared "
+    "the times and dates the user's own message names with the arguments of each write above.\n"
+)
+_WRITE_VALUE_RULE = (
+    "Under GOAL↔EXECUTION a write made with another time, date or person than the one the user "
+    "stated is the WRONG action, not a partial one, whatever the draft says about it — a draft "
+    "that reports the value the write used is truthful about the wrong action. REJECT it, and "
+    "name in the critique the value the user stated. The ONE exception: the request's own words "
+    "ask for the written value — they refuse the stated one ('15:00 doesn't work for me'), move "
+    "it, or derive the written one from it ('remind me one hour before the 15:00 "
+    "appointment'). A value from an earlier turn or from the executor's own reasoning is not "
+    "that exception.\n\n"
+)
+_WRITE_VALUE_KIND = {"time": "the time", "date": "the date"}
+
+
+def _write_value_paragraph(request: object, calls: "Iterable[Any]") -> str:
+    """The computed comparison for the judge — ``""`` when no write differs from the ONE value
+    the request states (the prompt of before, byte for byte)."""
+    found = write_value_mismatches(request, calls)
+    if not found:
+        return ""
+    lines = []
+    for f in found:
+        tool = f.tool.lstrip("#").strip() or "a write"
+        kind = _WRITE_VALUE_KIND.get(f.kind, f.kind)
+        lines.append(f"- {tool}: the user's message names {kind} {f.requested}; the call was "
+                     f"made with {', '.join(f.written)}.")
+    return _WRITE_VALUE_OPENING + "\n".join(lines) + "\n" + _WRITE_VALUE_RULE
+
 
 # The READ-ONLY branch. A turn that ran, whose every call SUCCEEDED and whose every call was a
 # READ, has no mutation to verify — so criteria #1 (GOAL<->EXECUTION) and #3 (COMPLETENESS)
@@ -2834,6 +2894,7 @@ class SuperegoStage:
             f"{self._held_ask_rule(ctx) if held_messages else ''}"
             f"{_MEMO_RULE if memo_block else ''}"
             f"{_PERSON_NAME_IS_A_VALUE if self._people_named(ctx) else ''}"
+            f"{_write_value_paragraph(self._contact_request(ctx), [*ego.tools_executed, *(consulted_calls or ())])}"
             "TRUST THE TOOLS: values a tool returned — resolved dates, ids, availability, "
             "figures — are AUTHORITATIVE. Do NOT re-derive them from your own reasoning or "
             "reject them as wrong (e.g. do not second-guess a resolved calendar date against "
@@ -3456,6 +3517,122 @@ class SuperegoStage:
                       if k in in_critique and k not in grounded)
 
     @staticmethod
+    def _turn_records(ctx: PipelineContext) -> "list[Any]":
+        """Every execution record of the turn — the accumulator, the surviving attempt, the
+        consulted specialist's — read lazily, each source behind its own guard (the rule of
+        `types._any_execution`: a source that breaks says nothing, it does not cost the turn)."""
+        out: "list[Any]" = []
+        sources = (lambda: getattr(ctx, "turn_executions", None) or [],
+                   lambda: getattr(getattr(ctx, "ego_result", None), "tools_executed", None) or [],
+                   lambda: getattr(getattr(ctx, "consult_result", None), "tools_executed", None)
+                   or [])
+        for read in sources:
+            try:
+                out.extend(read())
+            except Exception:      # noqa: BLE001 — an unreadable source is not evidence
+                continue
+        return out
+
+    @classmethod
+    def _unread_times(cls, ctx: PipelineContext, response: str, payload: str,
+                      system: str) -> "list[ClockTime]":
+        """The times ``response`` states that nothing this turn READ or was TOLD — ``[]`` when
+        the rule does not apply.
+
+        Applies only when tools RAN this turn (with no call at all there is no "unread" — a
+        persona that converses may propose a time, and that is another class, left alone) and
+        NO successful call returned a time: once a read did, a reply that works within it
+        («entre 14h e 18h» → «16h?») is the judge's to weigh, not a pattern's. The evidence is
+        everything the voice was given that is not the reviewer's words: the contact's message
+        and its rewrite, the arguments of every call (a time the executor ASKED about is one it
+        had in hand), the executor data (a failed read's error included), the host's context,
+        the persona's prompt and rules, the declared values. The critique and the rejected draft
+        are NOT evidence (`_CRITIQUE_IS_NOT_EVIDENCE`): on the measured turn the critique is
+        where the invented times were written."""
+        if not response:
+            return []
+        records = cls._turn_records(ctx)
+        if not records:
+            return []
+        evidence: "list[object]" = [ctx.user_input, payload, system]
+        for r in records:
+            try:
+                if getattr(r, "ok", None) is True and clock_times(str(r.result or "")):
+                    return []
+                evidence.extend(argument_texts(getattr(r, "arguments", None)))
+                evidence.append(str(getattr(r, "error", "") or ""))
+            except Exception:      # noqa: BLE001 — an unreadable record widens nothing
+                return []
+        meta = getattr(ctx, "metadata", None) or {}
+        noumeno = getattr(ctx, "noumeno", None)
+        evidence += [getattr(noumeno, "rewritten", "") or "",
+                     str(meta.get(mk.EGO_CONTEXT) or ""),
+                     str(meta.get(mk.EGO_CONTEXT_UNTRUSTED) or ""),
+                     cls._persona_rules(ctx), *cls._declared_values(ctx)]
+        return unread_times(response, evidence)
+
+    @classmethod
+    def _unread_times_correction(cls, ctx: PipelineContext, times: "Sequence[ClockTime]") -> str:
+        """The re-voice instruction — appended AFTER ``# Task`` like `_divergence_correction`,
+        so no header is added and ``_VOICE_BLOCKS`` and the persisted inventory stay as they are.
+        It renders OUR labels (``HH:MM``) and the host's tool names, never a byte of the reply."""
+        failed = []
+        for r in cls._turn_records(ctx):
+            name = " ".join(str(getattr(r, "tool", "") or "").split())[:64].lstrip("#").strip()
+            if getattr(r, "ok", None) is not True and name and name not in failed:
+                failed.append(name)
+        why = (f"{', '.join(failed)} FAILED, so nobody has read which times exist"
+               if failed else "no call of this turn returned any time")
+        return ("HARD RULE — REWRITE. The reply you just wrote was rejected by a deterministic "
+                f"check: it states {', '.join(t.label() for t in times)}, and no successful "
+                f"call of this turn returned a time — {why}. Write it again WITHOUT those "
+                "times: never list, offer or confirm a time that no successful read returned. "
+                "Say plainly what could not be checked and offer the next step (trying again, "
+                "or asking which time the user wants). A time the user named themselves may be "
+                "repeated as theirs.")
+
+    @staticmethod
+    def _without_unread_times(text: str, times: "Sequence[ClockTime]") -> "tuple[str, str]":
+        """The deterministic floor: ``text`` without the statements that state one of ``times``.
+
+        A list line carrying one goes whole; in prose, the sentence carrying it goes; a list's
+        header line (ending in ``:``) goes when every item under it went. ``("…", "removed")``.
+        When nothing would be left, the times are MASKED in place instead (``[…]``) and the
+        reply keeps its words — ``("…", "masked")``: an empty reply is not a reply, and nothing
+        downstream guards one."""
+        def carries(piece: str) -> bool:
+            return any(same_time(t, u) for _a, _b, t in clock_time_spans(piece) for u in times)
+
+        lines = text.split("\n")
+        kept: "list[Optional[str]]" = []
+        for line in lines:
+            if not carries(line):
+                kept.append(line)
+            elif _STATEMENT_MARK_RE.match(line):
+                kept.append(None)                       # a list item: the whole line goes
+            else:
+                parts = [p for p in re.split(r"(?<=[.!?])\s+", line) if not carries(p)]
+                kept.append(" ".join(parts) if parts else None)
+        # A header ending in ':' whose items all went, goes with them.
+        for i, row in enumerate(kept):
+            if row is None or not row.rstrip().endswith(":"):
+                continue
+            j = i + 1
+            while j < len(kept) and kept[j] is None:
+                j += 1
+            if j > i + 1 and (j == len(kept) or not (kept[j] or "").strip()):
+                kept[i] = None
+        out = "\n".join(row for row in kept if row is not None)
+        out = re.sub(r"\n{3,}", "\n\n", out).strip()
+        if out:
+            return out, "removed"
+        masked = text
+        for a, b, t in sorted(clock_time_spans(text), key=lambda f: -f[0]):
+            if any(same_time(t, u) for u in times):
+                masked = masked[:a] + "[…]" + masked[b:]
+        return masked, "masked"
+
+    @staticmethod
     def _same_kind_altered(term: str, response: str) -> bool:
         """Does a same-kind token appear in ``response`` but differ from ``term``?"""
         if "@" in term:
@@ -3639,6 +3816,46 @@ class SuperegoStage:
                 if second and len(again[0]) + len(again[1]) <= len(lost) + len(invented):
                     adjustments.append("voice:revoiced_from_approved_draft")
                     response, cot_stripped, prompt = second, second_cot, retry_prompt
+
+        # ── Deterministic unread-times backstop: NOTHING LISTED WITHOUT A READ (0.1.15) ──
+        # Measured on a scheduling demo: `check_availability` FAILED, the judge exhausted, and
+        # the reply offered the contact three times nobody had read. Every rule against it was
+        # already in this prompt — the payload says "relay THIS, do NOT invent alternatives",
+        # `_NOTHING_BEYOND_WHAT_WAS_READ` closes the verdict section — and an instruction is not
+        # a guarantee. The critique the verdict section quotes even NAMED the invented times.
+        #
+        # So the code checks the reply: on a turn where tools ran and NO successful call returned
+        # a time, every time the reply states must be one the evidence states (the contact's
+        # message, the calls' arguments, a failed read's error, the context, the persona's own
+        # prompt) — never the critique, never the rejected draft. A time that is not: ONE
+        # re-voice told which times and why; if the second reply still states one, the code
+        # takes out the statements that carry it (`_without_unread_times`). Unlike the
+        # divergence net above, keeping the first reply is not an option here — it is the
+        # defect. Recorded either way in the closed `voice:unread_times*` alphabet.
+        unread = self._unread_times(ctx, response, payload, system)
+        if unread:
+            adjustments.append("voice:unread_times")
+            logger.warning("stage=superego event=voice_unread_times count=%d", len(unread))
+            retry_prompt = f"{prompt}\n\n{self._unread_times_correction(ctx, unread)}"
+            second, second_cot, ti2, to2, cached2, fp2, sm2 = await _write(retry_prompt)
+            ti += ti2
+            to += to2
+            cached += cached2
+            fingerprint, served_model = fp2, sm2
+            still = self._unread_times(ctx, second, payload, system) if second else unread
+            if second and not still:
+                adjustments.append("voice:revoiced_unread_times")
+                response, cot_stripped, prompt = second, second_cot, retry_prompt
+            else:
+                use_second = bool(second) and len(still) <= len(unread)
+                base, left = (second, still) if use_second else (response, unread)
+                floored, how = self._without_unread_times(base, left)
+                adjustments.append(f"voice:unread_times_{how}")
+                logger.warning("stage=superego event=voice_unread_times_floor how=%s count=%d",
+                               how, len(left))
+                response = floored
+                if use_second:
+                    cot_stripped, prompt = second_cot, retry_prompt
 
         # Deterministic preserved-term backstop on the OUTPUT (2R-A) — flag-only,
         # never auto-inject. Fires only when a CRITICAL term (figure/email/URL)

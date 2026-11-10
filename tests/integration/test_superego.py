@@ -738,3 +738,135 @@ async def test_judge_still_rejects_a_name_of_another_person():
     r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
     assert r.approved is False, "a name the evidence ties to nobody is not the booked person"
     assert r.critique
+
+
+# ── a WRITE made with another value than the one the user stated (0.1.15) ───────────────
+#
+# The deterministic half — the comparison is computed and rendered only on a mismatch, every
+# other prompt the bytes of before — is `tests/unit/test_judge_write_values.py`. These four are
+# the model half, and they are TWO PAIRS on the same booking:
+#   * the wrong hour is rejected / the right hour is approved;
+#   * the paragraph does not become a reflex: a value the request's own words DERIVE («1h antes
+#     da consulta das 15») or MOVE TO («às 15 não dá, marca o primeiro livre depois») is still
+#     approved, though the paragraph renders on both.
+# The shape is the measured demo: the hour had moved before («e às 14?» → «às 14h está livre»),
+# the contact answered «pode ser às 15» and the executor booked the earlier hour. The clock is
+# fixed in the context and every date is absolute. Cloud-only: unmeasured on qwen3:8b.
+_WV_TODAY = ("[TODAY] 2026-11-10 (terça-feira)\n[HISTORY]\nuser: e às 14?\n"
+             "assistant: Às 14h o Dr. Quostral está livre amanhã, 11/11. Quer marcar?")
+
+
+def _write_value_ctx(user, calls, draft, goal):
+    ctx = _ctx(user, intent_class="ACTION_REQUEST", goal=goal)
+    ctx.ego_result = EgoResult(steps=[EgoStep(index=0, path="native", tool_calls=list(calls)),
+                                      EgoStep(index=1, path="native", assistant_text=draft)],
+                               metrics=_m("ego"))
+    ctx.intent.entities_people = ["Dr. Quostral"]
+    ctx.metadata[mk.EGO_CONTEXT] = _WV_TODAY
+    return ctx
+
+
+def _booked(hour):
+    return ToolExecution(tool="book_appointment",
+                         arguments={"host_id": "dr_quostral", "date": "2026-11-11",
+                                    "time": f"{hour}:00"},
+                         result=f"Booked: Dr. Quostral, 2026-11-11 {hour}:00, appointment id A-7.",
+                         ok=True, side_effect=True)
+
+
+_WV_GOAL = "book the appointment with Dr. Quostral tomorrow at the time the user chose"
+
+
+@pytest.mark.asyncio
+async def test_judge_rejects_a_booking_at_another_hour_than_the_one_stated():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    ctx = _write_value_ctx("pode ser às 15", [_booked(14)],
+                           "Prontinho! Sua consulta com o Dr. Quostral está marcada para "
+                           "amanhã, 11/11, às 14h.", _WV_GOAL)
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
+    assert r.approved is False, "the user said 15:00 and the booking is at 14:00"
+    assert r.critique and "15" in r.critique
+
+
+@pytest.mark.asyncio
+async def test_judge_approves_the_booking_at_the_hour_stated():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    ctx = _write_value_ctx("pode ser às 15", [_booked(15)],
+                           "Prontinho! Sua consulta com o Dr. Quostral está marcada para "
+                           "amanhã, 11/11, às 15h.", _WV_GOAL)
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
+@pytest.mark.asyncio
+async def test_judge_approves_a_value_the_request_itself_derives():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    remind = ToolExecution(tool="remind_me",
+                           arguments={"at": "2026-11-11T14:00:00-03:00",
+                                      "note": "consulta com o Dr. Quostral"},
+                           result="Reminder set for 2026-11-11 14:00.", ok=True,
+                           side_effect=True)
+    ctx = _write_value_ctx("me lembra 1h antes da consulta das 15 amanhã", [remind],
+                           "Combinado! Vou te lembrar amanhã às 14h, uma hora antes da "
+                           "consulta das 15h.",
+                           "set a reminder one hour before tomorrow's 15:00 appointment")
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
+@pytest.mark.asyncio
+async def test_judge_approves_a_value_the_request_moves_to():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    free = ToolExecution(tool="check_availability",
+                         arguments={"host_id": "dr_quostral", "date": "2026-11-11"},
+                         result="Free on 2026-11-11: 16:00, 17:00.", ok=True, side_effect=False)
+    ctx = _write_value_ctx("às 15 não dá pra mim, marca o primeiro horário livre depois disso",
+                           [free, _booked(16)],
+                           "Feito! Marquei sua consulta com o Dr. Quostral para amanhã, 11/11, "
+                           "às 16h — o primeiro horário livre depois das 15h.",
+                           "book the first free slot after 15:00 tomorrow with Dr. Quostral")
+    r = await SuperegoStage().evaluate(ctx, _json_backend(), limits_prompt="")
+    assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
+
+
+# ── NOTHING listed without a read: the voice after a failed availability read (0.1.15) ──
+#
+# The deterministic half is `tests/unit/test_voice_lists_no_time_nobody_read.py`: whatever the
+# model writes, no time nobody read reaches the contact. This is the model half — does the ONE
+# re-voice, told which times and why, obey, so the floor that takes statements out is not what
+# shipped? The guarantee is asserted; the floor is reported, not failed on. Cloud-only.
+_VOICE_SECRETARY = ("Você é a secretária da Clínica Vendrim. Responda em português do Brasil, "
+                    "com frases curtas e cordiais.")
+
+
+@pytest.mark.asyncio
+async def test_voice_lists_no_time_after_the_availability_read_failed():
+    _skip_on_ollama()
+    await backends.skip_unless_available()
+    from cogno_anima.explicit_values import clock_times
+    failed = ToolExecution(tool="check_availability", arguments={"host_id": "1",
+                                                                 "date": "2026-11-11"},
+                           result="", error="unknown host_id", ok=False, side_effect=False)
+    date = ToolExecution(tool="resolve_date", arguments={"text": "amanhã"},
+                         result="2026-11-11 (quarta-feira)", ok=True, side_effect=False)
+    user = "quais horários o Dr. Quostral tem amanhã?"
+    ctx = _ctx(user, intent_class="INFORMATION_REQUEST",
+               goal="list Dr. Quostral's free times tomorrow")
+    ctx.ego_result = EgoResult(steps=[
+        EgoStep(index=0, path="native", tool_calls=[failed, date]),
+        EgoStep(index=1, path="native",
+                assistant_text="Tomorrow Dr. Quostral has 09:00, 10:30 and 14:00 free.")],
+        metrics=_m("ego"))
+    ctx.turn_executions = [failed, date]
+    ctx.metadata[mk.EGO_CONTEXT] = "[TODAY] 2026-11-10 (terça-feira)"
+    ctx.metadata[mk.VOICE_CORRECTION] = {
+        "reason": "check_availability failed (unknown host_id) and the draft lists 09:00, 10:30 "
+                  "and 14:00, which no successful call returned.",
+        "kind": "not_executed"}
+    ctx.metadata[mk.JUDGE_VERDICT] = {"approved": False, "attempts": 1}
+    r = await SuperegoStage().voice(ctx, _text_backend(), voice_prompt=_VOICE_SECRETARY)
+    assert clock_times(r.response) == [], (r.response, r.adjustments)

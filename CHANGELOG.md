@@ -1,5 +1,66 @@
 # Changelog
 
+## 0.1.15 — 2026-11-10 — the judge is shown a write made with another value than the one stated; the voice lists no time nobody read
+
+### Fixed
+
+- **A write made with another hour or date than the ONE the user stated is put in front of the
+  judge as such.** Measured on a scheduling demo: the contact answered «às 15» after the hour had
+  moved twice, the executor called `book_appointment(time="14:00")` — the hour of an earlier turn
+  — and the judge APPROVED. Criterion #1 asks "did it do exactly what was asked (X, not Y)", and
+  nothing in the prompt put the two values side by side; the draft reported 14:00, so it was
+  truthful about the wrong action.
+  - `cogno_anima.explicit_values` (new, pure): the explicit clock times and calendar dates of a
+    text, narrow on purpose (a bare number is a price, a quantity or a duration: «dura 1h»,
+    «1h antes», «as 3 opções» are not times; an ISO zone is not a time), and
+    `write_value_mismatches(request, calls)`: the contact's message names exactly one time (or
+    one date), a WRITE of the turn (`side_effect` or `tool_mutating`, failed ones included)
+    carries that kind of value in its arguments, and none of them is it.
+  - The CODE computes the comparison and the MODEL decides: `_write_value_paragraph`, after the
+    criteria (beside `_PERSON_NAME_IS_A_VALUE`), names the write, the value stated and the value
+    used, and says such a write is the wrong action — unless the request's own words ask for the
+    written value (they refuse the stated one, move it, or derive the written one: «1h antes da
+    consulta das 15»). Deterministic rejection was refused for exactly those two shapes. Values
+    are rendered in our own format (`HH:MM`, `DD/MM`); no byte of the argument or the message.
+  - **No computed mismatch → the prompt of before, byte for byte.** No header, so `_JUDGE_BLOCKS`,
+    the inventory and the reserved headers do not move. `tests/unit/test_judge_write_values.py`
+    pins 20 digests of what the judge is sent, taken on the base (`f9f10d7`): the same hour, the
+    same hour in ISO, two hours in the request, no hour, the hour on a READ, a write with no hour,
+    a message text with the same hour, the same date, a conversational turn, a context — each with
+    and without limits. The four twins were red on the base by assertion.
+  - A PERSON is not compared: the contact's name for someone and the record's name legitimately
+    differ (`_PERSON_NAME_IS_A_VALUE`). A write made on the turn of a bare «sim» (a confirmed
+    replay) carries no stated value in that turn's message, so the paragraph does not render
+    there; the deterministic net for the same defect belongs to the host, at dispatch.
+- **The voice lists no clock time nobody read.** Measured on the same demo: `check_availability`
+  FAILED, the judge exhausted, and the reply offered times no call had returned. The executor
+  data already said "relay THIS, do NOT invent alternatives", and the critique quoted in the
+  verdict section NAMED the invented times.
+  - A deterministic net in `voice()` (`_unread_times`): on a turn where tools ran and NO
+    successful call returned a time, every time the reply states must be one the evidence states
+    — the contact's message and its rewrite, the arguments of every call, a failed read's error,
+    the executor data, the host's context, the persona's prompt and rules, the declared values.
+    Never the critique, never the rejected draft.
+  - A time that is not: ONE re-voice, told which times and why (`_unread_times_correction`,
+    appended after `# Task`, no header). If the second reply still states one, the code takes out
+    the statements carrying it (a list line whole, a sentence in prose, a list header whose items
+    all went); when nothing would be left, the times are masked (`[…]`). Unlike the divergence
+    net, keeping the first reply is not an option: it is the defect.
+  - Marks, closed: `voice:unread_times`, `voice:revoiced_unread_times`,
+    `voice:unread_times_removed`, `voice:unread_times_masked`. Two WARNING events
+    (`voice_unread_times`, `voice_unread_times_floor`), counts and a closed field only.
+  - A turn with no tool call is left alone (a conversing persona may propose a time; another
+    class), and so is a turn where a successful call returned times (a reply working within what
+    was read is the judge's to weigh). Times only: dates have the host's net.
+  - **The first voice prompt is the base's, byte for byte** (9 digests, `f9f10d7`).
+    `tests/unit/test_voice_lists_no_time_nobody_read.py`: the five twins were red on the base by
+    assertion; the controls (a read that returned times, a time the contact named, a time the
+    executor asked about, a duration, the persona's own hours, the host's clock, no tool at all)
+    are one voice call and the reply untouched.
+- The model half of both is in `tests/integration/test_superego.py` (cloud-only, unmeasured on
+  qwen3:8b): the wrong hour rejected / the right hour approved / a derived and a moved hour still
+  approved; the voice after the failed read states no time.
+
 ## Unreleased — docs: `CLAUDE.md` becomes a short guide; each contract has its own file (docs only, 2026-11-08)
 
 No code, test or prompt changes. The text moved; the only sentences rewritten are the three

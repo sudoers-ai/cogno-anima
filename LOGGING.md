@@ -34,7 +34,7 @@ reference host documents its side in its own `LOGGING.md`.
 
 - **ERROR** — never emitted. A fatal error becomes an exception and propagates; the host logs
   the ERROR.
-- **WARNING** — 52 calls. A condition that was recovered or handled: a reply a stage had to
+- **WARNING** — 54 calls. A condition that was recovered or handled: a reply a stage had to
   repair or could not read, a fail-open or fail-closed path taken, a backstop that fired, a
   host carrier that could not be used, a callback that raised.
 - **INFO** — 23 calls. The milestones of a turn: one `done` line per stage (`noumeno`, `ner`,
@@ -118,6 +118,8 @@ the logger, the event, the level, the `key=` fields and whether the line carries
 | `cogno_anima.superego` | `preserved_mutated_in_output` | WARNING | a preserved figure, e-mail or URL appears altered in the reply |
 | `cogno_anima.superego` | `voice_kept_value_dropped` | WARNING | a statement the prompt ordered kept did not reach the reply with all its values |
 | `cogno_anima.superego` | `voice_figure_from_critique` (`count`) | WARNING | figures in the reply come from the judge's critique and from nothing that was read |
+| `cogno_anima.superego` | `voice_unread_times` (`count`) | WARNING | the reply states clock times on a turn where tools ran and no successful call returned one, and nothing the voice was given states them; the voice is asked once more |
+| `cogno_anima.superego` | `voice_unread_times_floor` (`how`, `count`) | WARNING | the second reply still stated such a time; the statements carrying it were taken out (`removed`), or the times masked when nothing would be left (`masked`) |
 | `cogno_anima.superego` | `pii_redacted_in_output` (`count`, `types`) | WARNING | `enforce` mode: the outgoing-PII rule masked values in the reply |
 | `cogno_anima.superego` | `pii_would_redact_in_output` (`count`, `types`) | WARNING | `observe` mode: the rule decided and masked nothing |
 | `cogno_anima.superego` | `voice` (`len`, `cot_stripped`, `adjustments`) | INFO | the reply was written |
@@ -152,6 +154,7 @@ there the stage is a value.
 - `cogno_anima`
 - `cogno_anima._version`
 - `cogno_anima.errors`
+- `cogno_anima.explicit_values`
 - `cogno_anima.metakeys`
 - `cogno_anima.preserved`
 - `cogno_anima.prompts`
@@ -234,6 +237,7 @@ There is no class for text, and no digest is logged today.
 | `error` | type | the class of the exception |
 | `examples` | count | how many example rewrites were harvested |
 | `goal_status` | closed | `NEW`, `ONGOING`, `COMPLETED`, `ABANDONED` |
+| `how` | closed | what the unread-times floor did: `removed` or `masked` |
 | `id_len` | count | the length of the id the call named |
 | `intent` | closed | the intent class |
 | `interrupted` | constant | `true` or `false`, written in the message |
