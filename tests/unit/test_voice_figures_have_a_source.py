@@ -1,7 +1,7 @@
 """A figure reaches the contact from its evidence, or it does not reach them at all.
 
 Measured on two production turns of the SAME conversation, minutes apart, same host revision
-(two real turns of a rehearsal-box session; both rows verified un-rewritten by the ``xmin``
+(two real turns of one conversation, September 2026; both rows verified un-rewritten by the ``xmin``
 filter). A professor asked what he
 earns. Both turns ended ``judge_rejected_all`` → ``last_draft_voiced``, so both rendered
 ``# Execution verdict (HARD RULE)`` and both had their draft withheld — leaving the reviewer's
