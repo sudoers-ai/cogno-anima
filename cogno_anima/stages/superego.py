@@ -140,8 +140,8 @@ _CALC_FOLD = {"x": "*", "\u00d7": "*", "*": "*", "+": "+", "-": "-", "\u2212": "
 # ── WHERE A FIGURE IN THE REPLY IS ALLOWED TO COME FROM ───────────────────────────────
 #
 # Two production turns of the SAME conversation, minutes apart, same host revision
-# (``turn_traces`` 1779 and 1795 on the demo box, scope 019da7d2…/800915080190, host
-# ``f251c29``; rows verified un-rewritten by the ``xmin`` filter). A professor asked what he
+# (two real turns of one conversation, September 2026; rows verified un-rewritten by the
+# ``xmin`` filter). A professor asked what he
 # earns. Both turns ended ``judge_rejected_all`` → ``last_draft_voiced``, so both rendered
 # ``# Execution verdict (HARD RULE)`` and both had their draft WITHHELD by
 # ``_draft_section`` — which means the reviewer's critique was, in each case, the only prose

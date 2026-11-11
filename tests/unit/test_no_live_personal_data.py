@@ -129,6 +129,65 @@ _EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})\b")
 _SKIP_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".woff",
                             ".woff2", ".ttf", ".zip", ".gz", ".whl", ".so", ".lock"})
 
+# ──────────────────────────────────────────────────────────────────────────────────────
+# OPAQUE LIVE IDENTIFIERS. The 2026-09-08 sweep anonymised phone numbers; this half catches
+# the OTHER shape a pasted production turn leaves behind — the opaque ids that point AT a
+# live record: a tenant/session scope, a persisted turn id, a long bare account/document run.
+# They have no internal structure to validate the way a phone does, so the guard keys on the
+# ways the repo WRITES them down, and every id it must tolerate is ENUMERATED here with a
+# reason, exactly as the phone and e-mail allowlists are — the allowlist is the whole design.
+
+# A TRUNCATED scope/tenant id: a hex run of 8+ digits closed by the ellipsis the prose uses
+# to abbreviate it (an eight-hex prefix written hard against a trailing ellipsis — not spelled
+# out here, because this very scan would then flag its own comment). A full opaque id has no
+# shape to key on — the docstring says so above — but the ABBREVIATION does: nothing legitimate
+# in this tree writes a hex run against that ellipsis. There is deliberately no allowlist; a
+# truncated LIVE id is never something a fixture needs, so any hit is a leak to anonymise.
+_SCOPE_PREFIX = re.compile(r"(?<![0-9A-Za-z])[0-9a-f]{8,}…")
+
+# A persisted turn id, as the production tables are cited in design prose: the ``turn_traces``
+# table NAME followed closely by the row number — ``turn_traces 1795``, ``turn_traces id=1440``,
+# ``turn_traces` (1514 rows``. A bare number elsewhere has no shape and is not keyed on; the
+# TABLE NAME is the shape. Every id the prose keeps as measurement provenance is enumerated.
+_TURN_ID = re.compile(r"turn_traces[`\s(]*(?:id=)?([0-9]{3,})")
+
+# Turn/row numbers the design prose cites as the evidence behind a rule. Each is a row of the
+# rehearsal/demo box with NO tenant scope beside it (a scope IS caught, by ``_SCOPE_PREFIX``),
+# kept so the measurement stays legible. A NEW id cannot slip in unreviewed; adding one is a
+# deliberate act, with a reason, like every list here.
+ALLOWED_TURN_IDS = frozenset({
+    "1440",   # the canonical rejected read-only turn, cited across the judge-grounding files
+    "1795",   # the derived-figure turn ("show your work"); grounding-of-derivations prose
+    "1970",   # the exhaustion/November-reconstruction turn, turn 107
+    "1969",   # its predecessor (turn 106), the October list that WAS read
+    "1198",   # the "nothing was tried" expense specimen, execution-verdict prose
+    "1691",   # the two-sanctioned-sources turn
+    "448",    # a refused-write specimen (ok=False, side_effect=False) in the failure prose
+    "1514",   # NOT an id but a row COUNT ("1514 rows"); same table-name shape, so enumerated
+})
+
+# Long bare digit runs of 11–13 that are NOT phones (the phone guard above owns those): a CPF,
+# a GitHub Actions run id, a UUID node, a sequential placeholder. Hex-adjacent runs are
+# excluded by construction (the boundaries below), so a digit slice of a sha256 never fires.
+_LONG_NUMBER = re.compile(r"(?<![0-9A-Za-z])[0-9]{11,13}(?![0-9A-Za-z])")
+
+ALLOWED_LONG_NUMBERS = frozenset({
+    # Synthetic CPFs — document numbers nobody owns; redaction/PII fixtures.
+    "52998224725",     # 529.982.247-25, redaction docstrings + PII provenance fixtures
+    "11144477735",     # 111.444.777-35, canonical public test CPF, PII detector fixture
+    # Synthetic phones, in the forms a long-digit scan sees them (national and +55).
+    "11970001111", "11987654321", "11988887777", "11999998888",  # ALLOWED_SYNTHETIC, bare
+    "5511999998888", "5511987654321",                             # same numbers, +55 prefix
+    # GitHub Actions run ids — public CI identifiers, named in canary comments and CHANGELOG.
+    "35207468672",     # nightly canary run of 2026-09-17 (superego.py + integration/unit tests)
+    "35285170724",     # PR #167 canary run (superego.py + a grounding test)
+    "37459138949",     # nightly run in the CHANGELOG xfail entry
+    "33494160177",     # nightly run id behind the CI shard-split timing (.github/workflows)
+    # Other public test constants.
+    "426614174000",    # the node of RFC-4122 example UUID 123e4567-…-426614174000 (PIX fixtures)
+    "123456789012",    # sequential placeholder integer, pre-judge digest test
+})
+
 
 def _national(digits: str) -> "str | None":
     """Country code stripped, so one number is one entry however it was written."""
@@ -164,6 +223,21 @@ def phone_numbers_in(text: str) -> "set[str]":
 def email_domains_in(text: str) -> "set[str]":
     """Every mail domain in ``text``, lowercased. Pure, for the same reason."""
     return {m.group(1).lower().rstrip(".") for m in _EMAIL.finditer(text)}
+
+
+def truncated_scope_ids_in(text: str) -> "set[str]":
+    """Every ``<hex>…`` truncated opaque id in ``text``. Pure."""
+    return {m.group(0) for m in _SCOPE_PREFIX.finditer(text)}
+
+
+def turn_ids_in(text: str) -> "set[str]":
+    """Every ``turn_traces``-qualified row number in ``text``. Pure."""
+    return {m.group(1) for m in _TURN_ID.finditer(text)}
+
+
+def long_numbers_in(text: str) -> "set[str]":
+    """Every bare 11–13 digit run in ``text``, hex-adjacent runs excluded. Pure."""
+    return {m.group(0) for m in _LONG_NUMBER.finditer(text)}
 
 
 def _tracked_files() -> "list[Path]":
@@ -236,3 +310,63 @@ def test_the_email_detector_reads_the_domain_and_not_the_mailbox():
     assert email_domains_in("escreve para joao.silva@example.com hoje") == {"example.com"}
     assert email_domains_in("a@x.com e b@y.zz") == {"x.com", "y.zz"}
     assert email_domains_in("sem correio nenhum aqui") == set()
+
+
+def test_no_truncated_scope_or_tenant_id_anywhere():
+    offenders: dict[str, list[str]] = {}
+    for path, text in _readable():
+        for ident in truncated_scope_ids_in(text):
+            offenders.setdefault(ident, []).append(str(path.relative_to(REPO_ROOT)))
+    assert not offenders, (
+        "truncated scope/tenant id(s) in the tree — a ``<hex>…`` abbreviation points at a live "
+        "record and must not ship in a public clone; anonymise the line (keep the measurement, "
+        f"drop the id): { {k: v[:3] for k, v in offenders.items()} }")
+
+
+def test_no_turn_id_outside_the_enumerated_provenance():
+    offenders: dict[str, list[str]] = {}
+    for path, text in _readable():
+        for turn_id in turn_ids_in(text) - ALLOWED_TURN_IDS:
+            offenders.setdefault(turn_id, []).append(str(path.relative_to(REPO_ROOT)))
+    assert not offenders, (
+        "``turn_traces`` row id(s) outside ALLOWED_TURN_IDS — a bare record id points at a live "
+        "turn; either anonymise it to 'a real turn of <date>' (no number) or, if it is kept as "
+        "measurement provenance, add it to the list with a reason: "
+        f"{ {k: v[:3] for k, v in offenders.items()} }")
+
+
+def test_no_long_number_outside_the_enumerated_set():
+    offenders: dict[str, list[str]] = {}
+    for path, text in _readable():
+        for number in long_numbers_in(text) - ALLOWED_LONG_NUMBERS - ALLOWED_SYNTHETIC:
+            offenders.setdefault(number, []).append(str(path.relative_to(REPO_ROOT)))
+    assert not offenders, (
+        "bare 11–13 digit run(s) outside the enumerated sets — a CPF, an account or a session "
+        "id slips in as a plain number; anonymise the value or enumerate it with a reason: "
+        f"{ {k: v[:3] for k, v in offenders.items()} }")
+
+
+def test_the_scope_detector_fires_on_the_abbreviation_and_not_a_bare_sha():
+    """Mutation twin: the ellipsis is the shape, a plain commit sha is not an offender.
+
+    The ellipsis is a variable and the hex is synthetic, so this test's OWN source never
+    writes a hex run against the ellipsis — otherwise the tree-wide scan would flag it."""
+    ell = "…"
+    assert truncated_scope_ids_in(f"scope deadbeef{ell} then cafe9999{ell} x") == {
+        f"deadbeef{ell}", f"cafe9999{ell}"}
+    assert truncated_scope_ids_in("host f251c29, anima d34822a5") == set()       # bare shas
+    assert truncated_scope_ids_in(f"the 1094-row corpus{ell}") == set()          # no hex run
+
+
+def test_the_turn_id_detector_reads_the_table_name_and_not_a_bare_numeral():
+    """Mutation twin: the TABLE NAME keys it; ``id=`` and bare forms both count."""
+    assert turn_ids_in("on `turn_traces` 1795 the voice") == {"1795"}
+    assert turn_ids_in("MEASURED (`turn_traces` id=1440, host") == {"1440"}
+    assert turn_ids_in("the contact asked at turn 107 of the day") == set()      # no table name
+
+
+def test_the_long_number_detector_ignores_a_digit_slice_of_a_hash():
+    """Mutation twin: a hex-adjacent run is part of a digest, not a standalone number."""
+    assert long_numbers_in("sha 9e5909516563765e here") == set()                 # inside hex
+    assert long_numbers_in("cpf 52998224725 fim") == {"52998224725"}             # standalone
+    assert long_numbers_in("run 35207468672 of 2026-09-17") == {"35207468672"}

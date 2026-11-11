@@ -1,8 +1,8 @@
 """A figure reaches the contact from its evidence, or it does not reach them at all.
 
 Measured on two production turns of the SAME conversation, minutes apart, same host revision
-(``turn_traces`` 1779 and 1795 on the demo box, scope ``019da7d2…/800915080190``, host
-``f251c29``; both rows verified un-rewritten by the ``xmin`` filter). A professor asked what he
+(two real turns of one conversation, September 2026; both rows verified un-rewritten by the ``xmin``
+filter). A professor asked what he
 earns. Both turns ended ``judge_rejected_all`` → ``last_draft_voiced``, so both rendered
 ``# Execution verdict (HARD RULE)`` and both had their draft withheld — leaving the reviewer's
 critique as the only prose in the prompt that spoke about money.
