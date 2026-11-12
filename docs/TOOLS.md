@@ -55,15 +55,25 @@ and its business; the core ships the mechanism and takes the declaration as a pa
   is another message. Claim before, **complete** on `ok ∧ side_effect`, **release** when nothing was
   committed (`ok=False`, no write, a gate-C proposal), and **keep PENDING when the call raised** —
   the outcome is unknown, so an identical call inside the window is told it *may* have gone out and
-  is not run (at most once; the pending claim expires with the window). A dead store fails OPEN
-  (`event=idempotency_store_unavailable` + the caller's `on_unavailable` hook), because a side table
-  must not switch off every write. `rules` (which tools, which window, optionally which arguments),
-  `scope` (an empty one DISABLES the guard rather than merging contacts) and `notice` (the sentence
-  in the tenant's language) are all injected — the caller's catalog. **What it does not offer is a
-  way to repeat inside the window**: a "shall I send it again?" whose "yes" lands on the same key
-  would be answered "already done" again, so the note names the exit that works (change what is
-  sent, or let the window pass); an explicit repeat needs the gate-C return trip and is a separate
-  change. Build a fresh instance per turn; the store is shared.
+  is not run (at most once; the pending claim expires with the window). A dead store fails OPEN by
+  default (`event=idempotency_store_unavailable` + the caller's `on_unavailable` hook), because a
+  side table must not switch off every write — **unless the tool's rule sets `fail_closed=True`**
+  (2026-11-12): then a store it cannot reach makes the call REFUSE instead
+  (`ok=False, side_effect=False`, `event=idempotency_refused_unavailable`, the contact told to
+  retry via `closed_notice`/`default_closed_notice`), because a silently repeated financial entry
+  or appointment is worse than a retryable refusal. `rules` (which tools, which window, optionally
+  which arguments, optionally `fail_closed`), `scope` (an empty one DISABLES the guard rather than
+  merging contacts) and `notice`/`closed_notice` (the sentences in the tenant's language) are all
+  injected — the caller's catalog. **What the guard does not offer is a way to repeat inside the
+  window**: a "shall I send it again?" whose "yes" lands on the same key would be answered "already
+  done" again, so the note names the exit that works (change what is sent, or let the window pass);
+  an explicit repeat needs the gate-C return trip and is a separate change. A caller CAN,
+  deliberately, un-remember one key with **`IdempotencyStore.forget(key)`** — it erases a key
+  whatever its state, the `DONE` row included (which `release` never does), for a confirmed "yes,
+  this one is a DIFFERENT one" on a write where two identical calls can both be legitimate (a
+  ledger entry); the next identical call then runs once. The guard never calls it itself.
+  Implementers of `IdempotencyStore` add `forget(key)` (a new protocol member; the bundled
+  in-memory store has it). Build a fresh instance per turn; the store is shared.
 - **`PreJudgeDispatcher` + `PreJudgeSink`/`Proposal`/`PreJudgment`** (`tools/pre_judge.py`, F2.3a) —
   the judge reads a WRITE before it goes out, **in SHADOW**: it changes nothing. For every call the
   source underneath classifies as a write (`is_mutating`; a source with no policy is never judged —

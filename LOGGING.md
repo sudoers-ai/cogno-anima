@@ -34,7 +34,7 @@ reference host documents its side in its own `LOGGING.md`.
 
 - **ERROR** — never emitted. A fatal error becomes an exception and propagates; the host logs
   the ERROR.
-- **WARNING** — 54 calls. A condition that was recovered or handled: a reply a stage had to
+- **WARNING** — 55 calls. A condition that was recovered or handled: a reply a stage had to
   repair or could not read, a fail-open or fail-closed path taken, a backstop that fired, a
   host carrier that could not be used, a callback that raised.
 - **INFO** — 23 calls. The milestones of a turn: one `done` line per stage (`noumeno`, `ner`,
@@ -129,7 +129,8 @@ the logger, the event, the level, the `key=` fields and whether the line carries
 | `cogno_anima.tools.confirm_args` | `confirm_args_too_many` (`tool`, `n`) | WARNING | a proposal named more confirmation arguments than the recorder keeps; they are dropped |
 | `cogno_anima.tools.id_provenance` | `id_provenance_refused` (`tool`, `arg`, `id_len`) | WARNING | a guarded write named an id no read of this turn returned; `arg` is the argument's NAME |
 | `cogno_anima.tools.idempotency` | `idempotency_withheld` (`tool`, `state`, `at`) | INFO | the same declared call already succeeded, or is still in flight, inside its window; it was not executed again |
-| `cogno_anima.tools.idempotency` | `idempotency_store_unavailable` (`tool`, `step`, `error`) | WARNING | the store did not answer at `step=claim\|complete\|release`; the call goes on without the repeat check |
+| `cogno_anima.tools.idempotency` | `idempotency_store_unavailable` (`tool`, `step`, `error`) | WARNING | the store did not answer at `step=claim\|complete\|release`; the call goes on without the repeat check (fail-OPEN) |
+| `cogno_anima.tools.idempotency` | `idempotency_refused_unavailable` (`tool`, `error`) | WARNING | the store did not answer at claim and this tool's rule is `fail_closed`; the call was refused without running (fail-CLOSED) |
 | `cogno_anima.tools.idempotency` | `idempotency_unavailable_hook_failed` (`tool`) | WARNING | the caller's `on_unavailable` hook raised |
 | `cogno_anima.tools.pre_judge` | `judge_pre` (`tool`, `verdict`, `ms`) | INFO | a pre-judgement of a write finished |
 | `cogno_anima.tools.pre_judge` | `judge_pre_failed` (`tool`, `error`) | WARNING | the pre-judge callback raised; the verdict is `error` |
