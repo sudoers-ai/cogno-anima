@@ -88,7 +88,8 @@ def compute_pii_risk(pii_types: list[str]) -> str:
 # absence of birth framing is exactly the signal that a date is not a birth date.
 _BIRTH_CONTEXT_RE = re.compile(
     r"\bnasc\w*|\bborn\b|\bbirth\b|\bd\.?o\.?b\.?\b|anivers[áa]ri|birthday|"
-    r"\bidade\b|data\s+de\s+nascimento",
+    r"\bidade\b|data\s+de\s+nascimento|"
+    r"\bnacid[oa]\b|\bnacimiento\b|cumplea[ñn]os|\bedad\b",
     re.IGNORECASE)
 
 
