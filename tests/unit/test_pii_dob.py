@@ -38,6 +38,30 @@ def test_has_birth_context_false(text):
     assert has_birth_context(text) is False
 
 
+@pytest.mark.parametrize("text", [
+    "nacida en Madrid el 12 de marzo de 1990, DNI 12345678Z",
+    "nacido en 1990",
+    "mi fecha de nacimiento es 12/03/1990",
+    "mi cumpleaños es el 12/03",
+    "tengo 40 años de edad",
+])
+def test_has_birth_context_spanish_form(text):
+    assert has_birth_context(text) is True
+
+
+def test_spanish_dob_is_kept_and_portuguese_twin_still_is():
+    es = "Belmira Quostral Vendrim, nacida en Madrid el 12 de marzo de 1990, DNI 12345678Z"
+    pt = "Belmira Quostral Vendrim, nascida em Madrid em 12 de março de 1990, CPF 123.456.789-00"
+    assert filter_uncontextualized_dob(["DATE_OF_BIRTH"], es) == ["DATE_OF_BIRTH"]
+    assert filter_uncontextualized_dob(["DATE_OF_BIRTH"], pt) == ["DATE_OF_BIRTH"]
+    assert compute_pii_risk(filter_uncontextualized_dob(["DATE_OF_BIRTH"], es)) == "HIGH"
+
+
+def test_spanish_plain_date_is_still_dropped():
+    # Control: a Spanish appointment date has no birth vocabulary and is still culled.
+    assert filter_uncontextualized_dob(["DATE_OF_BIRTH"], "reserva para el 12 de marzo a las 10") == []
+
+
 def test_filter_drops_uncontextualized_dob():
     pii = ["NAME", "DATE_OF_BIRTH"]
     out = filter_uncontextualized_dob(pii, "marcar dia 20/07 as 10")
