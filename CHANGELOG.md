@@ -1,6 +1,33 @@
 # Changelog
 
-## 0.1.15 — 2026-11-10 — the judge is shown a write made with another value than the one stated and reads a hold as a hold, its stance can follow the branch behind a switch; the voice lists no time nobody read
+## 0.1.16 — 2026-11-12 — a tool's idempotency rule can fail CLOSED when the store is down, and a caller can forget one key
+
+### Added
+
+- **`IdempotencyRule.fail_closed`** — a per-tool opt-in that flips the store-unavailable
+  direction for that tool only. The default stays fail-OPEN (a store that cannot be reached must
+  not switch off every write of the deployment), and the message tools keep it. A rule with
+  `fail_closed=True` instead REFUSES the call when the store is unreachable
+  (`ok=False, side_effect=False`, `event=idempotency_refused_unavailable`), because a silently
+  repeated financial entry or appointment is worse than a refusal the contact can retry a moment
+  later. The host declares it per tool from its catalog; nothing is fail-closed unless its own
+  rule says so. The contact's sentence is `closed_notice` (new optional on `IdempotentDispatcher`,
+  `(tool) -> sentence`), with `default_closed_notice` the English fallback.
+- **`IdempotencyStore.forget(key)`** (protocol + `InMemoryIdempotencyStore`) — erases a key
+  whatever its state, the `DONE` row included, which `release` must never do. It is the exit the
+  guard cannot offer itself: a caller that has learned the withheld twin was MEANT (a confirmed
+  "yes, this one is a different one", for a write where two identical calls can both be
+  legitimate) forgets the key so the next identical call runs once. The guard never calls it.
+  Implementers of `IdempotencyStore` add `forget(key)` (a new protocol member; the bundled
+  in-memory store has it).
+
+### Notes
+
+- `test_v1_1_create_cancel_create_again_runs` (the `undoes`/family-invalidation xfail) stays
+  `xfail(strict=True)`: `forget` un-remembers ONE key, which covers a confirmed "é outro" (the
+  repeated call has identical arguments, hence the same key); the remind_me family case needs a
+  tool that undoes a DIFFERENT key and so a scope+tool index the store does not carry. Out of
+  scope here, deliberately.
 
 ### Fixed
 

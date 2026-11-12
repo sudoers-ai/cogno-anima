@@ -20,8 +20,8 @@ import pytest
 from cogno_anima.tools import (IdempotencyRule, IdempotencyStore, IdempotentDispatcher,
                                InMemoryIdempotencyStore, idempotency_key)
 from cogno_anima.tools.base import ToolPolicyDispatcher
-from cogno_anima.tools.idempotency import (CLAIMED, DONE, PENDING, Claim, default_notice,
-                                           normalize_arguments)
+from cogno_anima.tools.idempotency import (CLAIMED, DONE, PENDING, Claim, default_closed_notice,
+                                           default_notice, normalize_arguments)
 from cogno_anima.types import PipelineContext, ToolExecution, ToolResult, committed_this_turn
 
 T0 = datetime(2026, 3, 10, 17, 5, tzinfo=timezone.utc)     # 14:05 in São Paulo
@@ -406,6 +406,92 @@ async def test_the_memory_store_never_releases_a_success():
     await store.release("k")
     assert (await store.claim("k", now=T0, window_s=60)) == Claim(state=DONE, at=T0)
     assert isinstance(store, IdempotencyStore)
+
+
+# ── fail-CLOSED: a rule can refuse when the store is down (2026-11-12) ─────────────────────
+
+async def test_a_fail_closed_rule_refuses_when_the_store_is_down_and_does_not_run(caplog):
+    marks: list[str] = []
+    src, clock = _Source(), _Clock()
+    guard = _guard(src, _DeadStore("claim"), clock,
+                   rules={"notify_user": IdempotencyRule(window_s=1800, fail_closed=True)},
+                   on_unavailable=marks.append)
+    with caplog.at_level(logging.WARNING, logger="cogno_anima.tools.idempotency"):
+        r = await guard.execute("notify_user", MSG)
+    # the write did NOT run, and the turn can recover from it
+    assert len(src.calls) == 0
+    assert r.ok is False and r.side_effect is False
+    assert "try again in a moment" in r.output
+    # still counted and recorded for the trace, and named as a refusal (not "proceeding")
+    assert marks == ["claim"] and guard.store_unavailable == 1
+    assert "event=idempotency_refused_unavailable" in caplog.text
+    assert "event=idempotency_store_unavailable" not in caplog.text
+
+
+async def test_a_fail_OPEN_rule_is_the_default_and_still_runs_when_the_store_is_down():
+    src = _Source()
+    guard = _guard(src, _DeadStore("claim"), _Clock(),
+                   rules={"notify_user": IdempotencyRule(window_s=1800)})   # fail_closed defaults False
+    r = await guard.execute("notify_user", MSG)
+    assert r.side_effect is True and len(src.calls) == 1
+
+
+async def test_the_closed_notice_is_the_callers_sentence_in_its_language():
+    seen: list[str] = []
+
+    def _pt(tool):
+        seen.append(tool)
+        return "Não consegui garantir que não repetia; tente num instante."
+
+    src = _Source()
+    guard = _guard(src, _DeadStore("claim"), _Clock(),
+                   rules={"notify_user": IdempotencyRule(window_s=1800, fail_closed=True)},
+                   closed_notice=_pt)
+    r = await guard.execute("notify_user", MSG)
+    assert seen == ["notify_user"]
+    assert "«Não consegui garantir que não repetia; tente num instante.»" in r.output
+
+
+def test_the_default_closed_notice_names_a_retry_not_a_failure():
+    text = default_closed_notice("add_income")
+    assert "try again" in text
+    assert "failed" not in text.lower(), "nothing was attempted — it must not read as a failure"
+
+
+# ── forget: a confirmed 'this is a different one' lets the twin run once ────────────────────
+
+async def test_forget_un_remembers_a_DONE_key_so_the_next_identical_call_runs_once():
+    """CONTROL (design gémeo 5): two identical ledger writes are BOTH legitimate when a
+    confirmed «sim, é outro» sits between them — `forget` erases the key, the twin runs ONCE,
+    and the one after it is withheld again."""
+    src, store, clock = _Source(), InMemoryIdempotencyStore(), _Clock()
+
+    # first write commits and is recorded
+    await _guard(src, store, clock, rules={"notify_user": 3600}).execute("notify_user", MSG)
+    # the exact twin is withheld
+    r = await _guard(src, store, clock, rules={"notify_user": 3600}).execute("notify_user", MSG)
+    assert r.side_effect is False and len(src.calls) == 1
+
+    # the caller learned it was MEANT and forgets the key
+    await store.forget(idempotency_key(SCOPE, "notify_user", MSG))
+
+    # the twin now runs ONCE…
+    r = await _guard(src, store, clock, rules={"notify_user": 3600}).execute("notify_user", MSG)
+    assert r.side_effect is True and len(src.calls) == 2
+    # …and the one after it is withheld again (forget is not a blanket open)
+    r = await _guard(src, store, clock, rules={"notify_user": 3600}).execute("notify_user", MSG)
+    assert r.side_effect is False and len(src.calls) == 2
+
+
+async def test_forget_removes_a_DONE_row_which_release_never_does():
+    store = InMemoryIdempotencyStore()
+    await store.claim("k", now=T0, window_s=60)
+    await store.complete("k", now=T0, window_s=60)
+    await store.release("k")                          # a DONE row survives release
+    assert (await store.claim("k", now=T0, window_s=60)) == Claim(state=DONE, at=T0)
+    await store.forget("k")                           # forget removes it
+    assert (await store.claim("k", now=T0, window_s=60)).state == CLAIMED
+    await store.forget("k-absent")                    # silent on a key that is not there
 
 
 # ── the wrapper is transparent ────────────────────────────────────────────────────────────

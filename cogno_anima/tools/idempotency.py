@@ -44,6 +44,15 @@ the deployment to protect against a rare repeat, so the call executes, a WARNING
 ``event=idempotency_store_unavailable`` is logged, and ``on_unavailable`` (the caller's hook, for
 its own per-turn record) is called. The direction is written here because it is a decision.
 
+**Fail-CLOSED is the exception a rule asks for, and only a rule (2026-11-12).** The default
+above STANDS — it is still a decision, and the message tools keep it. But a few writes sit on
+the other asymmetry: a repeated FINANCIAL entry or a repeated APPOINTMENT is worse than a
+refusal the contact can retry a moment later, where a message withheld-in-silence would be. A
+rule with ``fail_closed=True`` therefore does NOT execute when the store is unreachable — the
+call is refused (``ok=False, side_effect=False``), ``event=idempotency_refused_unavailable`` is
+logged, and the contact is told to try again shortly (``closed_notice``). The host declares it
+per tool from its catalog; nothing is fail-closed unless its own rule says so.
+
 **What this module does NOT decide** — every one of them is the caller's catalog:
 
   * WHICH tools are guarded and their window (``rules``, injected with no default: a tool that is
@@ -58,6 +67,14 @@ it again?" would need the confirmation to reach this guard (the gate-C return tr
 question whose "yes" lands on the same key would answer "already done" again — a promise the
 system cannot keep. The note therefore names the exit that works: change what is sent, or let
 the window pass.
+
+**What a CALLER can do, deliberately: un-remember one key.** :meth:`IdempotencyStore.forget`
+erases a key whatever its state — the one call that removes a DONE row, which
+:meth:`IdempotencyStore.release` must never do. It exists for the exit the guard cannot offer
+itself: a caller that has LEARNED the withheld twin was meant — a confirmed "yes, this one is a
+DIFFERENT one", for a tool where two identical writes can both be legitimate (a ledger entry) —
+forgets the key so the next identical call runs ONCE. The guard never calls it; it is the
+caller's, by the same reasoning as the window, the scope and the sentence.
 """
 
 from __future__ import annotations
@@ -84,6 +101,7 @@ __all__ = [
     "IdempotencyStore",
     "InMemoryIdempotencyStore",
     "IdempotentDispatcher",
+    "default_closed_notice",
     "default_notice",
     "idempotency_key",
     "normalize_arguments",
@@ -118,10 +136,16 @@ class IdempotencyRule:
     ``key_arguments=None`` means EVERY argument — the default, and the exact reading. A subset
     is a caller's declaration that the other arguments do not distinguish two calls; it exists
     so that choice is a declaration and not a rewrite, not because any tool needs it today.
+
+    ``fail_closed`` flips the store-unavailable direction for THIS tool only (see the module
+    docstring): the default ``False`` executes when the store cannot be reached (fail-OPEN); a
+    ``True`` refuses the call instead, for a write where a silent repeat is worse than a
+    retryable refusal. The caller declares it; a rule that does not set it keeps the default.
     """
 
     window_s: float
     key_arguments: Optional[tuple[str, ...]] = None
+    fail_closed: bool = False
 
 
 @runtime_checkable
@@ -143,6 +167,13 @@ class IdempotencyStore(Protocol):
     async def release(self, key: str) -> None:
         """The claimed call committed nothing: drop the PENDING claim. Must never remove a
         ``DONE`` row — releasing is not forgetting a success."""
+        ...
+
+    async def forget(self, key: str) -> None:
+        """Erase the record for ``key`` WHATEVER its state — the ``DONE`` row too, which
+        :meth:`release` must never touch. The one call that un-remembers a success, driven by a
+        caller that has learned the withheld twin was MEANT (see the module docstring). Silent
+        and idempotent on a key that is not there."""
         ...
 
 
@@ -171,6 +202,9 @@ class InMemoryIdempotencyStore:
         row = self._rows.get(key)
         if row is not None and row[0] == PENDING:
             del self._rows[key]
+
+    async def forget(self, key: str) -> None:
+        self._rows.pop(key, None)
 
 
 def normalize_arguments(value: Any) -> Any:
@@ -228,6 +262,15 @@ def default_notice(tool: str, state: str, at_local: datetime) -> str:
             f"one, tell me what changes.")
 
 
+def default_closed_notice(tool: str) -> str:
+    """The English, tool-agnostic sentence for a fail-CLOSED refusal: the store could not be
+    reached, so a write that must not run twice was held back rather than risked. A caller with a
+    language of its own passes its own (``closed_notice``). It names a retry, not a failure of the
+    write — nothing was attempted."""
+    return ("I could not make sure this would not be recorded twice, so I did not do it — please "
+            "try again in a moment.")
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -260,6 +303,7 @@ class IdempotentDispatcher:
                  clock: Callable[[], datetime] = _utcnow,
                  tz: Optional[tzinfo] = None,
                  notice: Optional[Notice] = None,
+                 closed_notice: Optional[Callable[[str], str]] = None,
                  on_unavailable: Optional[Callable[[str], None]] = None) -> None:
         self._inner = inner
         self._store = store
@@ -270,6 +314,7 @@ class IdempotentDispatcher:
         self._clock = clock
         self._tz = tz or timezone.utc
         self._notice = notice or default_notice
+        self._closed_notice = closed_notice or default_closed_notice
         self._on_unavailable = on_unavailable
         #: Observability, per turn: calls this guard withheld, and store failures it rode over.
         self.repeats_withheld = 0
@@ -286,7 +331,13 @@ class IdempotentDispatcher:
         key = idempotency_key(self._scope, name, arguments, key_arguments=rule.key_arguments)
         try:
             claim = await self._store.claim(key, now=_aware(self._clock()), window_s=rule.window_s)
-        except Exception as exc:        # noqa: BLE001 — fail-OPEN, see the module docstring
+        except Exception as exc:        # noqa: BLE001 — fail-OPEN by default; see the docstring
+            if rule.fail_closed:
+                self._record_store_down(name, "claim")
+                logger.warning("event=idempotency_refused_unavailable tool=%s error=%s — the "
+                               "repeat check could not run and this write is fail-closed", name,
+                               type(exc).__name__)
+                return self._refused(name)
             self._unavailable(name, "claim", exc)
             return await self._inner.execute(name, arguments)
         state = getattr(claim, "state", None)
@@ -330,15 +381,33 @@ class IdempotentDispatcher:
         return ToolResult(output=f"{head} Tell the contact exactly this: «{sentence}»",
                           ok=True, side_effect=False)
 
-    def _unavailable(self, name: str, step: str, exc: BaseException) -> None:
+    def _record_store_down(self, name: str, step: str) -> None:
+        """Count the failure and tell the caller's recorder — the half the fail-OPEN and
+        fail-CLOSED directions SHARE; they log differently, so the log line is not here."""
         self.store_unavailable += 1
-        logger.warning("event=idempotency_store_unavailable tool=%s step=%s error=%s — "
-                       "proceeding without the repeat check", name, step, type(exc).__name__)
         if self._on_unavailable is not None:
             try:
                 self._on_unavailable(step)
             except Exception:           # noqa: BLE001 — a recorder must never cost the call
                 logger.warning("event=idempotency_unavailable_hook_failed tool=%s", name)
+
+    def _unavailable(self, name: str, step: str, exc: BaseException) -> None:
+        """A store failure AFTER the claim (``complete``/``release``): the effect already ran, so
+        this is always fail-OPEN — the result is returned and the warning is recorded."""
+        self._record_store_down(name, step)
+        logger.warning("event=idempotency_store_unavailable tool=%s step=%s error=%s — "
+                       "proceeding without the repeat check", name, step, type(exc).__name__)
+
+    def _refused(self, name: str) -> ToolResult:
+        """Fail-CLOSED: the store was unreachable and this tool's rule says a silent repeat is
+        worse than a refusal, so the call did NOT run. ``ok=False`` (a recoverable refusal, like
+        the other write gates), ``side_effect=False`` (nothing was written)."""
+        sentence = self._closed_notice(name)
+        return ToolResult(
+            output=f"NOT EXECUTED. The idempotency store was unreachable and `{name}` is a write "
+                   f"that must not risk running twice, so it was refused WITHOUT running — nothing "
+                   f"was written now. Tell the contact exactly this: «{sentence}»",
+            ok=False, side_effect=False)
 
     def __getattr__(self, item: str) -> Any:
         """Everything else IS the inner's — a counter on a guard beneath, a finer policy
