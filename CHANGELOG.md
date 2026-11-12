@@ -6,7 +6,8 @@
 
 - **`security/pii.py` `_BIRTH_CONTEXT_RE`** had only Portuguese and English birth vocabulary, so a
   `DATE_OF_BIRTH` in a Spanish sentence ("nacida en Madrid el 12 de marzo de 1990") was dropped as
-  an ordinary date and the PII risk never reached HIGH. It now also matches `nacido/nacida`,
+  an ordinary date and the PII risk never reached HIGH. It now also matches `nacido/nacida` and
+  their plurals, `nació` (the usual way a record states a birth: "nació el 12/03/1990"),
   `nacimiento` (so "fecha de nacimiento"), `cumpleaños` and `edad` — the Spanish twins of the
   existing `nasc*`, `data de nascimento`, `aniversário` and `idade`. A plain Spanish date with no
   birth word is still culled.

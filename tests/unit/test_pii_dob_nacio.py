@@ -1,6 +1,6 @@
-"""Consultor twin for cogno-anima#233: «nació» is the commonest Spanish way to say a birth in a
-record («María nació el 12/03/1990»), the twin of the Portuguese «nasceu» that `\\bnasc\\w*`
-already reads. RED on d76d3e7; a COLLISION control keeps Portuguese/English untouched."""
+"""The Spanish preterite «nació» is the commonest way a record states a birth («María nació el
+12/03/1990»), the twin of the Portuguese «nasceu» that `\\bnasc\\w*` already reads. A collision
+control keeps Portuguese and English untouched."""
 from cogno_anima.security.pii import has_birth_context
 
 
