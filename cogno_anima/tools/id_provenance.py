@@ -44,8 +44,8 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["IdProvenanceDispatcher", "id_was_read"]
 
-#: A maximal run of id characters — letters, digits, ``-`` and ``_``. An id like ``ap-7f3a2c``
-#: (praxis, 8 hex), a 16-hex reminder id, ``h-7f3a2c`` (a host) or ``dr_silva`` is ONE token;
+#: A maximal run of id characters — letters, digits, ``-`` and ``_``. An appointment id (8 bare
+#: hex, ``0b0d9cb4``), a reminder id (``ask-`` + 16 hex) or a host id (``dr_silva``) is ONE token;
 #: a number embedded in a longer run of digits is not a token of its own.
 _ID_TOKEN = re.compile(r"[A-Za-z0-9_-]+")
 
@@ -53,7 +53,7 @@ _ID_TOKEN = re.compile(r"[A-Za-z0-9_-]+")
 def id_was_read(value: str, reads: "Iterable[str]") -> bool:
     """Did ``value`` appear as a WHOLE TOKEN in any of ``reads`` (the OK tool-result strings of
     THIS turn)? The one predicate the two guards share — :meth:`IdProvenanceDispatcher.execute`
-    at call time, and the host's retention guard (``arm_refusal``) when it decides whether to ARM
+    at call time, and a host-side retention guard when it decides whether to ARM
     a held call — so the two cannot disagree about what counts as "read this turn". One definition
     per rule (this repo's standing lesson; the same reason ``committed_this_turn`` is one
     function).

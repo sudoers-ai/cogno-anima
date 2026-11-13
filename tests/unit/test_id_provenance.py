@@ -103,9 +103,9 @@ def test_id_was_read_matches_whole_tokens_only():
     substring of a longer run is NOT read (so it is refused)."""
     from cogno_anima.tools import id_was_read
     # CONTROLS — a validated id of each real shape matches as a whole token.
-    assert id_was_read("ap-7f3a2c", ["- ap-7f3a2c 13/11 10:00 — consulta"])   # praxis 8-hex
+    assert id_was_read("0b0d9cb4", ["- 10:00 · Belmira Quostral · Dr. Quintino Abravel · [CONFIRMED] · 0b0d9cb4"])  # an appointment-list line
     assert id_was_read("9858fb82", ["9858fb82: open\nd973ed23: open"])         # bare hex line
-    assert id_was_read("a1b2c3d4e5f6a7b8", ["- [a1b2c3d4e5f6a7b8] amanhã — lembrete"])  # 16-hex
+    assert id_was_read("ask-4f23a8b8e9997e91", ["- [ask-4f23a8b8e9997e91] 14/11 09:00 — Lembrar a reunião"])  # a reminder-list line
     assert id_was_read("dr_silva", ["dr_silva: Dr. Olvash Trembicki (Cardiologista)"])  # host id
     # A forged id is NOT read when it only sits INSIDE a longer run of id characters.
     assert not id_was_read("12345", ["pedido 912345 em aberto"])
