@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.1.20 — 2026-11-13 — the id-provenance match is whole-token, and is a shared predicate
+
+### Added
+
+- **`cogno_anima.tools.id_was_read(value, reads)`** — the pure predicate behind the id-provenance
+  guard, extracted and exported so a SECOND reader can share it. A host that decides whether to ARM a
+  held (gate-B) call on the next turn now asks the SAME question the dispatcher asks at call time —
+  *did this id appear in a read THIS turn?* — instead of re-deriving it and drifting. One definition
+  per rule; the two guards cannot disagree about what counts as read (the same reason
+  `committed_this_turn` is one function).
+
+### Changed
+
+- **`IdProvenanceDispatcher.execute`** now legitimises an id only when it appears as a WHOLE TOKEN of
+  a read, not as a substring. A forged `12345` that sat INSIDE a longer printed value (a phone, a
+  date, another id) used to pass; it no longer does. Ids are tokens of id characters (letters,
+  digits, `-`, `_`), so a real id — `ap-7f3a2c`, a 16-hex reminder id, `dr_silva` — still matches as
+  itself. Stricter on purpose: an id read nowhere must not legitimise a write, nor arm a confirmation
+  for a record that does not exist.
+
 ## 0.1.19 — 2026-11-13 — the figures scrub, completed across the remaining fixtures
 
 ### Changed

@@ -13,7 +13,7 @@ from cogno_anima.tools.confirm_args import (
     held_calls,
     new_confirm_args,
 )
-from cogno_anima.tools.id_provenance import IdProvenanceDispatcher
+from cogno_anima.tools.id_provenance import IdProvenanceDispatcher, id_was_read
 from cogno_anima.tools.pre_judge import (
     DEFAULT_ENFORCE_TIMEOUT_S,
     DEFAULT_PRE_JUDGE_TIMEOUT_S,
@@ -51,6 +51,7 @@ __all__ = [
     "held_calls",
     "MAX_CONFIRM_ARGS",
     "IdProvenanceDispatcher",
+    "id_was_read",
     "IdempotentDispatcher",
     "IdempotencyRule",
     "IdempotencyStore",

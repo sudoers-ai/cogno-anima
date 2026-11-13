@@ -43,7 +43,15 @@ and its business; the core ships the mechanism and takes the declaration as a pa
   an old session's memories cannot reach a write. `guarded` (`tool → (id argument, the READ that
   legitimises it)`) is INJECTED with no default: which tools carry ids, and which read names them, is
   the caller's catalog — and the read tool is part of the REFUSAL, so naming one the persona does not
-  have turns a self-correction into a loop. Build a fresh instance per turn.
+  have turns a self-correction into a loop. Build a fresh instance per turn. The match is by WHOLE
+  TOKEN, not substring: a forged `12345` that sits INSIDE a longer printed value (a phone, a date,
+  another id) is not legitimised, while a real id (`ap-7f3a2c`, a 16-hex reminder id, `dr_silva`)
+  matches as itself.
+- **`id_was_read(value, reads)`** (`tools/id_provenance.py`) — the pure predicate the guard above
+  uses, exported so a SECOND reader shares the one definition: a host deciding whether to ARM a held
+  (gate-B) call on the next turn asks the SAME question — did this id appear as a whole token in a
+  read THIS turn? — rather than re-deriving it and drifting. One definition per rule, the reason
+  `committed_this_turn` is one function too.
 - **`IdempotentDispatcher` + `IdempotencyStore`/`InMemoryIdempotencyStore`/`idempotency_key`**
   (`tools/idempotency.py`) — the same effect never goes out twice without saying so. Before a
   DECLARED call runs, the digest of `(scope, tool, normalised arguments)` is CLAIMED atomically in a
