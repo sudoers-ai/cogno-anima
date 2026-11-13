@@ -157,29 +157,32 @@ _CONTROLS = {
 }
 
 # Taken on the base tree (`f9f10d7`), system + user half, with and without a limits slot.
+# Regenerated 2026-11-12 (figures privacy scrub): the worked example in `_DERIVED_FROM_EVIDENCE`
+# moved (not `conversational`, which reads no grounding constant); control — reverting it to the
+# old reproduced each digest.
 _BASE = {
     ('conversational', ''): '8180c9f8625b486a',
     ('conversational', 'Never book on Sundays.'): '54d4e32283f495a7',
-    ('hour_on_a_read', ''): '569bb481b0298d32',
-    ('hour_on_a_read', 'Never book on Sundays.'): 'ed286a74fde44ebe',
-    ('message_same_hour', ''): '0154cde050a11d71',
-    ('message_same_hour', 'Never book on Sundays.'): '2f8d874e4a3d3296',
-    ('no_hour', ''): 'cdfb8463606e0064',
-    ('no_hour', 'Never book on Sundays.'): '0489a7c701aa1fb8',
-    ('same_date', ''): '3732b39ad074e033',
-    ('same_date', 'Never book on Sundays.'): 'cc77d69eb0bb0f52',
-    ('same_hour', ''): '796f1621654c2d21',
-    ('same_hour', 'Never book on Sundays.'): '4cb0a838ef7fbc1c',
-    ('same_hour_iso', ''): '805c318cd6dddb6b',
-    ('same_hour_iso', 'Never book on Sundays.'): '1dbd68d570be702b',
-    ('two_hours', ''): 'f82c6e34982a8c96',
-    ('two_hours', 'Never book on Sundays.'): '2d0892f4e6edbb6c',
-    ('two_hours_second', ''): '232e9b4d69fbfca5',
-    ('two_hours_second', 'Never book on Sundays.'): '40f1a70f65958e56',
-    ('with_context', ''): '11ce3617f2fe5c4c',
-    ('with_context', 'Never book on Sundays.'): '859ad10ecceed6b6',
-    ('write_without_hour', ''): 'a0a881ee3eca8b4c',
-    ('write_without_hour', 'Never book on Sundays.'): '6c175ca0191f68f7',
+    ('hour_on_a_read', ''): 'd950c3bf386bd56c',
+    ('hour_on_a_read', 'Never book on Sundays.'): '0a421ecb1c9ca189',
+    ('message_same_hour', ''): '333425a359ad6bc7',
+    ('message_same_hour', 'Never book on Sundays.'): 'edc91d00a976b9d5',
+    ('no_hour', ''): '32e3eed57fb99887',
+    ('no_hour', 'Never book on Sundays.'): 'dba5d906a8edf358',
+    ('same_date', ''): '3fce5182e2b3ecbc',
+    ('same_date', 'Never book on Sundays.'): '8ff546844a17a0cb',
+    ('same_hour', ''): '86315725f4006a43',
+    ('same_hour', 'Never book on Sundays.'): '1bfec5350da2e324',
+    ('same_hour_iso', ''): 'df560a504fda8129',
+    ('same_hour_iso', 'Never book on Sundays.'): 'cd7694033ccaca76',
+    ('two_hours', ''): 'dbae57da56393d05',
+    ('two_hours', 'Never book on Sundays.'): '51e60151b12b36ea',
+    ('two_hours_second', ''): '7f2909768a3b2ea1',
+    ('two_hours_second', 'Never book on Sundays.'): 'c76ab4a7666c967c',
+    ('with_context', ''): '318d6b28f6ae0773',
+    ('with_context', 'Never book on Sundays.'): '0be36e7397352fa7',
+    ('write_without_hour', ''): 'a402b61eb54031d0',
+    ('write_without_hour', 'Never book on Sundays.'): '0e345d2057ec7c8d',
 }
 
 

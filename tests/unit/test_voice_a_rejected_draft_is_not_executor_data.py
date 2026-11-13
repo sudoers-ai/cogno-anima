@@ -219,7 +219,9 @@ def test_the_anti_repeat_guard_still_gets_the_draft():
 # Measured on the base revision (origin/main e4e7dde2) by rendering `_turn()` with no
 # `voice_correction` at all. Recompute the same way on the revision you are comparing against;
 # a failure here means the voice prompt moved for a turn this change is not about.
-_MAIN_NO_REJECTION = "1b50d8f51e575666"
+# Regenerated 2026-11-12 (figures privacy scrub): the `_DERIVED_FROM_EVIDENCE` example renders
+# in the voice `# Task` rule; control — reverting it to the old reproduced this digest.
+_MAIN_NO_REJECTION = "0ac7d1dc0ca2f49d"
 
 
 def test_a_turn_with_no_rejection_renders_byte_for_byte_as_before():

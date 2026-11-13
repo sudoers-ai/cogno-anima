@@ -203,11 +203,13 @@ def _fixtures():
 
 
 #: ``sha256`` of each fixture's judge prompt on ``origin/main`` (02e1850), before this change.
+#: Regenerated 2026-11-12 (figures privacy scrub): the worked example in `_DERIVED_FROM_EVIDENCE`
+#: moved; control — reverting it to the old reproduced each digest, so nothing else moved.
 _ORIGIN_MAIN = {
-    "read_only": "1b4e040efa8703d402e60bcd3adf41daac6b07ae31500b970ac8bbe7dd7f8c04",
-    "failure": "c627d58efb24d7310d3eba3cee8c9d9e61ea2d94eec968d90c77d71bd4c2f15c",
-    "gate_b_held_message": "4f0262b6aad451aba8874bb1408384d1209dce682530720f9af329e34924ab6e",
-    "nothing": "ad4f1c07f825f0ada5a86d1b07bfd201315bee197f51532afebf8ed44fd54070",
+    "read_only": "b26754aaef3ed56f349cd6dfab929b22c620748422a260bfbf0f82fb74a8e885",
+    "failure": "6cc561287e5aac2d5ef73d719de187d2141cbcd6775a4892d1c084042bc3b739",
+    "gate_b_held_message": "fb362f7effc3243a491c4bea84f68a7697534328faa704530cc3ad27200941c7",
+    "nothing": "252e8c24b10ff98b921e9687ce5889eb6030f398e13394347a4b9a6f96ec4acf",
 }
 
 

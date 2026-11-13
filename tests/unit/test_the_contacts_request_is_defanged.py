@@ -153,77 +153,80 @@ def digest(text: str) -> str:
 
 #: sha256[:16] of each rendering of each CLEAN message, AS ``ee9344d`` RENDERED IT (the tree
 #: before this change). Regenerated only when one of these prompts changes on purpose.
+# Regenerated 2026-11-12 (figures privacy scrub): the `_DERIVED_FROM_EVIDENCE` worked example
+# renders in the judge/voice prompt; only those renderings moved; control — reverting the new
+# example to the old reproduced each digest.
 ON_THE_TREE_BEFORE: "dict[str, dict[str, str]]" = {
     "email_and_figure": {
-        "judge_conversational": "3ff3187917743310", "judge_execution": "32dbeb7dbffbd7d1",
-        "judge_no_goal": "dd7a6f7843c176ab",
-        "voice_plain": "16f1e69a0aa21941", "voice_rejected": "0ea26edc90c2b4ce",
-        "voice_unverified": "6931c6dd550cb055"},
+        "judge_conversational": "3ff3187917743310", "judge_execution": "91c69fbb50d05270",
+        "judge_no_goal": "75fca2d51b4f1e95",
+        "voice_plain": "3057834a255ac9c8", "voice_rejected": "130f58399e0b3dd4",
+        "voice_unverified": "c666ab0b01f605c6"},
     "empty": {
-        "judge_conversational": "1d3a23e708eeae10", "judge_execution": "00155a7ca6e58621",
-        "judge_no_goal": "18a0007c52100f02",
-        "voice_plain": "eeec4745c0f44ae1", "voice_rejected": "c56cbfcaf845c0d1",
-        "voice_unverified": "f357cec1a038c9e7"},
+        "judge_conversational": "1d3a23e708eeae10", "judge_execution": "fc6e06ddb13c23be",
+        "judge_no_goal": "f44f6dd9104a4a60",
+        "voice_plain": "f1749400085b2626", "voice_rejected": "0e39e1b30b6da841",
+        "voice_unverified": "abd41d29af721190"},
     "hash_midline": {
-        "judge_conversational": "f1323b5a6bcacb2a", "judge_execution": "4b2118e2b9112f34",
-        "judge_no_goal": "e2fdb7c04fa9b5ec",
-        "voice_plain": "18bbe44e08add943", "voice_rejected": "fbbe7a100a200e38",
-        "voice_unverified": "8a8a46ce531175a8"},
+        "judge_conversational": "f1323b5a6bcacb2a", "judge_execution": "19ebb308e1a4023c",
+        "judge_no_goal": "9b15c25ae5c78134",
+        "voice_plain": "d03876b50afe9cbb", "voice_rejected": "c36f45a1c26e9d10",
+        "voice_unverified": "5ed332c923426201"},
     "html": {
-        "judge_conversational": "13ba7fcfd577b7c6", "judge_execution": "46a7fb2cec649752",
-        "judge_no_goal": "56147de3d3096960",
-        "voice_plain": "05cf46c5138f0de9", "voice_rejected": "d2bb29578681e882",
-        "voice_unverified": "4bbe4beeea43f64f"},
+        "judge_conversational": "13ba7fcfd577b7c6", "judge_execution": "7b6017eed2b5929d",
+        "judge_no_goal": "80540a29a2b40b9d",
+        "voice_plain": "d7d8c46fb14956db", "voice_rejected": "3b4dbf73f16f1e9e",
+        "voice_unverified": "069c585cee7fde25"},
     "indented": {
-        "judge_conversational": "82ca58572ec686f8", "judge_execution": "1fbcfca911f6693e",
-        "judge_no_goal": "07eaf05c540949ed",
-        "voice_plain": "75285eb86cd6aa0b", "voice_rejected": "60e1cea7e1f476f3",
-        "voice_unverified": "5b1d35011ed8a538"},
+        "judge_conversational": "82ca58572ec686f8", "judge_execution": "199812ff2e99ea95",
+        "judge_no_goal": "6950978ca08d6a7b",
+        "voice_plain": "b235d2b81963628b", "voice_rejected": "adc62b308ae90afb",
+        "voice_unverified": "b6e8773f3c382050"},
     "multiline": {
-        "judge_conversational": "5f7cc7b2cc4dbf3d", "judge_execution": "e23203eedb5c5260",
-        "judge_no_goal": "287053aa19cf092d",
-        "voice_plain": "c321820d3a05bfbf", "voice_rejected": "7b73805effc7ed13",
-        "voice_unverified": "0574907fd846bfb4"},
+        "judge_conversational": "5f7cc7b2cc4dbf3d", "judge_execution": "9adcad82df52f283",
+        "judge_no_goal": "4f347da685d377b2",
+        "voice_plain": "cea2efa538bbc5d1", "voice_rejected": "06d15687512eb7d1",
+        "voice_unverified": "18657ae215859a93"},
     "names_a_tool": {
-        "judge_conversational": "108588464e584681", "judge_execution": "d7332eddfbcbc748",
-        "judge_no_goal": "68bd636a8ff8d077",
-        "voice_plain": "7587266d3ff4ab0a", "voice_rejected": "20a77d1708096dc7",
-        "voice_unverified": "d11d4e650258917d"},
+        "judge_conversational": "108588464e584681", "judge_execution": "451a189d27a4280d",
+        "judge_no_goal": "69594acde98a22f5",
+        "voice_plain": "8029816bebebf476", "voice_rejected": "4965a5b1a7c5989d",
+        "voice_unverified": "bda342e0c93d9ea6"},
     "numbered_markdown": {
-        "judge_conversational": "ad60f4216b8c21d8", "judge_execution": "25e994f619dbb00e",
-        "judge_no_goal": "083033bd6be6c3ac",
-        "voice_plain": "5e0c7412a5cf8f0a", "voice_rejected": "4fd94873faf32f8c",
-        "voice_unverified": "d2561ba458bb7457"},
+        "judge_conversational": "ad60f4216b8c21d8", "judge_execution": "c4e51278a75ab51e",
+        "judge_no_goal": "d51f44461067b5f5",
+        "voice_plain": "44463d80ba4c7535", "voice_rejected": "4813707a17169366",
+        "voice_unverified": "4220293c28481980"},
     "plain": {
-        "judge_conversational": "ac10fa13ca4ee481", "judge_execution": "b7abb8d6fb33ba46",
-        "judge_no_goal": "44e5b6a7b581b355",
-        "voice_plain": "1ba1fa658dcf7cc1", "voice_rejected": "5ebaf0892b7b050e",
-        "voice_unverified": "2e6c0a667b92780d"},
+        "judge_conversational": "ac10fa13ca4ee481", "judge_execution": "c2630a7472ad01bd",
+        "judge_no_goal": "372da504cfcae01e",
+        "voice_plain": "f4927e8fff5fe3db", "voice_rejected": "8a61840eb61947d8",
+        "voice_unverified": "83e87e22103ffc21"},
     "quotes": {
-        "judge_conversational": "1c93344f8ad96122", "judge_execution": "e8829aee491d1b29",
-        "judge_no_goal": "3aed02b538a69a36",
-        "voice_plain": "614ca7e9abcab769", "voice_rejected": "571a49ea4df219cb",
-        "voice_unverified": "8346aae25b849330"},
+        "judge_conversational": "1c93344f8ad96122", "judge_execution": "354062f2d99e0a91",
+        "judge_no_goal": "d8091e55b9f4266b",
+        "voice_plain": "e149234c40de0d74", "voice_rejected": "16def06ec120a4f5",
+        "voice_unverified": "2e34aac5d89bf7ab"},
     "quotes_a_tool_call_tag": {
-        "judge_conversational": "913f3e69c8f495fc", "judge_execution": "7fda3d64f7313813",
-        "judge_no_goal": "56b2156c3ab90985",
-        "voice_plain": "231e86f152773d7c", "voice_rejected": "ee78788015abf1bf",
-        "voice_unverified": "b82e49c310f699a4"},
+        "judge_conversational": "913f3e69c8f495fc", "judge_execution": "cf51d78e80ea01ce",
+        "judge_no_goal": "2cb9c3da328670ab",
+        "voice_plain": "9616327e72032fee", "voice_rejected": "f415838df5747670",
+        "voice_unverified": "8f3e3e92cf10ebd3"},
     "starts_like_a_header": {
-        "judge_conversational": "ea2a96f31b168c4a", "judge_execution": "8b78fa67edcebfd0",
-        "judge_no_goal": "27dece4b56a35553",
-        "voice_plain": "776eafb4ea0d2cfc", "voice_rejected": "c621d7eb66c663f0",
-        "voice_unverified": "bfdb830636ad3450"},
+        "judge_conversational": "ea2a96f31b168c4a", "judge_execution": "27bb6f0da8fb3021",
+        "judge_no_goal": "25888cd799b46b88",
+        "voice_plain": "3e4cc8abfb450c65", "voice_rejected": "989af848484eaba9",
+        "voice_unverified": "4022e5a5e867f56e"},
 }
 
 #: The same, for :data:`HOSTILE` — what the tree before sent, which the tree now must NOT.
 HOSTILE_ON_THE_TREE_BEFORE: "dict[str, str]" = {
     "judge_conversational": "944be6b0e0df07af",
-    "judge_execution": "a4be3c8b50ff0df7",
-    "judge_no_goal": "be842b530b018f90",
-    "voice_plain": "b15a768df2a998a1",
-    "voice_rejected": "d743dff05e568e8d",
-    "voice_unverified": "3c7140d080c51034",
+    "judge_execution": "dba279a024c2ebb2",
+    "judge_no_goal": "de1624f8de99f705",
+    "voice_plain": "0b9fb0ec1f3b5d51",
+    "voice_rejected": "3c034747588106c3",
+    "voice_unverified": "5b5271650e4ac6f8",
 }
 
 

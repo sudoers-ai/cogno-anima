@@ -141,6 +141,11 @@ def _fenced(data: str = DATA) -> str:
 #: `mk.EGO_CONTEXT`, taken on the PARENT tree (the tree this change starts from) by loading this
 #: module there and calling `renderings()`. A landing-time proof, like `_ORIGIN_MAIN` in
 #: `test_judge_prompt_cache_order.py`: regenerate it when one of these prompts changes on purpose.
+#: Regenerated 2026-11-12 (figures privacy scrub): the worked example in `_DERIVED_FROM_EVIDENCE`
+#: moved, and it renders in both the judge (10 configs; not `conversational`) and the voice
+#: (its `# Task` rule is unconditional), so every `judge:*` and `voice:*` entry that carries it
+#: moved; the `executor:*` entries did not. Control: reverting the new example to the old inside
+#: each rendering reproduced this whole dict, so nothing else moved.
 _PARENT: "dict[str, str]" = {}  # filled at the end of the module
 
 
@@ -618,25 +623,25 @@ _PARENT.update(json.loads("""
  "executor_text:context": "32acf297a961ea08",
  "executor_text:plain": "32acf297a961ea08",
  "executor_text:readonly": "fdb4c4bf03fae3e3",
- "judge:constraints": "02cf751398683d99",
- "judge:consulted": "94e9cabb0f7e7de0",
- "judge:context": "f2d341eca9129580",
+ "judge:constraints": "38adbee3a9c64cfa",
+ "judge:consulted": "9ea34b2bc3b9e4fd",
+ "judge:context": "85c4f96c5d5ae7c5",
  "judge:conversational": "ce03a2cf9fd5ebb0",
- "judge:execution": "87f7fcaf379dd206",
- "judge:held": "67a0a467b2506caa",
- "judge:memo": "c264108f32a716d7",
- "judge:preserved": "b8e19637e2adf1d3",
- "judge:readonly": "f2d341eca9129580",
- "judge:rules": "59965a23c0ffc472",
- "judge:unavailable": "e5b04f0a62f5b3cc",
- "voice:approved_execution": "43e859c67221dccf",
- "voice:context": "da0886b97704b7a5",
- "voice:conversational": "c133372768cc3d3f",
- "voice:memo": "0f7bd8c419e9e13c",
- "voice:plain": "da0886b97704b7a5",
- "voice:rejection:execution_rejected": "534a1f44111b51f2",
- "voice:rejection:repeated_reply": "2e83a43417390b42",
- "voice:rejection:unverified_claim": "570aa01b660c25da",
- "voice:traits": "02f05f250a116318"
+ "judge:execution": "4058e1d59784a148",
+ "judge:held": "e3d927d5b6095dbd",
+ "judge:memo": "4f5f9cd42ba40bd4",
+ "judge:preserved": "b3145c319db00035",
+ "judge:readonly": "85c4f96c5d5ae7c5",
+ "judge:rules": "8f8f92860a277d8d",
+ "judge:unavailable": "0ffd20adf418b859",
+ "voice:approved_execution": "f80599ed8410bcbc",
+ "voice:context": "e806de1ce62857f3",
+ "voice:conversational": "b89ee3d906ecf5e6",
+ "voice:memo": "43b23137cf22d301",
+ "voice:plain": "e806de1ce62857f3",
+ "voice:rejection:execution_rejected": "342cb80de164662f",
+ "voice:rejection:repeated_reply": "ed71f2cc42e16239",
+ "voice:rejection:unverified_claim": "8a7c7138bd9499c3",
+ "voice:traits": "f31a0286d1915b58"
 }
 """))

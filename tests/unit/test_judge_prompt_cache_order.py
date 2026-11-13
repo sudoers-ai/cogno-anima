@@ -229,6 +229,15 @@ def test_the_sections_are_the_same_multiset_as_before_only_the_order_moved(name,
 #: judge's TEXT changes these digests legitimately. When that happens, regenerate them from the
 #: new base (render each configuration with the base tree and hash it) in the same PR that
 #: changed the text; never edit one to make a red go away.
+#:
+#: Regenerated 2026-11-12 (figures privacy scrub): the WORKED EXAMPLE inside
+#: `_DERIVED_FROM_EVIDENCE` — a real production rate/hours/total that this public repo must not
+#: carry — was replaced with a synthetic set. Every configuration that renders that constant
+#: moved; `conversational`, which reads neither grounding constant, did not and keeps its digest.
+#: The deliberate delta was confirmed to be ONLY that example: reverting the new example back to
+#: the old inside the rendered prompt reproduced every digest below, so nothing else moved. The
+#: old (real) example bytes are deliberately NOT stored here — that is the whole point of the
+#: scrub — so this is a true regeneration, not a `_since_f13`-style undo.
 def _since_f13(prompt: str) -> str:
     """The prompt with the judge's DELIBERATE later text changes removed by name, so the digests
     below can keep being c0d6bb9's and keep proving that nothing ELSE moved. Each entry is a
@@ -243,19 +252,19 @@ def _since_f13(prompt: str) -> str:
 
 
 _ORIGIN_MAIN = {
-    "readonly": "bcc9dafe1e1da1593ef14aa62b5f139c9aa37f3c9da725443f15cb2dffab901e",
-    "execution": "f616876cee9955545c899b5e17a89a7b35146c58a7d7dfd8b664be7f48795831",
-    "held": "fe6a33f69176d1745da293246f584fe373873b60d9e739435dcab162ff8c314e",
+    "readonly": "96da1b256f5578a4507844508cadd14f2ca2f2d11ec5f3260aacebe6630b96f7",
+    "execution": "0d94f0018539335b6bddec0b201bdb8a88a7103126c5befa54b086a1b7bb05f8",
+    "held": "0f592e05cfd6bdc0f92cb57dcf5d5ddb28a21f29d9f1c7ff7af8414079c5f3ff",
     "conversational": "e26a84569bbd6fae8770320b08cf7a4cc51db2c5e69ff3c68a529f7919cacb2b",
-    "context": "bd7718c8337899e0cad425c2b48fd13a3e3a89bec7229c358807c67bf2aeb6d9",
-    "unavailable": "c98833ff0e7bfc7f7adcaa689013e16c909399b3c19023791f803706bfdcb60d",
-    "constraints": "d6526009d51543379d38a213271f076825462d6578b127f0b25c3d6bb319490f",
-    "preserved": "1e64f9f415cad36241e5eb58c768e8fe3fbd0fcfab45f4660b2b89df2d82f71b",
-    "rules": "f9bf87af021403806ea51dc5ff13c5a0799faa60108908523942602538c6a9b8",
-    "memo": "c407c2fa70bd7e4617c0423919ffef067220fb2707e3d27e4c409e4e13014000",
+    "context": "99c9f13bbee2ee8a6fc836478afacc7ba14e73bebf75a8ce4b0e8269a3d12872",
+    "unavailable": "943389b067a2adbe1d69795aba09f7da356534a131dff8d8abf7b9a05f864687",
+    "constraints": "dbb5805af2dec42543ed9234aff3ffeb3cc8d2cde1cb27f2a4ecdc136ede540d",
+    "preserved": "5add613ce4181206cf50ab6c6f0555fff5a82a6daa9267a749b528a76daec97b",
+    "rules": "721e75e9d582afd31570e07c6997a8a04f7f7edb5f0bac4bdd45567c9376c005",
+    "memo": "addfef671cb462c98c8eafb5de193dc0bf55ba8d0d17b7fa823be06eadd7d704",
     # Joined with the `consulted` row of `_JUDGE_BLOCKS`: the configuration is new, the prompt
     # is not — rendered by the tree before that row existed (55788c8), like the ten above.
-    "consulted": "0291031dd95e97c8583613cea30fefac3e7c843890756ce39bc9efd0c866c619",
+    "consulted": "ca09a941d82abbfb4fd2dc3b2a3da9027d29ff557471332dbd8afddaf4476198",
 }
 
 
@@ -275,17 +284,17 @@ def test_the_legacy_reconstruction_is_origin_main_byte_for_byte(name, ctx):
 #: The same, for the CONTROL: `_build_judge_prompt(ctx, "")` — no limits slot at all — as
 #: `origin/main` at c0d6bb9 rendered it. Same staleness rule as `_ORIGIN_MAIN`.
 _ORIGIN_MAIN_NO_LIMITS = {
-    "readonly": "46398b00eecd91e245aa29c99f33516c44eaf7368df7989ce24df1481f62d59d",
-    "execution": "7f0269fb5164b6528bd66572916cb289d4c7e08c98cc62b2f9e35b02d49c95d2",
-    "held": "2373d9283dbd22a4dccfcc5b627e5c49e4b7e039a80de9a6939e48ca563187aa",
+    "readonly": "7814f63c22908c23364eb9359a1f2bac0e927e43147c5f395bfd91f7edd89752",
+    "execution": "779e81f0ae8022a6b63b59c8518defa363c1aa4c9d0a64668e5fa1a256ecbec6",
+    "held": "a958a358bea6ad67f697bb122d461ab11fd79f19c4260a27b419a34e4cf88936",
     "conversational": "fb161a6011018dcb9700287d25061a4e234af7ecebcafc9fa00d7fedacba2d25",
-    "context": "f57bb5002a88238dc839c22bbfd11ff9a3fb8c289c017ecc1da9d045bca9cd54",
-    "unavailable": "ce852685cfd5bb13429733769c9e0d92c127e1c8734a31a3ffdb14a564528168",
-    "constraints": "6cc6869cd408f8139b2c7cde2e8db70bd028a682c967b225017002e24a436678",
-    "preserved": "a025303cff3a32ad84f793da4bf7d2fc0858b777ac7f5223a09fd23712ca519e",
-    "rules": "84fe08b0947f73bfcb93afb16f9d98f36bd7de0dfd4ca797d5744571c1ae02a4",
-    "memo": "a0378001b23ff41f8781a0da798306c7fb34bdd5819ba38b48fb33e08cd4bfc4",
-    "consulted": "f1283b5245a02b0b22c8c7025a437083f33c0edfa240fb363d396a78be91190d",   # 55788c8
+    "context": "6cfdbfeeeda932d1871f2745d95ffa0a7eb017cfd8ff984741bceea26356caf8",
+    "unavailable": "ce66ef049219631d9d54a6d9a83e871000a7d7c060e4c2cf65157e5387ca4e88",
+    "constraints": "d155e63d8bfd6458cc4a483bfbbcf4e69e47479414e8819e96177f460e00b04e",
+    "preserved": "a93ba2193ea80cbc8af243a9c60ad30e16d5fc6a4135e04c1e7d32f4ec767677",
+    "rules": "3c8af0dd970d71211bbccb476fcc9ae657add1762db42a6f59a465759061afee",
+    "memo": "d34e645fba08cfc85487de3631ae602ea70e3ca07a6bf33e022d5146b800b3b1",
+    "consulted": "c5e5648439fb765232b0c00f74e25c0a76be3be7ee0b906eb0c782893572af8d",   # 55788c8
 }
 
 

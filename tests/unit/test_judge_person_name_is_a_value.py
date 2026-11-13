@@ -91,23 +91,26 @@ CELLS = [(b, people, limits, context)
 
 #: sha256[:16] of what the judge is sent for each cell with NO person named — taken on anima
 #: #225 (`b714083`), before this change. Filled by `_regenerate` below.
+# Regenerated 2026-11-12 (figures privacy scrub): the `_DERIVED_FROM_EVIDENCE` worked example
+# renders in the judge/voice prompt; only those renderings moved; control — reverting the new
+# example to the old reproduced each digest.
 BASE: "dict[str, str]" = {
-    "execution|people=0|limits=False|context=False": "0d4a6a32988bb092",
-    "execution|people=0|limits=False|context=True": "f124b69c1962909f",
-    "execution|people=0|limits=True|context=False": "e0453bb64e044515",
-    "execution|people=0|limits=True|context=True": "1e80b2f2186d9078",
-    "execution|people=1|limits=False|context=False": "0d4a6a32988bb092",
-    "execution|people=1|limits=False|context=True": "f124b69c1962909f",
-    "execution|people=1|limits=True|context=False": "e0453bb64e044515",
-    "execution|people=1|limits=True|context=True": "1e80b2f2186d9078",
-    "readonly|people=0|limits=False|context=False": "dadb5f105f1bbb66",
-    "readonly|people=0|limits=False|context=True": "79770bd6e8e5e36c",
-    "readonly|people=0|limits=True|context=False": "b89aaa37c36b316b",
-    "readonly|people=0|limits=True|context=True": "53d8e1feea5f3c0a",
-    "readonly|people=1|limits=False|context=False": "dadb5f105f1bbb66",
-    "readonly|people=1|limits=False|context=True": "79770bd6e8e5e36c",
-    "readonly|people=1|limits=True|context=False": "b89aaa37c36b316b",
-    "readonly|people=1|limits=True|context=True": "53d8e1feea5f3c0a",
+    "execution|people=0|limits=False|context=False": "368f51b1e3825b3f",
+    "execution|people=0|limits=False|context=True": "a933053adb90f7f0",
+    "execution|people=0|limits=True|context=False": "61f00ed25b24443a",
+    "execution|people=0|limits=True|context=True": "3e88dd2151aabdd2",
+    "execution|people=1|limits=False|context=False": "368f51b1e3825b3f",
+    "execution|people=1|limits=False|context=True": "a933053adb90f7f0",
+    "execution|people=1|limits=True|context=False": "61f00ed25b24443a",
+    "execution|people=1|limits=True|context=True": "3e88dd2151aabdd2",
+    "readonly|people=0|limits=False|context=False": "342dd0fe0ae8dba0",
+    "readonly|people=0|limits=False|context=True": "355d4f8de4623417",
+    "readonly|people=0|limits=True|context=False": "df9f76f6751acfeb",
+    "readonly|people=0|limits=True|context=True": "d490f8ced0e95277",
+    "readonly|people=1|limits=False|context=False": "342dd0fe0ae8dba0",
+    "readonly|people=1|limits=False|context=True": "355d4f8de4623417",
+    "readonly|people=1|limits=True|context=False": "df9f76f6751acfeb",
+    "readonly|people=1|limits=True|context=True": "d490f8ced0e95277",
     "conversational|people=0|limits=False|context=False": "2a0dab60322feea5",
     "conversational|people=0|limits=False|context=True": "620f42169aeb3bb2",
     "conversational|people=0|limits=True|context=False": "1fa67b2e2c5e310d",

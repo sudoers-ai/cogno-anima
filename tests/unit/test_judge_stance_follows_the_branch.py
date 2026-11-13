@@ -181,37 +181,41 @@ _ANSWER = {
     "conversational": lambda: _ctx(conversational=True),
 }
 
-# Taken on the base tree (`f9f10d7`), by rendering these fixtures there.
+# Taken on the base tree (`f9f10d7`), by rendering these fixtures there. The grounding entries
+# were regenerated 2026-11-12 (figures privacy scrub): the worked example in
+# `_DERIVED_FROM_EVIDENCE` moved, so every execution entry and the read-only answer entries moved;
+# `conversational` (no grounding constant) and `_BASE_FAILED_LINE` did not. Control: reverting the
+# new example to the old inside each rendering reproduced every value below, so nothing else moved.
 _BASE_EXECUTION: "dict[tuple[str, str], str]" = {
-    ('failed_read', ''): '844a8761277fdd79',
-    ('failed_read', 'Nunca prometa descontos.'): '3c51ba2dd2f7241b',
-    ('failed_write', ''): '6489cda5dc9fbde9',
-    ('failed_write', 'Nunca prometa descontos.'): '5a4b6e712210d0d8',
-    ('interrupted_read', ''): '3dd2bb958be94ccb',
-    ('interrupted_read', 'Nunca prometa descontos.'): '3cc5ccf3132c49f6',
-    ('no_call', ''): '41ee677aa1c1b89b',
-    ('no_call', 'Nunca prometa descontos.'): '443c0098af35a715',
-    ('read_and_failed_read', ''): 'd61d1930a668be9e',
-    ('read_and_failed_read', 'Nunca prometa descontos.'): 'f097f2ba39701b0f',
-    ('write', ''): 'e2b6fbe1a002e4a2',
-    ('write', 'Nunca prometa descontos.'): '4c7da317a79b2a41',
-    ('write_with_context', ''): '649218aac7a63489',
-    ('write_with_context', 'Nunca prometa descontos.'): '2f0ff6daacff0155',
-    ('write_with_rules', ''): '362104b2420f9efb',
-    ('write_with_rules', 'Nunca prometa descontos.'): '927e263bf833d535',
+    ('failed_read', ''): '9face61d74a47235',
+    ('failed_read', 'Nunca prometa descontos.'): 'ca89a502036532ea',
+    ('failed_write', ''): '71060021387f8eef',
+    ('failed_write', 'Nunca prometa descontos.'): '309315488b83aadf',
+    ('interrupted_read', ''): '9ead0d6343a0f04a',
+    ('interrupted_read', 'Nunca prometa descontos.'): '483b0047ea416e92',
+    ('no_call', ''): '44fdf80f42f642b7',
+    ('no_call', 'Nunca prometa descontos.'): 'ae26c05e9ab63af3',
+    ('read_and_failed_read', ''): '113a280e21f5f6c0',
+    ('read_and_failed_read', 'Nunca prometa descontos.'): '63147f5771c75f34',
+    ('write', ''): 'd5f554223b7c1dba',
+    ('write', 'Nunca prometa descontos.'): '23787b9c4c5f1189',
+    ('write_with_context', ''): '67fea29ca268c75f',
+    ('write_with_context', 'Nunca prometa descontos.'): 'a7ba0f3a2d81b22b',
+    ('write_with_rules', ''): 'bb70ca91caab0be1',
+    ('write_with_rules', 'Nunca prometa descontos.'): '729e481a3544a502',
 }
 _BASE_ANSWER_USER: "dict[tuple[str, str], str]" = {
     ('conversational', ''): 'cd78af5cf0dfb76f',
     ('conversational', 'Nunca prometa descontos.'): 'a4b979bd8c22c772',
-    ('readonly', ''): 'b384ed4f60616f3f',
-    ('readonly', 'Nunca prometa descontos.'): '6e73e20636ba81c1',
-    ('readonly_with_rules', ''): '0921996193d48d89',
-    ('readonly_with_rules', 'Nunca prometa descontos.'): '300229e2c462720f',
+    ('readonly', ''): 'eb6bb4d6eb0ede36',
+    ('readonly', 'Nunca prometa descontos.'): '1877542fe4fa5497',
+    ('readonly_with_rules', ''): 'd7ee7b6acb6f19e7',
+    ('readonly_with_rules', 'Nunca prometa descontos.'): 'd98edeb0c9133fec',
 }
 _BASE_ANSWER_WHOLE: "dict[str, str]" = {
     'conversational': 'c8fec463852b3cce',
-    'readonly': 'be1ec6b483bb2caf',
-    'readonly_with_rules': '312e9fc89d6f1e5b',
+    'readonly': '5fa4070eb71a38a4',
+    'readonly_with_rules': '9f2fe7ef034c8605',
 }
 _BASE_FAILED_LINE = 'ce50c0defd4584f3'
 

@@ -272,21 +272,23 @@ def test_a_draft_line_cannot_forge_a_header_or_carry_its_list_number_as_a_value(
 # Whole-prompt digests measured on `4eeeb2f` (origin/main when this landed) with this exact
 # fixture. A landing-time proof: regenerate them when the voice prompt's text changes on
 # purpose, never to make this file green over a change nobody meant.
+# Regenerated 2026-11-12 (figures privacy scrub): the `_DERIVED_FROM_EVIDENCE` example renders
+# in the voice prompt; control — reverting it to the old reproduced each digest.
 _ORIGIN_MAIN = {
     "2254_no_rejection":
-        "e93cd22af2529484268a1832530d0a51bbd642a3a8272c622f3e8bee921696cf",
+        "a99bdc42ca7804dee80d90ff1c2311ac203df40ccda00d88bf69d25a00de7a0b",
     "2256_no_rejection":
-        "3d53e1bb6fc6f25ee43b209127a831300e162f23cc66041f7d470719a3a20bd4",
+        "21d794b3219a4558c70a05be5dff0b9d1306ef5c105acdc197e89ab0063052ec",
     "2254_review_verdict":
-        "b0d646a0b6028d520d64700096f1d58d5d56a34ad5f44b52e72c096488d598a2",
+        "f84f5063637ca8da678d2b0510f723e2c73079e17e5d270c8c5298cb66d3dc84",
     "2254_repeated_reply":
-        "90da1fea2f2414d29ec1d231cc6beb4f979c4dbfa879e45d362380a6eb8bf80e",
+        "68baf5b72f1034db10d14e4c155c59ec5be40fa40f3f2752faade9e4d9a44d6f",
     "2256_failed_read":
-        "49083b5f4f66991b455d8ccebceb8b5fd303a0acfb22e14e120a4e18aa20b39d",
+        "799426c63c4eee265e087deb526d0fe7afbb0e3cb90adcc32c200a0de4ee8f9d",
     "no_value_in_the_data":
-        "42dca7568263ea56659282359b2b271088717cda04c36dfbc68f80f4ccbc6ca3",
+        "2c899e82519d109020c437559afb79e1e5b549d6aaa42f41d21f332c6d99b252",
     "no_draft":
-        "45bdb749f71e4e661ebcea4d9899d31961a5cb010b62aee117f7845432945771",
+        "b3f648af700f4745ecadd0c23cd08844793ecfd6af8405fa1d908842270cc121",
 }
 
 _MAIN_REJECTED_2254 = "4204ccd767541e9a528dac7ff36c34957c999d18f1fe61727d917f98c3abc294"

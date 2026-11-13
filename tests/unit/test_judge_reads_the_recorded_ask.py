@@ -73,26 +73,28 @@ _DECL = {"notify_user": "message"}
 _ASKS = {mk.HELD_RECORDED_ASK: {"notify_user": ARG}}
 
 # (name, context builder, digest of `_build_judge_prompt(ctx, "")` on anima e9898d1)
+# Regenerated 2026-11-12 (figures privacy scrub): the worked example in `_DERIVED_FROM_EVIDENCE`
+# moved; control — reverting it to the old reproduced each digest, so nothing else moved.
 _BASE = [
     ("declared, ask argument present but NOT declared",
      lambda: _ctx_with([_held({"target": "Otávio", "message": MSG, ARG: ASK})], _DECL),
-     "292fe79146fd80fc7e6ec36a84d9e370d3d52ccabb8399e956718f7813512027"),
+     "ff23b326f54f17f71d125015567ff4e521b6e1534d3f3fa995b4b928f0cb1deb"),
     ("nothing declared at all",
      lambda: _ctx_with([_held({"target": "Otávio", "message": MSG, ARG: ASK})]),
-     "7bb45c3011bacd535a8b7ba9f8dc1c62dd601295cfd83fc9d69aafbafb3d9f90"),
+     "545d5232fe24766d54d585054ea74173efe5efdd9029330b0ed5ad28822dc95b"),
     ("an empty held message",
      lambda: _ctx_with([_held({"target": "Otávio", "message": "  "})], _DECL),
-     "363b7d1a321e3ac54bda0f1f78e93999d3909e89942b0472d34bc49ac9079d21"),
+     "6ac3f5a92ac09013f867f8d934caf105661aecabedcbc3693fdde6e6542af2f8"),
     ("no held call",
      lambda: _ctx_with([]),
-     "38abd975ec1a791a83b6081b86b05c945e2a4ae18a1f89cd82401470104b3f87"),
+     "c8de01a60462e1496a016a164519cb66af2d69bc28864740dece8b00bc47a99d"),
     ("ask declared for ANOTHER tool",
      lambda: _ctx_with([_held({"target": "Otávio", "message": MSG, ARG: ASK})], _DECL,
                        {mk.HELD_RECORDED_ASK: {"other_tool": ARG}}),
-     "292fe79146fd80fc7e6ec36a84d9e370d3d52ccabb8399e956718f7813512027"),
+     "ff23b326f54f17f71d125015567ff4e521b6e1534d3f3fa995b4b928f0cb1deb"),
     ("ask declared, value blank",
      lambda: _ctx_with([_held({"target": "Otávio", "message": MSG, ARG: "   "})], _DECL, _ASKS),
-     "42d4518a49061459fff4f6decccc926b511b664c68866a728d4dece37a21e2df"),
+     "9294c837deafefa8f18060b65755c27e3d030b2677de60504ebbbcdaac89ec13"),
 ]
 
 
