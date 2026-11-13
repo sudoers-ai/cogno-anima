@@ -115,15 +115,15 @@ UNREADABLE_VERDICT_CRITIQUE = (
 _NUM_RE = re.compile(r"\d[\d.,]*\d|\d")
 _CRITICAL_TERM_RE = CRITICAL_TERM_RE
 # A FIGURE, for the divergence backstop below: a number written with a decimal separator
-# and exactly two digits after it (``120,00``, ``1.234,56``, ``120.00``) — a rate, a total,
+# and exactly two digits after it (``135,00``, ``1.234,56``, ``135.00``) — a rate, a total,
 # an amount. Deliberately NOT every numeral: ``_NUM_RE`` matches the "2" of "2 items" and
 # both halves of "08/09", and a net that re-voices a CORRECT reply because it wrote a date
 # in words becomes the mechanism it was built to stop. The measured divergences are all of
-# this shape (R$ 120,00 / 30,00 / 40,00 lost; R$ 45,00 invented).
+# this shape (R$ 135,00 / 35,00 / 50,00 lost; R$ 65,00 invented).
 _FIGURE_RE = re.compile(r"\d{1,3}(?:[.\s]\d{3})*[.,]\d{2}(?!\d)")
 
 # A CALCULATION the reply shows: two or more numerals joined by ONE repeated operator and
-# closed by ``=`` and a result — "4 h x R$ 120,00 = R$ 480,00". The filler between a numeral
+# closed by ``=`` and a result — "3 h x R$ 135,00 = R$ 405,00". The filler between a numeral
 # and its operator is bounded and may hold no digit and no ``=``, so the scan cannot bridge
 # two unrelated sentences. Only a SINGLE operator kind is accepted per expression: reading
 # precedence out of "2 + 3 x 4" is guessing, and a wrong guess here would ADMIT a figure.
@@ -147,18 +147,18 @@ _CALC_FOLD = {"x": "*", "\u00d7": "*", "*": "*", "+": "+", "-": "-", "\u2212": "
 # ``_draft_section`` — which means the reviewer's critique was, in each case, the only prose
 # in the prompt that spoke about money at all.
 #
-#   turn 3 — the judge critique: *"Remova esse valor calculado; informe apenas R$ 120 por
-#   hora e o mínimo de 4 horas por aula."* The delivered reply: *"não tenho informações
-#   específicas sobre o valor que um professor recebe por hora"* — while R$ 120,00/hora sat
+#   turn 3 — the judge critique: *"Remova esse valor calculado; informe apenas R$ 135 por
+#   hora e o mínimo de 3 horas por aula."* The delivered reply: *"não tenho informações
+#   específicas sobre o valor que um professor recebe por hora"* — while R$ 135,00/hora sat
 #   in the persona's own configured rules, in this stage's system prompt.
 #
-#   turn 4 — the judge critique: *"…setembro inclui NoSQL (16h) e Workshop de Abertura (4h),
-#   totalizando 20h = R$ 2.400,00…"*. The executor's draft said the opposite in as many
+#   turn 4 — the judge critique: *"…setembro inclui NoSQL (15h) e Workshop de Abertura (3h),
+#   totalizando 18h = R$ 2.430,00…"*. The executor's draft said the opposite in as many
 #   words (*"não consigo fechar um valor confiável… permanece não determinado"*). The
-#   delivered reply: *"Totalizando 20h, o que resultaria em R$ 2.400,00."* — the critique's
-#   sentence, its figure, almost its punctuation. ``2.400`` appears in no tool result, in no
+#   delivered reply: *"Totalizando 18h, o que resultaria em R$ 2.430,00."* — the critique's
+#   sentence, its figure, almost its punctuation. ``2.430`` appears in no tool result, in no
 #   draft and in no rule; the professor was quoted a fee that nothing in the system had
-#   computed, over a schedule where each of those dates is ONE session of a 16 h discipline,
+#   computed, over a schedule where each of those dates is ONE session of a 15 h discipline,
 #   not the whole of it.
 #
 # n=1 on each side and no regression is claimed. What is legible is the MECHANISM, and it is
@@ -210,15 +210,15 @@ _CALC_FOLD = {"x": "*", "\u00d7": "*", "*": "*", "+": "+", "-": "-", "\u2212": "
 # two-doors defect". This is the same defect with the doors swapped, and it is the worse
 # arrangement of the two: when the VOICE is the narrow one the answer merely gets said less
 # well, but when the JUDGE is, the answer is REJECTED and the correction loop runs. Both
-# live cases this constant exists for are that: a correct ``R$ 120 x 4 h = R$ 480`` refused
+# live cases this constant exists for are that: a correct ``R$ 135 x 3 h = R$ 405`` refused
 # under a "quote, never calculate" reading, and a correct "segunda a sexta" refused because
 # the tool said "sem sábados nem domingos" and not those three words.
 #
 # **The permission is granted by the ARITHMETIC, not by the format**, and this repo has the
 # measurement that decides it: turn 4 of ``turn_traces`` 1795 shipped
-# *"Totalizando 20h, o que resultaria em R$ 2.400,00"* — a sentence that SHOWS ITS WORK and
-# whose work does not come out (20 x 120 = 2 400 only if the rate is not the configured
-# R$ 120/h for 4 h, which is exactly the confusion). A rule that admitted a figure because
+# *"Totalizando 18h, o que resultaria em R$ 2.430,00"* — a sentence that SHOWS ITS WORK and
+# whose work does not come out (18 x 135 = 2 430 only if the rate is not the configured
+# R$ 135/h for 3 h, which is exactly the confusion). A rule that admitted a figure because
 # an "=" preceded it would admit that one. So the deterministic half
 # (``_shown_derivations``) checks three things before it admits anything — every operand is
 # in the evidence, the operation is written down, and the result is what the operation
@@ -233,7 +233,7 @@ _DERIVED_FROM_EVIDENCE = (
     "'closed Saturdays and Sundays' restated as 'Monday to Friday'), are GROUNDED — they "
     "are not inventions — ON ONE CONDITION: the reply must show the work, every input it "
     "used and the operation or the stated fact it read them from, so the reader can check "
-    "it (\"4 h x R$ 120,00 = R$ 480,00\"). A bare result whose inputs are not on this page "
+    "it (\"3 h x R$ 135,00 = R$ 405,00\"). A bare result whose inputs are not on this page "
     "is NOT grounded, and neither is one whose arithmetic does not come out."
 )
 
@@ -399,7 +399,7 @@ _NEVER_DENY_WHAT_WAS_READ = (
 # the executor's answer WHEN ONE IS SHOWN (on this path `_draft_section` withholds it, and the
 # sentence must not claim otherwise), and the persona's own configured rules — so the two
 # rules cannot point opposite ways: a clause that narrowed the set to the data alone would
-# re-buy turn 3 above (the tenant's R$ 120/h, sitting in the rules, reported as unknown). What
+# re-buy turn 3 above (the tenant's R$ 135/h, sitting in the rules, reported as unknown). What
 # it EXCLUDES is the member `_FIGURES_HAVE_A_SOURCE` already excludes, the Context, and it
 # says WHY: what an earlier turn read is not what this turn read.
 #
@@ -797,7 +797,7 @@ _JUDGE_SYSTEM_ANSWER = (
 # saying "An execution/answer grounded in them is CORRECTLY grounded".
 #
 # So the defect was never a MISSING clause — the deterministic probe found the tenant's own
-# ``- Aula - R$ 120,00 por hora`` present, verbatim, under ``# Tenant rules (legitimate
+# ``- Aula - R$ 135,00 por hora`` present, verbatim, under ``# Tenant rules (legitimate
 # grounding)``, in the very prompt that produced that critique. It was a CONTRADICTED one, and
 # a fail-CLOSED judge reading an EXCLUSIVE claim inside its own numbered REJECT list resolves
 # the contradiction against a framing paragraph it read earlier. Adding a fifth paragraph to a
@@ -846,7 +846,7 @@ _GROUNDING_SOURCE_SET = (
 # this prompt" from "there is nowhere else in this prompt".
 #
 # It does NOT undo #156. That defect (id=1440) is a turn where `# Persona limits` WAS rendered
-# and carried the tenant's own `- Aula - R$ 120,00 por hora`; this substitution cannot reach
+# and carried the tenant's own `- Aula - R$ 135,00 por hora`; this substitution cannot reach
 # it, and cannot reach any turn where either section is present — those render byte for byte
 # as they did, which is why every assertion in `test_judge_grounding_sources.py` still holds
 # unchanged. The two changes are the same principle from opposite sides: name every source
@@ -3410,7 +3410,7 @@ class SuperegoStage:
         """Every FIGURE in ``text``, as ``all its digits -> the digits before the decimals``.
 
         The second half is what stops the obvious false positive: a reply that answers
-        "R$ 120" is carrying the approved draft's "R$ 120,00", and a comparison on the full
+        "R$ 135" is carrying the approved draft's "R$ 135,00", and a comparison on the full
         digit string alone would read that as a loss and re-voice a correct answer.
         """
         out: "dict[str, str]" = {}
@@ -3425,7 +3425,7 @@ class SuperegoStage:
         """The VALUE of one numeral, read the way the rest of this module reads numerals.
 
         Digits-only, like :meth:`_figure_keys`: a token that ends in a decimal separator plus
-        exactly two digits is a FIGURE (``120,00`` -> 120.0, ``2.400,00`` -> 2400.0), anything
+        exactly two digits is a FIGURE (``135,00`` -> 135.0, ``2.430,00`` -> 2430.0), anything
         else is a whole number with its grouping stripped (``4`` -> 4.0, ``1.250`` -> 1250.0).
         Locale-free on purpose — the alphabet of every comparison in this stage is the digit
         string, and a second convention here would disagree with ``_figure_keys`` on the very
@@ -3441,10 +3441,10 @@ class SuperegoStage:
     def _numeral_forms(text: str) -> "set[str]":
         """Every digit-string ``text`` offers as a possible OPERAND, in both readings.
 
-        ``_NUM_RE`` gives the numerals as written (``120,00`` -> ``12000``) and
-        :meth:`_figure_keys` adds the integer part (``120``), which is the same widening the
-        ``lost`` half already does for the reply — a payload that says "R$ 120,00 por hora"
-        grounds an operand the draft wrote as "120"."""
+        ``_NUM_RE`` gives the numerals as written (``135,00`` -> ``13500``) and
+        :meth:`_figure_keys` adds the integer part (``135``), which is the same widening the
+        ``lost`` half already does for the reply — a payload that says "R$ 135,00 por hora"
+        grounds an operand the draft wrote as "135"."""
         out: "set[str]" = set()
         for raw in _NUM_RE.findall(text or ""):
             digits = re.sub(r"\D", "", raw)
@@ -3992,7 +3992,7 @@ class SuperegoStage:
         # Deterministic critique-provenance backstop — flag-only, never a re-voice. On a turn
         # the judge REJECTED, the critique is prose IN the voice prompt that no one executed
         # and no one verified; a figure that reaches the contact from there was checked by
-        # nobody. Measured on `turn_traces` 1795: "R$ 2.400,00" is verbatim in the critique and
+        # nobody. Measured on `turn_traces` 1795: "R$ 2.430,00" is verbatim in the critique and
         # in nothing else the voice held. Read on the VOICED text, before the PII rule masks
         # anything, for the same reason the guard above is.
         from_critique = self._figures_from_the_critique(ctx, voiced, payload, system)

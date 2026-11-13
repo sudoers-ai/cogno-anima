@@ -396,11 +396,13 @@ async def test_the_clause_reaches_the_prompt_voice_actually_sends():
 # turn — must not move by one byte. Recompute by rendering the same fixtures on the revision
 # you are comparing against.
 
+# Regenerated 2026-11-12 (figures privacy scrub): the `_DERIVED_FROM_EVIDENCE` example renders
+# in the voice prompt; control — reverting it to the old reproduced each digest.
 _MAIN_PROMPTS = {
-    "no_rejection": "095ac3e3c99ea942",
-    "repeated_reply": "f21de0752b5858d4",
-    "approved_draft": "8d34dbc31c934279",
-    "conversational": "957f447768a89f05",
+    "no_rejection": "ac63924396bb1dcb",
+    "repeated_reply": "746f7dd184f0cc16",
+    "approved_draft": "a031f70867fc66c7",
+    "conversational": "3a70a79d4118bbcc",
 }
 # …and the two cells that DID move, so the table above cannot be satisfied by a no-op.
 _MAIN_EXHAUSTION = {
@@ -560,10 +562,10 @@ def test_the_signal_is_the_intent_class_and_an_unknown_intent_reads_as_no_action
 # under either intent; an approved turn renders no verdict at all; and the 1198 specimen must
 # come out byte-identical, because (a) changes nothing for the turn it was written for.
 _PRE_GATE = {
-    "failed_write|ACTION_REQUEST": "058c9df8e3db7e21",
-    "failed_write|INFORMATION_REQUEST": "058c9df8e3db7e21",
-    "approved": "8d34dbc31c934279",
-    "specimen_1198": "ecd1eef5dbf72219",
+    "failed_write|ACTION_REQUEST": "425b66c03ce35944",
+    "failed_write|INFORMATION_REQUEST": "425b66c03ce35944",
+    "approved": "a031f70867fc66c7",
+    "specimen_1198": "73c0df1813b12844",
 }
 _PRE_GATE_T107 = "170cfa91f6507209"
 

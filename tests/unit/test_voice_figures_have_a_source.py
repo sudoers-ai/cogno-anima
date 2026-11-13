@@ -7,13 +7,13 @@ earns. Both turns ended ``judge_rejected_all`` → ``last_draft_voiced``, so bot
 ``# Execution verdict (HARD RULE)`` and both had their draft withheld — leaving the reviewer's
 critique as the only prose in the prompt that spoke about money.
 
-* turn 3 — critique: *"Remova esse valor calculado; informe apenas R$ 120 por hora e o mínimo
-  de 4 horas por aula."* Delivered: *"não tenho informações específicas sobre o valor que um
-  professor recebe por hora"* — while ``- Aula - R$ 120,00 por hora`` sat in the tenant's own
+* turn 3 — critique: *"Remova esse valor calculado; informe apenas R$ 135 por hora e o mínimo
+  de 3 horas por aula."* Delivered: *"não tenho informações específicas sobre o valor que um
+  professor recebe por hora"* — while ``- Aula - R$ 135,00 por hora`` sat in the tenant's own
   configured rules, inside this stage's system prompt.
-* turn 4 — critique: *"…totalizando 20h = R$ 2.400,00…"*. The executor's draft said the
-  opposite (*"permanece não determinado"*). Delivered: *"Totalizando 20h, o que resultaria em
-  R$ 2.400,00."* ``2.400`` is in no tool result, no draft and no rule — only in the critique.
+* turn 4 — critique: *"…totalizando 18h = R$ 2.430,00…"*. The executor's draft said the
+  opposite (*"permanece não determinado"*). Delivered: *"Totalizando 18h, o que resultaria em
+  R$ 2.430,00."* ``2.430`` is in no tool result, no draft and no rule — only in the critique.
 
 n=1 on each side; no regression is claimed and none is needed. The mechanism is one, and the
 twins below are a PAIR on purpose: a fix that only stops the invented figure re-buys turn 3,
@@ -35,12 +35,12 @@ from cogno_anima.stages.superego import (
 from tests.unit.test_superego import _ctx
 
 # The two measured critiques, trimmed to the sentence that carries the figure.
-CRITIQUE_FORBIDDING = "Remova esse valor calculado; informe apenas R$ 120,00 por hora"
-CRITIQUE_DEMANDING = "setembro inclui NoSQL (16h) e Workshop (4h), totalizando 20h = R$ 2.400,00"
+CRITIQUE_FORBIDDING = "Remova esse valor calculado; informe apenas R$ 135,00 por hora"
+CRITIQUE_DEMANDING = "setembro inclui NoSQL (15h) e Workshop (3h), totalizando 18h = R$ 2.430,00"
 
 # The tenant's own configured rules, as the host appends them to the VOICE slot.
 PERSONA_RULES = ("Você é a Sofia.\n\n# Tenant-specific direction\n"
-                 "- Aula - R$ 120,00 por hora, sendo o mínimo 4h por aula.")
+                 "- Aula - R$ 135,00 por hora, sendo o mínimo 3h por aula.")
 
 LABEL = "Reviewer critique:"
 
@@ -73,7 +73,7 @@ def test_the_verified_figure_is_allowed_to_reach_the_contact():
         "two-doors defect `_GROUNDING_SOURCES` closed for the judge, still open for the voice")
     # The permission and its condition moved into `_DERIVED_FROM_EVIDENCE` on 2026-09-09 —
     # ONE constant, so the JUDGE is held to the same rule (it was not, and refused a correct
-    # `R$ 120 x 4 h = R$ 480`). The property is unchanged and both halves are still asserted;
+    # `R$ 135 x 3 h = R$ 405`). The property is unchanged and both halves are still asserted;
     # only the sentence has one home instead of two. `test_derivation_is_grounded.py` pins the
     # shared reading and the arithmetic check that now decides it.
     assert _DERIVED_FROM_EVIDENCE in prompt
@@ -132,28 +132,28 @@ def _flag(reply: str, *, reason: str, payload: str = "(no execution)",
 
 def test_the_backstop_counts_the_measured_leak():
     """Turn 4, byte for byte: the figure is in the critique and nowhere else the voice held."""
-    assert _flag("Totalizando 20h, o que resultaria em R$ 2.400,00.",
-                 reason=CRITIQUE_DEMANDING) == ["240000"]
+    assert _flag("Totalizando 18h, o que resultaria em R$ 2.430,00.",
+                 reason=CRITIQUE_DEMANDING) == ["243000"]
 
 
 def test_a_figure_the_persona_rules_state_is_not_a_leak():
-    """The muzzle guard, and turn 3's other half: the critique names R$ 120,00 and so do the
+    """The muzzle guard, and turn 3's other half: the critique names R$ 135,00 and so do the
     tenant's rules. Saying it back is the CORRECT answer, and a net that counted it would
     argue for deleting the answer again."""
-    assert _flag("O valor é R$ 120,00 por hora.", reason=CRITIQUE_FORBIDDING,
+    assert _flag("O valor é R$ 135,00 por hora.", reason=CRITIQUE_FORBIDDING,
                  system=PERSONA_RULES) == []
 
 
 def test_a_figure_the_tool_data_states_is_not_a_leak():
-    assert _flag("Foram R$ 2.400,00 no período.", reason=CRITIQUE_DEMANDING,
-                 payload="get_summary: Income R$ 2.400,00") == []
+    assert _flag("Foram R$ 2.430,00 no período.", reason=CRITIQUE_DEMANDING,
+                 payload="get_summary: Income R$ 2.430,00") == []
 
 
 def test_a_figure_the_contact_typed_is_not_a_leak():
-    ctx = _ctx(user="paguei R$ 2.400,00 no mês passado")
+    ctx = _ctx(user="paguei R$ 2.430,00 no mês passado")
     ctx.metadata[mk.VOICE_CORRECTION] = {"reason": CRITIQUE_DEMANDING}
     assert SuperegoStage._figures_from_the_critique(
-        ctx, "Confirmando: R$ 2.400,00.", "(no execution)", "Você é a Sofia.") == []
+        ctx, "Confirmando: R$ 2.430,00.", "(no execution)", "Você é a Sofia.") == []
 
 
 def test_the_context_block_is_evidence_the_voice_could_see():
@@ -162,26 +162,26 @@ def test_the_context_block_is_evidence_the_voice_could_see():
     carries did not, whatever else is wrong with quoting it. ``_draft_divergence`` is the net
     that owns the context-as-source defect, and two nets claiming one finding would double-count
     it."""
-    assert _flag("R$ 2.400,00.", reason=CRITIQUE_DEMANDING,
-                 context="[MEMORY] o professor recebeu R$ 2.400,00 em agosto") == []
+    assert _flag("R$ 2.430,00.", reason=CRITIQUE_DEMANDING,
+                 context="[MEMORY] o professor recebeu R$ 2.430,00 em agosto") == []
 
 
 def test_no_rejection_means_nothing_to_count():
     ctx = _ctx()
     assert SuperegoStage._figures_from_the_critique(
-        ctx, "R$ 2.400,00", "(no execution)", "s") == []
+        ctx, "R$ 2.430,00", "(no execution)", "s") == []
 
 
 def test_a_critique_with_no_figure_costs_nothing():
-    assert _flag("R$ 2.400,00", reason="não respondeu à pergunta") == []
+    assert _flag("R$ 2.430,00", reason="não respondeu à pergunta") == []
 
 
 def test_the_backstop_only_flags_and_never_masks():
     """Flag-only by construction: it fires on a turn the judge already rejected and whose
     correction budget the orchestrator has already spent. A re-voice there would be this stage
     arguing with an exhaustion path it does not own — the prompt clause is the prevention."""
-    reply = "Totalizando 20h, o que resultaria em R$ 2.400,00."
+    reply = "Totalizando 18h, o que resultaria em R$ 2.430,00."
     ctx = _ctx()
     ctx.metadata[mk.VOICE_CORRECTION] = {"reason": CRITIQUE_DEMANDING}
     flagged = SuperegoStage._figures_from_the_critique(ctx, reply, "(no execution)", "s")
-    assert flagged and reply == "Totalizando 20h, o que resultaria em R$ 2.400,00."
+    assert flagged and reply == "Totalizando 18h, o que resultaria em R$ 2.430,00."

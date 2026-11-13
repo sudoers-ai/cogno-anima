@@ -124,21 +124,24 @@ def _controls():
 #: sha256 of `_build_judge_prompt(ctx, "")` for each control, rendered by `origin/main` at
 #: 86c3c60 — the tree BEFORE this change. A landing-time proof: regenerate it only when the
 #: judge's text changes DELIBERATELY, and say so in that PR.
+#: Regenerated 2026-11-12 (figures privacy scrub): the worked example in `_DERIVED_FROM_EVIDENCE`
+#: moved (not `conversational_turn`, which reads no grounding constant); control — reverting it to
+#: the old reproduced each digest, so nothing else moved.
 _BEFORE_CONTROLS = {
-    "forward_undeclared": "cdee295be127809c5031f49a48e1fdc9d2b0ab8a78454c78e2c8d5918b38cf52",
-    "forward_declared_empty": "cdee295be127809c5031f49a48e1fdc9d2b0ab8a78454c78e2c8d5918b38cf52",
-    "forward_declared_other_tool": "cdee295be127809c5031f49a48e1fdc9d2b0ab8a78454c78e2c8d5918b38cf52",
-    "choice_undeclared": "0d2e2c8076b58cccac3c6d99cef54f555d42b5fe314390d03283103fb66b9b65",
-    "hold_without_text": "9a0657fdc5ab7f2135b13a8a67a11bf520071f6b07547b40420c0f94ce9380e5",
-    "write_turn": "6a9cdf9675f6c38c325252a0bbbc44b275803027b14f27d6927d9644a8cafaaf",
-    "readonly_turn": "fdd8588ed0d8dfee3bab118bb72e9c26c479d0b7fbad000d6e7112e5fb9675e4",
+    "forward_undeclared": "7a48a5516447dd296e48221decfb2d60ba880d3d8380eab9edd7396fffd350e2",
+    "forward_declared_empty": "7a48a5516447dd296e48221decfb2d60ba880d3d8380eab9edd7396fffd350e2",
+    "forward_declared_other_tool": "7a48a5516447dd296e48221decfb2d60ba880d3d8380eab9edd7396fffd350e2",
+    "choice_undeclared": "aa6a33afff73cfa370bbfd8637eae712c1fb4f24f5c61bbde5225cdbef968f41",
+    "hold_without_text": "597787acd2f8b96671a73ba1c5b48cf8fe9f0188069771e72ee913ba2af8ea48",
+    "write_turn": "aa37ebd5e46cc2b1ee20379af92227a0479080bef10c03fbfaf27a2cccc8fa27",
+    "readonly_turn": "cd42ab100594420b7246448583addca7dc0e588a9a85ed64bd3771238df0be9b",
     "conversational_turn": "a756580f595a8d370932d35953c096f6373b1a3161b4207f7fa1b1f46faaaca4",
 }
 
 #: …and the two twins, rendered by the same tree: the prompt the measured judge was given.
 _BEFORE_TWINS = {
-    "forward": "c906670204dd85e5cabdc591dc850fd30369fd490f9d5c71ccc9a3377ac3e07d",
-    "choice": "14ee3eabc4a215b5ec0f860cca2ef31ac6050cfe443ab305d7ad77a45dc954d9",
+    "forward": "2662f6a1a666058869d4b82efdfbbf536d0d4c2866c4f195739671a624e68a44",
+    "choice": "6215dad3b50406d363e670e21a6017f96ee192e97f4100cd3a08c084125adaed",
 }
 
 

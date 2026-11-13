@@ -3,7 +3,7 @@
 ## The two live cases
 
 * **V2** — an executor read the tenant's configured rate and the hours worked; the reply said
-  ``R$ 120,00 x 4 h = R$ 480,00``. The judge refused it under a "quote, never calculate"
+  ``R$ 135,00 x 3 h = R$ 405,00``. The judge refused it under a "quote, never calculate"
   reading of its own grounding criterion.
 * **X02** — a tool answered that the business is *"closed Saturdays and Sundays"*; the reply
   said *"Monday to Friday"*. Refused for the same reason: those three words appear in no tool
@@ -19,7 +19,7 @@ none of the three: it was computed, not quoted.
 The permission already existed, one constant away and one day older.
 ``_FIGURES_HAVE_A_SOURCE`` (the voice's ``# Task`` rule) has said since 2026-09-08 that a
 figure *"you WORK OUT from those is allowed ONLY if you show the calculation in the reply"*,
-and it gives ``"4 h x R$ 120,00 = R$ 480,00"`` as its own worked example. The judge was never
+and it gives ``"3 h x R$ 135,00 = R$ 405,00"`` as its own worked example. The judge was never
 told. The comment on that constant already names this shape as a defect — *"a voice held to a
 NARROWER set than the judge approves is the two-doors defect"* — and this is the same defect
 with the doors swapped, which is the worse arrangement: a narrow VOICE only says the answer
@@ -29,15 +29,15 @@ less well, a narrow JUDGE rejects it and starts the correction loop.
 narrow reading.** ``_draft_divergence`` classified a figure as ``invented`` when it was in
 neither the approved draft nor the tool data nor the contact's message, which a derived total
 never is. Run against the worked example printed inside ``_FIGURES_HAVE_A_SOURCE`` it returned
-``invented=['48000']`` and fired a re-voice whose instruction reads *"no figure may appear that
+``invented=['40500']`` and fired a re-voice whose instruction reads *"no figure may appear that
 is not in that answer or in the executor data"*. **The rule's own example was refused by the
 check beside it.** That is the mutation this file's twins are built on.
 
 ## The permission is granted by the ARITHMETIC, not by the format
 
 A format-only rule ("there is an ``=``, let it through") would admit the fabrication this repo
-already measured: ``turn_traces`` 1795 shipped *"Totalizando 20h, o que resultaria em
-R$ 2.400,00"* — a sentence that shows its work over inputs whose product is not 2 400. So
+already measured: ``turn_traces`` 1795 shipped *"Totalizando 18h, o que resultaria em
+R$ 2.430,00"* — a sentence that shows its work over inputs whose product is not 2 430. So
 ``_shown_derivations`` requires three things and each of its inverses is pinned below: the
 operation written down, every operand present in the evidence, and a result the operation
 actually produces.
@@ -61,9 +61,9 @@ from tests.unit.test_superego import _ctx, _m
 # ── V2, as data ───────────────────────────────────────────────────────────────────────
 # Neutral stand-ins for the live turn — this repo is public. The rate is in the tool data,
 # the hours are in the approved draft, and the product is in NEITHER.
-_DRAFT = "The configured rate is R$ 120,00 per hour and you taught 4 hours."
-_PAYLOAD = "lookup_rules: 'Class - R$ 120,00 per hour'"
-_SHOWN = "You taught 4 h at R$ 120,00 per hour: 4 x R$ 120,00 = R$ 480,00."
+_DRAFT = "The configured rate is R$ 135,00 per hour and you taught 3 hours."
+_PAYLOAD = "lookup_rules: 'Class - R$ 135,00 per hour'"
+_SHOWN = "You taught 3 h at R$ 135,00 per hour: 3 x R$ 135,00 = R$ 405,00."
 
 
 def _diverges(reply: str, *, draft: str = _DRAFT, payload: str = _PAYLOAD,
@@ -74,9 +74,9 @@ def _diverges(reply: str, *, draft: str = _DRAFT, payload: str = _PAYLOAD,
 # ── TWIN 1 (V2): a shown calculation over grounded inputs is not an invention ─────────
 
 def test_the_worked_example_of_the_voice_rule_is_not_called_invented():
-    """The rule prints ``4 h x R$ 120,00 = R$ 480,00`` as ALLOWED. The check beside it used to
-    answer ``invented=['48000']`` over that exact sentence and fire a re-voice."""
-    assert "4 h x R$ 120,00 = R$ 480,00" in _FIGURES_HAVE_A_SOURCE
+    """The rule prints ``3 h x R$ 135,00 = R$ 405,00`` as ALLOWED. The check beside it used to
+    answer ``invented=['40500']`` over that exact sentence and fire a re-voice."""
+    assert "3 h x R$ 135,00 = R$ 405,00" in _FIGURES_HAVE_A_SOURCE
     lost, invented = _diverges(_SHOWN)
     assert invented == [], f"the rule's own worked example was refused: {invented}"
     assert lost == []
@@ -85,16 +85,16 @@ def test_the_worked_example_of_the_voice_rule_is_not_called_invented():
 def test_a_sum_of_two_grounded_figures_is_not_an_invention():
     """Not only multiplication: the operator set is whatever the reply wrote, as long as it
     wrote ONE kind of it."""
-    assert _diverges("R$ 120,00 + R$ 120,00 = R$ 240,00.") == ([], [])
+    assert _diverges("R$ 135,00 + R$ 135,00 = R$ 270,00.") == ([], [])
 
 
 def test_the_derived_total_still_has_to_be_stated_with_its_inputs():
     """The relaxation is scoped to the SENTENCE, not to the turn: a reply may derive a figure
     and still lose one the approved draft states, and the ``lost`` half is untouched."""
-    lost, invented = _diverges("4 x R$ 120,00 = R$ 480,00, and nothing else applies.",
-                               draft=_DRAFT + " The bonus is R$ 30,00.")
+    lost, invented = _diverges("3 x R$ 135,00 = R$ 405,00, and nothing else applies.",
+                               draft=_DRAFT + " The bonus is R$ 35,00.")
     assert invented == []
-    assert lost == ["3000"], "a figure the approved draft states is still owed to the contact"
+    assert lost == ["3500"], "a figure the approved draft states is still owed to the contact"
 
 
 # ── TWIN 1's INVERSES: each of the three conditions, refused on its own ───────────────
@@ -102,14 +102,14 @@ def test_the_derived_total_still_has_to_be_stated_with_its_inputs():
 def test_a_calculation_whose_arithmetic_does_not_come_out_is_still_invented():
     """The measured fabrication (``turn_traces`` 1795): a sentence that SHOWS ITS WORK and
     whose work is wrong. A format-only rule would have shipped it."""
-    _, invented = _diverges("Totalling 20 h, which gives 4 x R$ 120,00 = R$ 2.400,00.")
-    assert "240000" in invented
+    _, invented = _diverges("Totalling 18 h, which gives 3 x R$ 135,00 = R$ 2.430,00.")
+    assert "243000" in invented
 
 
 def test_a_bare_total_with_no_calculation_shown_is_still_invented():
     """The other pole the constant refuses: the right number, unverifiable."""
-    _, invented = _diverges("The total is R$ 480,00.")
-    assert invented == ["48000"]
+    _, invented = _diverges("The total is R$ 405,00.")
+    assert invented == ["40500"]
 
 
 def test_a_calculation_whose_operands_are_not_in_the_evidence_is_still_invented():
@@ -124,15 +124,15 @@ def test_a_mixed_operator_expression_is_not_guessed_at():
 
     The case is built so that ONLY this guard can refuse it, which is what a mutation has to
     be able to prove: folded left-to-right with the FIRST operator the expression comes to
-    ``400 + 80 + 0 = 480``, exactly the total claimed — so the arithmetic check downstream is
-    satisfied and would let it through. Read with real precedence it is ``400 + 0 = 400``, and
-    the figure ``480,00`` is in neither the draft nor the payload. A first version of this test
-    used ``2 + 3 x 120 = 360``, where every fold is wrong and the arithmetic check killed it
+    ``325 + 80 + 0 = 405``, exactly the total claimed — so the arithmetic check downstream is
+    satisfied and would let it through. Read with real precedence it is ``325 + 0 = 325``, and
+    the figure ``405,00`` is in neither the draft nor the payload. A first version of this test
+    used ``2 + 3 x 135 = 405``, where every fold is wrong and the arithmetic check killed it
     first: the mutation removing this guard changed nothing and the test passed for the wrong
     reason."""
-    draft = "The base is R$ 400,00, the supplement is R$ 80,00 and the surcharge is 0."
-    _, invented = _diverges("R$ 400,00 + R$ 80,00 x 0 = R$ 480,00.", draft=draft)
-    assert "48000" in invented
+    draft = "The base is R$ 325,00, the supplement is R$ 80,00 and the surcharge is 0."
+    _, invented = _diverges("R$ 325,00 + R$ 80,00 x 0 = R$ 405,00.", draft=draft)
+    assert "40500" in invented
 
 
 def test_only_the_RESULT_of_a_calculation_is_ever_admitted():
@@ -145,8 +145,8 @@ def test_only_the_RESULT_of_a_calculation_is_ever_admitted():
     admitting it changes nothing. Established by a mutation that turned out to be a no-op
     (adding every operand beside the result moved no verdict anywhere). Read directly, the
     set is exactly one key and that mutation kills this line."""
-    evidence = "4 hours at R$ 120,00 per hour"
-    assert SuperegoStage._shown_derivations("4 x R$ 120,00 = R$ 480,00", evidence) == {"48000"}
+    evidence = "3 hours at R$ 135,00 per hour"
+    assert SuperegoStage._shown_derivations("3 x R$ 135,00 = R$ 405,00", evidence) == {"40500"}
 
 
 @pytest.mark.parametrize("reply", [
@@ -174,8 +174,8 @@ def test_a_date_is_not_an_operation(reply):
 def test_the_helper_can_only_ever_remove_a_figure_from_the_invented_set():
     """The structural property behind every inverse above: whatever ``_shown_derivations``
     answers, it is intersected OUT of a set the old code had already computed."""
-    for reply in (_SHOWN, "The total is R$ 480,00.", "9 x R$ 130,00 = R$ 1.170,00.",
-                  "2 + 3 x R$ 120,00 = R$ 360,00."):
+    for reply in (_SHOWN, "The total is R$ 405,00.", "9 x R$ 130,00 = R$ 1.170,00.",
+                  "2 + 3 x R$ 135,00 = R$ 405,00."):
         _, invented = _diverges(reply)
         old = sorted(k for k in SuperegoStage._figure_keys(reply)
                      if k not in SuperegoStage._figure_keys(_DRAFT)
@@ -186,7 +186,7 @@ def test_the_helper_can_only_ever_remove_a_figure_from_the_invented_set():
 # ── the arithmetic reader, on its own ────────────────────────────────────────────────
 
 @pytest.mark.parametrize("token,value", [
-    ("4", 4.0), ("120,00", 120.0), ("2.400,00", 2400.0), ("1.250", 1250.0), ("480.00", 480.0),
+    ("4", 4.0), ("135,00", 135.0), ("2.430,00", 2430.0), ("1.250", 1250.0), ("405.00", 405.0),
 ])
 def test_a_numeral_is_read_the_way_the_rest_of_this_stage_reads_numerals(token, value):
     """Digit-strings, like ``_figure_keys``: two trailing decimals make a FIGURE, anything else
@@ -196,10 +196,10 @@ def test_a_numeral_is_read_the_way_the_rest_of_this_stage_reads_numerals(token, 
 
 
 def test_the_evidence_offers_an_operand_in_both_of_its_readings():
-    """``R$ 120,00`` in the payload has to ground an operand the reply wrote as ``120`` — the
+    """``R$ 135,00`` in the payload has to ground an operand the reply wrote as ``135`` — the
     same widening the ``lost`` half already does for the reply."""
-    forms = SuperegoStage._numeral_forms("4 hours at R$ 120,00")
-    assert {"4", "120", "12000"} <= forms
+    forms = SuperegoStage._numeral_forms("3 hours at R$ 135,00")
+    assert {"3", "135", "13500"} <= forms
 
 
 # ── TWIN 2 (X02): the judge is told the same rule, on both branches it judges with ────

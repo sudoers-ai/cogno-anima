@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.1.18 — 2026-11-12 — the grounding rule's worked example is synthetic, not a real quote
+
+### Changed
+
+- **`stages/superego.py` `_DERIVED_FROM_EVIDENCE`** (the one grounding rule the voice AND the judge
+  read) carried a worked example — a rate, a number of hours and their product — taken verbatim
+  from a real production turn. This public library must not carry that figure, so the example (and
+  the explanatory comments and the two grounding tests beside it) now use a synthetic,
+  internally consistent set instead; the other test fixtures that quote the same production
+  turns move to the same set in the next release: a different rate, hours and totals that keep every arithmetic
+  relationship the rule and its tests prove. The replacement is the same length, so the voice
+  prompt's per-section character counts do not move; the rule's bytes do change, so the judge
+  prompt's pinned digests move on purpose. The deterministic contract is unchanged (a derived
+  figure is grounded only when the reply shows its inputs, the operation and a result that comes
+  out); only the illustrative numbers changed.
+- **Pinned judge/voice prompt digests regenerated, deliberately**, across the digest sentinels that
+  render this rule (`test_judge_prompt_cache_order`, `test_context_fence`,
+  `test_judge_stance_follows_the_branch`, `test_judge_write_values`, `test_judge_person_name_is_a_value`,
+  `test_judge_holds_the_held_message_to_the_language`, `test_judge_reads_the_gate_c_proposal`,
+  `test_judge_held_is_not_a_failure`, `test_judge_reads_the_recorded_ask`,
+  `test_contact_text_is_defanged_at_every_sink`, `test_the_contacts_request_is_defanged`,
+  `test_ner_free_text_is_defanged`, and the voice sentinels
+  `test_voice_a_rejected_draft_is_not_executor_data`, `test_voice_lists_no_time_nobody_read`,
+  `test_voice_on_exhaustion_does_not_reconstruct`, `test_voice_revoice_keeps_what_the_data_holds`).
+  The renderings that do not carry the rule (every conversational branch, the executor, the scope
+  guard, the NER sinks) did not move. The control is that reverting the new example to the old,
+  inside each rendered prompt, reproduces every prior digest — so nothing but the example changed.
+
 ## 0.1.17 — 2026-11-12 — the birth-context guard reads the Spanish form
 
 ### Fixed

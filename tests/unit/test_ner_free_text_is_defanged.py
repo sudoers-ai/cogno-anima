@@ -71,9 +71,12 @@ def digest(text: str) -> str:
 #: sha256[:16] of each rendering of each CLEAN text, AS ``6c90f67`` RENDERED IT (the tree before
 #: this change; computed by ``_ner_free_text_renderings`` run on that tree). Regenerated only
 #: when one of these prompts changes on purpose.
+# Regenerated 2026-11-12 (figures privacy scrub): the `_DERIVED_FROM_EVIDENCE` worked example
+# renders in the judge/voice prompt; only those renderings moved; control — reverting the new
+# example to the old reproduced each digest.
 ON_THE_TREE_BEFORE: "dict[str, dict[str, str]]" = {
     "bracket_todo": {
-        "judge_restrictions": "2dd268a1655649ba",
+        "judge_restrictions": "8329395d9194d42b",
         "ner_all_fallback_sha": "6c0b9cb3cbabbeff",
         "ner_all_native": "6ab005660d82d8a9",
         "ner_all_native_sha": "6a39d64fae0a70a6",
@@ -87,7 +90,7 @@ ON_THE_TREE_BEFORE: "dict[str, dict[str, str]]" = {
         "task_confirmed_ok": "782b16430eef136d",
     },
     "email_and_figure": {
-        "judge_restrictions": "a4ffb82e139285a5",
+        "judge_restrictions": "731537a7691a5970",
         "ner_all_fallback_sha": "fded2221f0dd4d4a",
         "ner_all_native": "ee4b9bba28310b2a",
         "ner_all_native_sha": "2df4e4f259ff4255",
@@ -101,7 +104,7 @@ ON_THE_TREE_BEFORE: "dict[str, dict[str, str]]" = {
         "task_confirmed_ok": "675556dc37b375ea",
     },
     "empty": {
-        "judge_restrictions": "cf5b0ad72bddbd3e",
+        "judge_restrictions": "ff2b1b7db52ec095",
         "ner_all_fallback_sha": "a52604dc191383b1",
         "ner_all_native": "6532cdea4e7d1ae5",
         "ner_all_native_sha": "c41699b72bd78d36",
@@ -115,7 +118,7 @@ ON_THE_TREE_BEFORE: "dict[str, dict[str, str]]" = {
         "task_confirmed_ok": "d807694a8a599084",
     },
     "hash_midline": {
-        "judge_restrictions": "dd1768ced3040d88",
+        "judge_restrictions": "4b04dbde4ba2746c",
         "ner_all_fallback_sha": "b54ee602488d0499",
         "ner_all_native": "18da5e5b29ded85d",
         "ner_all_native_sha": "83722d3b40fb7558",
@@ -129,7 +132,7 @@ ON_THE_TREE_BEFORE: "dict[str, dict[str, str]]" = {
         "task_confirmed_ok": "5a3b42363bd4f0f7",
     },
     "html": {
-        "judge_restrictions": "314dba1866853797",
+        "judge_restrictions": "2a0cc89f4577d2a5",
         "ner_all_fallback_sha": "aadf7bc8eca1372c",
         "ner_all_native": "c13442058e8e6639",
         "ner_all_native_sha": "f9868c05ce057acb",
@@ -143,7 +146,7 @@ ON_THE_TREE_BEFORE: "dict[str, dict[str, str]]" = {
         "task_confirmed_ok": "948944e697db5279",
     },
     "indented": {
-        "judge_restrictions": "ccf7bff3433fe955",
+        "judge_restrictions": "b86ed664cf924084",
         "ner_all_fallback_sha": "7fa149a6cdabbbd6",
         "ner_all_native": "e7ec30a08d279c3c",
         "ner_all_native_sha": "c9a2ca4c626acb0c",
@@ -157,7 +160,7 @@ ON_THE_TREE_BEFORE: "dict[str, dict[str, str]]" = {
         "task_confirmed_ok": "6056c878f501d67d",
     },
     "marker_unclosed": {
-        "judge_restrictions": "f0327767a836ec6d",
+        "judge_restrictions": "e6bb0a0765eaca85",
         "ner_all_fallback_sha": "25fb068dd8a47cb0",
         "ner_all_native": "fc06976a14cd4942",
         "ner_all_native_sha": "6442d57ecc7355da",
@@ -171,7 +174,7 @@ ON_THE_TREE_BEFORE: "dict[str, dict[str, str]]" = {
         "task_confirmed_ok": "e6ec075586db4d1f",
     },
     "marker_words_unbracketed": {
-        "judge_restrictions": "7fb5b30408436dec",
+        "judge_restrictions": "bb768e8c2015fa7b",
         "ner_all_fallback_sha": "4d482e6db23e4aba",
         "ner_all_native": "86692c2c6301d19d",
         "ner_all_native_sha": "b97f413dd170f88a",
@@ -185,7 +188,7 @@ ON_THE_TREE_BEFORE: "dict[str, dict[str, str]]" = {
         "task_confirmed_ok": "fa867f7f2a9cce18",
     },
     "multiline": {
-        "judge_restrictions": "f1a74ea024b39d23",
+        "judge_restrictions": "5204ac7f8035ec14",
         "ner_all_fallback_sha": "dd00e0855d2b7e85",
         "ner_all_native": "23ba3e0f2fb1e99b",
         "ner_all_native_sha": "187807d5a9cb137d",
@@ -199,7 +202,7 @@ ON_THE_TREE_BEFORE: "dict[str, dict[str, str]]" = {
         "task_confirmed_ok": "16240628d8a85256",
     },
     "names_a_tool": {
-        "judge_restrictions": "2f71bafaf7bc0c66",
+        "judge_restrictions": "d7dd4cb8f99a4e97",
         "ner_all_fallback_sha": "f175aff7d12bd260",
         "ner_all_native": "09d2f512c8c74215",
         "ner_all_native_sha": "713f0de02e30a64f",
@@ -213,7 +216,7 @@ ON_THE_TREE_BEFORE: "dict[str, dict[str, str]]" = {
         "task_confirmed_ok": "9fa3f4d7eaab0111",
     },
     "numbered_markdown": {
-        "judge_restrictions": "b0963b5d326d8d28",
+        "judge_restrictions": "a2e48aa7451bd2cb",
         "ner_all_fallback_sha": "d6ae59d642012565",
         "ner_all_native": "df71df25a02e218a",
         "ner_all_native_sha": "0ff942d1e8caf325",
@@ -227,7 +230,7 @@ ON_THE_TREE_BEFORE: "dict[str, dict[str, str]]" = {
         "task_confirmed_ok": "33306c6ce69863bf",
     },
     "other_brackets": {
-        "judge_restrictions": "bff3fb48f2d62b01",
+        "judge_restrictions": "29b2ed6797a6ee09",
         "ner_all_fallback_sha": "cc5517df3a786628",
         "ner_all_native": "7130360f015b4261",
         "ner_all_native_sha": "85cbaf28a141a53c",
@@ -241,7 +244,7 @@ ON_THE_TREE_BEFORE: "dict[str, dict[str, str]]" = {
         "task_confirmed_ok": "82f1b9f4f5bb5634",
     },
     "plain": {
-        "judge_restrictions": "44e4efd155493195",
+        "judge_restrictions": "85540f1f49a967cc",
         "ner_all_fallback_sha": "302dd2443ec2a392",
         "ner_all_native": "e298c1892fbf9e3f",
         "ner_all_native_sha": "2f09a110586f9d36",
@@ -255,7 +258,7 @@ ON_THE_TREE_BEFORE: "dict[str, dict[str, str]]" = {
         "task_confirmed_ok": "6a30dbf34677de9a",
     },
     "quotes": {
-        "judge_restrictions": "b750b19543c53ca3",
+        "judge_restrictions": "820c4c9c78f7b786",
         "ner_all_fallback_sha": "f3baeb42a7e1d348",
         "ner_all_native": "9e02cdab11ec258a",
         "ner_all_native_sha": "b975a5c70db0dc2e",
@@ -269,7 +272,7 @@ ON_THE_TREE_BEFORE: "dict[str, dict[str, str]]" = {
         "task_confirmed_ok": "ec3be202131e58ec",
     },
     "quotes_a_tool_call_tag": {
-        "judge_restrictions": "ccc3e18298b3d357",
+        "judge_restrictions": "083a4e40d34ab659",
         "ner_all_fallback_sha": "7a15d307676201bd",
         "ner_all_native": "0d5c2f97bd06664e",
         "ner_all_native_sha": "f664167e12854063",
@@ -283,7 +286,7 @@ ON_THE_TREE_BEFORE: "dict[str, dict[str, str]]" = {
         "task_confirmed_ok": "7e31f6fad56cfddf",
     },
     "starts_like_a_header": {
-        "judge_restrictions": "60125c126cd60ac9",
+        "judge_restrictions": "937ea4006a049a02",
         "ner_all_fallback_sha": "d7327cce2e062a8c",
         "ner_all_native": "b66e69e90bca8356",
         "ner_all_native_sha": "093152ab471e04e1",
@@ -300,7 +303,7 @@ ON_THE_TREE_BEFORE: "dict[str, dict[str, str]]" = {
 
 #: The same, for :data:`HOSTILE` — what the tree before sent.
 HOSTILE_ON_THE_TREE_BEFORE: "dict[str, str]" = {
-    "judge_restrictions": "0dc99e6569d269a2",
+    "judge_restrictions": "0dc3fcd612d291aa",
     "ner_all_fallback_sha": "fefbee9c2f47f32f",
     "ner_all_native": "a2305e2f9252b5f7",
     "ner_all_native_sha": "20db80248fa51c02",

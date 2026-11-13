@@ -212,16 +212,18 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
+# Regenerated 2026-11-12 (figures privacy scrub): the `_DERIVED_FROM_EVIDENCE` example renders in
+# every first voice prompt; control — reverting it to the old reproduced each digest.
 _FIRST_PROMPT_BASE = {
-    'a_duration': 'cd2ccd2ff9c96b64',
-    'contact_named_it': 'eb2af2ac79a66730',
-    'executor_asked_it': '332037e0c9a7b328',
-    'measured': 'cd2ccd2ff9c96b64',
-    'no_time_at_all': 'cd2ccd2ff9c96b64',
-    'no_tool_ran': '77ed54ddb55a3b0b',
-    'read_returned_times': '8de99038bf449820',
-    'read_returned_times_other': '8de99038bf449820',
-    'the_hosts_clock': 'bb0ae9d3c7215853',
+    'a_duration': '7c40df5d73f8b554',
+    'contact_named_it': 'f312dd75b0ac31cb',
+    'executor_asked_it': '09c523985f86adae',
+    'measured': '7c40df5d73f8b554',
+    'no_time_at_all': '7c40df5d73f8b554',
+    'no_tool_ran': 'd92ac4d4795d5312',
+    'read_returned_times': 'b146475cda66b1d4',
+    'read_returned_times_other': 'b146475cda66b1d4',
+    'the_hosts_clock': '4f81fb04a4133879',
 }
 
 
