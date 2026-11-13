@@ -35,13 +35,47 @@ Scope notes (the caller's, and worth stating because both are load-bearing):
 from __future__ import annotations
 
 import logging
-from typing import Any, Mapping
+import re
+from typing import Any, Iterable, Mapping
 
 from cogno_anima.types import ToolResult
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["IdProvenanceDispatcher"]
+__all__ = ["IdProvenanceDispatcher", "id_was_read"]
+
+#: A maximal run of id characters — letters, digits, ``-`` and ``_``. An appointment id (8 bare
+#: hex, ``0b0d9cb4``), a reminder id (``ask-`` + 16 hex) or a host id (``dr_silva``) is ONE token;
+#: a number embedded in a longer run of digits is not a token of its own.
+_ID_TOKEN = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def id_was_read(value: str, reads: "Iterable[str]") -> bool:
+    """Did ``value`` appear as a WHOLE TOKEN in any of ``reads`` (the OK tool-result strings of
+    THIS turn)? The one predicate the two guards share — :meth:`IdProvenanceDispatcher.execute`
+    at call time, and a host-side retention guard when it decides whether to ARM
+    a held call — so the two cannot disagree about what counts as "read this turn". One definition
+    per rule (this repo's standing lesson; the same reason ``committed_this_turn`` is one
+    function).
+
+    **Whole token, not substring.** A forged id ``12345`` must not be legitimised by appearing
+    INSIDE a printed phone (``...912345...``) or a date a read happened to show: the match is
+    against the id-character tokens of each read (:data:`_ID_TOKEN`), so a real id matches as
+    itself while a number embedded in a longer run does not. This is STRICTER than the historical
+    substring test it replaces, and deliberately: a held call whose id is only a substring of some
+    unrelated value was never read, and arming it asks the contact to confirm a record that does
+    not exist.
+
+    Exact (case-sensitive): ids are exact strings, and folding case would widen the match. A
+    blank ``value`` is never "read" — there is nothing to anchor.
+    """
+    wanted = str(value or "").strip()
+    if not wanted:
+        return False
+    for read in reads or ():
+        if wanted in _ID_TOKEN.findall(str(read or "")):
+            return True
+    return False
 
 
 class IdProvenanceDispatcher:
@@ -75,7 +109,7 @@ class IdProvenanceDispatcher:
         if entry:
             arg, read_tool = entry
             wanted = str(arguments.get(arg, "") or "").strip()
-            if wanted and not any(wanted in r for r in self._seen):
+            if wanted and not id_was_read(wanted, self._seen):
                 self.refusals += 1
                 # The argument's NAME (the caller's catalogue) and the id's LENGTH — the id
                 # itself is a value the model wrote into a call.

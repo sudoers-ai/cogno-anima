@@ -75,6 +75,46 @@ async def test_an_id_from_a_SAME_TURN_read_is_allowed():
     assert [n for n, _ in inner.executed] == ["list_tickets", "close_ticket"]
 
 
+async def test_a_forged_id_that_is_only_a_SUBSTRING_of_a_read_is_refused():
+    """TWIN (red on the base's substring match, green on whole-token): a forged id the model
+    invented — ``12345`` — must not be legitimised by appearing INSIDE a longer value a read
+    happened to print (here the ``912345`` of a ticket line). The substring guard executed the
+    write; the whole-token predicate refuses it, so the host's retention guard that shares
+    ``id_was_read`` never ARMS it either.
+    """
+    class _PrintsALongerNumber(_Source):
+        async def execute(self, name, arguments):
+            if name == "list_tickets":
+                return ToolResult(output="ticket 912345 — Belmira Quostral Vendrim", ok=True)
+            return await super().execute(name, arguments)
+
+    inner = _PrintsALongerNumber()
+    g = IdProvenanceDispatcher(inner, guarded=GUARDED)
+    await g.execute("list_tickets", {})
+    r = await g.execute("close_ticket", {"ticket_id": "12345"})
+    assert r.ok is False and "THIS turn" in r.error
+    assert "close_ticket" not in [n for n, _ in inner.executed], \
+        "the forged id reached the source — the whole-token guard did not hold"
+
+
+def test_id_was_read_matches_whole_tokens_only():
+    """The pure predicate the retention guard and the execute-time guard share. Real id shapes
+    are whole tokens of a list line (so a validated id STAYS); a forged number that is only a
+    substring of a longer run is NOT read (so it is refused)."""
+    from cogno_anima.tools import id_was_read
+    # CONTROLS — a validated id of each real shape matches as a whole token.
+    assert id_was_read("0b0d9cb4", ["- 10:00 · Belmira Quostral · Dr. Quintino Abravel · [CONFIRMED] · 0b0d9cb4"])  # an appointment-list line
+    assert id_was_read("9858fb82", ["9858fb82: open\nd973ed23: open"])         # bare hex line
+    assert id_was_read("ask-4f23a8b8e9997e91", ["- [ask-4f23a8b8e9997e91] 14/11 09:00 — Lembrar a reunião"])  # a reminder-list line
+    assert id_was_read("dr_silva", ["dr_silva: Dr. Olvash Trembicki (Cardiologista)"])  # host id
+    # A forged id is NOT read when it only sits INSIDE a longer run of id characters.
+    assert not id_was_read("12345", ["pedido 912345 em aberto"])
+    assert not id_was_read("3a2c", ["ap-7f3a2c 13/11"])
+    # Blank value and no reads anchor nothing.
+    assert not id_was_read("", ["anything"])
+    assert not id_was_read("x", [])
+
+
 async def test_the_refusal_names_the_READ_THIS_caller_declared():
     """A recoverable error is a self-correction ONLY if the tool it names exists here.
     Naming another family's read turns the contract into a loop, which is strictly worse
