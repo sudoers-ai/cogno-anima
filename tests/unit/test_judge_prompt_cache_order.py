@@ -101,7 +101,7 @@ def _shared_prefix(rules: str = "") -> tuple[str, str, str]:
 
 # ── the twin ──────────────────────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("rules", ["", "Aula avulsa: R$ 120,00 por hora."],
+@pytest.mark.parametrize("rules", ["", "Aula avulsa: R$ 135,00 por hora."],
                          ids=["no_rules", "with_rules"])
 def test_two_turns_of_one_persona_share_the_limits_slot_and_it_is_cacheable(rules):
     system, shared, user = _shared_prefix(rules)

@@ -328,7 +328,7 @@ EGO_CONTEXT_UNTRUSTED = "ego_context_untrusted"
 PERSONA_RULES = "persona_rules"
 
 # The VALUES written literally in those same rules — a list of short strings in the tenant's
-# own spelling ("R$ 120,00", "2%", "05/10"): money, percentages, dates, numbers with a unit of
+# own spelling ("R$ 135,00", "2%", "05/10"): money, percentages, dates, numbers with a unit of
 # time. Never a name, a phrase or a claim; never a value computed from them. For the readers
 # that do NOT read prose: the host's deterministic nets and the vertical backstops (one grammar,
 # `cogno_praxis.declared_values`), the voice's figure net, and the one sentence in the voice's

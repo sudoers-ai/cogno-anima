@@ -19,7 +19,7 @@ Two incompatible explanations fit that trace, and only one of them is true:
   (ii) they reached it and the CRITERIA overrode them — a prompt defect.
 
 A deterministic probe over the RENDERED prompt settled it: the tenant's own
-``- Aula - R$ 120,00 por hora`` was present, verbatim, under ``# Tenant rules (legitimate
+``- Aula - R$ 135,00 por hora`` was present, verbatim, under ``# Tenant rules (legitimate
 grounding)``, 120 lines above the criteria — so (i) is refuted and (ii) is what happened. The
 read-only branch's criterion #1 said "the reads are the ONLY ground truth this reply has" and
 "must trace to a tool result above", and the execution branch's #4 asked whether everything is
@@ -62,7 +62,7 @@ LIMITS = (
     "# Tenant rules (legitimate grounding)\n"
     "The tenant configured the business rules below. An execution/answer grounded in them is "
     "CORRECTLY grounded — do not reject it as fabricated, ungrounded or off-goal.\n"
-    "# Valores Financeiros\n - Aula - R$ 120,00 por hora\n"
+    "# Valores Financeiros\n - Aula - R$ 135,00 por hora\n"
 )
 
 
@@ -77,7 +77,7 @@ def _turn(*, wrote: bool = False, conversational: bool = False):
                               result="Nothing recorded about 'hourly rate'.", ok=True,
                               side_effect=wrote, tool_mutating=wrote)]),
             EgoStep(index=1, path="native",
-                    assistant_text="A aula é R$ 120,00 por hora."),
+                    assistant_text="A aula é R$ 135,00 por hora."),
         ], metrics=_m("ego"))
     if conversational:
         ctx.metadata[mk.JUDGE_CONVERSATIONAL] = True
@@ -117,7 +117,7 @@ def test_the_grounding_criterion_names_the_persona_limits_as_a_source(kw, expect
     # …and the tenant's figure really is in the prompt this criterion is judging. Without this
     # the test above could pass over a prompt where the rules never arrived — the (i)/(ii)
     # confusion, rebuilt inside the guard that exists to prevent it.
-    assert "Aula - R$ 120,00 por hora" in prompt
+    assert "Aula - R$ 135,00 por hora" in prompt
 
 
 @pytest.mark.parametrize("kw", [{}, {"wrote": True}])

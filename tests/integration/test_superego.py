@@ -536,12 +536,12 @@ _NOVEMBER_DATE = re.compile(r"(?<!\d)\d{1,2}/11(?!\d)|2026-11-\d{2}")
 # of days.
 _NOVEMBER_ESTIMATE = (
     "*Remuneração estimada — November 2026*\n"
-    "Valor/hora declarado nas regras: R$ 120,00\n"
-    "Horas por aula declaradas nas regras: 4 h\n\n"
+    "Valor/hora declarado nas regras: R$ 135,00\n"
+    "Horas por aula declaradas nas regras: 3 h\n\n"
     "*Turma DE_09 — 11/2026*\n"
     "Foundations of Machine Learning · 2 aulas · 8 h · R$ 960,00\n\n"
     "*Turma DE_10 — 11/2026*\n"
-    "Fundamentals of Data Engineering · 1 aula · 4 h · R$ 480,00\n"
+    "Fundamentals of Data Engineering · 1 aula · 3 h · R$ 405,00\n"
     "Advanced Data Modeling and SQL · 3 aulas · 12 h · R$ 1.440,00\n\n"
     "*Turma DSA_34 — 11/2026*\n"
     "Advanced Data Modeling and SQL · 2 aulas · 8 h · R$ 960,00\n\n"
@@ -549,7 +549,7 @@ _NOVEMBER_ESTIMATE = (
     "*Bônus por avaliação da turma — RESULTADO NÃO ENCONTRADO*\n"
     "Sem bônus: R$ 3.840,00\n"
     "Avaliação de 80% a 89%: R$ 4.800,00\n"
-    "Avaliação de 90% ou mais: R$ 5.120,00\n"
+    "Avaliação de 90% ou mais: R$ 5.920,00\n"
     "O bônus só é devido se pelo menos 30% da turma tiver respondido à avaliação."
 )
 
@@ -574,7 +574,7 @@ _OCTOBER_HISTORY = (
     "- 28/10 · Turma DSA_33 · Fundamentals of Machine Learning\n"
     "- 29/10 · Turma DSA_34 · Advanced Data Modeling and SQL\n\n"
     "**Remuneração estimada — outubro de 2026**\n"
-    "- Valor/hora: R$ 120,00 · Horas por aula: 4 h\n"
+    "- Valor/hora: R$ 135,00 · Horas por aula: 3 h\n"
     "- Base: 56 h · R$ 6.720,00"
 )
 
@@ -612,7 +612,7 @@ async def test_voice_on_exhaustion_does_not_reconstruct_a_list_nobody_read():
                tool="estimate_professor_pay", args={"period": "2026-11"},
                result=_NOVEMBER_ESTIMATE,
                draft=("Estimated pay for November 2026 — DE_09: 2 classes, 8 h, R$ 960,00; "
-                      "DE_10: 1 class, 4 h, R$ 480,00 and 3 classes, 12 h, R$ 1.440,00; "
+                      "DE_10: 1 class, 3 h, R$ 405,00 and 3 classes, 12 h, R$ 1.440,00; "
                       "DSA_34: 2 classes, 8 h, R$ 960,00. Base: 32 h, R$ 3.840,00. The class "
                       "survey result was not found, so the bonus cannot be computed."))
     ctx.metadata[mk.EGO_CONTEXT] = _OCTOBER_HISTORY
@@ -1036,13 +1036,13 @@ _DICTATED = ("[TODAY] 2026-11-10 (terça-feira)\n[HISTORY]\n"
              "user: vamos organizar o workshop da Turma A\nassistant: Claro.\n"
              "user: vai ser dia 20/11, às 19h\nassistant: Anotado.\n"
              "user: na sala 4\nassistant: Certo.\n"
-             "user: a inscrição custa R$ 120,00\nassistant: Anotado.\n"
+             "user: a inscrição custa R$ 135,00\nassistant: Anotado.\n"
              "user: o material sai R$ 80,00 e o certificado R$ 50,00\nassistant: Certo.")
 
 
 def _summary_ctx(total):
     message = ("Olá, Belmira! Resumo do workshop: dia 20/11, às 19h, na sala 4. Inscrição: "
-               "R$ 120,00; material: R$ 80,00; certificado: R$ 50,00. Total por aluno: "
+               "R$ 135,00; material: R$ 80,00; certificado: R$ 50,00. Total por aluno: "
                f"{total}.")
     ctx = _held_ctx(message, user="manda para a Belmira o resumo do workshop com os valores")
     read = ToolExecution(tool="list_classes", arguments={"term": "2026-2"},
@@ -1060,7 +1060,7 @@ def _summary_ctx(total):
 async def test_judge_approves_a_held_summary_of_dictated_values_and_their_sum():
     _skip_on_ollama()
     await backends.skip_unless_available()
-    r = await SuperegoStage().evaluate(_summary_ctx("R$ 250,00"), _json_backend(),
+    r = await SuperegoStage().evaluate(_summary_ctx("R$ 265,00"), _json_backend(),
                                        limits_prompt="")
     assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
 
@@ -1079,6 +1079,6 @@ async def test_judge_approves_a_held_summary_of_dictated_values_and_their_sum():
 async def test_judge_still_rejects_a_held_summary_whose_sum_does_not_come_out():
     _skip_on_ollama()
     await backends.skip_unless_available()
-    r = await SuperegoStage().evaluate(_summary_ctx("R$ 260,00"), _json_backend(),
+    r = await SuperegoStage().evaluate(_summary_ctx("R$ 275,00"), _json_backend(),
                                        limits_prompt="")
-    assert r.approved is False, "120 + 80 + 50 is 250"
+    assert r.approved is False, "135 + 80 + 50 is 265"

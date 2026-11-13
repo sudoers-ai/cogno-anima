@@ -388,7 +388,7 @@ async def test_a_re_voiced_reply_is_named_by_the_SECOND_call():
     reports nothing, and whichever of the two replies the backstop then keeps."""
     from cogno_anima import metakeys as mk
 
-    draft = "The configured rate is R$ 120,00 per hour."
+    draft = "The configured rate is R$ 135,00 per hour."
 
     def _diverging_turn():
         ctx = _ctx(user="what is the hourly rate?")

@@ -48,11 +48,11 @@ from tests.unit.test_superego import _ctx, _m
 LIMITS = (
     "Answer within the persona's scope.\n\n"
     "# Tenant rules (legitimate grounding)\n"
-    "# Valores Financeiros\n - Aula - R$ 120,00 por hora\n"
+    "# Valores Financeiros\n - Aula - R$ 135,00 por hora\n"
 )
 
 #: The other optional grounding section — host-injected clock/memories/history.
-CONTEXT = "[TODAY] 2026-09-17\nThe contact was told the rate is R$ 120,00/h last week."
+CONTEXT = "[TODAY] 2026-09-17\nThe contact was told the rate is R$ 135,00/h last week."
 
 #: The canary turn, reduced: one SUCCESSFUL read that came back empty, and a draft that fills
 #: the emptiness with content no tool returned.
@@ -190,7 +190,7 @@ def test_the_tenant_rule_that_MOTIVATED_the_widening_still_grounds_an_empty_read
     """id=1440 itself: reads empty, the figure configured in the persona's own limits. The
     criterion must still say the empty search does not prove it invented."""
     _, prompt = _prompt(limits=LIMITS)
-    assert "Aula - R$ 120,00 por hora" in prompt
+    assert "Aula - R$ 135,00 por hora" in prompt
     assert "does NOT prove that a fact stated in those sections is invented" in prompt
     assert "it proves only that the search found nothing" in prompt
 

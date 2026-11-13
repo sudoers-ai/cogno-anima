@@ -63,7 +63,7 @@ STILL_READ = [
     ("confidence", 7.5, None),
     ("confidence", "NaN", "coerced:confidence"),
     ("preserved_terms", None, "null_field:preserved_terms"),
-    ("preserved_terms", ["R$ 40,00", "invoice"], None),
+    ("preserved_terms", ["R$ 50,00", "invoice"], None),
     ("preserved_terms", 0, "coerced:preserved_terms"),
     ("preserved_terms", False, "coerced:preserved_terms"),
     ("preserved_terms", "abc", "coerced:preserved_terms"),

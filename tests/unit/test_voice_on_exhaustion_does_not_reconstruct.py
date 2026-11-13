@@ -65,14 +65,14 @@ USER = "e de novembro?"
 # The only tool that ran. Whole block assumed by its FORM (see the module docstring).
 ESTIMATE = (
     "*Remuneração estimada — November 2026*\n"
-    "Valor/hora declarado nas regras: R$ 120,00\n"
-    "Horas por aula declaradas nas regras: 4 h\n"
+    "Valor/hora declarado nas regras: R$ 135,00\n"
+    "Horas por aula declaradas nas regras: 3 h\n"
     "\n"
     "*Turma DE_09 — 11/2026*\n"
     "Foundations of Machine Learning · 2 aulas · 8 h · R$ 960,00\n"
     "\n"
     "*Turma DE_10 — 11/2026*\n"
-    "Fundamentals of Data Engineering · 1 aula · 4 h · R$ 480,00\n"
+    "Fundamentals of Data Engineering · 1 aula · 3 h · R$ 405,00\n"
     "Advanced Data Modeling and SQL · 3 aulas · 12 h · R$ 1.440,00\n"
     "\n"
     "*Turma DSA_34 — 11/2026*\n"
@@ -83,7 +83,7 @@ ESTIMATE = (
     "*Bônus por avaliação da turma — RESULTADO NÃO ENCONTRADO*\n"
     "Sem bônus: R$ 3.840,00\n"
     "Avaliação de 80% a 89%: R$ 4.800,00\n"
-    "Avaliação de 90% ou mais: R$ 5.120,00\n"
+    "Avaliação de 90% ou mais: R$ 5.920,00\n"
     "O bônus só é devido se pelo menos 30% da turma tiver respondido à avaliação."
 )
 
@@ -113,11 +113,11 @@ CONTEXT = (
     f"{OCTOBER_LIST}\n"
     "\n"
     "**Remuneração estimada — outubro de 2026**\n"
-    "- Valor/hora: R$ 120,00 · Horas por aula: 4 h\n"
+    "- Valor/hora: R$ 135,00 · Horas por aula: 3 h\n"
     "- Turma DE_10 — Fundamentals of Data Engineering · 3 aulas · 12 h · R$ 1.440,00\n"
-    "- Turma DSA_33 — Fundamentals of Machine Learning · 4 aulas · 16 h · R$ 1.920,00\n"
-    "- Turma DSA_34 — Workshop de Abertura · 1 aula · 4 h · R$ 480,00; Fundamentals of Data "
-    "Science · 4 aulas · 16 h · R$ 1.920,00; Advanced Data Modeling and SQL · 2 aulas · 8 h · "
+    "- Turma DSA_33 — Fundamentals of Machine Learning · 4 aulas · 12 h · R$ 1.620,00\n"
+    "- Turma DSA_34 — Workshop de Abertura · 1 aula · 3 h · R$ 405,00; Fundamentals of Data "
+    "Science · 4 aulas · 12 h · R$ 1.620,00; Advanced Data Modeling and SQL · 2 aulas · 8 h · "
     "R$ 960,00\n"
     "- Base: 56 h · R$ 6.720,00"
 )
@@ -125,7 +125,7 @@ CONTEXT = (
 # The executor's draft — English by design (the NOUMENO rewrites, the EGO drafts there).
 DRAFT = (
     "Estimated pay for November 2026 — DE_09: Foundations of Machine Learning, 2 classes, "
-    "8 h, R$ 960,00. DE_10: Fundamentals of Data Engineering, 1 class, 4 h, R$ 480,00; "
+    "8 h, R$ 960,00. DE_10: Fundamentals of Data Engineering, 1 class, 3 h, R$ 405,00; "
     "Advanced Data Modeling and SQL, 3 classes, 12 h, R$ 1.440,00. DSA_34: Advanced Data "
     "Modeling and SQL, 2 classes, 8 h, R$ 960,00. Base: 32 h, R$ 3.840,00. The class survey "
     "result was not found, so the bonus cannot be computed."
@@ -398,11 +398,16 @@ async def test_the_clause_reaches_the_prompt_voice_actually_sends():
 
 # Regenerated 2026-11-12 (figures privacy scrub): the `_DERIVED_FROM_EVIDENCE` example renders
 # in the voice prompt; control — reverting it to the old reproduced each digest.
+# Regenerated 2026-11-13 (figures/money privacy scrub): the fixture's ESTIMATE/CONTEXT/DRAFT
+# carried a real production rate, hours and totals; the scrub moves every prompt that renders
+# them. These four controls carry NO verdict, so the current tree renders them exactly as main
+# does (the exhaustion clause touches only a verdict) — their digest here IS main's of the
+# scrubbed fixture. Control — reverting the scrubbed figures to the old reproduced each digest.
 _MAIN_PROMPTS = {
-    "no_rejection": "ac63924396bb1dcb",
-    "repeated_reply": "746f7dd184f0cc16",
-    "approved_draft": "a031f70867fc66c7",
-    "conversational": "3a70a79d4118bbcc",
+    "no_rejection": "3399e092a854439c",
+    "repeated_reply": "715d1fb9a8124c60",
+    "approved_draft": "63f1c576e0df15e5",
+    "conversational": "4ada55b1a0622cf0",
 }
 # …and the two cells that DID move, so the table above cannot be satisfied by a no-op.
 _MAIN_EXHAUSTION = {
@@ -564,7 +569,7 @@ def test_the_signal_is_the_intent_class_and_an_unknown_intent_reads_as_no_action
 _PRE_GATE = {
     "failed_write|ACTION_REQUEST": "425b66c03ce35944",
     "failed_write|INFORMATION_REQUEST": "425b66c03ce35944",
-    "approved": "a031f70867fc66c7",
+    "approved": "63f1c576e0df15e5",   # regenerated 2026-11-13 (money scrub: the approved prompt renders the scrubbed estimate)
     "specimen_1198": "73c0df1813b12844",
 }
 _PRE_GATE_T107 = "170cfa91f6507209"

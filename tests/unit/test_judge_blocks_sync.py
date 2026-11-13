@@ -84,7 +84,7 @@ def _configs():
     # The business rules render in the SYSTEM message (`_judge_system`), so this config is the
     # one that lights up the `persona_rules` row — see `_asked` below.
     rules = base()
-    rules.metadata[mk.PERSONA_RULES] = "Aula avulsa: R$ 120,00 por hora."
+    rules.metadata[mk.PERSONA_RULES] = "Aula avulsa: R$ 135,00 por hora."
 
     held = base()
     held_call = ToolExecution(tool="notify_user", arguments={"message": "Olá, a aula é às 19h."},
@@ -221,13 +221,13 @@ def test_a_tenant_markdown_header_contributes_no_slug_and_no_text():
     retrieved memory quoted into the same slot) wrote reaches the stored record."""
     ctx = _configs()[0][1]
     tenant = ("# Tenant rules (legitimate grounding)\n# Valores Financeiros\n"
-              " - Aula - R$ 120,00 por hora\n# Prazos do professor\n - até dia 15\n")
+              " - Aula - R$ 135,00 por hora\n# Prazos do professor\n - até dia 15\n")
     inv = SuperegoStage.judge_prompt_inventory(
         SuperegoStage()._build_judge_prompt(ctx, tenant))
     slugs = [b["block"] for b in inv]
     assert set(slugs) <= {s for _, s in SuperegoStage._JUDGE_BLOCKS}
     blob = repr(inv)
-    for leaked in ("Valores", "120,00", "Prazos", "professor"):
+    for leaked in ("Valores", "135,00", "Prazos", "professor"):
         assert leaked not in blob, f"{leaked!r} reached the stored inventory"
 
 

@@ -41,8 +41,8 @@ from tests.unit.test_superego import ScriptedBackend, _ctx, _m
 # The shape of the measured turn: one read that SUCCEEDED and found nothing, and a draft whose
 # figures come from the tenant's own configured rules (which live in the EXECUTOR's prompt, not
 # in any tool result). Neutral stand-ins — this repo is public.
-_DRAFT = ("The configured rate is R$ 120,00 per hour. Bonus: R$ 30,00/hour above 80%, "
-          "R$ 40,00/hour above 90%.")
+_DRAFT = ("The configured rate is R$ 135,00 per hour. Bonus: R$ 35,00/hour above 80%, "
+          "R$ 50,00/hour above 90%.")
 _EMPTY_READ = "lookup_rules: No records found."
 
 
@@ -72,7 +72,7 @@ async def _voice(ctx, replies):
 async def test_the_approved_draft_reaches_the_voice_on_an_execution_turn():
     result, b = await _voice(_turn(), [_DRAFT])
     prompt = b.calls[0]["prompt"]
-    assert "R$ 120,00 per hour" in prompt, (
+    assert "R$ 135,00 per hour" in prompt, (
         "the approved draft is not in the voice prompt — this is the 650-turn defect")
     assert "REVIEWED AND APPROVED" in prompt
     assert "PRIMARY source for what to say" in prompt
@@ -144,7 +144,7 @@ async def test_an_unapproved_draft_is_still_withheld():
     """The mutation twin of the first test. Without review's approval the draft is exactly what
     it was before this change: an optimistic narration, and not grounding."""
     _, b = await _voice(_turn(approved=False), [_DRAFT])
-    assert "R$ 120,00 per hour" not in b.calls[0]["prompt"]
+    assert "R$ 135,00 per hour" not in b.calls[0]["prompt"]
     assert "REVIEWED AND APPROVED" not in b.calls[0]["prompt"]
 
 
@@ -157,7 +157,7 @@ async def test_a_draft_from_a_loop_with_a_failed_call_is_still_withheld():
     `_loop_ran_clean` from `_approved_draft` and that test still passes. This one stamps the
     approval AND fails the call, which is the combination the floor actually has to survive."""
     _, b = await _voice(_turn(ok=False), [_DRAFT])
-    assert "R$ 120,00 per hour" not in b.calls[0]["prompt"]
+    assert "R$ 135,00 per hour" not in b.calls[0]["prompt"]
 
 
 @pytest.mark.asyncio
@@ -197,11 +197,11 @@ async def test_a_rejected_draft_is_still_not_re_offered_on_an_execution_turn():
 async def test_a_reply_that_denies_the_approved_answer_is_re_voiced_once():
     """The exact reply two runs in three delivered."""
     result, b = await _voice(_turn(), ["Infelizmente, não consegui encontrar informações.",
-                                      "A taxa é R$ 120,00 por hora, com bónus de R$ 30,00 e "
-                                      "R$ 40,00."])
+                                      "A taxa é R$ 135,00 por hora, com bónus de R$ 35,00 e "
+                                      "R$ 50,00."])
     assert len(b.calls) == 2, "the net did not re-voice"
     assert "REWRITE" in b.calls[1]["prompt"]
-    assert "R$ 120,00" in result.response
+    assert "R$ 135,00" in result.response
     assert "voice:diverged_from_approved_draft" in result.adjustments
     assert "voice:revoiced_from_approved_draft" in result.adjustments
 
@@ -210,26 +210,26 @@ async def test_a_reply_that_denies_the_approved_answer_is_re_voiced_once():
 async def test_a_figure_that_is_in_neither_the_draft_nor_the_tool_data_is_caught():
     """The third run: a rate that exists only in the retrieved memories. The context is
     BACKGROUND — deliberately not a source of figures for this net."""
-    result, b = await _voice(_turn(), ["O valor é R$ 45,00 por hora.",
-                                       "A taxa é R$ 120,00 por hora, mais R$ 30,00 e R$ 40,00."])
+    result, b = await _voice(_turn(), ["O valor é R$ 65,00 por hora.",
+                                       "A taxa é R$ 135,00 por hora, mais R$ 35,00 e R$ 50,00."])
     assert len(b.calls) == 2
     assert "voice:diverged_from_approved_draft" in result.adjustments
-    assert "45,00" not in result.response
+    assert "65,00" not in result.response
 
 
 @pytest.mark.asyncio
 async def test_a_faithful_reply_is_left_alone():
     """The discrimination twin. A net that fires on a correct reply is the mechanism."""
-    result, b = await _voice(_turn(), ["A taxa é de R$ 120,00 por hora; o bónus é R$ 30,00 "
-                                       "acima de 80% e R$ 40,00 acima de 90%."])
+    result, b = await _voice(_turn(), ["A taxa é de R$ 135,00 por hora; o bónus é R$ 35,00 "
+                                       "acima de 80% e R$ 50,00 acima de 90%."])
     assert len(b.calls) == 1, "the net re-voiced a faithful reply"
     assert not [a for a in result.adjustments if a.startswith("voice:diverged")]
 
 
 @pytest.mark.asyncio
 async def test_a_rounded_restatement_is_not_a_divergence():
-    """"R$ 120" carries "R$ 120,00". Comparing full digit strings alone would re-voice this."""
-    result, b = await _voice(_turn(), ["São R$ 120 por hora, com bónus de R$ 30 e R$ 40."])
+    """"R$ 135" carries "R$ 135,00". Comparing full digit strings alone would re-voice this."""
+    result, b = await _voice(_turn(), ["São R$ 135 por hora, com bónus de R$ 35 e R$ 50."])
     assert len(b.calls) == 1
     assert not [a for a in result.adjustments if a.startswith("voice:diverged")]
 
@@ -239,10 +239,10 @@ async def test_a_worse_re_voice_is_not_shipped():
     """A net that can make a turn worse is not a net. The first reply is kept, and the trace
     still records that the predicate fired — the firing is the count, the swap is the action,
     and reading them apart is how "is this net doing work" gets a denominator."""
-    result, b = await _voice(_turn(), ["A taxa é R$ 120,00 e o bónus R$ 30,00.",
+    result, b = await _voice(_turn(), ["A taxa é R$ 135,00 e o bónus R$ 35,00.",
                                        "Não sei."])
     assert len(b.calls) == 2
-    assert "R$ 120,00" in result.response, "the worse re-voice was shipped"
+    assert "R$ 135,00" in result.response, "the worse re-voice was shipped"
     assert "voice:diverged_from_approved_draft" in result.adjustments
     assert "voice:revoiced_from_approved_draft" not in result.adjustments
 
@@ -261,9 +261,9 @@ async def test_the_net_only_guards_the_turns_the_promise_was_made_on():
 async def test_both_voicer_calls_are_billed():
     """The re-voice is a real LLM call; a net whose cost is invisible is a net that gets
     blamed on the model."""
-    one, _ = await _voice(_turn(), ["A taxa é R$ 120,00, R$ 30,00 e R$ 40,00."])
+    one, _ = await _voice(_turn(), ["A taxa é R$ 135,00, R$ 35,00 e R$ 50,00."])
     two, _ = await _voice(_turn(), ["Não consegui encontrar.",
-                                    "A taxa é R$ 120,00, R$ 30,00 e R$ 40,00."])
+                                    "A taxa é R$ 135,00, R$ 35,00 e R$ 50,00."])
     assert two.metrics.tokens_in == 2 * one.metrics.tokens_in
     assert two.metrics.tokens_out == 2 * one.metrics.tokens_out
 
@@ -275,15 +275,15 @@ def test_the_figure_reader_ignores_counts_and_date_fragments():
     would re-voice a correct reply for writing a date in words."""
     keys = SuperegoStage._figure_keys
     assert keys("2 items on 08/09 at 10h") == {}
-    assert set(keys("R$ 1.234,56 and 120,00")) == {"123456", "12000"}
+    assert set(keys("R$ 1.234,56 and 135,00")) == {"123456", "13500"}
 
 
 def test_the_divergence_is_symmetric_and_grounded():
     d = SuperegoStage._draft_divergence
-    assert d("R$ 120,00", "", "R$ 120,00") == ([], [])
-    assert d("R$ 120,00", "", "não encontrei") == (["12000"], [])
-    assert d("R$ 120,00", "", "R$ 120,00 e R$ 45,00") == ([], ["4500"])
+    assert d("R$ 135,00", "", "R$ 135,00") == ([], [])
+    assert d("R$ 135,00", "", "não encontrei") == (["13500"], [])
+    assert d("R$ 135,00", "", "R$ 135,00 e R$ 65,00") == ([], ["6500"])
     # a figure the TOOL returned is grounded, not invented
-    assert d("R$ 120,00", "total: R$ 45,00", "R$ 120,00 e R$ 45,00") == ([], [])
+    assert d("R$ 135,00", "total: R$ 65,00", "R$ 135,00 e R$ 65,00") == ([], [])
     # ...and so is one the CONTACT themselves typed
-    assert d("R$ 120,00", "", "R$ 120,00 e R$ 45,00", "eu paguei R$ 45,00") == ([], [])
+    assert d("R$ 135,00", "", "R$ 135,00 e R$ 65,00", "eu paguei R$ 65,00") == ([], [])
