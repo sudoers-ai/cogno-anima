@@ -312,7 +312,7 @@ def _turno(*execucoes, routing=("transfer_persona",)):
     from cogno_anima import metakeys as mk
     from cogno_anima.types import PipelineContext
 
-    ctx = PipelineContext(user_input="remova o lançamento de R$ 45,00")
+    ctx = PipelineContext(user_input="remova o lançamento de R$ 65,00")
     ctx.turn_executions = list(execucoes)
     if routing is not None:
         ctx.metadata[mk.ROUTING_ONLY_TOOLS] = list(routing)

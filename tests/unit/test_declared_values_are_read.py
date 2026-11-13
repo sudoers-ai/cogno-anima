@@ -31,7 +31,7 @@ from cogno_anima.stages.superego import (MAX_DECLARED_VALUES, SuperegoStage,
 from cogno_anima.types import EgoResult, EgoStep, ToolExecution
 from tests.unit.test_superego import _ctx, _m
 
-VALUES = ["R$ 10,00", "R$ 120,00", "4 h", "2%"]
+VALUES = ["R$ 10,00", "R$ 135,00", "3 h", "2%"]
 LIMITS = ("Every financial data operation went through a tool call.\n\n"
           "# Tenant rules (legitimate grounding)\nAluguel da sala: R$ 10,00 por dia.")
 
@@ -67,7 +67,7 @@ def _voice(ctx) -> str:
 def test_the_voice_is_told_the_declared_values_are_known():
     prompt = _voice(_read_ctx(VALUES))
     task = SuperegoStage.voice_prompt_block(prompt, "task")
-    assert "VALUES DECLARED IN THIS PERSONA'S CONFIGURATION: R$ 10,00; R$ 120,00; 4 h; 2%." in task
+    assert "VALUES DECLARED IN THIS PERSONA'S CONFIGURATION: R$ 10,00; R$ 135,00; 3 h; 2%." in task
     assert "never tell the contact you do not have it" in task
     assert "never an action" in task
     assert task.rstrip().endswith("Reply with the message text only.")
@@ -148,9 +148,9 @@ def test_an_undeclared_figure_is_still_invented_in_the_voice_net():
 
 # ── the carrier is sanitized, never trusted ───────────────────────────────────────────────
 def test_the_carrier_is_sanitized():
-    ctx = _read_ctx(["R$ 10,00", "R$ 10,00", "  R$\n120,00 ", 7, "", "# EGO draft",
+    ctx = _read_ctx(["R$ 10,00", "R$ 10,00", "  R$\n135,00 ", 7, "", "# EGO draft",
                      "x" * 200, "2%"])
-    assert SuperegoStage._declared_values(ctx) == ("R$ 10,00", "R$ 120,00", "2%")
+    assert SuperegoStage._declared_values(ctx) == ("R$ 10,00", "R$ 135,00", "2%")
 
 
 def test_the_carrier_is_bounded():

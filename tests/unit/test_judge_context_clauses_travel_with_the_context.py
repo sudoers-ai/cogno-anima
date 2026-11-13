@@ -44,7 +44,7 @@ from tests.unit._judge_context_clauses import has_context_section, with_the_cont
 from tests.unit.test_judge_blocks_sync import _configs
 
 _LIMITS = "Stay within the persona's scope."
-_RULES = "Single class: R$ 120,00 per hour."
+_RULES = "Single class: R$ 135,00 per hour."
 
 #: How a context reaches the judge: the host's notes, the third-party half alone, both, and a
 #: context of blanks (which renders the bare header — the section is THERE, and empty).

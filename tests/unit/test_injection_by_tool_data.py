@@ -431,7 +431,7 @@ _CLEAN = [
     "# MATERIAL\n- Apostila 1",                       # a tenant's own header — not reserved
     "# About this contact\n- mora em Santos",         # the host's graph header — not reserved
     "[SOURCES]\nUse the most recent.\n\n[RECENT CONVERSATION]\nUser: oi\nAssistant: olá",
-    "Total: R$ 1.440,00 — 12 h × R$ 120,00",
+    "Total: R$ 1.440,00 — 12 h × R$ 135,00",
     "#hashtag e # solto no meio da linha # Task",
     "",
 ]

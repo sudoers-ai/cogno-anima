@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.1.19 — 2026-11-13 — the figures scrub, completed across the remaining fixtures
+
+### Changed
+
+- **The professor-case rate, hours and money totals are scrubbed from the fixtures 0.1.18 left
+  behind.** That release replaced the real production figure inside the grounding rule
+  (`_DERIVED_FROM_EVIDENCE`) and the two grounding tests beside it, and said the other fixtures
+  quoting the same production turns would follow "in the next release" — this is it. The same real
+  figures survived in the November pay estimate and the October history
+  (`test_voice_on_exhaustion_does_not_reconstruct`, `tests/integration/test_superego.py`), the
+  gate-C e-mail proposal (`test_judge_reads_the_gate_c_proposal`), the persona rate the shared
+  judge/voice configs declare (`test_judge_blocks_sync`, `test_voice_blocks_sync`, and so every
+  prompt built from them), the two-sanctioned-sources figures, and single occurrences in a dozen
+  other test files — plus two old changelog lines and a `metakeys.py` example comment. They now
+  carry the same synthetic, internally consistent set the grounding scrub used: a different hourly
+  rate, a different number of hours per class, the two bonus tiers, and every total that is a
+  product of those (the per-class and per-group totals, and the class-survey bonus totals). The old
+  real figures are deliberately not written here — that is the point of the scrub. Every
+  deterministic assertion proves what it proved: the digit-key, divergence and sum checks move with
+  their inputs, so the arithmetic is preserved.
+- **No production behaviour changed** (the one `metakeys.py` edit is a comment). The pinned
+  judge/voice prompt digests that render the scrubbed configs were regenerated deliberately, each
+  with the revert-to-old control that proves only the scrubbed figures moved: `test_context_fence`
+  (`judge:rules`, `voice:approved_execution`), `test_voice_on_exhaustion_does_not_reconstruct`
+  (the four `_MAIN_PROMPTS` controls and `_PRE_GATE["approved"]`), and
+  `test_judge_reads_the_gate_c_proposal` (the `failure` fixture, which alone renders the scrubbed
+  `RENDERED`).
+- **Scope: money and pay-hours only.** The class and discipline NAMES and the remaining
+  estimate-block derived totals the value list does not name (960, 1.440, 3.840, 4.800, 6.720) are
+  a separate, later cleanup and are untouched. The `turn_traces` ids are not figures and stay. An
+  internal reviewer's label in a docstring was also replaced with a neutral one.
+
 ## 0.1.18 — 2026-11-12 — the grounding rule's worked example is synthetic, not a real quote
 
 ### Changed
@@ -1395,7 +1427,7 @@ content, so the judge rejected the control too and «rejected 5/5» proved nothi
 - **It lands for two reasons.** (1) The rendering is semantically right: a proposal is not an
   error, and the trace and the prompt now say what happened — the call ran, committed nothing and
   was held for the user's confirmation. (2) The MEASURED effect: on a proposal turn, a draft that
-  states the proposal's content WITHOUT saying it is pending («o Prof vai receber R$ 1.920,00 de
+  states the proposal's content WITHOUT saying it is pending («o Prof vai receber R$ 1.620,00 de
   base em setembro, mais o bônus») goes from REJECTED 5/5 on main (the critiques ask the draft to
   say the e-mail is pending) to APPROVED 5/5 here. Asking for the yes is the host's
   (`_HELD_ASKING_IS_THE_HOSTS`, #199) — the rule was already in both prompts; beside a call marked
@@ -2260,7 +2292,7 @@ sua cópia no `limits` (cogno-host #1031); se a mantivesse seriam +2 464 por cha
   (dados; resposta do executor QUANDO É MOSTRADA — neste caminho `_draft_section` retém-na, e a
   frase não pode afirmar o contrário; regras da persona), para que as duas regras não apontem em
   sentidos opostos: estreitar «só aos dados» recompraria o turno 3 de `_FIGURES_HAVE_A_SOURCE`
-  (a taxa R$ 120/h nas regras da persona, dita desconhecida).
+  (a taxa R$ 135/h nas regras da persona, dita desconhecida).
 
   **Pinos.** `tests/unit/test_voice_on_exhaustion_does_not_reconstruct.py` — presença primeiro
   (o prompt carrega as 14 datas de outubro no Context e a estimativa nos dados, e NENHUMA data
@@ -2406,7 +2438,7 @@ sua cópia no `limits` (cogno-host #1031); se a mantivesse seriam +2 464 por cha
   acima, o bloco a dizer «An execution/answer grounded in them is CORRECTLY grounded».
 
   **Não era uma cláusula em falta, e a distinção era o trabalho todo.** Uma sonda determinista
-  sobre o prompt renderizado encontrou a linha do próprio inquilino — `- Aula - R$ 120,00 por
+  sobre o prompt renderizado encontrou a linha do próprio inquilino — `- Aula - R$ 135,00 por
   hora` — presente, verbatim, sob `# Tenant rules (legitimate grounding)`, no mesmo prompt que
   produziu aquela crítica. Logo o conserto não é fazer o bloco chegar (ele chega): é parar os
   critérios de afirmarem o oposto. Acrescentar um quinto parágrafo a um prompt cujo

@@ -615,6 +615,10 @@ def test_the_fence_costs_what_this_says():
     assert len(split) - len(whole) == len(_fenced("")) == 199
 
 
+# Regenerated 2026-11-13 (figures/money privacy scrub): `judge:rules` and `voice:approved_execution`
+# render the professor rate from the shared `_configs()` fixtures, which a real production rate was
+# scrubbed from; only those two moved. Control — reverting the rate to the old value reproduced the
+# other 23 digests, so nothing but the scrubbed rate moved.
 _PARENT.update(json.loads("""
 {
  "executor_native:context": "738ae714ae03aa15",
@@ -632,9 +636,9 @@ _PARENT.update(json.loads("""
  "judge:memo": "4f5f9cd42ba40bd4",
  "judge:preserved": "b3145c319db00035",
  "judge:readonly": "85c4f96c5d5ae7c5",
- "judge:rules": "8f8f92860a277d8d",
+ "judge:rules": "668e7a3c6904d95f",
  "judge:unavailable": "0ffd20adf418b859",
- "voice:approved_execution": "f80599ed8410bcbc",
+ "voice:approved_execution": "c66f37e27a50780e",
  "voice:context": "e806de1ce62857f3",
  "voice:conversational": "b89ee3d906ecf5e6",
  "voice:memo": "43b23137cf22d301",

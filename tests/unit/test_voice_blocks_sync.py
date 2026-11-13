@@ -63,7 +63,7 @@ def _configs():
     approved_execution.metadata[mk.JUDGE_VERDICT] = {"approved": True, "attempts": 1}
     approved_execution.ego_result = EgoResult(
         steps=[EgoStep(index=0, path="native",
-                       assistant_text="a taxa configurada é de R$ 120,00 por hora",
+                       assistant_text="a taxa configurada é de R$ 135,00 por hora",
                        tool_calls=[ToolExecution(tool="lookup_rules", arguments={},
                                                  result="No records found.", ok=True,
                                                  side_effect=False)])],

@@ -3,7 +3,7 @@
 Gate C (``stages/ego.py``): the skill RAN, committed nothing, and asked about THIS call
 (``ToolResult(needs_confirmation=True)``). The core records it ``ok=False`` — a proposal must never
 count as a write — and the judge's execution block rendered every ``ok=False`` as ``→ ERROR``. So a
-held message composed by that very skill, quoting the figures the skill read («R$ 1.920,00»), was
+held message composed by that very skill, quoting the figures the skill read («R$ 1.620,00»), was
 judged against an execution block that said the only read had FAILED. On the production judge the
 figures were accepted anyway (measured downstream, M2b: main approves 5/5); the change that IS
 measured is the draft — a draft that does not say «pendente» goes from rejected 5/5 to approved 5/5
@@ -38,12 +38,12 @@ from tests.unit._judge_context_clauses import with_the_context_clauses
 from tests.unit.test_superego import _ctx, _m
 
 #: What the e-mail skill READ and proposed — the output of the gate-C call.
-PROPOSAL = ("PROPOSTA — não enviado. Lido da agenda: 4 aulas × 4 h × R$ 120,00 = R$ 1.920,00; "
-            "valor por aula 4 h × R$ 120,00 = R$ 480,00.\n"
+PROPOSAL = ("PROPOSTA — não enviado. Lido da agenda: 4 aulas × 3 h × R$ 135,00 = R$ 1.620,00; "
+            "valor por aula 3 h × R$ 135,00 = R$ 405,00.\n"
             "Assunto: Emissão de nota fiscal — setembro/2026")
 #: The e-mail the same call holds for the user's «sim» — its figures are the proposal's.
 RENDERED = ("Emissão de nota fiscal — setembro/2026\nOlá, Prof Alfa,\n\n"
-            "valor por aula: R$ 480,00\nSem bônus: R$ 1.920,00")
+            "valor por aula: R$ 405,00\nSem bônus: R$ 1.620,00")
 #: A real failure of the same tool, for the control.
 FAILED = "the mail server did not accept the message"
 
@@ -101,14 +101,14 @@ def test_the_twin_a_proposal_renders_PROPOSED_with_its_output_and_grounds_its_me
     # the figure has a source on the page beside the message now: the proposal's own output
     out = p[p.index('<tool_output name="send_email">'):p.index("</tool_output>")]
     held = p[p.index('<held_message name="send_email">'):p.index("</held_message>")]
-    assert "R$ 1.920,00" in out and "R$ 1.920,00" in held
+    assert "R$ 1.620,00" in out and "R$ 1.620,00" in held
 
 
 def test_control_the_same_figure_in_the_DRAFT_gets_no_new_source():
     """The clause names the held message of the proposed call and refuses everything else in the
     same sentence — the draft keeps today's criteria, word for word."""
     p = _prompt(_turn(_proposal(), held=[_proposal()], declared={"send_email": "rendered"},
-                      draft="O total do Prof Alfa é R$ 1.920,00."))
+                      draft="O total do Prof Alfa é R$ 1.620,00."))
     clause_start = p.index("A held message of a call marked PROPOSED above")
     clause = p[clause_start:p.index("\n", clause_start)]
     assert "not the EGO draft" in clause
@@ -160,7 +160,7 @@ def test_a_proposal_tells_the_judge_the_call_is_held_and_the_asking_is_the_hosts
     call: `→ ERROR` (main) against `→ PROPOSED (held for the user's confirmation; nothing executed)`;
     the rule that the asking is the HOST's (`_HELD_ASKING_IS_THE_HOSTS`, #199) is in both. This pins
     the PROMPT half of that pair; the model half is the downstream evidence."""
-    draft = "O Prof Alfa vai receber R$ 1.920,00 de base em setembro, mais o bônus."
+    draft = "O Prof Alfa vai receber R$ 1.620,00 de base em setembro, mais o bônus."
     p = _prompt(_turn(_proposal(), held=[_proposal()], declared={"send_email": "rendered"},
                       draft=draft))
     assert f"→ {PROPOSED_STATUS}:" in p and "→ ERROR" not in p
@@ -205,9 +205,13 @@ def _fixtures():
 #: ``sha256`` of each fixture's judge prompt on ``origin/main`` (02e1850), before this change.
 #: Regenerated 2026-11-12 (figures privacy scrub): the worked example in `_DERIVED_FROM_EVIDENCE`
 #: moved; control — reverting it to the old reproduced each digest, so nothing else moved.
+#: Regenerated 2026-11-13 (figures/money privacy scrub): `RENDERED` and `PROPOSAL` carried a real
+#: production rate/hours/total; only the `failure` fixture renders `RENDERED`, so only its digest
+#: moved. Control — the three fixtures that do not carry `RENDERED` reproduced their digest byte
+#: for byte, so nothing but the scrubbed figures moved.
 _ORIGIN_MAIN = {
     "read_only": "b26754aaef3ed56f349cd6dfab929b22c620748422a260bfbf0f82fb74a8e885",
-    "failure": "6cc561287e5aac2d5ef73d719de187d2141cbcd6775a4892d1c084042bc3b739",
+    "failure": "95c6eadb7be60b095d2a1c95dacad5823d42a2f59b6aa291102d542a599bdb2f",
     "gate_b_held_message": "fb362f7effc3243a491c4bea84f68a7697534328faa704530cc3ad27200941c7",
     "nothing": "252e8c24b10ff98b921e9687ce5889eb6030f398e13394347a4b9a6f96ec4acf",
 }

@@ -107,9 +107,9 @@ def test_the_judge_SYSTEM_is_the_same_bytes_with_and_without_a_note():
     """The M3c property: the system message is the cacheable (persona, role) prefix. A note is
     per CONTACT; letting it in would make every contact a cache miss."""
     bare = _ctx()
-    bare.metadata[mk.PERSONA_RULES] = "Aula avulsa: R$ 120,00 por hora."
+    bare.metadata[mk.PERSONA_RULES] = "Aula avulsa: R$ 135,00 por hora."
     noted = _with_note()
-    noted.metadata[mk.PERSONA_RULES] = "Aula avulsa: R$ 120,00 por hora."
+    noted.metadata[mk.PERSONA_RULES] = "Aula avulsa: R$ 135,00 por hora."
     assert SuperegoStage._judge_system(noted) == SuperegoStage._judge_system(bare)
 
 
@@ -176,7 +176,7 @@ def test_the_note_stays_OUT_of_the_context_slice_a_host_captures():
 
 @pytest.mark.parametrize("kind", ["execution_rejected", "unverified_claim", "repeated_reply"])
 def test_a_critique_quoting_the_note_reaches_the_voice_MASKED(kind):
-    """The Gerente's twin: a critique that quotes «cliente difícil» → the voice's verdict
+    """A review twin: a critique that quotes «cliente difícil» → the voice's verdict
     section does not carry the expression; the only place the voice reads it is the fenced
     note, whose rule says never to say it. CONTROL: without a note the same reason is rendered
     verbatim, so the absence above is the mask's doing."""
