@@ -227,6 +227,12 @@ jobs:
           python-version: "3.12"
       - name: Install Ollama + pull the models
         run: |
+          # Bounded retry around the EXTERNAL fetches only — the installer download and the two
+          # model pulls. Those are the steps that flaked on a transient upstream status (a 504
+          # from the installer host, a 503 from the model registry), not on anything in the tree.
+          # Three attempts with a backoff, then one final attempt whose exit status fails the job;
+          # re-running the installer or a pull is idempotent. The serving logic below is untouched.
+          for i in 1 2 3; do curl -fsSL https://ollama.com/install.sh | sh && break; sleep 10; done
           curl -fsSL https://ollama.com/install.sh | sh
           # The installer starts Ollama as a SERVICE where systemd runs, and this runner has it:
           # a second `ollama serve` then died on `bind: address already in use` (3 of the 6
@@ -239,7 +245,9 @@ jobs:
             ollama serve &
           fi
           for i in $(seq 1 30); do curl -sf http://localhost:11434/api/tags && break || sleep 1; done
+          for i in 1 2 3; do ollama pull "${{ github.event.inputs.model || 'qwen3:8b' }}" && break; sleep 10; done
           ollama pull "${{ github.event.inputs.model || 'qwen3:8b' }}"
+          for i in 1 2 3; do ollama pull nomic-embed-text:latest && break; sleep 10; done
           ollama pull nomic-embed-text:latest
       - name: Install
         run: |
