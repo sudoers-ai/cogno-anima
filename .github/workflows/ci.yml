@@ -230,10 +230,15 @@ jobs:
           # Bounded retry around the EXTERNAL fetches only — the installer download and the two
           # model pulls. Those are the steps that flaked on a transient upstream status (a 504
           # from the installer host, a 503 from the model registry), not on anything in the tree.
-          # Three attempts with a backoff, then one final attempt whose exit status fails the job;
-          # re-running the installer or a pull is idempotent. The serving logic below is untouched.
-          for i in 1 2 3; do curl -fsSL https://ollama.com/install.sh | sh && break; sleep 10; done
-          curl -fsSL https://ollama.com/install.sh | sh
+          # The DOWNLOAD is separated from running it on purpose: the step runs `bash -e` without
+          # pipefail, so `curl … | sh` hides a 504 — curl fails writing nothing, sh reads empty
+          # input and exits 0, the pipeline is 0, and `&& break` fires on the first try with no
+          # retry. Fetching to a file makes curl's own exit status the retry condition: three
+          # attempts with a backoff, then a final download whose failure fails the job, and the
+          # installer runs exactly once on the bytes that arrived. The serving logic is untouched.
+          for i in 1 2 3; do curl -fsSL -o /tmp/ollama-install.sh https://ollama.com/install.sh && break; sleep 10; done
+          curl -fsSL -o /tmp/ollama-install.sh https://ollama.com/install.sh
+          sh /tmp/ollama-install.sh
           # The installer starts Ollama as a SERVICE where systemd runs, and this runner has it:
           # a second `ollama serve` then died on `bind: address already in use` (3 of the 6
           # nightlies 2026-10-15 → 10-20). Wait for the installer's server first, and start one
