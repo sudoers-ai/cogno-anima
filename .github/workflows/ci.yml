@@ -227,7 +227,18 @@ jobs:
           python-version: "3.12"
       - name: Install Ollama + pull the models
         run: |
-          curl -fsSL https://ollama.com/install.sh | sh
+          # Bounded retry around the EXTERNAL fetches only — the installer download and the two
+          # model pulls. Those are the steps that flaked on a transient upstream status (a 504
+          # from the installer host, a 503 from the model registry), not on anything in the tree.
+          # The DOWNLOAD is separated from running it on purpose: the step runs `bash -e` without
+          # pipefail, so `curl … | sh` hides a 504 — curl fails writing nothing, sh reads empty
+          # input and exits 0, the pipeline is 0, and `&& break` fires on the first try with no
+          # retry. Fetching to a file makes curl's own exit status the retry condition: three
+          # attempts with a backoff, then a final download whose failure fails the job, and the
+          # installer runs exactly once on the bytes that arrived. The serving logic is untouched.
+          ok=; for i in 1 2 3; do curl -fsSL -o /tmp/ollama-install.sh https://ollama.com/install.sh && { ok=1; break; }; sleep 10; done
+          [ -n "$ok" ] || curl -fsSL -o /tmp/ollama-install.sh https://ollama.com/install.sh
+          sh /tmp/ollama-install.sh
           # The installer starts Ollama as a SERVICE where systemd runs, and this runner has it:
           # a second `ollama serve` then died on `bind: address already in use` (3 of the 6
           # nightlies 2026-10-15 → 10-20). Wait for the installer's server first, and start one
@@ -239,8 +250,10 @@ jobs:
             ollama serve &
           fi
           for i in $(seq 1 30); do curl -sf http://localhost:11434/api/tags && break || sleep 1; done
-          ollama pull "${{ github.event.inputs.model || 'qwen3:8b' }}"
-          ollama pull nomic-embed-text:latest
+          ok=; for i in 1 2 3; do ollama pull "${{ github.event.inputs.model || 'qwen3:8b' }}" && { ok=1; break; }; sleep 10; done
+          [ -n "$ok" ] || ollama pull "${{ github.event.inputs.model || 'qwen3:8b' }}"
+          ok=; for i in 1 2 3; do ollama pull nomic-embed-text:latest && { ok=1; break; }; sleep 10; done
+          [ -n "$ok" ] || ollama pull nomic-embed-text:latest
       - name: Install
         run: |
           python -m pip install --upgrade pip
