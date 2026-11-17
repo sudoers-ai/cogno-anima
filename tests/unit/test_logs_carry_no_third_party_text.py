@@ -77,6 +77,7 @@ _PINNED: "dict[str, set[str]]" = {
     "neutral": {"state['valence_ema'] if state else '?'"},
     "offered": {"len(offered)"},
     "ok": {"r.ok"},
+    "refused": {"int(refused)"},
     "retried_len": {"len(retried)"},
     "rewritten_len": {"len(rewritten)"},
     "rule_illustrations": {"len(self._rule_rewrites)"},

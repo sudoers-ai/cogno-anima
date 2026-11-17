@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased — the voice is re-voiced when it REFUSES over an approved draft, not only when it drops a figure
+
+### Changed
+
+- **`SuperegoStage.voice`'s divergence backstop now fires on a refusal the approved draft does not
+  make, not only on a lost or invented figure.** Measured: an approved draft (judge `approved=true`,
+  no failed call) whose content is a text summary with no decimal figure in it, the hard rule *"MUST
+  NOT tell the user … could not"* in the prompt — and the voice wrote the refusal anyway, anchored in
+  earlier refusals its `# Context` block carried. The figure half (`_draft_divergence`, `_FIGURE_RE`)
+  saw nothing there (`lost=[]`) and never fired. A reply that declares a refusal/limit from a CLOSED
+  pt/en/es lexicon (`_REFUSAL_LEXICON`) the approved draft does NOT now arms the SAME single re-voice
+  (`_refuses_over_approved`). The asymmetry is the guard: a limit the draft itself states is a TRUE
+  limit the voice keeps, so a reply that only repeats it is not a divergence and is not re-voiced —
+  the net never forces a delivery the draft never promised. One re-voice, never a refusal and never a
+  handoff; the first reply is kept if the second is not an improvement, over the same alphabet the
+  re-voice fired on.
+- **The first voice prompt does not move by a byte** — the correction appends only to the SECOND call
+  on the turns that refuse over the approved draft (pinned voice-prompt inventory unchanged). The
+  `voice_diverged_from_approved_draft` event gains a `refused` field (documented in `LOGGING.md`).
+
 ## 0.1.20 — 2026-11-13 — the id-provenance match is whole-token, and is a shared predicate
 
 ### Added
