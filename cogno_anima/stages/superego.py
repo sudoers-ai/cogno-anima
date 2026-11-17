@@ -131,12 +131,23 @@ _FIGURE_RE = re.compile(r"\d{1,3}(?:[.\s]\d{3})*[.,]\d{2}(?!\d)")
 # declares one of these and the APPROVED draft declares none. A CLOSED lexicon (pt/en/es), not
 # an open heuristic: the phrases are multi-word so they do not collide with the PT contraction
 # "no"/pronoun "si", and a limit the draft itself states is a TRUE limit the voice must keep.
+#
+# The ENGLISH half must be as WIDE as the Portuguese, and that is not symmetry for its own sake:
+# the approved DRAFT is in English (the NOUMENO rewrites the request to canonical English and the
+# executor drafts in it) while the voice writes the contact's language. So the asymmetry check
+# reads the EN draft for the limit and the (usually pt) reply for its echo — a narrow EN side
+# would miss a TRUE limit the draft states ("I could not find any appointment…"), read the
+# faithful pt reply that keeps it as a refusal OVER the approved answer, and re-voice the voice
+# into DROPPING the limit. Every common first-person English negation of ability/finding/
+# possibility is here for that reason.
 _REFUSAL_LEXICON = (
     # Portuguese
-    "não posso fornecer", "não consigo", "não tenho como", "não é possível",
-    "não encontrei", "não estou em condições",
+    "não posso fornecer", "não consigo", "não consegui", "não pude", "não tenho como",
+    "não é possível", "não encontrei", "não estou em condições",
     # English
-    "i can't provide", "i'm unable to", "i cannot", "i don't have",
+    "i can't", "i cannot", "i could not", "i couldn't", "i did not find", "i didn't find",
+    "i was unable", "i am unable", "i'm unable to", "i'm not able", "i am not able",
+    "i do not have", "i don't have", "is not possible", "isn't possible",
     # Spanish
     "no puedo proporcionar", "no puedo", "no es posible", "no encontré",
 )

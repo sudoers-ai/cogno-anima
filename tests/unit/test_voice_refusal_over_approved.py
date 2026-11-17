@@ -50,13 +50,46 @@ async def test_a_refusal_with_no_figure_is_re_voiced_once():
     assert "voice:revoiced_from_approved_draft" in result.adjustments
 
 
-# ── (2) COLLISION in the main language: a TRUE limit the draft itself states ─────────
+@pytest.mark.asyncio
+async def test_a_refusal_over_an_english_delivering_draft_is_re_voiced():
+    """The positive in the REAL cross-language form: an English approved draft that DELIVERS, a
+    Portuguese reply that refuses with "não consegui encontrar" — a form the first cut of the
+    lexicon did not carry, so it caught neither the refusal nor, before the net existed, anything
+    at all."""
+    result, b = await _voice(
+        _turn(draft=_SUMMARY),
+        ["Infelizmente, não consegui encontrar informações sobre isso.", _SUMMARY_PT],
+    )
+    assert len(b.calls) == 2, "the refusal over the English draft did not re-voice"
+    assert result.response == _SUMMARY_PT
+    assert "voice:revoiced_from_approved_draft" in result.adjustments
+
+
+# ── (2) COLLISION — a TRUE limit the draft itself states, in the REAL cross-language form ─
 
 @pytest.mark.asyncio
-async def test_a_true_limit_the_draft_itself_states_is_not_re_voiced():
-    """The asymmetry. The approved draft declares the limit ("não consigo confirmar…"), so a
-    reply that repeats it is faithful — not a divergence. Re-voicing it would force a delivery
-    the draft never promised."""
+async def test_a_true_limit_in_the_english_draft_kept_in_portuguese_is_not_re_voiced():
+    """The asymmetry in the shape production actually has. The NOUMENO rewrites the request to
+    canonical English and the executor drafts in it, so the APPROVED draft is English; the voice
+    writes the contact's Portuguese. A true limit the English draft states ("I could not find…"),
+    kept faithfully in the Portuguese reply ("Não encontrei…"), must NOT read as a refusal over
+    the approved answer — re-voicing it would drive the voice to DROP the limit.
+
+    With a narrow English half the draft's limit is not seen, the pt reply is read as a refusal
+    over an approved answer that "does no such thing", and the net re-voices — the regression the
+    wide English half closes."""
+    result, b = await _voice(
+        _turn(draft="I could not find any appointment for tomorrow."),
+        ["Não encontrei nenhuma marcação para amanhã."],
+    )
+    assert len(b.calls) == 1, "a true English limit kept in Portuguese was re-voiced"
+    assert not [a for a in result.adjustments if a.startswith("voice:diverged")]
+
+
+@pytest.mark.asyncio
+async def test_a_true_limit_the_draft_itself_states_is_not_re_voiced_same_language():
+    """The same-language control: approved draft and reply both in Portuguese, both stating the
+    limit. Kept as the simpler twin beside the real cross-language case above."""
     draft = ("Não consigo confirmar o reembolso até o Jardel Vexmoril aprovar; o pedido fica "
              "pendente.")
     result, b = await _voice(
@@ -109,6 +142,25 @@ def test_the_closed_lexicon_reads_all_three_languages():
     assert not d("Your order shipped and arrives Thursday.")
 
 
+def test_every_widened_phrase_is_read():
+    """Each phrase the English draft is likely to carry — the half that was too narrow — plus the
+    two Portuguese additions. The English draft is the one the asymmetry reads for a limit."""
+    d = SuperegoStage._declares_refusal
+    english = [
+        "I can't do that right now", "I cannot help with this",
+        "I could not find any appointment for tomorrow", "I couldn't locate the record",
+        "I did not find a matching booking", "I didn't find anything",
+        "I was unable to confirm it", "I am unable to confirm it",
+        "I'm not able to confirm it", "I am not able to confirm it",
+        "I do not have that information", "I don't have that on file",
+        "That is not possible this week", "That isn't possible this week",
+    ]
+    for s in english:
+        assert d(s), s
+    assert d("Não consegui encontrar informações sobre isso")
+    assert d("Não pude confirmar a marcação")
+
+
 def test_the_refusal_divergence_is_asymmetric():
     r = SuperegoStage._refuses_over_approved
     # reply refuses, draft does not → divergence
@@ -117,3 +169,10 @@ def test_the_refusal_divergence_is_asymmetric():
     assert r("não consigo confirmar isso", "ainda não consigo confirmar") is False
     # neither refuses
     assert r("confirmado", "confirmado para amanhã") is False
+    # the REAL cross-language shape: an English draft states the limit, the Portuguese reply
+    # keeps it → NOT a divergence (the defect the widened English half fixes)
+    assert r("I could not find any appointment for tomorrow.",
+             "Não encontrei nenhuma marcação para amanhã.") is False
+    # ...and an English draft that DELIVERS, refused in Portuguese → a divergence
+    assert r("Your appointment is confirmed for Thursday at 9.",
+             "não consegui encontrar informações") is True

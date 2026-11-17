@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — the voice is re-voiced when it REFUSES over an approved draft, not only when it drops a figure
+## 0.1.21 — 2026-11-17 — the voice is re-voiced when it REFUSES over an approved draft, not only when it drops a figure
 
 ### Changed
 
@@ -16,6 +16,13 @@
   the net never forces a delivery the draft never promised. One re-voice, never a refusal and never a
   handoff; the first reply is kept if the second is not an improvement, over the same alphabet the
   re-voice fired on.
+- **The English half of the lexicon is as WIDE as the Portuguese, because the APPROVED DRAFT is in
+  English.** The NOUMENO rewrites the request to canonical English and the executor drafts in it,
+  while the voice writes the contact's language; the asymmetry reads the EN draft for a limit and the
+  (usually pt) reply for its echo. A narrow EN side would miss a TRUE limit the draft states ("I could
+  not find any appointment…"), read the faithful pt reply that keeps it ("Não encontrei…") as a
+  refusal OVER the approved answer, and re-voice the voice into DROPPING the limit — so every common
+  first-person English negation of ability/finding/possibility is in `_REFUSAL_LEXICON`.
 - **The first voice prompt does not move by a byte** — the correction appends only to the SECOND call
   on the turns that refuse over the approved draft (pinned voice-prompt inventory unchanged). The
   `voice_diverged_from_approved_draft` event gains a `refused` field (documented in `LOGGING.md`).
