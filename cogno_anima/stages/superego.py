@@ -122,6 +122,36 @@ _CRITICAL_TERM_RE = CRITICAL_TERM_RE
 # this shape (R$ 135,00 / 35,00 / 50,00 lost; R$ 65,00 invented).
 _FIGURE_RE = re.compile(r"\d{1,3}(?:[.\s]\d{3})*[.,]\d{2}(?!\d)")
 
+# A REFUSAL/LIMIT the reply DECLARES, for the divergence backstop below — the TEXT twin of a
+# ``lost`` figure. Measured: an approved draft summarising what the contact asked for, the hard
+# rule "MUST NOT tell the user … could not" in the prompt, review ``approved=true``, no failed
+# call — and the voice wrote the refusal anyway, anchored in two earlier refusals that sat in
+# its ``# Context`` block. The figure net beside it sees nothing (a text summary carries no
+# ``_FIGURE_RE`` figure, so ``lost=[]``), so it arms the SAME single re-voice when the reply
+# declares one of these and the APPROVED draft declares none. A CLOSED lexicon (pt/en/es), not
+# an open heuristic: the phrases are multi-word so they do not collide with the PT contraction
+# "no"/pronoun "si", and a limit the draft itself states is a TRUE limit the voice must keep.
+#
+# The ENGLISH half must be as WIDE as the Portuguese, and that is not symmetry for its own sake:
+# the approved DRAFT is in English (the NOUMENO rewrites the request to canonical English and the
+# executor drafts in it) while the voice writes the contact's language. So the asymmetry check
+# reads the EN draft for the limit and the (usually pt) reply for its echo — a narrow EN side
+# would miss a TRUE limit the draft states ("I could not find any appointment…"), read the
+# faithful pt reply that keeps it as a refusal OVER the approved answer, and re-voice the voice
+# into DROPPING the limit. Every common first-person English negation of ability/finding/
+# possibility is here for that reason.
+_REFUSAL_LEXICON = (
+    # Portuguese
+    "não posso fornecer", "não consigo", "não consegui", "não pude", "não tenho como",
+    "não é possível", "não encontrei", "não estou em condições",
+    # English
+    "i can't", "i cannot", "i could not", "i couldn't", "i did not find", "i didn't find",
+    "i was unable", "i am unable", "i'm unable to", "i'm not able", "i am not able",
+    "i do not have", "i don't have", "is not possible", "isn't possible",
+    # Spanish
+    "no puedo proporcionar", "no puedo", "no es posible", "no encontré",
+)
+
 # A CALCULATION the reply shows: two or more numerals joined by ONE repeated operator and
 # closed by ``=`` and a result — "3 h x R$ 135,00 = R$ 405,00". The filler between a numeral
 # and its operator is bounded and may hold no digit and no ``=``, so the scan cannot bridge
@@ -3553,7 +3583,30 @@ class SuperegoStage:
         return lost, invented
 
     @staticmethod
-    def _divergence_correction(lost: "Sequence[str]", invented: "Sequence[str]") -> str:
+    def _declares_refusal(text: str) -> bool:
+        """True when ``text`` states a refusal/limit from the closed ``_REFUSAL_LEXICON``.
+
+        Case-folded, with the typographic apostrophe (U+2019) folded to a straight one so
+        "I can't" is caught however the voicer writes it — a normalisation of ONE character,
+        not an opening of the alphabet."""
+        folded = (text or "").lower().replace("’", "'")
+        return any(phrase in folded for phrase in _REFUSAL_LEXICON)
+
+    @classmethod
+    def _refuses_over_approved(cls, approved: str, response: str) -> bool:
+        """The reply declares a refusal/limit that the APPROVED draft does NOT — the text twin
+        of a ``lost`` figure, scoped by ``_approved_draft`` to the turns the voice was handed
+        the approved answer.
+
+        The asymmetry is the whole guard: a limit the draft ITSELF states is a TRUE limit the
+        voice must keep (the collision case), so a reply that only repeats it is not a
+        divergence and is not re-voiced — the net never forces a delivery the draft does not
+        promise."""
+        return cls._declares_refusal(response) and not cls._declares_refusal(approved)
+
+    @staticmethod
+    def _divergence_correction(lost: "Sequence[str]", invented: "Sequence[str]",
+                               refused: bool = False) -> str:
         """The deterministic re-voice instruction. Appended AFTER ``# Task`` on purpose — the
         last standing instruction the model reads, the same placement rule the HARD RULE
         sections already follow — so it adds no top-level header and ``_VOICE_BLOCKS`` and the
@@ -3566,6 +3619,9 @@ class SuperegoStage:
             problems.append("it reported a figure that appears in NEITHER the approved answer "
                             "NOR the executor data — most likely taken from the background "
                             "context, which is not a source for figures")
+        if refused:
+            problems.append("it told the contact you could not do, provide, find, or access "
+                            "something, when the approved answer above does no such thing")
         return ("HARD RULE — REWRITE. The reply you just wrote was rejected by a deterministic "
                 f"check because {'; and '.join(problems)}. Write it again. Every figure in the "
                 "approved executor's answer above must appear in your reply exactly as written "
@@ -3891,6 +3947,12 @@ class SuperegoStage:
         # saying "não consegui encontrar informações" (twice in three runs) and, once, a rate
         # that exists only in the retrieved memories.
         #
+        # The THIRD shape is a refusal with no figure at all: the reply DECLARES a refusal/limit
+        # (closed `_REFUSAL_LEXICON`) the approved draft does NOT, anchored in earlier refusals
+        # the context carried. The figure half sees nothing there (`lost=[]`), so `refused` arms
+        # the SAME single re-voice — and never when the draft states that limit itself, so a
+        # true limit is kept and no delivery the draft does not promise is ever forced.
+        #
         # It reads the VOICED text, like the preserved-term backstop beside it and for the
         # same reason: the PII rule masks values below, and reading a mask back would make
         # this guard accuse the previous guard of fabricating.
@@ -3906,11 +3968,14 @@ class SuperegoStage:
             declared = self._declared_values(ctx)
             lost, invented = self._draft_divergence(approved, payload, response, ctx.user_input,
                                                     declared)
-            if lost or invented:
+            refused = self._refuses_over_approved(approved, response)
+            if lost or invented or refused:
                 adjustments.append("voice:diverged_from_approved_draft")
                 logger.warning("stage=superego event=voice_diverged_from_approved_draft "
-                               "lost=%d invented=%d", len(lost), len(invented))
-                retry_prompt = f"{prompt}\n\n{self._divergence_correction(lost, invented)}"
+                               "lost=%d invented=%d refused=%d", len(lost), len(invented),
+                               int(refused))
+                retry_prompt = (
+                    f"{prompt}\n\n{self._divergence_correction(lost, invented, refused)}")
                 second, second_cot, ti2, to2, cached2, fp2, sm2 = await _write(retry_prompt)
                 ti += ti2
                 to += to2
@@ -3920,9 +3985,16 @@ class SuperegoStage:
                 # the divergence check then keeps. The row names the backend of the last call,
                 # not of the surviving text.
                 fingerprint, served_model = fp2, sm2
-                again = self._draft_divergence(approved, payload, second, ctx.user_input,
-                                               declared)
-                if second and len(again[0]) + len(again[1]) <= len(lost) + len(invented):
+                again_lost, again_invented = self._draft_divergence(
+                    approved, payload, second, ctx.user_input, declared)
+                again_refused = self._refuses_over_approved(approved, second)
+                # "Not worse" over the SAME alphabet the re-voice fired on — a refusal that
+                # survives counts for one, exactly as a lost or invented figure does. When the
+                # reply never refused, both halves are 0 and this is the figure-only score the
+                # net has always compared.
+                before = len(lost) + len(invented) + (1 if refused else 0)
+                after = len(again_lost) + len(again_invented) + (1 if again_refused else 0)
+                if second and after <= before:
                     adjustments.append("voice:revoiced_from_approved_draft")
                     response, cot_stripped, prompt = second, second_cot, retry_prompt
 

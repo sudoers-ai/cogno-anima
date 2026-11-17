@@ -114,7 +114,7 @@ the logger, the event, the level, the `key=` fields and whether the line carries
 | `cogno_anima.superego` | `execution_trace_unreadable` | WARNING | the execution trace could not be read to choose the judge's criteria; the stricter branch is used |
 | `cogno_anima.superego` | `consult_trace_unreadable` | WARNING | the consulted specialist's trace could not be rendered for the judge |
 | `cogno_anima.superego` | `voice_json_unwrapped` | WARNING | the voice answered inside a JSON envelope and the backstop opened it |
-| `cogno_anima.superego` | `voice_diverged_from_approved_draft` (`lost`, `invented`) | WARNING | the voiced reply lost or invented values against the draft the judge approved; the voice is asked once more |
+| `cogno_anima.superego` | `voice_diverged_from_approved_draft` (`lost`, `invented`, `refused`) | WARNING | the voiced reply lost or invented values against the draft the judge approved, or declared a refusal/limit it does not; the voice is asked once more |
 | `cogno_anima.superego` | `preserved_mutated_in_output` | WARNING | a preserved figure, e-mail or URL appears altered in the reply |
 | `cogno_anima.superego` | `voice_kept_value_dropped` | WARNING | a statement the prompt ordered kept did not reach the reply with all its values |
 | `cogno_anima.superego` | `voice_figure_from_critique` (`count`) | WARNING | figures in the reply come from the judge's critique and from nothing that was read |
@@ -262,6 +262,7 @@ There is no class for text, and no digest is logged today.
 | `pii_risk` | closed | the PII risk level |
 | `read` | closed | how a verdict or a boolean was read (`VALID_VERDICT_READS`) |
 | `reason` | closed | why the loop was cut (`max_steps`, `duplicate_calls`); otherwise a literal |
+| `refused` | count | a boolean: the reply declared a refusal/limit the approved draft did not |
 | `repairs` | closed | the repair marks of the reply, comma-joined (`-` when none) |
 | `retried_len` | count | the length of the second rewrite |
 | `rewritten_len` | count | the length of the rewrite |
