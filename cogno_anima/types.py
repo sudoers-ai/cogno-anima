@@ -149,6 +149,14 @@ class NoumenoResult(BaseModel):
     # counts becomes the mechanism. See `cogno_anima.preserved`.
     preserved_dropped: int = 0
 
+    # How many characters of business GLOSSARY the host stamped on this turn
+    # (`mk.NOUMENO_GLOSSARY`), after stripping. A COUNT and never the words: the glossary is the
+    # tenant's own data and this field rides in a result a host may persist, so it records only
+    # whether the turn carried a glossary and how big — the text stays in the prompt alone. `0`
+    # when the host stamped none, which is also when the NOUMENO prompt is byte-for-byte the one
+    # before the feature. See `cogno_anima.stages.noumeno.glossary_block`.
+    glossary_chars: int = 0
+
     # ── Repairs ───────────────────────────────────────────
     # What this stage had to REPAIR in the model's JSON reply this turn, from the closed
     # `cogno_anima.repairs.VALID_NOUMENO_REPAIRS` (a key left out, a `null`, a boolean spelled

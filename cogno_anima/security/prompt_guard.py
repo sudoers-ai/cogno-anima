@@ -51,15 +51,24 @@ _MAX_PASSES = 8   # fixed-point bound; the payloads that need >2 are pathologica
 
 #: Every fence this library wraps UNTRUSTED text in, in any of its prompts: the executor's and
 #: the judge's tool results, the judge's held messages and the ask recorded beside them, the
-#: persona's business rules and the contact's note. Untrusted text may open or close NONE of
+#: persona's business rules, the contact's note and the NOUMENO's glossary. Untrusted text may
+#: open or close NONE of
 #: them — not only the one it happens to sit in, because the same text reaches several prompts.
 #: A fence that is not this library's (a skill's own ``<excerpt>``) is that skill's to defang.
 #: The fence around the THIRD-PARTY half of the context (`mk.EGO_CONTEXT_UNTRUSTED`). Not
 #: ``context``: a document about HTML or markdown may name that tag.
 CONTEXT_DATA_TAG = "context_data"
 
+#: The fence around the business's GLOSSARY in the NOUMENO's prompt (`mk.NOUMENO_GLOSSARY`). The
+#: glossary is the tenant's own words, so it is DATA: fenced here and run through
+#: :func:`sanitize_untrusted`, it cannot close its fence (``</glossary>`` becomes ``(/glossary)``)
+#: nor forge one of the headers this library renders. ``glossary`` and not a wider word: a document
+#: about dictionaries may name the tag, and :func:`_break_fence_tags` keeps the readable words.
+GLOSSARY_TAG = "glossary"
+
 FENCE_TAGS: "tuple[str, ...]" = (
-    "tool_output", "held_message", "held_ask", "business_rules", "contact_memo", CONTEXT_DATA_TAG)
+    "tool_output", "held_message", "held_ask", "business_rules", "contact_memo", CONTEXT_DATA_TAG,
+    GLOSSARY_TAG)
 
 # A superset of the old ``</?tool_output[^>]*>`` — same shape, one alternation per fence.
 _FENCE_TAG_RE = re.compile(r"(?i)</?(?:%s)[^>]*>" % "|".join(FENCE_TAGS))
