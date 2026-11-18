@@ -238,7 +238,13 @@ jobs:
           # installer runs exactly once on the bytes that arrived. The serving logic is untouched.
           ok=; for i in 1 2 3; do curl -fsSL -o /tmp/ollama-install.sh https://ollama.com/install.sh && { ok=1; break; }; sleep 10; done
           [ -n "$ok" ] || curl -fsSL -o /tmp/ollama-install.sh https://ollama.com/install.sh
-          sh /tmp/ollama-install.sh
+          # Pin the Ollama RUNTIME to the version the box was measured on. `install.sh` with no
+          # version takes whatever the upstream shipped that day, so the CPU runner drifted onto
+          # an unpinned build and a greedy decode read different logits than the pinned box — the
+          # judge-figure canary flaked on exactly that (measured 2026-11-18: local GPU on
+          # Ollama 0.20.0, qwen3:8b = 3/3 PASSED). The installer reads OLLAMA_VERSION; 0.20.0
+          # matches the box the canary was calibrated on.
+          OLLAMA_VERSION=0.20.0 sh /tmp/ollama-install.sh
           # The installer starts Ollama as a SERVICE where systemd runs, and this runner has it:
           # a second `ollama serve` then died on `bind: address already in use` (3 of the 6
           # nightlies 2026-10-15 → 10-20). Wait for the installer's server first, and start one
@@ -252,6 +258,20 @@ jobs:
           for i in $(seq 1 30); do curl -sf http://localhost:11434/api/tags && break || sleep 1; done
           ok=; for i in 1 2 3; do ollama pull "${{ github.event.inputs.model || 'qwen3:8b' }}" && { ok=1; break; }; sleep 10; done
           [ -n "$ok" ] || ollama pull "${{ github.event.inputs.model || 'qwen3:8b' }}"
+          # Pin the MODEL by digest too: the version pin above fixes the runtime, this fixes the
+          # WEIGHTS. The box measured qwen3:8b at digest prefix 500a1f067a9f7826 (2026-11-18);
+          # `ollama list` prints its 12-char head. If the upstream :8b label is ever re-pointed at
+          # different weights, the greedy decode this canary depends on can flip under an unchanged
+          # name, so fail LOUD rather than silently measure a new model. Default model only — a
+          # manual `model:` dispatch may pick a smaller one, which has a digest of its own.
+          if [ "${{ github.event.inputs.model || 'qwen3:8b' }}" = "qwen3:8b" ]; then
+            want=500a1f067a9f
+            got=$(ollama list | awk '$1 == "qwen3:8b" { print $2 }')
+            case "$got" in
+              "$want"*) echo "qwen3:8b verified at digest $got (box prefix: 500a1f067a9f7826)" ;;
+              *) echo "qwen3:8b digest is '$got', expected to start '$want' — upstream re-tagged the :8b label; the CI model no longer matches the box the judge canary was calibrated on" >&2; exit 1 ;;
+            esac
+          fi
           ok=; for i in 1 2 3; do ollama pull nomic-embed-text:latest && { ok=1; break; }; sleep 10; done
           [ -n "$ok" ] || ollama pull nomic-embed-text:latest
       - name: Install
