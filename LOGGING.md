@@ -75,7 +75,7 @@ the logger, the event, the level, the `key=` fields and whether the line carries
 | `cogno_anima.noumeno` | `preserved_not_in_input` (`dropped`, `kept`) | WARNING | the rewriter listed an e-mail or a URL the contact never typed; it is dropped |
 | `cogno_anima.noumeno` | `embed_unavailable` (`error`) | WARNING | the embedder raised; the similarity it was asked for is unknown and the turn goes on |
 | `cogno_anima.noumeno` | `repair_marks_failed` | WARNING | the repair marks of the reply could not be computed; the turn goes on without them |
-| `cogno_anima.noumeno` | `done` (`lang`, `drift`, `tag`, `changed`, `change_subject`, `degraded`) | INFO | the stage finished |
+| `cogno_anima.noumeno` | `done` (`lang`, `drift`, `tag`, `changed`, `change_subject`, `glossary_chars`, `degraded`) | INFO | the stage finished |
 | `cogno_anima.ner` | `intent_class_fallback` (`llm=UNKNOWN\|out_of_vocabulary`, `coerced`) | WARNING | the model's `intent_class` was `UNKNOWN` or outside the vocabulary; `coerced` is the class the stage used |
 | `cogno_anima.ner` | `domains_fallback` (`derived`) | DEBUG | `domains` came back empty and was derived from the mandatory tags |
 | `cogno_anima.ner` | `repair_marks_failed` | WARNING | a repair mark of the reply could not be recorded; the turn goes on without it |
@@ -237,6 +237,7 @@ There is no class for text, and no digest is logged today.
 | `effective` | closed | the traits the turn ended with |
 | `error` | type | the class of the exception |
 | `examples` | count | how many example rewrites were harvested |
+| `glossary_chars` | count | the length of the business glossary the host stamped this turn, 0 when none — never the words |
 | `goal_status` | closed | `NEW`, `ONGOING`, `COMPLETED`, `ABANDONED` |
 | `how` | closed | what the unread-times floor did: `removed` or `masked` |
 | `id_len` | count | the length of the id the call named |

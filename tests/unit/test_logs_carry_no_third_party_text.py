@@ -65,6 +65,7 @@ _PINNED: "dict[str, set[str]]" = {
     "drift": {"'unknown' if drift_score is None else f'{drift_score:.2f}'"},
     "dropped": {"preserved_dropped", "len(dropped)"},
     "examples": {"len(self._example_rewrites)"},
+    "glossary_chars": {"glossary_chars"},
     "id_len": {"len(wanted)"},
     "invented": {"len(invented)"},
     "kept": {"len(preserved_terms)", "len(kept)"},

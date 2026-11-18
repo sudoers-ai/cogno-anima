@@ -355,6 +355,29 @@ PERSONA_DECLARED_VALUES = "persona_declared_values"
 # text by the core**; a host's trace records its length and digest at most.
 CONTACT_MEMO = "contact_memo"
 
+# The business's GLOSSARY — the house's own terms for this tenant: acronyms, product and class
+# names, nicknames, the common misspellings of them. A `str`, the business's words, written by the
+# HOST per turn from the tenant's stored configuration.
+#
+# Read by ONE stage, the NOUMENO, and by nothing else. It is rendered into the NOUMENO's USER
+# prompt BEFORE the conversation history (stable per persona, so it lengthens the prefix the
+# provider's prompt cache reuses — see `docs/PROMPTS.md`), fenced as DATA inside `<glossary>`
+# (`security.prompt_guard.GLOSSARY_TAG`) through `sanitize_untrusted`, under a fixed phrase that
+# tells the rewriter to WRITE the glossary's form of a term the input abbreviates, nicknames or
+# misspells — and to add no fact, and to copy e-mails, URLs and numbers from the input exactly.
+# The NER, the ID, the EGO and the SUPEREGO never see it: they read the already-corrected rewrite.
+# It is a correction aid for the perception layer, never a rule — the scope guard and the judge
+# still read the contact's RAW message.
+#
+# Absent, blank or not a string → the NOUMENO prompt is BYTE-FOR-BYTE the one of before (no block
+# at all). **Never persisted as text by the core**: `NoumenoResult.glossary_chars` carries the
+# COUNT alone, never the words.
+#
+# PER TURN, like the three keys above: the host recomputes it from the tenant's configuration
+# every turn, so a carrier that persists metadata between turns must not carry a glossary from one
+# persona into another's conversation, and a proactive turn (the text is ours) stamps nothing.
+NOUMENO_GLOSSARY = "noumeno_glossary"
+
 # ── prompt provenance (HOST writes, orchestrator labels with it) ─────────────
 # `{kind: sha}` — the host's digest of each prompt TEMPLATE it is running this turn, keyed by
 # slot ("ego" | "voice" | "judge" | "scope"). The orchestrator copies the matching one onto
