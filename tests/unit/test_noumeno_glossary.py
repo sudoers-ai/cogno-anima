@@ -130,11 +130,11 @@ async def test_injection_inside_the_glossary_stays_data():
 
 @pytest.mark.asyncio
 async def test_values_in_the_glossary_are_copied_exactly():
-    g = ("Contact alias BLX -> ops@quostral.example\n"
+    g = ("Contact alias BLX -> ops@example.com\n"
          "Portal GARN -> https://portal.quostral.example/x?id=42\n"
          "Code 1.234,50 means the annual batch")
     block = glossary_block(g)
-    assert "ops@quostral.example" in block
+    assert "ops@example.com" in block
     assert "https://portal.quostral.example/x?id=42" in block
     assert "1.234,50" in block
 
