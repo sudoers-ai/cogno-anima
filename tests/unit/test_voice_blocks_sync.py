@@ -97,11 +97,21 @@ def test_every_rendered_header_is_in_the_table(name, ctx):
         f"the inventory would silently under-report this section on every turn.")
 
 
+def _affinity_ctx():
+    """The contact's affinity turn — kept OUT of `_configs()` so the sibling tests that reuse
+    that fixture (`test_context_fence`, the context-clauses test) are not perturbed; the affinity
+    block is the deliberate new `contact_affinity` row (0.1.23) the reverse-direction test needs
+    to cover."""
+    ctx = _ctx()
+    ctx.metadata[mk.CONTACT_AFFINITY] = "Torce pro Grêmio. A filha faz balé."
+    return ctx
+
+
 def test_the_table_does_not_list_sections_the_prompt_never_renders():
     """The other direction. A slug for a header that no longer exists is a row that can never
     appear — dead weight that reads like coverage."""
     rendered = set()
-    for _, ctx in _configs():
+    for _, ctx in list(_configs()) + [("affinity", _affinity_ctx())]:
         prompt = SuperegoStage()._build_voice_prompt(
             ctx, payload="p", adjustments=[], traits=ctx.metadata.get(mk.VOICE_TRAITS, ()))
         rendered.update(_HEADER.findall(prompt))

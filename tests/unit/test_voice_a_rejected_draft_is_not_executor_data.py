@@ -267,7 +267,7 @@ def test_no_new_header_so_the_persisted_inventory_does_not_move():
     slugs = [b["block"] for b in SuperegoStage.voice_prompt_inventory(prompt)]
     assert slugs == ["user_request", "executor_data", "review_verdict", "signals", "task"]
     # 10 when this was written; 11 since the contact's note (`contact_memo`) got its own
-    # section — a row that renders ONLY on a turn carrying a note, so this turn's slugs above
-    # are untouched.
-    assert len(SuperegoStage._VOICE_BLOCKS) == 11, (
+    # section; 12 since the contact's affinity (`contact_affinity`, 0.1.23) got its own — both
+    # render ONLY on a turn that carries them, so this turn's slugs above are untouched.
+    assert len(SuperegoStage._VOICE_BLOCKS) == 12, (
         "a block was added or removed; this change adds no header, so the table must not move")

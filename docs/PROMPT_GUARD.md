@@ -9,9 +9,11 @@ a tool result, a held message, the persona's rules, the contact's note, or the h
 `mk.EGO_CONTEXT`. **`sanitize_untrusted` makes it inert in four ways:**
 - no tool-call trigger survives, checked by the real parser;
 - no fence of `FENCE_TAGS` (`tool_output`, `held_message`, `held_ask`, `business_rules`,
-  `contact_memo`, `context_data`, `glossary`) can be opened or closed from inside — `glossary`
-  (0.1.22) wraps the business glossary the NOUMENO renders (`mk.NOUMENO_GLOSSARY`), so a glossary
-  carrying `</glossary>` cannot close its own fence;
+  `contact_memo`, `contact_affinity`, `context_data`, `glossary`) can be opened or closed from
+  inside — `glossary` (0.1.22) wraps the business glossary the NOUMENO renders
+  (`mk.NOUMENO_GLOSSARY`), so a glossary carrying `</glossary>` cannot close its own fence, and
+  `contact_affinity` (0.1.23) wraps the contact's affinity topics the SUPEREGO renders into the
+  voice and the judge (`mk.CONTACT_AFFINITY`), the sibling of the `contact_memo` fence;
 - no marker of the executor's text path survives (`[TOOL RESULTS]`, `[ALREADY EXECUTED]`,
   `[EXECUTION FAILED]`: its brackets become parentheses, anywhere, any case — 0.1.13);
 - no line opens with a header the core renders (`defang_headers`, a backslash).

@@ -112,10 +112,12 @@ _BEFORE_THE_ARGUMENTS_GUARD = "57d6975464d37946"
 _BEFORE_THE_REASON_GUARD = "c78005c5168f250a"
 
 # `reserved_headers()` on the same commit: how many, and the sha256[:16] of them joined by "\n".
-# ONE header joined since, on purpose: the judge's consult section, which `_JUDGE_BLOCKS` did not
-# list. `_RESERVED_NOW` is the set with it; the set WITHOUT it is still the one of that commit.
+# TWO headers joined since, on purpose: the judge's consult section (which `_JUDGE_BLOCKS` did not
+# list) and the contact's AFFINITY header (0.1.23, `# Topics this contact enjoys`, in both the
+# voice's and the judge's tables). `_RESERVED_NOW` is the set with both; the set WITHOUT them is
+# still the one of that commit.
 _RESERVED_COUNT, _RESERVED_SHA = 36, "5a3311287069ce75"
-_RESERVED_NOW = (37, "e2e63f563009cb48")
+_RESERVED_NOW = (38, "bfdae9a18e368cd6")
 
 _CELLS = matrix.cells()
 _IDS = [c[0] for c in _CELLS]
@@ -267,14 +269,15 @@ def test_the_alphabet_and_the_headers_are_read_off_the_table():
 def test_the_reserved_headers_neither_gain_nor_lose_one():
     """`reserved_headers()` used to add `PROMPT_HEADERS` to the three tables; it now reads the
     executor's TABLE. The set is the one of the base commit — by count and by digest — plus the
-    ONE header the judge's table gained since (the consult section), and it holds the
-    executor's five."""
+    TWO headers the tables gained since (the judge's consult section and the contact's AFFINITY
+    header, 0.1.23), and it holds the executor's five."""
     def sha(headers):
         return hashlib.sha256("\n".join(headers).encode()).hexdigest()[:16]
 
     prompt_guard_headers = reserved_headers()
     assert (len(prompt_guard_headers), sha(prompt_guard_headers)) == _RESERVED_NOW
-    of_before = tuple(h for h in prompt_guard_headers if h != superego_mod._CONSULTED_HEADER)
+    of_before = tuple(h for h in prompt_guard_headers
+                      if h not in (superego_mod._CONSULTED_HEADER, superego_mod.AFFINITY_HEADER))
     assert (len(of_before), sha(of_before)) == (_RESERVED_COUNT, _RESERVED_SHA)
     assert set(PROMPT_HEADERS) <= set(prompt_guard_headers)
     assert "" not in prompt_guard_headers and all(h.startswith("#") for h in prompt_guard_headers)
