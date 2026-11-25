@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.1.24 — 2026-11-25 — the contact's AFFINITY becomes CONVERSATION mode (0 bytes without one)
+
+### Changed
+
+- **The AFFINITY turns from "one light mention" into CONVERSATION (`mk.CONTACT_AFFINITY`).** The
+  0.1.23 switch meant the agent MAY drop ONE of the contact's topics into a reply; it now means the
+  agent may CHAT about those topics — and related ones — when the moment is relaxed: show interest
+  and ask ONE short question at a time about the contact's OWN experience, never about facts of the
+  world. The owner's intent (2026-11-24) is to warm the relationship and learn more about the
+  contact; the host half persists what it learns, out of scope here. Both rendered texts move ON
+  PURPOSE: `contact_affinity_block`'s VOICE framing (now "CONVERSATION allowed") and JUDGE framing
+  ("Friendly conversation … is legitimate"). The `AFFINITY_HEADER` opening words
+  (`# Topics this contact enjoys`) are UNCHANGED, so the reserved-header digests and the inventory
+  tables do not move.
+- **The VOICE has TWO variants, keyed on the new `mk.CONTACT_AFFINITY_INITIATED` (`bool`).** The
+  HOST stamps whether the agent has ALREADY raised a topic this visit (detected with the
+  pause-exemption's matcher over the agent's own turns); the core only CONSUMES it through
+  `SuperegoStage._affinity_initiated` and the `initiated` argument of `contact_affinity_block`.
+  Not yet (absent, false or not a bool) → the voice may bring a topic up ONCE more; spent (`True`)
+  → the voice follows the contact only (it may follow a topic the contact raises, never raise one
+  itself). The two variants differ by exactly ONE sentence. The JUDGE text is the same either way,
+  so the flag never moves the judge prompt.
+
+### Unchanged
+
+- **Absent, blank, whitespace-only or non-string affinity → the judge and voice prompts are
+  BYTE-FOR-BYTE the ones of before the whole affinity feature** (no block at all), whatever
+  `mk.CONTACT_AFFINITY_INITIATED` holds; the executor never sees the affinity, and the NOUMENO/NER
+  prompts are untouched. The 7-day interval, the TTL keys and the "first 3 turns" cap remain out of
+  scope — the core renders the block whenever the host stamps one.
+
 ## 0.1.23 — 2026-11-24 — the SUPEREGO accepts the contact's AFFINITY (0 bytes without one)
 
 ### Added
