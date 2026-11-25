@@ -197,6 +197,10 @@ jobs:
         (github.event_name == 'pull_request' && needs.canary_scope.outputs.hit == 'true')
       )
     runs-on: ubuntu-latest
+    # A job-level ceiling; the per-test cap (`PYTEST_TIMEOUT`) bounds a hung test, this bounds
+    # the shard. 150 min is the worst MEASURED shard (1h27) with headroom: a shard past it fails
+    # at 2h30 instead of sitting at the 6h default until the runner cancels it.
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
@@ -204,6 +208,8 @@ jobs:
           - shard: perception          # tests/integration/test_noumeno.py — 41 ids, 17m49s measured
             select: "perception"
             timeout: 0
+            ollama_version: ""           # newest: this shard is not the judge canary and the pin slowed it
+
           # 1h49m03s MEASURED (run 35207468672, 2026-09-17) against the ~30 min PROJECTED
           # above — the projection the comment itself flagged as a projection. `timeout` is a
           # PER-TEST cap, read by pytest-timeout from `PYTEST_TIMEOUT`, and it is worth being
@@ -217,9 +223,13 @@ jobs:
           - shard: semantics           # tests/integration/test_ner.py — 40 ids, ~74 generations
             select: "semantics"
             timeout: 1500
+            ollama_version: ""           # newest: the 0.20.0 pin multiplied this shard by >4 (1h27 → >6h) on CPU
+
           - shard: downstream          # ID / EGO / SUPEREGO / e2e / composite — 16 ids
             select: "not perception and not semantics"
             timeout: 0
+            ollama_version: "0.20.0"     # pinned: this shard runs the judge-figure canary, calibrated on 0.20.0
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -238,13 +248,21 @@ jobs:
           # installer runs exactly once on the bytes that arrived. The serving logic is untouched.
           ok=; for i in 1 2 3; do curl -fsSL -o /tmp/ollama-install.sh https://ollama.com/install.sh && { ok=1; break; }; sleep 10; done
           [ -n "$ok" ] || curl -fsSL -o /tmp/ollama-install.sh https://ollama.com/install.sh
-          # Pin the Ollama RUNTIME to the version the box was measured on. `install.sh` with no
-          # version takes whatever the upstream shipped that day, so the CPU runner drifted onto
-          # an unpinned build and a greedy decode read different logits than the pinned box — the
-          # judge-figure canary flaked on exactly that (measured 2026-11-18: local GPU on
-          # Ollama 0.20.0, qwen3:8b = 3/3 PASSED). The installer reads OLLAMA_VERSION; 0.20.0
-          # matches the box the canary was calibrated on.
-          OLLAMA_VERSION=0.20.0 sh /tmp/ollama-install.sh
+          # Pin the Ollama RUNTIME to the version the box was measured on, but ONLY on the shard
+          # that needs it. `install.sh` with no version takes whatever upstream shipped that day,
+          # so the CPU runner drifted onto an unpinned build and a greedy decode read different
+          # logits than the pinned box — the judge-figure canary flaked on exactly that (measured
+          # 2026-11-18: local GPU on Ollama 0.20.0, qwen3:8b = 3/3 PASSED). That canary lives on
+          # `downstream`, so only `downstream` pins (`ollama_version: "0.20.0"`); `perception` and
+          # `semantics` take the newest build. The pin is not free: 0.20.0 was OLDER than the
+          # unpinned default, and on the CPU runner it multiplied `semantics` by more than four
+          # (1h27 → over 6h, cancelled), which is why the shards that do not need it do not pay it.
+          # The installer reads OLLAMA_VERSION; an empty matrix value means "no pin, newest build".
+          if [ -n "${{ matrix.ollama_version }}" ]; then
+            OLLAMA_VERSION="${{ matrix.ollama_version }}" sh /tmp/ollama-install.sh
+          else
+            sh /tmp/ollama-install.sh
+          fi
           # The installer starts Ollama as a SERVICE where systemd runs, and this runner has it:
           # a second `ollama serve` then died on `bind: address already in use` (3 of the 6
           # nightlies 2026-10-15 → 10-20). Wait for the installer's server first, and start one
@@ -256,6 +274,9 @@ jobs:
             ollama serve &
           fi
           for i in $(seq 1 30); do curl -sf http://localhost:11434/api/tags && break || sleep 1; done
+          # Diagnostic only (never fails the step): record which runtime actually got installed, so
+          # "it got slow" can be read off the log — pinned vs newest — instead of guessed.
+          ollama --version || true
           ok=; for i in 1 2 3; do ollama pull "${{ github.event.inputs.model || 'qwen3:8b' }}" && { ok=1; break; }; sleep 10; done
           [ -n "$ok" ] || ollama pull "${{ github.event.inputs.model || 'qwen3:8b' }}"
           # Pin the MODEL by digest too: the version pin above fixes the runtime, this fixes the
@@ -287,6 +308,9 @@ jobs:
           pip install "cogno-synapse @ git+https://github.com/sudoers-ai/cogno-synapse.git"
           pip install "cogno-engram @ git+https://github.com/sudoers-ai/cogno-engram.git"
           pip install -e ".[dev]"
+          # Diagnostic only (never fails the step): record the installed sibling versions, so a
+          # "it got slow" is read off the log — a sibling from main, not the runtime — not guessed.
+          pip freeze | grep -i '^cogno' || true
       - name: Canary (${{ matrix.shard }}) — the contract tests, against a real model
         env:
           COGNO_TEST_MODEL: "${{ github.event.inputs.model || 'qwen3:8b' }}"
