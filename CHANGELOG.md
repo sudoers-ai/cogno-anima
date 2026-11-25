@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.1.23 — 2026-11-24 — the SUPEREGO accepts the contact's AFFINITY (0 bytes without one)
+
+### Added
+
+- **`mk.CONTACT_AFFINITY` — the topics the contact who is SPEAKING likes to chat about**, a
+  sibling of `mk.CONTACT_MEMO` with the same privacy posture (DATA for the turn, never stated as
+  a fact, never persisted as text by the core). It differs in intent: the memo is the business's
+  private remark the reply must NEVER touch; the affinity is permission for ONE light, optional
+  mention when the moment is relaxed, to warm the conversation. The host stamps it per turn on the
+  contact's record.
+- **`security.contact_memo.contact_affinity_block(text, names=(), *, judge=False)` — the ONE
+  rendering**, molded on `contact_memo_block`: a header the inventories know by its opening words
+  (`AFFINITY_HEADER = "# Topics this contact enjoys"`), framing, and a `<contact_affinity>` fence
+  the text cannot close (a sibling of the memo's, new in `FENCE_TAGS`, so a payload carrying
+  `</contact_affinity>` cannot close its own fence). `judge=False` renders the VOICE text
+  (permission for one light mention, never when the contact is unhappy, never a fact that was not
+  given), `judge=True` the JUDGE text (such a mention is grounded, never required). The companion
+  `sanitize_contact_affinity` cuts at `MAX_AFFINITY_CHARS = 500`.
+- **The SUPEREGO renders the block in TWO of the three prompts** (`SuperegoStage._contact_affinity`
+  reads the key): the voice's, right after the note — it is the voice that addresses the contact,
+  so the one prompt that MAY use a topic — and the judge's USER half, right after the note, so a
+  friendly mention is grounded and never required. The executor never sees it. The two headers are
+  deliberate new rows in `_VOICE_BLOCKS` and `_JUDGE_BLOCKS` (slug `contact_affinity`), so the
+  inventory reports the section and the slicer does not swallow it into a neighbouring capture; the
+  reserved headers derive from those tables, so the affinity header is reserved automatically.
+
+### Unchanged
+
+- **Absent, blank, whitespace-only or non-string affinity → the judge and voice prompts are
+  BYTE-FOR-BYTE the ones of before** (no block at all), and the executor and NOUMENO/NER prompts
+  are untouched in every case. The 7-day interval, the TTL keys and the "first 3 turns" cap are
+  explicitly out of scope — the core renders the block whenever the host stamps one.
+
 ## 0.1.22 — 2026-11-18 — the NOUMENO accepts a business glossary (0 bytes without one)
 
 ### Added

@@ -355,6 +355,20 @@ PERSONA_DECLARED_VALUES = "persona_declared_values"
 # text by the core**; a host's trace records its length and digest at most.
 CONTACT_MEMO = "contact_memo"
 
+# The business's AFFINITY note about the contact who is SPEAKING — the topics this person likes
+# to chat about (a team, a hobby, the family), written by the HOST per turn on the contact's
+# record. A sibling of `CONTACT_MEMO`, and the SAME privacy posture: it is DATA for the turn, not
+# a rule, and it is never stated as a fact. It differs in intent — the memo is the business's
+# private remark (NEVER voiced), this is permission for ONE light, optional mention when the
+# moment is relaxed, to warm the conversation. Rendered by ONE function,
+# `security.contact_memo.contact_affinity_block`, in TWO of the three prompts: the SUPEREGO's
+# voice (the text that MAY use it) and the judge's USER half (so a friendly mention is grounded,
+# never required). The executor never sees it.
+#
+# Absent, blank or not a string → every prompt byte-for-byte as before. **Never persisted as
+# text by the core**; a host's trace records its length and digest at most.
+CONTACT_AFFINITY = "contact_affinity"
+
 # The business's GLOSSARY — the house's own terms for this tenant: acronyms, product and class
 # names, nicknames, the common misspellings of them. A `str`, the business's words, written by the
 # HOST per turn from the tenant's stored configuration.

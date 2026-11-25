@@ -60,7 +60,8 @@ from cogno_anima.utils import WarnOnce
 from cogno_anima.security.prompt_guard import (defang_structure, render_context,
                                                sanitize_untrusted)
 from cogno_anima.security.contact_memo import (
-    MEMO_HEADER, contact_memo_block, mask_contact_memo, sanitize_contact_memo)
+    AFFINITY_HEADER, MEMO_HEADER, contact_affinity_block, contact_memo_block, mask_contact_memo,
+    sanitize_contact_affinity, sanitize_contact_memo)
 from cogno_anima.stages.drift import DriftCalculator
 from cogno_anima.security.detector import PiiDetector, default_detector
 from cogno_anima.security.redaction import (
@@ -1637,6 +1638,7 @@ class SuperegoStage:
         ("# User request", "user_request"),
         ("# Context (memories/history)", "context"),
         (MEMO_HEADER, "contact_memo"),
+        (AFFINITY_HEADER, "contact_affinity"),
         ("# Data gathered by the executor", "executor_data"),
         ("# Voice for this turn", "traits"),
         ("# Executor's answer", "draft"),
@@ -1745,6 +1747,7 @@ class SuperegoStage:
         ("# User request", "user_request"),
         ("# Context (authoritative", "context"),
         (MEMO_HEADER, "contact_memo"),
+        (AFFINITY_HEADER, "contact_affinity"),
         ("# Active goal", "active_goal"),
         ("# User constraints", "user_constraints"),
         ("# NOT AVAILABLE this turn", "unavailable"),
@@ -2922,6 +2925,9 @@ class SuperegoStage:
         # would break the (persona, role) prefix the business rules were moved there to make
         # cacheable. Sanitized with the turn's own tool set, like the tool results below it.
         memo_block = contact_memo_block(self._contact_memo(ctx), names)
+        # The contact's AFFINITY, right after the note and in the same USER half: the judge's
+        # text says a friendly mention of one of these topics is grounded and never required.
+        affinity_block = contact_affinity_block(self._contact_affinity(ctx), names, judge=True)
         branch = self._judge_branch(ctx)
         conversational = branch == JUDGE_CONVERSATIONAL_BRANCH
         criteria = {
@@ -3005,6 +3011,7 @@ class SuperegoStage:
             f'# User request\n"{self._contact_request(ctx)}"\n\n'
             f"{context}"
             f"{memo_block}"
+            f"{affinity_block}"
             f"# Active goal\n{goal}\n"
             f"{restrictions}"
             f"{unavailable}"
@@ -3332,6 +3339,17 @@ class SuperegoStage:
         what it is FOR and how it is fenced is :mod:`cogno_anima.security.contact_memo`'s, one
         definition for every prompt it reaches."""
         return sanitize_contact_memo((getattr(ctx, "metadata", None) or {}).get(mk.CONTACT_MEMO))
+
+    @staticmethod
+    def _contact_affinity(ctx: PipelineContext) -> str:
+        """The host's ``mk.CONTACT_AFFINITY``, sanitized — ``""`` when absent or unusable.
+
+        The topics this contact likes to chat about, for ONE optional light mention. WHOSE
+        topics it is was decided by the host (the contact of this turn); what it is FOR and how
+        it is fenced is :mod:`cogno_anima.security.contact_memo`'s, one definition for every
+        prompt it reaches (the voice's and the judge's)."""
+        return sanitize_contact_affinity(
+            (getattr(ctx, "metadata", None) or {}).get(mk.CONTACT_AFFINITY))
 
     @staticmethod
     def _people_named(ctx: PipelineContext) -> bool:
@@ -4165,6 +4183,11 @@ class SuperegoStage:
         # captures around a flagged turn (the slicer ends a block at the next KNOWN header).
         memo = self._contact_memo(ctx)
         memo_section = contact_memo_block(memo)
+        # The contact's AFFINITY, right after the note: its own known section (so the slicer
+        # does not swallow it). It is the voice that addresses the contact, so this is the one
+        # prompt that MAY bring one of the topics into the reply — the judge's copy only grounds
+        # it. The voice's text holds the full rule (optional, one light mention, never a fact).
+        affinity_section = contact_affinity_block(self._contact_affinity(ctx))
         # Judge's final rejection (orchestrator → ctx.metadata["voice_correction"]): the
         # execution did NOT meet the goal and NOTHING was committed — the orchestrator owns
         # that guarantee and it must hold across EVERY attempt of the turn, not just the last
@@ -4555,6 +4578,7 @@ class SuperegoStage:
             f'# User request\n"{self._contact_request(ctx)}"\n\n'
             f"{context_section}"
             f"{memo_section}"
+            f"{affinity_section}"
             f"# Data gathered by the executor (ground figures/dates ONLY in this)\n{payload}\n\n"
             f"{traits_section}"
             f"{self._draft_section(ctx, payload, rejection, context=bool(context_section))}"

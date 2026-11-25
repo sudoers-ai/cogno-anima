@@ -114,6 +114,16 @@ def _configs():
             ("consulted", consulted)]
 
 
+def _affinity_ctx():
+    """The contact's affinity turn — kept OUT of `_configs()` so the cache-order digests that
+    reuse that fixture stay byte-identical to `origin/main`; the affinity block is new in 0.1.23
+    and renders a section `origin/main` never had, so it has no legacy digest to match. It is the
+    deliberate new `contact_affinity` row the reverse-direction test below needs to cover."""
+    ctx = dict(_configs())["readonly"]
+    ctx.metadata[mk.CONTACT_AFFINITY] = "Torce pro Grêmio. A filha faz balé."
+    return ctx
+
+
 @pytest.mark.parametrize("name,ctx", _configs(), ids=lambda v: v if isinstance(v, str) else "")
 def test_every_rendered_header_is_in_the_table(name, ctx):
     prompt = _asked(ctx)
@@ -129,6 +139,8 @@ def test_the_table_does_not_list_sections_the_prompt_never_renders():
     rendered = set()
     for _, ctx in _configs():
         rendered.update(_HEADER.findall(_asked(ctx)))
+    # The affinity turn is not in `_configs()` (see `_affinity_ctx`), so add its header here.
+    rendered.update(_HEADER.findall(_asked(_affinity_ctx())))
     for known, slug in SuperegoStage._JUDGE_BLOCKS:
         assert any(h.startswith(known) for h in rendered), (
             f"`{slug}` maps to {known!r}, which none of the rendered configurations produce — "

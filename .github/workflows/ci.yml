@@ -225,10 +225,15 @@ jobs:
             timeout: 1500
             ollama_version: ""           # newest: the 0.20.0 pin multiplied this shard by >4 (1h27 → >6h) on CPU
 
-          - shard: downstream          # ID / EGO / SUPEREGO / e2e / composite — 16 ids
-            select: "not perception and not semantics"
+          - shard: downstream          # ID / EGO / SUPEREGO / e2e / composite — 15 ids
+            select: "not perception and not semantics and not judge_canary"
             timeout: 0
-            ollama_version: "0.20.0"     # pinned: this shard runs the judge-figure canary, calibrated on 0.20.0
+            ollama_version: ""           # newest: the e2e NER generation passed here unpinned (26 min) and timed out at 600s on 0.20.0
+
+          - shard: judge_canary        # tests/integration/test_superego.py — 1 id, the judge-figure canary
+            select: "judge_canary"
+            timeout: 0
+            ollama_version: "0.20.0"     # pinned: this one test was calibrated on 0.20.0 and fails on newer runtimes
 
     steps:
       - uses: actions/checkout@v4
@@ -253,10 +258,11 @@ jobs:
           # so the CPU runner drifted onto an unpinned build and a greedy decode read different
           # logits than the pinned box — the judge-figure canary flaked on exactly that (measured
           # 2026-11-18: local GPU on Ollama 0.20.0, qwen3:8b = 3/3 PASSED). That canary lives on
-          # `downstream`, so only `downstream` pins (`ollama_version: "0.20.0"`); `perception` and
-          # `semantics` take the newest build. The pin is not free: 0.20.0 was OLDER than the
-          # unpinned default, and on the CPU runner it multiplied `semantics` by more than four
-          # (1h27 → over 6h, cancelled), which is why the shards that do not need it do not pay it.
+          # its own shard `judge_canary`, so only `judge_canary` pins (`ollama_version: "0.20.0"`);
+          # `perception`, `semantics` and `downstream` take the newest build. The pin is not free:
+          # 0.20.0 was OLDER than the unpinned default, and on the CPU runner it multiplied `semantics`
+          # by more than four (1h27 → over 6h, cancelled), and timed out the `downstream` e2e NER
+          # generation at 600s — which is why the shards that do not need it do not pay it.
           # The installer reads OLLAMA_VERSION; an empty matrix value means "no pin, newest build".
           if [ -n "${{ matrix.ollama_version }}" ]; then
             OLLAMA_VERSION="${{ matrix.ollama_version }}" sh /tmp/ollama-install.sh
