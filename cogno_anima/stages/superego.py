@@ -3344,12 +3344,23 @@ class SuperegoStage:
     def _contact_affinity(ctx: PipelineContext) -> str:
         """The host's ``mk.CONTACT_AFFINITY``, sanitized — ``""`` when absent or unusable.
 
-        The topics this contact likes to chat about, for ONE optional light mention. WHOSE
-        topics it is was decided by the host (the contact of this turn); what it is FOR and how
-        it is fenced is :mod:`cogno_anima.security.contact_memo`'s, one definition for every
-        prompt it reaches (the voice's and the judge's)."""
+        The topics this contact likes to chat about, for light CONVERSATION. WHOSE topics it is
+        was decided by the host (the contact of this turn); what it is FOR and how it is fenced is
+        :mod:`cogno_anima.security.contact_memo`'s, one definition for every prompt it reaches (the
+        voice's and the judge's)."""
         return sanitize_contact_affinity(
             (getattr(ctx, "metadata", None) or {}).get(mk.CONTACT_AFFINITY))
+
+    @staticmethod
+    def _affinity_initiated(ctx: PipelineContext) -> bool:
+        """Did the agent ALREADY raise an affinity topic this visit? (`mk.CONTACT_AFFINITY_INITIATED`)
+
+        The HOST detects it (the same matcher the pause-exemption uses, over the agent's own turns
+        of this visit) and stamps the flag; the core only CONSUMES it, to choose the voice variant
+        — absent, false or not a bool reads as «not yet» and leaves the «bring one up ONCE»
+        permission open; `True` spends it, so the voice follows the contact only. The judge's text
+        is the same either way, so this never moves the judge prompt."""
+        return bool((getattr(ctx, "metadata", None) or {}).get(mk.CONTACT_AFFINITY_INITIATED))
 
     @staticmethod
     def _people_named(ctx: PipelineContext) -> bool:
@@ -4185,9 +4196,12 @@ class SuperegoStage:
         memo_section = contact_memo_block(memo)
         # The contact's AFFINITY, right after the note: its own known section (so the slicer
         # does not swallow it). It is the voice that addresses the contact, so this is the one
-        # prompt that MAY bring one of the topics into the reply — the judge's copy only grounds
-        # it. The voice's text holds the full rule (optional, one light mention, never a fact).
-        affinity_section = contact_affinity_block(self._contact_affinity(ctx))
+        # prompt that MAY converse about the topics — the judge's copy only grounds it. The
+        # voice's text holds the full rule (CONVERSATION allowed, one short question at a time,
+        # never a fact). `initiated` picks the variant: whether the agent already raised a topic
+        # this visit, so the voice may bring one up once more or must now follow the contact only.
+        affinity_section = contact_affinity_block(
+            self._contact_affinity(ctx), initiated=self._affinity_initiated(ctx))
         # Judge's final rejection (orchestrator → ctx.metadata["voice_correction"]): the
         # execution did NOT meet the goal and NOTHING was committed — the orchestrator owns
         # that guarantee and it must hold across EVERY attempt of the turn, not just the last

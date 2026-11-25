@@ -369,6 +369,19 @@ CONTACT_MEMO = "contact_memo"
 # text by the core**; a host's trace records its length and digest at most.
 CONTACT_AFFINITY = "contact_affinity"
 
+# Has the agent ALREADY raised an affinity topic in THIS visit? A `bool`, written by the HOST per
+# turn. It decides which of the two CONVERSATION-mode VOICE variants
+# `security.contact_memo.contact_affinity_block` renders: absent, false or not a bool → «not yet»,
+# the variant that lets the voice bring a topic up ONCE; `True` → the initiative is spent, so the
+# voice follows the contact only (it does not raise a topic again, but may follow one the contact
+# brings up). The host detects it with the same matcher the pause-exemption uses (the affinity
+# words it already found in the agent's own turns of this visit); the core only CONSUMES the flag.
+#
+# The JUDGE's text is the same either way, so this key never moves the judge prompt; and it moves
+# the VOICE prompt only ON a turn that also carries a usable `CONTACT_AFFINITY` (no affinity → no
+# block at all, regardless of this flag). **Never persisted as text by the core** (it is a boolean).
+CONTACT_AFFINITY_INITIATED = "contact_affinity_initiated"
+
 # The business's GLOSSARY — the house's own terms for this tenant: acronyms, product and class
 # names, nicknames, the common misspellings of them. A `str`, the business's words, written by the
 # HOST per turn from the tenant's stored configuration.
