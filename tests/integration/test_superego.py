@@ -297,6 +297,7 @@ async def test_judge_approves_a_draft_that_TRANSLATES_a_preserved_term():
     assert r.approved is True, f"expected approve, got reject: {r.critique!r}"
 
 
+@pytest.mark.judge_canary
 @pytest.mark.asyncio
 async def test_judge_still_rejects_a_draft_that_MANGLES_a_preserved_figure():
     """The twin that keeps the narrowing from being a removal — and the one that must die if it
